@@ -8,6 +8,9 @@ mod embeddings;
 mod database;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 use tracing::{info, error, debug};
 use tracing_subscriber::{EnvFilter, fmt};

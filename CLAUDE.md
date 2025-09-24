@@ -303,6 +303,8 @@ Julie is successful when:
 4. **Dogfooding successful** (can analyze its own code)
 5. **Production ready** (stable, fast, reliable)
 
+### TODO
+Read the TODO.md file. Your user updates this file to track observations and ideas that come up during coding sessions.
 ---
 
 *This document should be updated as the project evolves. All contributors must follow these guidelines without exception.*

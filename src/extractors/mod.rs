@@ -8,19 +8,19 @@ pub mod base;
 
 // TODO: Implement language extractors (Phase 1 & 2)
 // Phase 1 - Core Languages:
-// pub mod typescript;
-// pub mod javascript;
-// pub mod python;
-// pub mod rust;
-// pub mod go;
+pub mod typescript;
+// pub mod javascript;          // Temporarily disabled - compilation errors
+pub mod python;
+// pub mod rust;                // Temporarily disabled - compilation errors
+// pub mod go;                  // Temporarily disabled - compilation errors
 
 // Phase 2 - Extended Languages:
 // pub mod c;
 // pub mod cpp;
-// pub mod java;
-// pub mod csharp;
+// pub mod java;                // Temporarily disabled - compilation errors
+pub mod csharp;              // C# extractor (GREEN phase)
 // pub mod ruby;
-// pub mod php;
+// pub mod php;                 // Temporarily disabled - compilation errors
 // pub mod swift;
 // pub mod kotlin;
 
