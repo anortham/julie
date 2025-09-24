@@ -1,0 +1,1101 @@
+// Kotlin Extractor
+//
+// Port of Miller's Kotlin extractor to idiomatic Rust
+// Original: /Users/murphy/Source/miller/src/extractors/kotlin-extractor.ts
+//
+// This extractor handles comprehensive Kotlin symbol extraction including:
+// - Classes, data classes, sealed classes, enums
+// - Objects, companion objects
+// - Functions, extension functions, operators
+// - Interfaces, type aliases, annotations
+// - Generics with variance
+// - Property delegation
+// - Constructor parameters
+
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind};
+use tree_sitter::{Tree, Node};
+use std::collections::HashMap;
+
+pub struct KotlinExtractor {
+    base: BaseExtractor,
+}
+
+impl KotlinExtractor {
+    pub fn new(language: String, file_path: String, content: String) -> Self {
+        Self {
+            base: BaseExtractor::new(language, file_path, content),
+        }
+    }
+
+    pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
+        let mut symbols = Vec::new();
+        self.visit_node(tree.root_node(), &mut symbols, None);
+        symbols
+    }
+
+    fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+        if !node.is_named() {
+            return; // Skip unnamed nodes
+        }
+
+        let mut symbol: Option<Symbol> = None;
+        let mut new_parent_id = parent_id.clone();
+
+        match node.kind() {
+            "class_declaration" | "enum_declaration" => {
+                symbol = Some(self.extract_class(&node, parent_id.as_deref()));
+            }
+            "interface_declaration" => {
+                symbol = Some(self.extract_interface(&node, parent_id.as_deref()));
+            }
+            "object_declaration" => {
+                symbol = Some(self.extract_object(&node, parent_id.as_deref()));
+            }
+            "companion_object" => {
+                symbol = Some(self.extract_companion_object(&node, parent_id.as_deref()));
+            }
+            "function_declaration" => {
+                symbol = Some(self.extract_function(&node, parent_id.as_deref()));
+            }
+            "property_declaration" | "property_signature" => {
+                symbol = Some(self.extract_property(&node, parent_id.as_deref()));
+            }
+            "enum_class_body" => {
+                self.extract_enum_members(&node, symbols, parent_id.as_deref());
+            }
+            "primary_constructor" => {
+                self.extract_constructor_parameters(&node, symbols, parent_id.as_deref());
+            }
+            "package_header" => {
+                symbol = Some(self.extract_package(&node, parent_id.as_deref()));
+            }
+            "import_header" => {
+                symbol = Some(self.extract_import(&node, parent_id.as_deref()));
+            }
+            "type_alias" => {
+                symbol = Some(self.extract_type_alias(&node, parent_id.as_deref()));
+            }
+            _ => {}
+        }
+
+        if let Some(ref sym) = symbol {
+            symbols.push(sym.clone());
+            new_parent_id = Some(sym.id.clone());
+        }
+
+        // Recursively visit children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.visit_node(child, symbols, new_parent_id.clone());
+        }
+    }
+
+    fn extract_class(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownClass".to_string());
+
+        // Check if this is actually an interface by looking for 'interface' child node
+        let is_interface = node.children(&mut node.walk())
+            .any(|n| n.kind() == "interface");
+
+        let modifiers = self.extract_modifiers(node);
+        let type_params = self.extract_type_parameters(node);
+        let super_types = self.extract_super_types(node);
+        let constructor_params = self.extract_primary_constructor_signature(node);
+
+        // Determine if this is an enum class
+        let is_enum = self.determine_class_kind(&modifiers, node) == SymbolKind::Enum;
+
+        // Check for fun interface by looking for direct 'fun' child
+        let has_fun_keyword = node.children(&mut node.walk())
+            .any(|n| self.base.get_node_text(&n) == "fun");
+
+        let mut signature = if is_interface {
+            if has_fun_keyword {
+                format!("fun interface {}", name)
+            } else {
+                format!("interface {}", name)
+            }
+        } else if is_enum {
+            format!("enum class {}", name)
+        } else {
+            format!("class {}", name)
+        };
+
+        // For enum classes, don't include 'enum' in modifiers since it's already in the signature
+        // For fun interfaces, don't include 'fun' in modifiers since it's already in the signature
+        let final_modifiers: Vec<String> = if is_enum {
+            modifiers.into_iter().filter(|m| m != "enum").collect()
+        } else if has_fun_keyword {
+            modifiers.into_iter().filter(|m| m != "fun").collect()
+        } else {
+            modifiers
+        };
+
+        if !final_modifiers.is_empty() {
+            signature = format!("{} {}", final_modifiers.join(" "), signature);
+        }
+
+        if let Some(type_params) = type_params {
+            signature.push_str(&type_params);
+        }
+
+        // Add primary constructor parameters to signature if present
+        if let Some(constructor_params) = constructor_params {
+            signature.push_str(&constructor_params);
+        }
+
+        if let Some(super_types) = super_types {
+            signature.push_str(&format!(" : {}", super_types));
+        }
+
+        let symbol_kind = if is_interface {
+            SymbolKind::Interface
+        } else {
+            self.determine_class_kind(&final_modifiers, node)
+        };
+
+        let visibility = self.determine_visibility(&final_modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            symbol_kind,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "class".to_string()),
+                ("modifiers".to_string(), final_modifiers.join(",")),
+            ])),
+        )
+    }
+
+    fn extract_interface(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownInterface".to_string());
+
+        let modifiers = self.extract_modifiers(node);
+        let type_params = self.extract_type_parameters(node);
+        let super_types = self.extract_super_types(node);
+
+        let mut signature = format!("interface {}", name);
+
+        if !modifiers.is_empty() {
+            signature = format!("{} {}", modifiers.join(" "), signature);
+        }
+
+        if let Some(type_params) = type_params {
+            signature.push_str(&type_params);
+        }
+
+        if let Some(super_types) = super_types {
+            signature.push_str(&format!(" : {}", super_types));
+        }
+
+        let visibility = self.determine_visibility(&modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Interface,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "interface".to_string()),
+                ("modifiers".to_string(), modifiers.join(",")),
+            ])),
+        )
+    }
+
+    fn extract_object(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownObject".to_string());
+
+        let modifiers = self.extract_modifiers(node);
+        let super_types = self.extract_super_types(node);
+
+        let mut signature = format!("object {}", name);
+
+        if !modifiers.is_empty() {
+            signature = format!("{} {}", modifiers.join(" "), signature);
+        }
+
+        if let Some(super_types) = super_types {
+            signature.push_str(&format!(" : {}", super_types));
+        }
+
+        let visibility = self.determine_visibility(&modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Class,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "object".to_string()),
+                ("modifiers".to_string(), modifiers.join(",")),
+            ])),
+        )
+    }
+
+    fn extract_companion_object(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        // Companion objects always have the name "Companion"
+        let name = "Companion".to_string();
+
+        let mut signature = "companion object".to_string();
+
+        // Check if companion object has a custom name
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        if let Some(name_node) = name_node {
+            let custom_name = self.base.get_node_text(&name_node);
+            signature.push_str(&format!(" {}", custom_name));
+        }
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Class,
+            Some(signature),
+            Some("public".to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "companion-object".to_string()),
+            ])),
+        )
+    }
+
+    fn extract_function(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "simple_identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknownFunction".to_string());
+
+        let modifiers = self.extract_modifiers(node);
+        let type_params = self.extract_type_parameters(node);
+        let receiver_type = self.extract_receiver_type(node);
+        let parameters = self.extract_parameters(node);
+        let return_type = self.extract_return_type(node);
+
+        // Correct Kotlin signature order: modifiers + fun + typeParams + name
+        let mut signature = "fun".to_string();
+
+        if !modifiers.is_empty() {
+            signature = format!("{} {}", modifiers.join(" "), signature);
+        }
+
+        if let Some(type_params) = type_params {
+            signature.push_str(&format!(" {}", type_params));
+        }
+
+        // Add receiver type for extension functions (e.g., String.functionName)
+        if let Some(receiver_type) = receiver_type {
+            signature.push_str(&format!(" {}.{}", receiver_type, name));
+        } else {
+            signature.push_str(&format!(" {}", name));
+        }
+
+        signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
+
+        if let Some(return_type) = return_type {
+            signature.push_str(&format!(": {}", return_type));
+        }
+
+        // Check for where clause (sibling node)
+        if let Some(where_clause) = self.extract_where_clause(node) {
+            signature.push_str(&format!(" {}", where_clause));
+        }
+
+        // Check for expression body (= expression)
+        let function_body = node.children(&mut node.walk())
+            .find(|n| n.kind() == "function_body");
+        if let Some(function_body) = function_body {
+            let body_text = self.base.get_node_text(&function_body);
+            if body_text.starts_with('=') {
+                signature.push_str(&format!(" {}", body_text));
+            }
+        }
+
+        // Determine symbol kind based on modifiers and context
+        let symbol_kind = if modifiers.contains(&"operator".to_string()) {
+            SymbolKind::Operator
+        } else if parent_id.is_some() {
+            SymbolKind::Method
+        } else {
+            SymbolKind::Function
+        };
+
+        let visibility = self.determine_visibility(&modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            symbol_kind,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), if parent_id.is_some() { "method" } else { "function" }.to_string()),
+                ("modifiers".to_string(), modifiers.join(",")),
+            ])),
+        )
+    }
+
+    fn extract_property(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        // Look for name in variable_declaration (interface properties)
+        let mut name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "simple_identifier");
+        if name_node.is_none() {
+            let var_decl = node.children(&mut node.walk())
+                .find(|n| n.kind() == "variable_declaration");
+            if let Some(var_decl) = var_decl {
+                name_node = var_decl.children(&mut var_decl.walk())
+                    .find(|n| n.kind() == "simple_identifier");
+            }
+        }
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknownProperty".to_string());
+
+        let modifiers = self.extract_modifiers(node);
+        let property_type = self.extract_property_type(node);
+
+        // Check for val/var in binding_pattern_kind for interface properties
+        let mut is_val = node.children(&mut node.walk())
+            .any(|n| n.kind() == "val");
+        let mut is_var = node.children(&mut node.walk())
+            .any(|n| n.kind() == "var");
+
+        if !is_val && !is_var {
+            let binding_pattern = node.children(&mut node.walk())
+                .find(|n| n.kind() == "binding_pattern_kind");
+            if let Some(binding_pattern) = binding_pattern {
+                is_val = binding_pattern.children(&mut binding_pattern.walk())
+                    .any(|n| n.kind() == "val");
+                is_var = binding_pattern.children(&mut binding_pattern.walk())
+                    .any(|n| n.kind() == "var");
+            }
+        }
+
+        let binding = if is_val { "val" } else if is_var { "var" } else { "val" };
+        let mut signature = format!("{} {}", binding, name);
+
+        if !modifiers.is_empty() {
+            signature = format!("{} {}", modifiers.join(" "), signature);
+        }
+
+        if let Some(property_type) = property_type {
+            signature.push_str(&format!(": {}", property_type));
+        }
+
+        // Add initializer value if present (especially for const val)
+        if let Some(initializer) = self.extract_property_initializer(node) {
+            signature.push_str(&format!(" = {}", initializer));
+        }
+
+        // Check for property delegation (by lazy, by Delegates.notNull(), etc.)
+        if let Some(delegation) = self.extract_property_delegation(node) {
+            signature.push_str(&format!(" {}", delegation));
+        }
+
+        // Determine symbol kind - const val should be Constant
+        let is_const = modifiers.contains(&"const".to_string());
+        let symbol_kind = if is_const && is_val {
+            SymbolKind::Constant
+        } else {
+            SymbolKind::Property
+        };
+
+        let visibility = self.determine_visibility(&modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            symbol_kind,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), if is_const { "constant" } else { "property" }.to_string()),
+                ("modifiers".to_string(), modifiers.join(",")),
+                ("isVal".to_string(), is_val.to_string()),
+                ("isVar".to_string(), is_var.to_string()),
+            ])),
+        )
+    }
+
+    fn extract_enum_members(&mut self, node: &Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == "enum_entry" {
+                let name_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "simple_identifier");
+                if let Some(name_node) = name_node {
+                    let name = self.base.get_node_text(&name_node);
+
+                    // Check for constructor parameters
+                    let mut signature = name.clone();
+                    let value_args = child.children(&mut child.walk())
+                        .find(|n| n.kind() == "value_arguments");
+                    if let Some(value_args) = value_args {
+                        let args = self.base.get_node_text(&value_args);
+                        signature.push_str(&args);
+                    }
+
+                    let symbol = self.base.create_symbol(
+                        &child,
+                        name,
+                        SymbolKind::EnumMember,
+                        Some(signature),
+                        Some("public".to_string()),
+                        parent_id.map(|s| s.to_string()),
+                        Some(HashMap::from([
+                            ("type".to_string(), "enum-member".to_string()),
+                        ])),
+                    );
+                    symbols.push(symbol);
+                }
+            }
+        }
+    }
+
+    fn extract_package(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownPackage".to_string());
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Namespace,
+            Some(format!("package {}", name)),
+            Some("public".to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "package".to_string()),
+            ])),
+        )
+    }
+
+    fn extract_import(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownImport".to_string());
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Import,
+            Some(format!("import {}", name)),
+            Some("public".to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "import".to_string()),
+            ])),
+        )
+    }
+
+    fn extract_type_alias(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "UnknownTypeAlias".to_string());
+
+        let modifiers = self.extract_modifiers(node);
+        let type_params = self.extract_type_parameters(node);
+
+        // Find the aliased type (after =) - may consist of multiple nodes
+        let mut aliased_type = String::new();
+        let children: Vec<Node> = node.children(&mut node.walk()).collect();
+        if let Some(equal_index) = children.iter().position(|n| self.base.get_node_text(n) == "=") {
+            if equal_index + 1 < children.len() {
+                // Concatenate all nodes after the = (e.g., "suspend" + "(T) -> Unit")
+                let type_nodes = &children[equal_index + 1..];
+                aliased_type = type_nodes.iter()
+                    .map(|n| self.base.get_node_text(n))
+                    .collect::<Vec<String>>()
+                    .join(" ");
+            }
+        }
+
+        let mut signature = format!("typealias {}", name);
+
+        if !modifiers.is_empty() {
+            signature = format!("{} {}", modifiers.join(" "), signature);
+        }
+
+        if let Some(type_params) = type_params {
+            signature.push_str(&type_params);
+        }
+
+        if !aliased_type.is_empty() {
+            signature.push_str(&format!(" = {}", aliased_type));
+        }
+
+        let visibility = self.determine_visibility(&modifiers);
+
+        self.base.create_symbol(
+            node,
+            name,
+            SymbolKind::Type,
+            Some(signature),
+            Some(visibility.to_string()),
+            parent_id.map(|s| s.to_string()),
+            Some(HashMap::from([
+                ("type".to_string(), "typealias".to_string()),
+                ("modifiers".to_string(), modifiers.join(",")),
+                ("aliasedType".to_string(), aliased_type),
+            ])),
+        )
+    }
+
+    // Helper methods for extraction
+
+    fn extract_modifiers(&self, node: &Node) -> Vec<String> {
+        let mut modifiers = Vec::new();
+        let modifiers_list = node.children(&mut node.walk())
+            .find(|n| n.kind() == "modifiers");
+
+        if let Some(modifiers_list) = modifiers_list {
+            for child in modifiers_list.children(&mut modifiers_list.walk()) {
+                // Handle modifier nodes by extracting their text content
+                if matches!(child.kind(),
+                    "class_modifier" | "function_modifier" | "property_modifier" |
+                    "visibility_modifier" | "inheritance_modifier" | "member_modifier") {
+                    modifiers.push(self.base.get_node_text(&child));
+                }
+                // Handle annotation nodes
+                else if child.kind() == "annotation" {
+                    modifiers.push(self.base.get_node_text(&child));
+                }
+                // Fallback: check for direct modifier keywords (backward compatibility)
+                else if matches!(child.kind(),
+                    "public" | "private" | "protected" | "internal" | "open" | "final" |
+                    "abstract" | "sealed" | "data" | "inline" | "suspend" | "operator" |
+                    "infix" | "annotation") {
+                    modifiers.push(self.base.get_node_text(&child));
+                }
+            }
+        }
+
+        modifiers
+    }
+
+    fn extract_type_parameters(&self, node: &Node) -> Option<String> {
+        let type_params = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_parameters");
+        type_params.map(|tp| self.base.get_node_text(&tp))
+    }
+
+    fn extract_super_types(&self, node: &Node) -> Option<String> {
+        let mut super_types = Vec::new();
+
+        // Look for delegation_specifiers container first (wrapped case)
+        let delegation_container = node.children(&mut node.walk())
+            .find(|n| n.kind() == "delegation_specifiers");
+        if let Some(delegation_container) = delegation_container {
+            for child in delegation_container.children(&mut delegation_container.walk()) {
+                if child.kind() == "delegated_super_type" {
+                    let type_node = child.children(&mut child.walk())
+                        .find(|n| matches!(n.kind(), "type" | "user_type" | "simple_identifier"));
+                    if let Some(type_node) = type_node {
+                        super_types.push(self.base.get_node_text(&type_node));
+                    }
+                } else if matches!(child.kind(), "type" | "user_type" | "simple_identifier") {
+                    super_types.push(self.base.get_node_text(&child));
+                }
+            }
+        } else {
+            // Look for individual delegation_specifier nodes (multiple at same level)
+            let delegation_specifiers: Vec<Node> = node.children(&mut node.walk())
+                .filter(|n| n.kind() == "delegation_specifier")
+                .collect();
+            for delegation in delegation_specifiers {
+                super_types.push(self.base.get_node_text(&delegation));
+            }
+        }
+
+        if super_types.is_empty() {
+            None
+        } else {
+            Some(super_types.join(", "))
+        }
+    }
+
+    fn extract_parameters(&self, node: &Node) -> Option<String> {
+        let params = node.children(&mut node.walk())
+            .find(|n| n.kind() == "function_value_parameters");
+        params.map(|p| self.base.get_node_text(&p))
+    }
+
+    fn extract_return_type(&self, node: &Node) -> Option<String> {
+        // Look for return type after the colon in function declarations
+        let mut found_colon = false;
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == ":" {
+                found_colon = true;
+                continue;
+            }
+            if found_colon && matches!(child.kind(),
+                "type" | "user_type" | "simple_identifier" | "function_type" | "nullable_type") {
+                return Some(self.base.get_node_text(&child));
+            }
+        }
+        None
+    }
+
+    fn extract_property_initializer(&self, node: &Node) -> Option<String> {
+        // Look for assignment (=) followed by initializer expression
+        let children: Vec<Node> = node.children(&mut node.walk()).collect();
+        if let Some(assignment_index) = children.iter().position(|n| self.base.get_node_text(n) == "=") {
+            if assignment_index + 1 < children.len() {
+                let initializer_node = &children[assignment_index + 1];
+                return Some(self.base.get_node_text(initializer_node).trim().to_string());
+            }
+        }
+
+        // Also check for property_initializer node type
+        let initializer_node = node.children(&mut node.walk())
+            .find(|n| matches!(n.kind(), "property_initializer" | "expression" | "literal"));
+        initializer_node.map(|n| self.base.get_node_text(&n).trim().to_string())
+    }
+
+    fn extract_property_delegation(&self, node: &Node) -> Option<String> {
+        // Look for property_delegate or 'by' keyword
+        let children: Vec<Node> = node.children(&mut node.walk()).collect();
+        if let Some(by_index) = children.iter().position(|n| self.base.get_node_text(n) == "by") {
+            if by_index + 1 < children.len() {
+                let delegate_node = &children[by_index + 1];
+                return Some(format!("by {}", self.base.get_node_text(delegate_node)));
+            }
+        }
+
+        // Also check for property_delegate node type
+        let delegate_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "property_delegate");
+        delegate_node.map(|n| self.base.get_node_text(&n))
+    }
+
+    fn extract_primary_constructor_signature(&self, node: &Node) -> Option<String> {
+        // Look for primary_constructor node
+        let primary_constructor = node.children(&mut node.walk())
+            .find(|n| n.kind() == "primary_constructor");
+        let primary_constructor = primary_constructor?;
+
+        // Extract class parameters
+        let mut params = Vec::new();
+        for child in primary_constructor.children(&mut primary_constructor.walk()) {
+            if child.kind() == "class_parameter" {
+                let name_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "simple_identifier");
+                let name = name_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "unknownParam".to_string());
+
+                // Get binding pattern (val/var)
+                let binding_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "binding_pattern_kind");
+                let binding = binding_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Get type
+                let type_node = child.children(&mut child.walk())
+                    .find(|n| matches!(n.kind(),
+                        "user_type" | "type" | "nullable_type" | "type_reference"));
+                let param_type = type_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Get modifiers (like private)
+                let modifiers_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "modifiers");
+                let modifiers = modifiers_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Build parameter signature
+                let mut param_sig = String::new();
+                if !modifiers.is_empty() {
+                    param_sig.push_str(&format!("{} ", modifiers));
+                }
+                if !binding.is_empty() {
+                    param_sig.push_str(&format!("{} ", binding));
+                }
+                param_sig.push_str(&name);
+                if !param_type.is_empty() {
+                    param_sig.push_str(&format!(": {}", param_type));
+                }
+
+                params.push(param_sig);
+            }
+        }
+
+        if params.is_empty() {
+            None
+        } else {
+            Some(format!("({})", params.join(", ")))
+        }
+    }
+
+    fn extract_where_clause(&self, node: &Node) -> Option<String> {
+        // Where clauses are parsed as sibling infix_expression nodes
+        let parent = node.parent()?;
+        let siblings: Vec<Node> = parent.children(&mut parent.walk()).collect();
+
+        // Find current node by position comparison
+        let current_index = siblings.iter().position(|n| {
+            n.start_position().row == node.start_position().row &&
+            n.start_position().column == node.start_position().column
+        })?;
+
+        // Look for the immediate next sibling that's an infix_expression starting with "where"
+        if current_index + 1 < siblings.len() {
+            let next_sibling = &siblings[current_index + 1];
+            if next_sibling.kind() == "infix_expression" {
+                let next_text = self.base.get_node_text(next_sibling);
+                if next_text.trim().starts_with("where") {
+                    // Extract just the where clause part (before the function body)
+                    let where_text = next_text.split('{').next().unwrap_or(&next_text).trim();
+                    return Some(where_text.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn extract_receiver_type(&self, node: &Node) -> Option<String> {
+        // Look for receiver_type node for extension functions
+        let receiver_type_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "receiver_type");
+        receiver_type_node.map(|n| self.base.get_node_text(&n))
+    }
+
+    fn extract_property_type(&self, node: &Node) -> Option<String> {
+        // Look for type in variable_declaration (interface properties)
+        let var_decl = node.children(&mut node.walk())
+            .find(|n| n.kind() == "variable_declaration");
+        if let Some(var_decl) = var_decl {
+            let user_type = var_decl.children(&mut var_decl.walk())
+                .find(|n| matches!(n.kind(),
+                    "user_type" | "type" | "nullable_type" | "type_reference"));
+            if let Some(user_type) = user_type {
+                return Some(self.base.get_node_text(&user_type));
+            }
+        }
+
+        // Look for direct type node (regular properties)
+        let property_type = node.children(&mut node.walk())
+            .find(|n| matches!(n.kind(),
+                "type" | "user_type" | "nullable_type" | "type_reference"));
+        property_type.map(|n| self.base.get_node_text(&n))
+    }
+
+    fn determine_class_kind(&self, modifiers: &[String], node: &Node) -> SymbolKind {
+        // Check if this is an enum declaration by node type
+        if node.kind() == "enum_declaration" {
+            return SymbolKind::Enum;
+        }
+
+        // Check for enum class by looking for 'enum' keyword in the node
+        let has_enum_keyword = node.children(&mut node.walk())
+            .any(|n| self.base.get_node_text(&n) == "enum");
+        if has_enum_keyword {
+            return SymbolKind::Enum;
+        }
+
+        // Check modifiers
+        if modifiers.contains(&"enum".to_string()) || modifiers.contains(&"enum class".to_string()) {
+            return SymbolKind::Enum;
+        }
+        if modifiers.contains(&"data".to_string()) {
+            return SymbolKind::Class;
+        }
+        if modifiers.contains(&"sealed".to_string()) {
+            return SymbolKind::Class;
+        }
+        SymbolKind::Class
+    }
+
+    fn determine_visibility(&self, modifiers: &[String]) -> &str {
+        if modifiers.contains(&"private".to_string()) {
+            "private"
+        } else if modifiers.contains(&"protected".to_string()) {
+            "protected"
+        } else {
+            "public" // Kotlin defaults to public
+        }
+    }
+
+    fn extract_constructor_parameters(&mut self, node: &Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+        // Extract class_parameter nodes as properties
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == "class_parameter" {
+                let name_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "simple_identifier");
+                let name = name_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "unknownParam".to_string());
+
+                // Get binding pattern (val/var)
+                let binding_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "binding_pattern_kind");
+                let binding = binding_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "val".to_string());
+
+                // Get type (handle various type node structures including nullable)
+                let type_node = child.children(&mut child.walk())
+                    .find(|n| matches!(n.kind(),
+                        "user_type" | "type" | "nullable_type" | "type_reference"));
+                let param_type = type_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Get modifiers (like private)
+                let modifiers_node = child.children(&mut child.walk())
+                    .find(|n| n.kind() == "modifiers");
+                let modifiers = modifiers_node
+                    .map(|n| self.base.get_node_text(&n))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Get default value (handle various literal types and expressions)
+                let default_value = child.children(&mut child.walk())
+                    .find(|n| matches!(n.kind(),
+                        "integer_literal" | "string_literal" | "boolean_literal" |
+                        "expression" | "call_expression"));
+                let default_val = default_value
+                    .map(|n| format!(" = {}", self.base.get_node_text(&n)))
+                    .unwrap_or_else(|| "".to_string());
+
+                // Alternative: look for assignment pattern (= value)
+                let mut final_signature = if default_val.is_empty() {
+                    let children: Vec<Node> = child.children(&mut child.walk()).collect();
+                    if let Some(equal_index) = children.iter().position(|n| self.base.get_node_text(n) == "=") {
+                        if equal_index + 1 < children.len() {
+                            let value_node = &children[equal_index + 1];
+                            let default_assignment = format!(" = {}", self.base.get_node_text(value_node));
+                            let signature2 = format!("{} {}", binding, name);
+                            let final_sig = if !param_type.is_empty() {
+                                format!("{}: {}{}", signature2, param_type, default_assignment)
+                            } else {
+                                format!("{}{}", signature2, default_assignment)
+                            };
+                            if !modifiers.is_empty() {
+                                format!("{} {}", modifiers, final_sig)
+                            } else {
+                                final_sig
+                            }
+                        } else {
+                            format!("{} {}", binding, name)
+                        }
+                    } else {
+                        format!("{} {}", binding, name)
+                    }
+                } else {
+                    // Build signature
+                    let mut signature = format!("{} {}", binding, name);
+                    if !param_type.is_empty() {
+                        signature.push_str(&format!(": {}", param_type));
+                    }
+                    signature.push_str(&default_val);
+
+                    // Add modifiers to signature if present
+                    if !modifiers.is_empty() {
+                        format!("{} {}", modifiers, signature)
+                    } else {
+                        signature
+                    }
+                };
+
+                // Determine visibility
+                let visibility = if modifiers.contains("private") {
+                    "private"
+                } else if modifiers.contains("protected") {
+                    "protected"
+                } else {
+                    "public"
+                };
+
+                let property_symbol = self.base.create_symbol(
+                    &child,
+                    name,
+                    SymbolKind::Property,
+                    Some(final_signature),
+                    Some(visibility.to_string()),
+                    parent_id.map(|s| s.to_string()),
+                    Some(HashMap::from([
+                        ("type".to_string(), "property".to_string()),
+                        ("binding".to_string(), binding),
+                        ("dataType".to_string(), param_type),
+                        ("hasDefaultValue".to_string(), (!default_val.is_empty()).to_string()),
+                    ])),
+                );
+
+                symbols.push(property_symbol);
+            }
+        }
+    }
+
+    pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
+        let mut types = HashMap::new();
+        for symbol in symbols {
+            if let Some(metadata) = &symbol.metadata {
+                if let Some(return_type) = metadata.get("returnType") {
+                    types.insert(symbol.id.clone(), return_type.clone());
+                } else if let Some(property_type) = metadata.get("propertyType") {
+                    types.insert(symbol.id.clone(), property_type.clone());
+                } else if let Some(data_type) = metadata.get("dataType") {
+                    types.insert(symbol.id.clone(), data_type.clone());
+                }
+            }
+        }
+        types
+    }
+
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        let mut relationships = Vec::new();
+        self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
+        relationships
+    }
+
+    fn visit_node_for_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        match node.kind() {
+            "class_declaration" | "enum_declaration" | "object_declaration" | "interface_declaration" => {
+                self.extract_inheritance_relationships(&node, symbols, relationships);
+            }
+            _ => {}
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.visit_node_for_relationships(child, symbols, relationships);
+        }
+    }
+
+    fn extract_inheritance_relationships(
+        &self,
+        node: &Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>
+    ) {
+        let class_symbol = self.find_class_symbol(node, symbols);
+        if class_symbol.is_none() {
+            return;
+        }
+        let class_symbol = class_symbol.unwrap();
+
+        // Look for delegation_specifiers container first (wrapped case)
+        let delegation_container = node.children(&mut node.walk())
+            .find(|n| n.kind() == "delegation_specifiers");
+        let mut base_type_names = Vec::new();
+
+        if let Some(delegation_container) = delegation_container {
+            for child in delegation_container.children(&mut delegation_container.walk()) {
+                if child.kind() == "delegated_super_type" {
+                    let type_node = child.children(&mut child.walk())
+                        .find(|n| matches!(n.kind(), "type" | "user_type" | "simple_identifier"));
+                    if let Some(type_node) = type_node {
+                        base_type_names.push(self.base.get_node_text(&type_node));
+                    }
+                } else if matches!(child.kind(), "type" | "user_type" | "simple_identifier") {
+                    base_type_names.push(self.base.get_node_text(&child));
+                }
+            }
+        } else {
+            // Look for individual delegation_specifier nodes (multiple at same level)
+            let delegation_specifiers: Vec<Node> = node.children(&mut node.walk())
+                .filter(|n| n.kind() == "delegation_specifier")
+                .collect();
+            for delegation in delegation_specifiers {
+                // Extract just the type name from the delegation (remove "by delegate" part)
+                let explicit_delegation = delegation.children(&mut delegation.walk())
+                    .find(|n| n.kind() == "explicit_delegation");
+                if let Some(explicit_delegation) = explicit_delegation {
+                    let type_text = self.base.get_node_text(&explicit_delegation);
+                    let type_name = type_text.split(" by ").next().unwrap_or(&type_text); // Get part before "by"
+                    base_type_names.push(type_name.to_string());
+                } else {
+                    // Extract type nodes directly - handle both user_type and constructor_invocation
+                    let type_node = delegation.children(&mut delegation.walk())
+                        .find(|n| matches!(n.kind(),
+                            "type" | "user_type" | "simple_identifier" | "constructor_invocation"));
+                    if let Some(type_node) = type_node {
+                        if type_node.kind() == "constructor_invocation" {
+                            // For constructor invocations like Widget(), extract just the type name
+                            let user_type_node = type_node.children(&mut type_node.walk())
+                                .find(|n| n.kind() == "user_type");
+                            if let Some(user_type_node) = user_type_node {
+                                base_type_names.push(self.base.get_node_text(&user_type_node));
+                            }
+                        } else {
+                            base_type_names.push(self.base.get_node_text(&type_node));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Create relationships for each base type
+        for base_type_name in base_type_names {
+            // Find the actual base type symbol
+            let base_type_symbol = symbols.iter().find(|s| {
+                s.name == base_type_name &&
+                matches!(s.kind, SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct)
+            });
+
+            if let Some(base_type_symbol) = base_type_symbol {
+                // Determine relationship kind: classes extend, interfaces implement
+                let relationship_kind = if base_type_symbol.kind == SymbolKind::Interface {
+                    RelationshipKind::Implements
+                } else {
+                    RelationshipKind::Extends
+                };
+
+                relationships.push(Relationship {
+                    from_symbol_id: class_symbol.id.clone(),
+                    to_symbol_id: base_type_symbol.id.clone(),
+                    kind: relationship_kind,
+                    file_path: self.base.file_path.clone(),
+                    line_number: node.start_position().row + 1,
+                    confidence: 1.0,
+                    metadata: Some(HashMap::from([
+                        ("baseType".to_string(), base_type_name),
+                    ])),
+                });
+            }
+        }
+    }
+
+    fn find_class_symbol<'a>(&self, node: &Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+        let name_node = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_identifier");
+        let class_name = name_node
+            .map(|n| self.base.get_node_text(&n))?;
+
+        symbols.iter().find(|s| {
+            s.name == class_name &&
+            matches!(s.kind, SymbolKind::Class | SymbolKind::Interface) &&
+            s.file_path == self.base.file_path
+        })
+    }
+}
