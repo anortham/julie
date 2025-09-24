@@ -44,6 +44,7 @@ tree-sitter-gdscript = "5.0"
 tree-sitter-qmljs = "0.2"
 tree-sitter-regex = "0.23"
 tree-sitter-vue = "0.0.3"
+tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }
 
 # Search engine
 tantivy = "0.25"
