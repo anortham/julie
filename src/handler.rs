@@ -9,6 +9,8 @@ use tracing::{info, debug, error};
 use anyhow::Result;
 
 use crate::tools::JulieTools;
+use crate::extractors::{Symbol, Relationship};
+use std::sync::RwLock;
 
 /// Julie's custom handler for MCP messages
 ///
@@ -18,11 +20,12 @@ use crate::tools::JulieTools;
 /// - Semantic search and embeddings
 /// - Cross-language relationship detection
 pub struct JulieServerHandler {
-    // TODO: Add core components as we build them:
-    // - symbol_database: Arc<SymbolDatabase>,
-    // - search_engine: Arc<SearchEngine>,
-    // - embedding_service: Arc<EmbeddingService>,
-    // - extractor_manager: Arc<ExtractorManager>,
+    /// In-memory storage for indexed symbols (basic implementation)
+    pub symbols: Arc<RwLock<Vec<Symbol>>>,
+    /// In-memory storage for symbol relationships
+    pub relationships: Arc<RwLock<Vec<Relationship>>>,
+    /// Flag to track if workspace has been indexed
+    pub is_indexed: Arc<RwLock<bool>>,
 }
 
 impl JulieServerHandler {
@@ -39,7 +42,9 @@ impl JulieServerHandler {
         debug!("✓ Julie handler components initialized");
 
         Ok(Self {
-            // TODO: Store initialized components
+            symbols: Arc::new(RwLock::new(Vec::new())),
+            relationships: Arc::new(RwLock::new(Vec::new())),
+            is_indexed: Arc::new(RwLock::new(false)),
         })
     }
 

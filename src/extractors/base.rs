@@ -55,7 +55,7 @@ pub struct Symbol {
 /// Symbol kinds - direct port of Miller's SymbolKind enum
 ///
 /// CRITICAL: Order and values must match Miller exactly for test compatibility
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SymbolKind {
     Class,
@@ -117,7 +117,7 @@ pub struct Relationship {
 }
 
 /// Relationship kinds - direct port from Miller's RelationshipKind enum
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationshipKind {
     Calls,

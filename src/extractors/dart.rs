@@ -760,23 +760,78 @@ impl DartExtractor {
 
     fn is_override_method(&self, node: &Node) -> bool {
         // Check if the node text contains @override (fallback)
-        if self.base.get_node_text(node).contains("@override") {
+        let node_text = self.base.get_node_text(node);
+        if node_text.contains("@override") {
             return true;
         }
 
-        // Check for annotation nodes that precede this method
-        let mut current = node.prev_sibling();
-        while let Some(sibling) = current {
-            if sibling.kind() == "annotation" {
-                let annotation_text = self.base.get_node_text(&sibling);
-                if annotation_text.contains("@override") {
+        // Direct source text approach: Look for @override in the lines before this method
+        let start_row = node.start_position().row;
+        let source_lines: Vec<&str> = self.base.content.lines().collect();
+
+        // Check up to 3 lines before the method for @override annotation
+        let check_start = if start_row >= 3 { start_row - 3 } else { 0 };
+        for line_idx in check_start..start_row {
+            if line_idx < source_lines.len() {
+                let line = source_lines[line_idx].trim();
+                if line == "@override" {
                     return true;
                 }
-            } else if sibling.kind() != "annotation" {
-                // Stop if we hit a non-annotation node
+            }
+        }
+
+        // Also try tree traversal as backup
+        self.check_node_for_override_annotation(node)
+    }
+
+    fn check_node_for_override_annotation(&self, node: &Node) -> bool {
+        // For method_signature nodes, check the parent node's siblings first
+        let target_node = if node.kind() == "method_signature" {
+            node.parent().unwrap_or(*node)
+        } else {
+            *node
+        };
+
+        // Check siblings of the current node
+        let mut current = target_node.prev_sibling();
+        while let Some(sibling) = current {
+            let sibling_text = self.base.get_node_text(&sibling);
+
+            // Check if this sibling is an annotation with @override
+            if sibling.kind() == "annotation" && sibling_text.contains("@override") {
+                return true;
+            }
+
+            // Also check nested annotation nodes within siblings
+            if self.find_override_annotation_in_subtree(&sibling) {
+                return true;
+            }
+
+            // Stop if we hit a substantive non-annotation node
+            if !sibling_text.trim().is_empty() &&
+               sibling.kind() != "annotation" &&
+               !sibling_text.chars().all(|c| c.is_whitespace()) {
                 break;
             }
             current = sibling.prev_sibling();
+        }
+
+        false
+    }
+
+    fn find_override_annotation_in_subtree(&self, node: &Node) -> bool {
+        // Check current node
+        let node_text = self.base.get_node_text(node);
+        if node.kind() == "annotation" && node_text.contains("@override") {
+            return true;
+        }
+
+        // Check children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if self.find_override_annotation_in_subtree(&child) {
+                return true;
+            }
         }
 
         false

@@ -73,11 +73,8 @@ impl RubyExtractor {
                 // }
             }
             "constant" => {
-                // Only create symbol if not part of class/module declaration or assignment
-                // TODO: Implement is_part_of_class_module_declaration and is_part_of_assignment methods
-                // if !self.is_part_of_class_module_declaration(&node) && !self.is_part_of_assignment(&node) {
-                    symbol_opt = Some(self.extract_constant(node));
-                // }
+                // Extract all constants for now to debug the parent_id issue
+                symbol_opt = Some(self.extract_constant(node, parent_id.clone()));
             }
             "alias" => {
                 symbol_opt = Some(self.extract_alias(node));
@@ -324,7 +321,7 @@ impl RubyExtractor {
         )
     }
 
-    fn extract_constant(&mut self, node: Node) -> Symbol {
+    fn extract_constant(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name = self.base.get_node_text(&node);
         let signature = name.clone();
 
@@ -335,7 +332,7 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
@@ -582,19 +579,27 @@ impl RubyExtractor {
 
     fn find_includes_and_extends(&self, node: &Node) -> Vec<String> {
         let mut includes = Vec::new();
-        let mut cursor = node.walk();
 
-        for child in node.children(&mut cursor) {
-            if child.kind() == "call" {
-                if let Some(method_name) = self.extract_method_name_from_call(child) {
-                    if matches!(method_name.as_str(), "include" | "extend" | "prepend") {
-                        includes.push(self.base.get_node_text(&child));
-                    }
+        self.find_includes_and_extends_recursive(*node, &mut includes);
+
+        includes
+    }
+
+    fn find_includes_and_extends_recursive(&self, node: Node, includes: &mut Vec<String>) {
+        // Check if this node itself is a call node for include/extend/prepend
+        if node.kind() == "call" {
+            if let Some(method_name) = self.extract_method_name_from_call(node) {
+                if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
+                    includes.push(self.base.get_node_text(&node));
                 }
             }
         }
 
-        includes
+        // Recursively search children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.find_includes_and_extends_recursive(child, includes);
+        }
     }
 
     fn infer_symbol_kind_from_assignment(&self, left_node: &Node) -> SymbolKind {
@@ -685,7 +690,7 @@ impl RubyExtractor {
         for child in node.children(&mut cursor) {
             if child.kind() == "call" {
                 if let Some(method_name) = self.extract_method_name_from_call(child) {
-                    if matches!(method_name.as_str(), "include" | "extend" | "prepend") {
+                    if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
                         if let Some(arg_node) = child.child_by_field_name("arguments") {
                             if let Some(module_node) = arg_node.children(&mut arg_node.walk()).next() {
                                 let module_name = self.base.get_node_text(&module_node);

@@ -790,26 +790,22 @@ impl KotlinExtractor {
     }
 
     fn extract_where_clause(&self, node: &Node) -> Option<String> {
-        // Where clauses are parsed as sibling infix_expression nodes
-        let parent = node.parent()?;
-        let siblings: Vec<Node> = parent.children(&mut parent.walk()).collect();
+        // Look for type_constraints node as a child of the function declaration
+        let type_constraints = node.children(&mut node.walk())
+            .find(|n| n.kind() == "type_constraints");
 
-        // Find current node by position comparison
-        let current_index = siblings.iter().position(|n| {
-            n.start_position().row == node.start_position().row &&
-            n.start_position().column == node.start_position().column
-        })?;
+        if let Some(type_constraints) = type_constraints {
+            // Extract each type_constraint and build the where clause
+            let mut constraints = Vec::new();
 
-        // Look for the immediate next sibling that's an infix_expression starting with "where"
-        if current_index + 1 < siblings.len() {
-            let next_sibling = &siblings[current_index + 1];
-            if next_sibling.kind() == "infix_expression" {
-                let next_text = self.base.get_node_text(next_sibling);
-                if next_text.trim().starts_with("where") {
-                    // Extract just the where clause part (before the function body)
-                    let where_text = next_text.split('{').next().unwrap_or(&next_text).trim();
-                    return Some(where_text.to_string());
+            for child in type_constraints.children(&mut type_constraints.walk()) {
+                if child.kind() == "type_constraint" {
+                    constraints.push(self.base.get_node_text(&child));
                 }
+            }
+
+            if !constraints.is_empty() {
+                return Some(format!("where {}", constraints.join(", ")));
             }
         }
 
@@ -817,10 +813,19 @@ impl KotlinExtractor {
     }
 
     fn extract_receiver_type(&self, node: &Node) -> Option<String> {
-        // Look for receiver_type node for extension functions
-        let receiver_type_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "receiver_type");
-        receiver_type_node.map(|n| self.base.get_node_text(&n))
+        // Look for extension function pattern: user_type + . + identifier
+        let children: Vec<_> = node.children(&mut node.walk()).collect();
+
+        // Find the pattern: user_type followed by "."
+        for i in 0..children.len().saturating_sub(1) {
+            if children[i].kind() == "user_type" &&
+               i + 1 < children.len() &&
+               self.base.get_node_text(&children[i + 1]) == "." {
+                return Some(self.base.get_node_text(&children[i]));
+            }
+        }
+
+        None
     }
 
     fn extract_property_type(&self, node: &Node) -> Option<String> {
@@ -880,9 +885,13 @@ impl KotlinExtractor {
     }
 
     fn extract_constructor_parameters(&mut self, node: &Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
-        // Extract class_parameter nodes as properties
-        for child in node.children(&mut node.walk()) {
-            if child.kind() == "class_parameter" {
+        // First find the class_parameters container, then extract class_parameter nodes as properties
+        let class_parameters = node.children(&mut node.walk())
+            .find(|n| n.kind() == "class_parameters");
+
+        if let Some(class_parameters) = class_parameters {
+            for child in class_parameters.children(&mut class_parameters.walk()) {
+                if child.kind() == "class_parameter" {
                 let name_node = child.children(&mut child.walk())
                     .find(|n| n.kind() == "identifier");
                 let name = name_node
@@ -988,6 +997,7 @@ impl KotlinExtractor {
                 );
 
                 symbols.push(property_symbol);
+                }
             }
         }
     }
