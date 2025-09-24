@@ -1,0 +1,92 @@
+[package]
+name = "julie"
+version = "0.1.0"
+edition = "2021"
+authors = ["Claude & Murphy"]
+description = "Julie - Cross-Platform Code Intelligence Server (Rising from Miller's ashes)"
+license = "MIT"
+
+[[bin]]
+name = "julie-server"
+path = "src/main.rs"
+
+[dependencies]
+# MCP Server SDK
+rust-mcp-sdk = { version = "0.7.0", default-features = false, features = [
+    "server",
+    "macros",
+    "stdio",
+    "2025_06_18",
+] }
+
+# Tree-sitter for parsing
+tree-sitter = "0.24"
+tree-sitter-bash = "0.23"
+tree-sitter-c = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-css = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-html = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-kotlin = "0.3"
+tree-sitter-lua = "0.2"
+tree-sitter-php = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-rust = "0.24"
+tree-sitter-swift = "0.7"
+tree-sitter-typescript = "0.23"
+
+# Search engine
+tantivy = "0.22"
+
+# Embeddings (using ort for ONNX compatibility)
+ort = "2.0.0-rc.10"
+
+# Async runtime
+tokio = { version = "1.4", features = ["full"] }
+
+# Parallelism
+rayon = "1.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# File watching
+notify = "6.1"
+
+# Utilities
+async-trait = "0.1"
+futures = "0.3"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Pattern matching for file discovery
+glob = "0.3"
+
+[dev-dependencies]
+tempfile = "3.13"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true

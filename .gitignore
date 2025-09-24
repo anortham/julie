@@ -1,0 +1,28 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Julie specific
+julie-server
+*.julie.db
+.julie/
+
+# Logs
+*.log
+
+# Test artifacts
+/test_workspaces/
+/temp/
