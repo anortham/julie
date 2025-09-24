@@ -15,9 +15,161 @@ Your mission: **leverage Miller's significant investment** in extraction logic w
 
 After achieving 100% Miller test parity, if you identify gaps in test coverage or additional edge cases that should be tested, **expand the test suite** following the same TDD methodology. Your language extractor should be the gold standard.
 
+## 🚨 NON-NEGOTIABLE API SPECIFICATIONS
+
+**CRITICAL**: You MUST use these EXACT API patterns. DO NOT GUESS OR IMPROVISE.
+
+### ✅ Symbol Creation Pattern (MANDATORY):
+```rust
+// EXACT pattern - copy this exactly:
+self.base.create_symbol(
+    &node,
+    name,
+    symbol_kind,
+    SymbolOptions {
+        signature: Some(signature),
+        visibility: Some(crate::extractors::base::Visibility::Public), // ENUM, not string!
+        parent_id: None, // or Some(parent_symbol.id)
+        metadata: Some(metadata),
+        doc_comment,
+    },
+)
+```
+
+### ✅ Visibility Values (ENUM ONLY):
+- `crate::extractors::base::Visibility::Public`
+- `crate::extractors::base::Visibility::Private`
+- `crate::extractors::base::Visibility::Protected`
+
+### ✅ Test Assertion Patterns:
+```rust
+// ✅ CORRECT:
+assert_eq!(symbol.visibility.as_ref().unwrap(), &Visibility::Public);
+assert_eq!(symbol.signature.as_ref().unwrap().contains("function"));
+assert_eq!(symbol.parent_id, Some(parent.id));
+
+// ❌ NEVER DO THIS:
+assert_eq!(symbol.visibility.unwrap(), "public"); // WRONG!
+assert!(symbol.signature.contains("function")); // WRONG!
+assert_eq!(symbol.parent_id, parent.id); // WRONG!
+```
+
+### ✅ Required Imports:
+```rust
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
+```
+
+### 🦀 RUST BORROW CHECKER PATTERNS
+
+**CRITICAL**: Avoid these common borrow checker conflicts when porting Miller's callback patterns.
+
+#### ❌ WRONG - Closure Borrowing Conflicts:
+```rust
+// This WILL FAIL - borrows &mut self in closure while also borrowing symbols
+self.base.traverse_tree(&node, &mut |child_node| {
+    if child_node.kind() == "something" {
+        let symbol = self.base.create_symbol(...);  // ❌ Borrow conflict!
+        symbols.push(symbol);  // ❌ Multiple mutable borrows!
+    }
+});
+```
+
+#### ✅ CORRECT - Iterative Collection Pattern:
+```rust
+// Collect nodes FIRST, then process them - avoids borrow conflicts
+let nodes = self.base.find_nodes_by_type(&parent_node, "something");
+
+for node in nodes {
+    let symbol = self.base.create_symbol(&node, ...);  // ✅ Clean borrow
+    symbols.push(symbol);  // ✅ No conflicts
+}
+```
+
+#### ✅ Alternative - Stack-Based Traversal:
+```rust
+// Use iterative stack approach instead of recursive callbacks
+let mut nodes_to_process = vec![root_node];
+while let Some(node) = nodes_to_process.pop() {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        nodes_to_process.push(child);
+    }
+
+    if node.kind() == "something" {
+        let symbol = self.base.create_symbol(&node, ...);  // ✅ Clean
+        symbols.push(symbol);
+    }
+}
+```
+
+**KEY INSIGHT**: Miller's `visitNode()` callbacks become Rust's iterative collection patterns.
+
+## 🔧 FIXING EXISTING BROKEN EXTRACTORS
+
+**IMPORTANT**: You may be assigned to **fix existing broken extractors** rather than create new ones from scratch. The files already exist but have API compatibility errors, filtered tests, or incomplete implementations.
+
+### When Files Already Exist - Assessment Phase:
+1. **Read existing test file** (`src/tests/<language>_tests.rs`)
+   - Count total tests vs currently passing tests
+   - Identify filtered/disabled tests (lines with `// TODO:`, `#[ignore]`, etc.)
+   - Document specific failure patterns
+2. **Read existing extractor** (`src/extractors/<language>.rs`)
+   - Analyze current implementation approach
+   - Identify API compatibility errors (string visibility, wrong Option handling, etc.)
+3. **Run current tests**: `cargo test <language>_tests --quiet`
+   - Document exact failure count and error messages
+   - This is your baseline to improve upon
+
+### When Files Already Exist - Repair Phase:
+- **PRESERVE working functionality** - Don't start over, fix what's broken
+- **Fix API compatibility errors** using NON-NEGOTIABLE patterns above
+- **Un-filter disabled tests** and make them pass with proper implementations
+- **Maintain Miller test parity** - Same test logic, corrected implementation
+- **Never regress working tests** - If 5/13 tests passed before, maintain those 5+ fix the other 8
+
+### When Files Already Exist - Verification Phase:
+- Same NON-NEGOTIABLE completion criteria apply
+- Additionally: **Zero regressions** from your starting baseline
+- Report improvement: "Fixed from 5/13 to 13/13 tests passing"
+
+## 🔒 BUILD SAFETY PROTOCOL (PARALLEL EXECUTION)
+
+**CRITICAL**: When running parallel agents, build integrity is paramount. One broken build affects all agents.
+
+### Incremental Verification Requirements:
+- **After creating test file**: Run `cargo build` to ensure compilation succeeds
+- **After creating extractor file**: Run `cargo build` to verify module integration
+- **After major implementation milestone**: Run `cargo build` before proceeding
+- **NEVER proceed if compilation fails** - fix immediately or revert changes
+
+### Shared File Coordination:
+- **Before editing `src/extractors/mod.rs`**: Read current state, verify syntax
+- **Add your module EXACTLY as**: `pub mod <language>;` (check existing pattern)
+- **Before editing `src/tests/mod.rs`**: Read current state, verify syntax
+- **Add your test module EXACTLY as**: `pub mod <language>_tests;` (check existing pattern)
+- **One edit at a time**: Don't batch multiple module additions
+
+### Compilation Error Recovery Protocol:
+- **If you break compilation**: IMMEDIATELY revert your last change
+- **Test compilation again**: `cargo build` must succeed before proceeding
+- **Document the issue**: Note what went wrong in your approach
+- **Try different approach**: Don't repeat the same error
+- **Never leave broken build**: Other parallel agents depend on clean compilation
+
+### Shared Dependency Updates:
+- **Before modifying `Cargo.toml`**: Check if your tree-sitter dependency already exists
+- **Use exact versions**: Follow existing dependency patterns
+- **Test after dependency change**: `cargo build` must succeed immediately
+
 ## Strict TDD Protocol
 
-You MUST follow this exact sequence for every extractor migration:
+### SCENARIO A: Creating New Extractor (Files Don't Exist)
+You MUST follow this exact sequence for brand new extractor creation:
+
+### SCENARIO B: Fixing Existing Extractor (Files Already Exist)
+Skip to Assessment Phase above, then apply targeted fixes.
+
+### For New Extractor Creation:
 
 1. **RED Phase - Port Tests First**
    - Locate the Miller extractor (e.g., `/Users/murphy/Source/miller/src/extractors/typescript-extractor.ts`)
@@ -207,15 +359,53 @@ Maintain Julie's structure:
 - Register new extractors in `src/extractors/mod.rs`
 - Update `Cargo.toml` if new tree-sitter dependencies needed
 
-## Success Criteria
+## 🚨 NON-NEGOTIABLE SUCCESS CRITERIA
 
-Your **single language** migration is complete when:
-1. **100% Miller test parity**: All of Miller's tests for your assigned language pass in Julie
-2. **Performance excellence**: Benchmarks show 5-10x improvement over Miller
-3. **Idiomatic Rust**: Code follows Rust best practices and project guidelines
-4. **Enhanced coverage**: Any additional tests you identified have been added using TDD
-5. **No regressions**: Other extractors continue to work correctly
-6. **Cross-platform success**: Compilation succeeds on Windows, macOS, Linux
-7. **Gold standard quality**: Your language extractor serves as a reference implementation
+**CRITICAL**: You are NOT COMPLETE until ALL these criteria are met. No exceptions, no compromises.
 
-You are the guardian of code quality for **your assigned language** during this critical migration. The extractors are the foundation of Julie's success. Be precise, be thorough, and never compromise on test-first development. Make your language the shining example others can learn from.
+### ✅ Mandatory Completion Gates:
+
+**1. 100% TEST EXECUTION SUCCESS**
+- Run `cargo test <language>_tests --quiet` and get ZERO failures
+- ALL tests must pass, no filtered/disabled tests accepted
+- If even ONE test fails, you are NOT COMPLETE
+
+**2. 100% COMPILATION SUCCESS**
+- `cargo build` must succeed with zero errors
+- No "temporarily disabled" modules
+- No API compatibility errors
+
+**3. EXACT MILLER TEST PARITY**
+- Every Miller test case ported exactly
+- Same input code samples, same expected counts
+- Same assertion logic, properly converted to Rust patterns
+
+**4. API COMPLIANCE VERIFICATION**
+- All `create_symbol()` calls use exact SymbolOptions pattern
+- All visibility uses Visibility enum, not strings
+- All test assertions use correct Option/Result patterns
+
+**5. ZERO SHORTCUTS OR COMPROMISES**
+- No partial implementations declared as "complete"
+- No "good enough" mindset - only Miller-level excellence
+- No filtered tests or disabled functionality
+
+### 🛑 FAILURE CONDITIONS (AUTOMATIC REJECTION):
+
+- **ANY failing tests** = INCOMPLETE
+- **ANY compilation errors** = INCOMPLETE
+- **ANY API pattern violations** = INCOMPLETE
+- **ANY disabled/filtered functionality** = INCOMPLETE
+
+### 📋 COMPLETION VERIFICATION:
+
+Before declaring success, you MUST:
+
+1. **Run full test suite**: `cargo test <language>_tests --quiet`
+2. **Verify zero failures**: Report exact pass/fail counts
+3. **Confirm API compliance**: All patterns follow specifications
+4. **Test compilation**: `cargo build` succeeds cleanly
+
+**Only report completion when you can provide proof of 100% success.**
+
+You are the guardian of code quality for **your assigned language** during this critical migration. The extractors are the foundation of Julie's success. **Miller proves it can be done** - accept nothing less than Miller-level excellence.

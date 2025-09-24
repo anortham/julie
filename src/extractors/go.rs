@@ -1,4 +1,4 @@
-use crate::extractors::base::{BaseExtractor, Symbol, Relationship, SymbolKind, RelationshipKind, Visibility};
+use crate::extractors::base::{BaseExtractor, Symbol, Relationship, SymbolKind, RelationshipKind, Visibility, SymbolOptions};
 use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
 
@@ -29,14 +29,36 @@ impl GoExtractor {
         self.prioritize_functions_over_fields(symbols)
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
-        // Stub implementation - will be implemented after basic symbol extraction
-        Vec::new()
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        let mut relationships = Vec::new();
+        // Basic implementation for method-receiver relationships
+        self.extract_method_relationships(tree.root_node(), symbols, &mut relationships);
+        relationships
     }
 
-    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
-        // Stub implementation - will be implemented after basic symbol extraction
-        HashMap::new()
+    pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
+        let mut types = HashMap::new();
+
+        for symbol in symbols {
+            if let Some(signature) = &symbol.signature {
+                // Extract type information from signatures
+                match symbol.kind {
+                    SymbolKind::Function | SymbolKind::Method => {
+                        if let Some(return_type) = self.extract_return_type_from_signature(signature) {
+                            types.insert(symbol.id.clone(), return_type);
+                        }
+                    }
+                    SymbolKind::Variable | SymbolKind::Constant => {
+                        if let Some(var_type) = self.extract_variable_type_from_signature(signature) {
+                            types.insert(symbol.id.clone(), var_type);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        types
     }
 
     /// Prioritize functions over fields with the same name (direct port from Miller)
@@ -130,17 +152,88 @@ impl GoExtractor {
         self.base.get_node_text(&node)
     }
 
-    // Stub implementations for specific extractors - will be implemented step by step
-    fn extract_import_symbols(&mut self, _node: Node, _parent_id: Option<&str>) -> Vec<Symbol> {
-        Vec::new()
+    fn extract_import_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+        let mut symbols = Vec::new();
+        let mut cursor = node.walk();
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "import_spec" => {
+                    if let Some(symbol) = self.extract_import_spec(child, parent_id) {
+                        symbols.push(symbol);
+                    }
+                }
+                "import_spec_list" => {
+                    let mut nested_cursor = child.walk();
+                    for nested_child in child.children(&mut nested_cursor) {
+                        if nested_child.kind() == "import_spec" {
+                            if let Some(symbol) = self.extract_import_spec(nested_child, parent_id) {
+                                symbols.push(symbol);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        symbols
     }
 
-    fn extract_var_symbols(&mut self, _node: Node, _parent_id: Option<&str>) -> Vec<Symbol> {
-        Vec::new()
+    fn extract_var_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+        let mut symbols = Vec::new();
+        let mut cursor = node.walk();
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "var_spec" => {
+                    if let Some(symbol) = self.extract_var_spec(child, parent_id) {
+                        symbols.push(symbol);
+                    }
+                }
+                "var_spec_list" => {
+                    let mut nested_cursor = child.walk();
+                    for nested_child in child.children(&mut nested_cursor) {
+                        if nested_child.kind() == "var_spec" {
+                            if let Some(symbol) = self.extract_var_spec(nested_child, parent_id) {
+                                symbols.push(symbol);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        symbols
     }
 
-    fn extract_const_symbols(&mut self, _node: Node, _parent_id: Option<&str>) -> Vec<Symbol> {
-        Vec::new()
+    fn extract_const_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+        let mut symbols = Vec::new();
+        let mut cursor = node.walk();
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "const_spec" => {
+                    if let Some(symbol) = self.extract_const_spec(child, parent_id) {
+                        symbols.push(symbol);
+                    }
+                }
+                "const_spec_list" => {
+                    let mut nested_cursor = child.walk();
+                    for nested_child in child.children(&mut nested_cursor) {
+                        if nested_child.kind() == "const_spec" {
+                            if let Some(symbol) = self.extract_const_spec(nested_child, parent_id) {
+                                symbols.push(symbol);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        symbols
     }
 
     fn extract_package(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -155,9 +248,13 @@ impl GoExtractor {
                     &child,
                     name,
                     SymbolKind::Namespace,
-                    Some(&signature),
-                    Some(Visibility::Public),
-                    parent_id.map(|s| s.to_string()),
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
                 ));
             }
         }
@@ -186,6 +283,13 @@ impl GoExtractor {
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
                 "type_alias" => type_def = Some(("alias", child)),
+                // Handle basic type definitions (type UserID int64)
+                "primitive_type" | "type_identifier" if type_identifier.is_some() && type_def.is_none() => {
+                    type_def = Some(("alias", child));
+                },
+                "pointer_type" | "slice_type" | "map_type" | "array_type" | "channel_type" if type_identifier.is_some() && type_def.is_none() => {
+                    type_def = Some(("alias", child));
+                },
                 _ => {}
             }
         }
@@ -205,9 +309,13 @@ impl GoExtractor {
                         &type_id,
                         name,
                         SymbolKind::Class,
-                        Some(&signature),
-                        visibility,
-                        parent_id.map(|s| s.to_string()),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility,
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment: None,
+                        },
                     ))
                 },
                 "interface" => {
@@ -216,9 +324,13 @@ impl GoExtractor {
                         &type_id,
                         name,
                         SymbolKind::Interface,
-                        Some(&signature),
-                        visibility,
-                        parent_id.map(|s| s.to_string()),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility,
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment: None,
+                        },
                     ))
                 },
                 "alias" => {
@@ -229,9 +341,13 @@ impl GoExtractor {
                         &type_id,
                         name,
                         SymbolKind::Type,
-                        Some(&signature),
-                        visibility,
-                        parent_id.map(|s| s.to_string()),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility,
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment: None,
+                        },
                     ))
                 },
                 _ => None,
@@ -244,7 +360,7 @@ impl GoExtractor {
     fn extract_type_from_node(&self, node: Node) -> String {
         // Extract the type string from a type node
         match node.kind() {
-            "primitive_type" => self.get_node_text(node),
+            "type_identifier" | "primitive_type" => self.get_node_text(node),
             "map_type" => {
                 let mut parts = Vec::new();
                 let mut cursor = node.walk();
@@ -262,6 +378,7 @@ impl GoExtractor {
                 }
                 self.get_node_text(node)
             },
+            "array_type" => self.get_node_text(node),
             "pointer_type" => {
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
@@ -269,6 +386,30 @@ impl GoExtractor {
                         return format!("*{}", self.extract_type_from_node(child));
                     }
                 }
+                self.get_node_text(node)
+            },
+            "channel_type" => {
+                // Handle channel types like <-chan, chan<-, chan
+                self.get_node_text(node)
+            },
+            "interface_type" => {
+                // Handle interface{} and other interface types
+                self.get_node_text(node)
+            },
+            "function_type" => {
+                // Handle function types like func(int) string
+                self.get_node_text(node)
+            },
+            "qualified_type" => {
+                // Handle types like package.TypeName
+                self.get_node_text(node)
+            },
+            "generic_type" => {
+                // Handle generic types like Stack[T]
+                self.get_node_text(node)
+            },
+            "type_arguments" => {
+                // Handle type arguments like [T, U]
                 self.get_node_text(node)
             },
             _ => self.get_node_text(node),
@@ -287,7 +428,7 @@ impl GoExtractor {
                 "parameter_list" => {
                     parameters = self.extract_parameter_list(child);
                 },
-                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" => {
+                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "channel_type" | "interface_type" | "function_type" | "map_type" | "array_type" | "qualified_type" | "generic_type" => {
                     return_type = Some(self.extract_type_from_node(child));
                 },
                 _ => {}
@@ -309,9 +450,13 @@ impl GoExtractor {
             &node,
             name,
             SymbolKind::Function,
-            Some(&signature),
-            visibility,
-            parent_id.map(|s| s.to_string()),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility,
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: None,
+                doc_comment: None,
+            },
         )
     }
 
@@ -337,7 +482,7 @@ impl GoExtractor {
                     }
                 },
                 "identifier" => func_name = Some(self.get_node_text(child)),
-                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" => {
+                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "channel_type" | "interface_type" | "function_type" | "map_type" | "array_type" | "qualified_type" | "generic_type" => {
                     return_type = Some(self.extract_type_from_node(child));
                 },
                 _ => {}
@@ -361,9 +506,13 @@ impl GoExtractor {
             &node,
             name,
             SymbolKind::Method,
-            Some(&signature),
-            visibility,
-            parent_id.map(|s| s.to_string()),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility,
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: None,
+                doc_comment: None,
+            },
         )
     }
 
@@ -391,8 +540,13 @@ impl GoExtractor {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "identifier" => names.push(self.get_node_text(child)),
-                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "map_type" => {
+                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "map_type" | "channel_type" | "interface_type" | "function_type" | "array_type" | "qualified_type" | "generic_type" => {
                     param_type = Some(self.extract_type_from_node(child));
+                },
+                "variadic_parameter" => {
+                    // Handle variadic parameters like ...interface{}
+                    let variadic_text = self.get_node_text(child);
+                    param_type = Some(variadic_text);
                 },
                 _ => {}
             }
@@ -434,6 +588,265 @@ impl GoExtractor {
 
     fn extract_from_error_node(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
         // Stub - will implement
+        None
+    }
+
+    // Helper methods for specific Go constructs
+    fn extract_import_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let mut cursor = node.walk();
+        let mut alias = None;
+        let mut path = None;
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => alias = Some(self.get_node_text(child)),
+                "interpreted_string_literal" => path = Some(self.get_node_text(child)),
+                _ => {}
+            }
+        }
+
+        if let Some(import_path) = path {
+            // Extract package name from path
+            let package_name = if let Some(ref a) = alias {
+                a.clone()
+            } else {
+                // Extract package name from import path
+                import_path.trim_matches('"')
+                    .split('/')
+                    .last()
+                    .unwrap_or("unknown")
+                    .to_string()
+            };
+
+            let signature = if let Some(ref a) = alias {
+                format!("import {} {}", a, import_path)
+            } else {
+                format!("import {}", import_path)
+            };
+
+            Some(self.base.create_symbol(
+                &node,
+                package_name,
+                SymbolKind::Import,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: None,
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn extract_var_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let mut cursor = node.walk();
+        let mut identifier = None;
+        let mut var_type = None;
+        let mut value = None;
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => identifier = Some(self.get_node_text(child)),
+                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "map_type" => {
+                    var_type = Some(self.extract_type_from_node(child));
+                },
+                "expression_list" => {
+                    // Extract the first expression as the value
+                    let mut expr_cursor = child.walk();
+                    for expr_child in child.children(&mut expr_cursor) {
+                        if !matches!(expr_child.kind(), "," | " ") {
+                            value = Some(self.get_node_text(expr_child));
+                            break;
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        if let Some(name) = identifier {
+            let visibility = if self.is_public(&name) {
+                Some(Visibility::Public)
+            } else {
+                Some(Visibility::Private)
+            };
+
+            let signature = if let Some(typ) = var_type {
+                if let Some(val) = value {
+                    format!("var {} {} = {}", name, typ, val)
+                } else {
+                    format!("var {} {}", name, typ)
+                }
+            } else if let Some(val) = value {
+                format!("var {} = {}", name, val)
+            } else {
+                format!("var {}", name)
+            };
+
+            Some(self.base.create_symbol(
+                &node,
+                name,
+                SymbolKind::Variable,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility,
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: None,
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn extract_const_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let mut cursor = node.walk();
+        let mut identifier = None;
+        let mut const_type = None;
+        let mut value = None;
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => identifier = Some(self.get_node_text(child)),
+                "type_identifier" | "primitive_type" => {
+                    const_type = Some(self.extract_type_from_node(child));
+                },
+                "expression_list" => {
+                    // Extract the first expression as the value
+                    let mut expr_cursor = child.walk();
+                    for expr_child in child.children(&mut expr_cursor) {
+                        if !matches!(expr_child.kind(), "," | " ") {
+                            value = Some(self.get_node_text(expr_child));
+                            break;
+                        }
+                    }
+                },
+                _ if child.kind().starts_with("literal") || matches!(child.kind(), "true" | "false" | "nil") => {
+                    value = Some(self.get_node_text(child));
+                },
+                _ => {}
+            }
+        }
+
+        if let Some(name) = identifier {
+            let visibility = if self.is_public(&name) {
+                Some(Visibility::Public)
+            } else {
+                Some(Visibility::Private)
+            };
+
+            let signature = if let Some(val) = value {
+                if let Some(typ) = const_type {
+                    format!("const {} {} = {}", name, typ, val)
+                } else {
+                    format!("const {} = {}", name, val)
+                }
+            } else {
+                format!("const {}", name)
+            };
+
+            Some(self.base.create_symbol(
+                &node,
+                name,
+                SymbolKind::Constant,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility,
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: None,
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
+    }
+
+    // Additional helper methods for relationships and type inference
+    fn extract_method_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        let mut cursor = node.walk();
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "method_declaration" => {
+                    // Find receiver and method relationships
+                    if let Some(receiver_type) = self.extract_receiver_type(child) {
+                        // Find corresponding struct/interface
+                        if let Some(struct_symbol) = symbols.iter().find(|s| s.name == receiver_type && s.kind == SymbolKind::Class) {
+                            if let Some(method_symbol) = symbols.iter().find(|s| self.is_method_of_node(s, child)) {
+                                // Create method-receiver relationship (placeholder)
+                                // This would require proper relationship creation with RelationshipKind
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Recursively process children
+                    self.extract_method_relationships(child, symbols, relationships);
+                }
+            }
+        }
+    }
+
+    fn extract_receiver_type(&self, method_node: Node) -> Option<String> {
+        let mut cursor = method_node.walk();
+        for child in method_node.children(&mut cursor) {
+            if child.kind() == "parameter_list" {
+                // First parameter list is the receiver
+                let params = self.extract_parameter_list(child);
+                if !params.is_empty() {
+                    // Extract type from receiver parameter
+                    let receiver = &params[0];
+                    if let Some(type_start) = receiver.rfind(' ') {
+                        let receiver_type = &receiver[type_start + 1..];
+                        return Some(receiver_type.trim_start_matches('*').to_string());
+                    }
+                }
+                break;
+            }
+        }
+        None
+    }
+
+    fn is_method_of_node(&self, symbol: &Symbol, node: Node) -> bool {
+        // Simple check - in a real implementation, we'd compare node positions
+        symbol.kind == SymbolKind::Method
+    }
+
+    fn extract_return_type_from_signature(&self, signature: &str) -> Option<String> {
+        // Extract return type from function signatures like "func getName() string"
+        if let Some(paren_end) = signature.rfind(')') {
+            let after_paren = signature[paren_end + 1..].trim();
+            if !after_paren.is_empty() && after_paren != "{" {
+                return Some(after_paren.split_whitespace().next().unwrap_or("").to_string());
+            }
+        }
+        None
+    }
+
+    fn extract_variable_type_from_signature(&self, signature: &str) -> Option<String> {
+        // Extract type from variable signatures like "var name string = value"
+        if signature.starts_with("var ") {
+            let parts: Vec<&str> = signature.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let potential_type = parts[2];
+                if potential_type != "=" {
+                    return Some(potential_type.to_string());
+                }
+            }
+        } else if signature.starts_with("const ") {
+            let parts: Vec<&str> = signature.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let potential_type = parts[2];
+                if potential_type != "=" {
+                    return Some(potential_type.to_string());
+                }
+            }
+        }
         None
     }
 }

@@ -68,7 +68,7 @@ impl JavaScriptExtractor {
             }
             "import_statement" | "import_declaration" => {
                 // Handle multiple import specifiers (Miller's logic)
-                let import_symbols = self.extract_import_specifiers(node);
+                let import_symbols = self.extract_import_specifiers(&node);
                 for specifier in import_symbols {
                     let import_symbol = self.create_import_symbol(node, &specifier, parent_id.clone());
                     symbols.push(import_symbol);

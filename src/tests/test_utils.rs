@@ -21,6 +21,26 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
             parser.set_language(&tree_sitter_rust::LANGUAGE.into())
                 .expect("Error loading Rust grammar");
         }
+        "swift" => {
+            parser.set_language(&tree_sitter_swift::LANGUAGE.into())
+                .expect("Error loading Swift grammar");
+        }
+        "css" => {
+            parser.set_language(&tree_sitter_css::LANGUAGE.into())
+                .expect("Error loading CSS grammar");
+        }
+        "razor" => {
+            parser.set_language(&tree_sitter_razor::LANGUAGE.into())
+                .expect("Error loading Razor grammar");
+        }
+        "powershell" => {
+            parser.set_language(&tree_sitter_powershell::LANGUAGE.into())
+                .expect("Error loading PowerShell grammar");
+        }
+        "regex" => {
+            parser.set_language(&tree_sitter_regex::LANGUAGE.into())
+                .expect("Error loading Regex grammar");
+        }
         _ => panic!("Unsupported language: {}", language),
     }
 

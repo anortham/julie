@@ -3,7 +3,7 @@
 // Direct port of Miller's JavaScript extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/javascript-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use crate::extractors::javascript::JavaScriptExtractor;
 use tree_sitter::Parser;
 
@@ -133,50 +133,50 @@ class AsyncEventEmitter extends EventEmitter {
             // ES6 Imports
             let lodash_import = symbols.iter().find(|s| s.name == "debounce" && s.kind == SymbolKind::Import);
             assert!(lodash_import.is_some());
-            assert!(lodash_import.unwrap().signature.contains("import { debounce, throttle } from 'lodash'"));
+            assert!(lodash_import.unwrap().signature.as_ref().unwrap().contains("import { debounce, throttle } from 'lodash'"));
 
             let react_import = symbols.iter().find(|s| s.name == "React" && s.kind == SymbolKind::Import);
             assert!(react_import.is_some());
-            assert!(react_import.unwrap().signature.contains("import React, { useState, useEffect } from 'react'"));
+            assert!(react_import.unwrap().signature.as_ref().unwrap().contains("import React, { useState, useEffect } from 'react'"));
 
             // ES6 Exports
             let component_export = symbols.iter().find(|s| s.name == "Component" && s.kind == SymbolKind::Export);
             assert!(component_export.is_some());
-            assert!(component_export.unwrap().signature.contains("export { default as Component }"));
+            assert!(component_export.unwrap().signature.as_ref().unwrap().contains("export { default as Component }"));
 
             let api_url_export = symbols.iter().find(|s| s.name == "API_URL" && s.kind == SymbolKind::Export);
             assert!(api_url_export.is_some());
-            assert!(api_url_export.unwrap().signature.contains("export const API_URL"));
+            assert!(api_url_export.unwrap().signature.as_ref().unwrap().contains("export const API_URL"));
 
             // Arrow functions
             let add_arrow = symbols.iter().find(|s| s.name == "add");
             assert!(add_arrow.is_some());
             assert_eq!(add_arrow.unwrap().kind, SymbolKind::Function);
-            assert!(add_arrow.unwrap().signature.contains("const add = (a, b) => a + b"));
+            assert!(add_arrow.unwrap().signature.as_ref().unwrap().contains("const add = (a, b) => a + b"));
 
             let multiply_arrow = symbols.iter().find(|s| s.name == "multiply");
             assert!(multiply_arrow.is_some());
-            assert!(multiply_arrow.unwrap().signature.contains("const multiply = (x, y) =>"));
+            assert!(multiply_arrow.unwrap().signature.as_ref().unwrap().contains("const multiply = (x, y) =>"));
 
             // Async functions
             let fetch_data = symbols.iter().find(|s| s.name == "fetchData");
             assert!(fetch_data.is_some());
             assert_eq!(fetch_data.unwrap().kind, SymbolKind::Function);
-            assert!(fetch_data.unwrap().signature.contains("async function fetchData(url)"));
+            assert!(fetch_data.unwrap().signature.as_ref().unwrap().contains("async function fetchData(url)"));
 
             let async_arrow = symbols.iter().find(|s| s.name == "asyncArrow");
             assert!(async_arrow.is_some());
-            assert!(async_arrow.unwrap().signature.contains("const asyncArrow = async (id) =>"));
+            assert!(async_arrow.unwrap().signature.as_ref().unwrap().contains("const asyncArrow = async (id) =>"));
 
             // Generator functions
             let fibonacci = symbols.iter().find(|s| s.name == "fibonacci");
             assert!(fibonacci.is_some());
             assert_eq!(fibonacci.unwrap().kind, SymbolKind::Function);
-            assert!(fibonacci.unwrap().signature.contains("function* fibonacci()"));
+            assert!(fibonacci.unwrap().signature.as_ref().unwrap().contains("function* fibonacci()"));
 
             let generator_arrow = symbols.iter().find(|s| s.name == "generatorArrow");
             assert!(generator_arrow.is_some());
-            assert!(generator_arrow.unwrap().signature.contains("const generatorArrow = function* (items)"));
+            assert!(generator_arrow.unwrap().signature.as_ref().unwrap().contains("const generatorArrow = function* (items)"));
 
             // Class with modern features
             let event_emitter = symbols.iter().find(|s| s.name == "EventEmitter");
@@ -195,28 +195,28 @@ class AsyncEventEmitter extends EventEmitter {
             assert_eq!(constructor.unwrap().kind, SymbolKind::Constructor);
 
             // Static method
-            let create_static = symbols.iter().find(|s| s.name == "create" && s.signature.contains("static"));
+            let create_static = symbols.iter().find(|s| s.name == "create" && s.signature.as_ref().unwrap().contains("static"));
             assert!(create_static.is_some());
             assert_eq!(create_static.unwrap().kind, SymbolKind::Method);
 
             // Getter/setter
-            let listener_count = symbols.iter().find(|s| s.name == "listenerCount" && s.signature.contains("get"));
+            let listener_count = symbols.iter().find(|s| s.name == "listenerCount" && s.signature.as_ref().unwrap().contains("get"));
             assert!(listener_count.is_some());
             assert_eq!(listener_count.unwrap().kind, SymbolKind::Method);
 
-            let max_listeners_setter = symbols.iter().find(|s| s.name == "maxListeners" && s.signature.contains("set"));
+            let max_listeners_setter = symbols.iter().find(|s| s.name == "maxListeners" && s.signature.as_ref().unwrap().contains("set"));
             assert!(max_listeners_setter.is_some());
 
             // Private method
             let validate_event = symbols.iter().find(|s| s.name == "#validateEvent");
             assert!(validate_event.is_some());
             assert_eq!(validate_event.unwrap().kind, SymbolKind::Method);
-            assert_eq!(validate_event.unwrap().visibility, "private");
+            assert_eq!(validate_event.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
             // Inheritance
             let async_event_emitter = symbols.iter().find(|s| s.name == "AsyncEventEmitter");
             assert!(async_event_emitter.is_some());
-            assert!(async_event_emitter.unwrap().signature.contains("extends EventEmitter"));
+            assert!(async_event_emitter.unwrap().signature.as_ref().unwrap().contains("extends EventEmitter"));
         }
     }
 
@@ -353,19 +353,19 @@ function Counter(initialValue) {
             let calculator = symbols.iter().find(|s| s.name == "Calculator");
             assert!(calculator.is_some());
             assert_eq!(calculator.unwrap().kind, SymbolKind::Function);
-            assert!(calculator.unwrap().signature.contains("function Calculator(initialValue)"));
+            assert!(calculator.unwrap().signature.as_ref().unwrap().contains("function Calculator(initialValue)"));
 
             // Prototype methods
-            let prototype_add = symbols.iter().find(|s| s.name == "add" && s.signature.contains("prototype"));
+            let prototype_add = symbols.iter().find(|s| s.name == "add" && s.signature.as_ref().unwrap().contains("prototype"));
             assert!(prototype_add.is_some());
             assert_eq!(prototype_add.unwrap().kind, SymbolKind::Method);
-            assert!(prototype_add.unwrap().signature.contains("Calculator.prototype.add = function(num)"));
+            assert!(prototype_add.unwrap().signature.as_ref().unwrap().contains("Calculator.prototype.add = function(num)"));
 
-            let prototype_subtract = symbols.iter().find(|s| s.name == "subtract" && s.signature.contains("prototype"));
+            let prototype_subtract = symbols.iter().find(|s| s.name == "subtract" && s.signature.as_ref().unwrap().contains("prototype"));
             assert!(prototype_subtract.is_some());
 
             // Static method on constructor
-            let calculator_create = symbols.iter().find(|s| s.name == "create" && s.signature.contains("Calculator.create"));
+            let calculator_create = symbols.iter().find(|s| s.name == "create" && s.signature.as_ref().unwrap().contains("Calculator.create"));
             assert!(calculator_create.is_some());
             assert_eq!(calculator_create.unwrap().kind, SymbolKind::Method);
 
@@ -380,11 +380,11 @@ function Counter(initialValue) {
             assert_eq!(round_to_precision.unwrap().kind, SymbolKind::Function);
 
             // Function expressions
-            let multiply_fn = symbols.iter().find(|s| s.name == "multiply" && s.signature.contains("var multiply"));
+            let multiply_fn = symbols.iter().find(|s| s.name == "multiply" && s.signature.as_ref().unwrap().contains("var multiply"));
             assert!(multiply_fn.is_some());
             assert_eq!(multiply_fn.unwrap().kind, SymbolKind::Function);
 
-            let divide_fn = symbols.iter().find(|s| s.name == "divide" && s.signature.contains("function divide"));
+            let divide_fn = symbols.iter().find(|s| s.name == "divide" && s.signature.as_ref().unwrap().contains("function divide"));
             assert!(divide_fn.is_some());
 
             // Object literal
@@ -403,10 +403,10 @@ function Counter(initialValue) {
             // Constructor with closure
             let counter = symbols.iter().find(|s| s.name == "Counter");
             assert!(counter.is_some());
-            assert!(counter.unwrap().signature.contains("function Counter(initialValue)"));
+            assert!(counter.unwrap().signature.as_ref().unwrap().contains("function Counter(initialValue)"));
 
             // Closure methods
-            let increment = symbols.iter().find(|s| s.name == "increment" && s.signature.contains("this.increment"));
+            let increment = symbols.iter().find(|s| s.name == "increment" && s.signature.as_ref().unwrap().contains("this.increment"));
             assert!(increment.is_some());
             assert_eq!(increment.unwrap().kind, SymbolKind::Method);
         }
@@ -544,65 +544,65 @@ async function* fetchPages(baseUrl) {
             let symbols = extractor.extract_symbols(&tree);
 
             // Destructuring imports with aliases
-            let react_import = symbols.iter().find(|s| s.name == "createElement" && s.signature.contains("as h"));
+            let react_import = symbols.iter().find(|s| s.name == "createElement" && s.signature.as_ref().unwrap().contains("as h"));
             assert!(react_import.is_some());
             assert_eq!(react_import.unwrap().kind, SymbolKind::Import);
 
             // Dynamic import function
             let load_module = symbols.iter().find(|s| s.name == "loadModule");
             assert!(load_module.is_some());
-            assert!(load_module.unwrap().signature.contains("const loadModule = async () =>"));
+            assert!(load_module.unwrap().signature.as_ref().unwrap().contains("const loadModule = async () =>"));
 
             // Destructuring variables
-            let name_var = symbols.iter().find(|s| s.name == "name" && s.signature.contains("const { name"));
+            let name_var = symbols.iter().find(|s| s.name == "name" && s.signature.as_ref().unwrap().contains("const { name"));
             assert!(name_var.is_some());
             assert_eq!(name_var.unwrap().kind, SymbolKind::Variable);
 
-            let rest_var = symbols.iter().find(|s| s.name == "rest" && s.signature.contains("...rest"));
+            let rest_var = symbols.iter().find(|s| s.name == "rest" && s.signature.as_ref().unwrap().contains("...rest"));
             assert!(rest_var.is_some());
 
             // Destructuring parameters function
             let process_user = symbols.iter().find(|s| s.name == "processUser");
             assert!(process_user.is_some());
-            assert!(process_user.unwrap().signature.contains("function processUser({ name, age = 18, ...preferences })"));
+            assert!(process_user.unwrap().signature.as_ref().unwrap().contains("function processUser({ name, age = 18, ...preferences })"));
 
             let process_array = symbols.iter().find(|s| s.name == "processArray");
             assert!(process_array.is_some());
-            assert!(process_array.unwrap().signature.contains("const processArray = ([head, ...tail]) =>"));
+            assert!(process_array.unwrap().signature.as_ref().unwrap().contains("const processArray = ([head, ...tail]) =>"));
 
             // Rest parameters
             let sum_fn = symbols.iter().find(|s| s.name == "sum");
             assert!(sum_fn.is_some());
-            assert!(sum_fn.unwrap().signature.contains("function sum(...numbers)"));
+            assert!(sum_fn.unwrap().signature.as_ref().unwrap().contains("function sum(...numbers)"));
 
             let combine_arrays = symbols.iter().find(|s| s.name == "combineArrays");
             assert!(combine_arrays.is_some());
-            assert!(combine_arrays.unwrap().signature.contains("const combineArrays = (arr1, arr2, ...others) =>"));
+            assert!(combine_arrays.unwrap().signature.as_ref().unwrap().contains("const combineArrays = (arr1, arr2, ...others) =>"));
 
             // Template literal function
             let format_user = symbols.iter().find(|s| s.name == "formatUser");
             assert!(format_user.is_some());
-            assert!(format_user.unwrap().signature.contains("const formatUser = (user) =>"));
+            assert!(format_user.unwrap().signature.as_ref().unwrap().contains("const formatUser = (user) =>"));
 
             // Tagged template function
             let sql_fn = symbols.iter().find(|s| s.name == "sql");
             assert!(sql_fn.is_some());
-            assert!(sql_fn.unwrap().signature.contains("function sql(strings, ...values)"));
+            assert!(sql_fn.unwrap().signature.as_ref().unwrap().contains("function sql(strings, ...values)"));
 
             // Object with computed properties and shorthand methods
             let create_config = symbols.iter().find(|s| s.name == "createConfig");
             assert!(create_config.is_some());
-            assert!(create_config.unwrap().signature.contains("const createConfig = (env, debug = false) =>"));
+            assert!(create_config.unwrap().signature.as_ref().unwrap().contains("const createConfig = (env, debug = false) =>"));
 
             // Default parameters with destructuring
             let create_user = symbols.iter().find(|s| s.name == "createUser");
             assert!(create_user.is_some());
-            assert!(create_user.unwrap().signature.contains("const createUser = ("));
+            assert!(create_user.unwrap().signature.as_ref().unwrap().contains("const createUser = ("));
 
             // Async generator
             let fetch_pages = symbols.iter().find(|s| s.name == "fetchPages");
             assert!(fetch_pages.is_some());
-            assert!(fetch_pages.unwrap().signature.contains("async function* fetchPages(baseUrl)"));
+            assert!(fetch_pages.unwrap().signature.as_ref().unwrap().contains("async function* fetchPages(baseUrl)"));
         }
     }
 
@@ -732,7 +732,7 @@ function createClosures() {
             let hoisted_function = symbols.iter().find(|s| s.name == "hoistedFunction");
             assert!(hoisted_function.is_some());
             assert_eq!(hoisted_function.unwrap().kind, SymbolKind::Function);
-            assert!(hoisted_function.unwrap().signature.contains("function hoistedFunction()"));
+            assert!(hoisted_function.unwrap().signature.as_ref().unwrap().contains("function hoistedFunction()"));
 
             // Var declaration
             let hoisted_var = symbols.iter().find(|s| s.name == "hoistedVar");
@@ -742,7 +742,7 @@ function createClosures() {
             // Function with block scoping
             let scoping_example = symbols.iter().find(|s| s.name == "scopingExample");
             assert!(scoping_example.is_some());
-            assert!(scoping_example.unwrap().signature.contains("function scopingExample()"));
+            assert!(scoping_example.unwrap().signature.as_ref().unwrap().contains("function scopingExample()"));
 
             // Inner function
             let inner_function = symbols.iter().find(|s| s.name == "innerFunction");
@@ -752,16 +752,16 @@ function createClosures() {
             // Function expressions
             let not_hoisted = symbols.iter().find(|s| s.name == "notHoisted");
             assert!(not_hoisted.is_some());
-            assert!(not_hoisted.unwrap().signature.contains("var notHoisted = function()"));
+            assert!(not_hoisted.unwrap().signature.as_ref().unwrap().contains("var notHoisted = function()"));
 
             let also_not_hoisted = symbols.iter().find(|s| s.name == "alsoNotHoisted");
             assert!(also_not_hoisted.is_some());
-            assert!(also_not_hoisted.unwrap().signature.contains("const alsoNotHoisted = function()"));
+            assert!(also_not_hoisted.unwrap().signature.as_ref().unwrap().contains("const alsoNotHoisted = function()"));
 
             // Arrow function
             let arrow_not_hoisted = symbols.iter().find(|s| s.name == "arrowNotHoisted");
             assert!(arrow_not_hoisted.is_some());
-            assert!(arrow_not_hoisted.unwrap().signature.contains("const arrowNotHoisted = () =>"));
+            assert!(arrow_not_hoisted.unwrap().signature.as_ref().unwrap().contains("const arrowNotHoisted = () =>"));
 
             // Scoping demonstration function
             let demonstrate_scoping = symbols.iter().find(|s| s.name == "demonstrateScoping");
@@ -770,7 +770,7 @@ function createClosures() {
             // Closure creation function
             let create_closures = symbols.iter().find(|s| s.name == "createClosures");
             assert!(create_closures.is_some());
-            assert!(create_closures.unwrap().signature.contains("function createClosures()"));
+            assert!(create_closures.unwrap().signature.as_ref().unwrap().contains("function createClosures()"));
         }
     }
 
@@ -971,35 +971,35 @@ function logUnknownError(error) {
             let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
             assert!(validation_error.is_some());
             assert_eq!(validation_error.unwrap().kind, SymbolKind::Class);
-            assert!(validation_error.unwrap().signature.contains("class ValidationError extends Error"));
+            assert!(validation_error.unwrap().signature.as_ref().unwrap().contains("class ValidationError extends Error"));
 
             let network_error = symbols.iter().find(|s| s.name == "NetworkError");
             assert!(network_error.is_some());
-            assert!(network_error.unwrap().signature.contains("class NetworkError extends Error"));
+            assert!(network_error.unwrap().signature.as_ref().unwrap().contains("class NetworkError extends Error"));
 
             // Static method
-            let from_response = symbols.iter().find(|s| s.name == "fromResponse" && s.signature.contains("static"));
+            let from_response = symbols.iter().find(|s| s.name == "fromResponse" && s.signature.as_ref().unwrap().contains("static"));
             assert!(from_response.is_some());
             assert_eq!(from_response.unwrap().kind, SymbolKind::Method);
 
             // Error handling functions
             let validate_user = symbols.iter().find(|s| s.name == "validateUser");
             assert!(validate_user.is_some());
-            assert!(validate_user.unwrap().signature.contains("function validateUser(user)"));
+            assert!(validate_user.unwrap().signature.as_ref().unwrap().contains("function validateUser(user)"));
 
             let fetch_with_retry = symbols.iter().find(|s| s.name == "fetchWithRetry");
             assert!(fetch_with_retry.is_some());
-            assert!(fetch_with_retry.unwrap().signature.contains("async function fetchWithRetry"));
+            assert!(fetch_with_retry.unwrap().signature.as_ref().unwrap().contains("async function fetchWithRetry"));
 
             // Error boundary
             let with_error_handling = symbols.iter().find(|s| s.name == "withErrorHandling");
             assert!(with_error_handling.is_some());
-            assert!(with_error_handling.unwrap().signature.contains("function withErrorHandling(fn)"));
+            assert!(with_error_handling.unwrap().signature.as_ref().unwrap().contains("function withErrorHandling(fn)"));
 
             // Finally block function
             let process_file = symbols.iter().find(|s| s.name == "processFile");
             assert!(process_file.is_some());
-            assert!(process_file.unwrap().signature.contains("function processFile(filename)"));
+            assert!(process_file.unwrap().signature.as_ref().unwrap().contains("function processFile(filename)"));
 
             // Multiple error handling
             let handle_multiple_errors = symbols.iter().find(|s| s.name == "handleMultipleErrors");
@@ -1229,27 +1229,27 @@ function verifyToken(token, secret) {
             let symbols = extractor.extract_symbols(&tree);
 
             // CommonJS requires
-            let fs_require = symbols.iter().find(|s| s.name == "fs" && s.signature.contains("require"));
+            let fs_require = symbols.iter().find(|s| s.name == "fs" && s.signature.as_ref().unwrap().contains("require"));
             assert!(fs_require.is_some());
             assert_eq!(fs_require.unwrap().kind, SymbolKind::Import);
 
-            let path_require = symbols.iter().find(|s| s.name == "path" && s.signature.contains("require"));
+            let path_require = symbols.iter().find(|s| s.name == "path" && s.signature.as_ref().unwrap().contains("require"));
             assert!(path_require.is_some());
 
-            let promisify_require = symbols.iter().find(|s| s.name == "promisify" && s.signature.contains("require"));
+            let promisify_require = symbols.iter().find(|s| s.name == "promisify" && s.signature.as_ref().unwrap().contains("require"));
             assert!(promisify_require.is_some());
 
             // Mixed module syntax
-            let express_require = symbols.iter().find(|s| s.name == "express" && s.signature.contains("require"));
+            let express_require = symbols.iter().find(|s| s.name == "express" && s.signature.as_ref().unwrap().contains("require"));
             assert!(express_require.is_some());
 
-            let chalk_import = symbols.iter().find(|s| s.name == "chalk" && s.signature.contains("import"));
+            let chalk_import = symbols.iter().find(|s| s.name == "chalk" && s.signature.as_ref().unwrap().contains("import"));
             assert!(chalk_import.is_some());
 
             // Main server function
             let create_server = symbols.iter().find(|s| s.name == "createServer");
             assert!(create_server.is_some());
-            assert!(create_server.unwrap().signature.contains("function createServer(options = {})"));
+            assert!(create_server.unwrap().signature.as_ref().unwrap().contains("function createServer(options = {})"));
 
             // Middleware object
             let middleware_obj = symbols.iter().find(|s| s.name == "middleware");
@@ -1270,7 +1270,7 @@ function verifyToken(token, secret) {
             // Utility functions
             let format_date = symbols.iter().find(|s| s.name == "formatDate");
             assert!(format_date.is_some());
-            assert!(format_date.unwrap().signature.contains("function formatDate(date, format = 'ISO')"));
+            assert!(format_date.unwrap().signature.as_ref().unwrap().contains("function formatDate(date, format = 'ISO')"));
 
             let validate_input = symbols.iter().find(|s| s.name == "validateInput");
             assert!(validate_input.is_some());
@@ -1301,7 +1301,7 @@ function verifyToken(token, secret) {
             // Async functions
             let process_data = symbols.iter().find(|s| s.name == "processData");
             assert!(process_data.is_some());
-            assert!(process_data.unwrap().signature.contains("async function processData(data)"));
+            assert!(process_data.unwrap().signature.as_ref().unwrap().contains("async function processData(data)"));
 
             let verify_token = symbols.iter().find(|s| s.name == "verifyToken");
             assert!(verify_token.is_some());

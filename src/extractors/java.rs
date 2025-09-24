@@ -12,10 +12,11 @@
 // - Modern Java features (records, sealed classes, pattern matching)
 // - Inheritance and implementation relationships
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
 use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
 use serde_json;
+use regex;
 
 pub struct JavaExtractor {
     base: BaseExtractor,
@@ -77,7 +78,7 @@ impl JavaExtractor {
 
         let options = SymbolOptions {
             signature: Some(signature),
-            visibility: Some("public".to_string()),
+            visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             ..Default::default()
         };
@@ -126,7 +127,7 @@ impl JavaExtractor {
 
         let options = SymbolOptions {
             signature: Some(signature),
-            visibility: Some("public".to_string()),
+            visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             ..Default::default()
         };
@@ -422,7 +423,7 @@ impl JavaExtractor {
 
         let options = SymbolOptions {
             signature: Some(signature),
-            visibility: Some("public".to_string()), // Enum constants are always public in Java
+            visibility: Some(Visibility::Public), // Enum constants are always public in Java
             parent_id: parent_id.map(|s| s.to_string()),
             ..Default::default()
         };
@@ -646,15 +647,15 @@ impl JavaExtractor {
             .unwrap_or_default()
     }
 
-    fn determine_visibility(&self, modifiers: &[String]) -> String {
+    fn determine_visibility(&self, modifiers: &[String]) -> Visibility {
         if modifiers.contains(&"public".to_string()) {
-            "public".to_string()
+            Visibility::Public
         } else if modifiers.contains(&"private".to_string()) {
-            "private".to_string()
+            Visibility::Private
         } else if modifiers.contains(&"protected".to_string()) {
-            "protected".to_string()
+            Visibility::Protected
         } else {
-            "package".to_string() // Default visibility in Java
+            Visibility::Private // Default visibility in Java (package-private maps to Private)
         }
     }
 

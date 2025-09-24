@@ -20,7 +20,7 @@ rust-mcp-sdk = { version = "0.7.0", default-features = false, features = [
 ] }
 
 # Tree-sitter for parsing
-tree-sitter = "0.24"
+tree-sitter = "0.25"
 tree-sitter-bash = "0.23"
 tree-sitter-c = "0.24"
 tree-sitter-cpp = "0.23"
@@ -41,7 +41,7 @@ tree-sitter-typescript = "0.23"
 
 # Additional languages from Miller
 tree-sitter-gdscript = "5.0"
-tree-sitter-qmljs = "0.2"
+# tree-sitter-qmljs = "0.2"  # Temporarily disabled due to tree-sitter version conflict
 tree-sitter-regex = "0.23"
 tree-sitter-vue = "0.0.3"
 tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }

@@ -9,7 +9,7 @@
 // - Exception handling, testing patterns, generics, nested classes
 // - Performance and edge case handling
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use crate::extractors::java::JavaExtractor;
 use tree_sitter::Parser;
 
@@ -48,7 +48,7 @@ package com.acme.utils;
         assert!(app_package.is_some());
         assert_eq!(app_package.unwrap().kind, SymbolKind::Namespace);
         assert!(app_package.unwrap().signature.as_ref().unwrap().contains("package com.example.app"));
-        assert_eq!(app_package.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(app_package.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
     }
 
     #[test]
@@ -127,12 +127,12 @@ class DefaultClass {
         assert!(user_class.is_some());
         assert_eq!(user_class.unwrap().kind, SymbolKind::Class);
         assert!(user_class.unwrap().signature.as_ref().unwrap().contains("public class User"));
-        assert_eq!(user_class.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(user_class.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let animal_class = symbols.iter().find(|s| s.name == "Animal");
         assert!(animal_class.is_some());
         assert!(animal_class.unwrap().signature.as_ref().unwrap().contains("abstract class Animal"));
-        assert_eq!(animal_class.unwrap().visibility.as_ref().unwrap(), "package");
+        assert_eq!(animal_class.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         let constants_class = symbols.iter().find(|s| s.name == "Constants");
         assert!(constants_class.is_some());
@@ -140,7 +140,7 @@ class DefaultClass {
 
         let default_class = symbols.iter().find(|s| s.name == "DefaultClass");
         assert!(default_class.is_some());
-        assert_eq!(default_class.unwrap().visibility.as_ref().unwrap(), "package");
+        assert_eq!(default_class.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
     }
 
     #[test]
@@ -216,7 +216,7 @@ public interface Consumer<T> {
         assert!(drawable.is_some());
         assert_eq!(drawable.unwrap().kind, SymbolKind::Interface);
         assert!(drawable.unwrap().signature.as_ref().unwrap().contains("public interface Drawable"));
-        assert_eq!(drawable.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(drawable.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let serializable = symbols.iter().find(|s| s.name == "Serializable");
         assert!(serializable.is_some());
@@ -274,16 +274,16 @@ public class Calculator {
         assert!(add_method.is_some());
         assert_eq!(add_method.unwrap().kind, SymbolKind::Method);
         assert!(add_method.unwrap().signature.as_ref().unwrap().contains("public int add(int a, int b)"));
-        assert_eq!(add_method.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(add_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let reset_method = symbols.iter().find(|s| s.name == "reset");
         assert!(reset_method.is_some());
-        assert_eq!(reset_method.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(reset_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         let format_method = symbols.iter().find(|s| s.name == "format");
         assert!(format_method.is_some());
         assert!(format_method.unwrap().signature.as_ref().unwrap().contains("protected static String format"));
-        assert_eq!(format_method.unwrap().visibility.as_ref().unwrap(), "protected");
+        assert_eq!(format_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Protected);
 
         let process_method = symbols.iter().find(|s| s.name == "process");
         assert!(process_method.is_some());
@@ -342,7 +342,7 @@ public class Person {
 
         let default_constructor = constructors.iter().find(|s| s.signature.as_ref().unwrap().contains("Person()"));
         assert!(default_constructor.is_some());
-        assert_eq!(default_constructor.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(default_constructor.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let name_constructor = constructors.iter().find(|s| s.signature.as_ref().unwrap().contains("Person(String name)"));
         assert!(name_constructor.is_some());
@@ -352,7 +352,7 @@ public class Person {
 
         let private_constructor = constructors.iter().find(|s| s.signature.as_ref().unwrap().contains("private") && s.signature.as_ref().unwrap().contains("boolean"));
         assert!(private_constructor.is_some());
-        assert_eq!(private_constructor.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(private_constructor.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
     }
 
     // Field Extraction Tests
@@ -387,20 +387,20 @@ public class Config {
         assert!(version.is_some());
         assert_eq!(version.unwrap().kind, SymbolKind::Constant); // static final = constant
         assert!(version.unwrap().signature.as_ref().unwrap().contains("public static final String VERSION"));
-        assert_eq!(version.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(version.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let api_key = symbols.iter().find(|s| s.name == "apiKey");
         assert!(api_key.is_some());
         assert_eq!(api_key.unwrap().kind, SymbolKind::Property);
-        assert_eq!(api_key.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(api_key.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         let max_retries = symbols.iter().find(|s| s.name == "maxRetries");
         assert!(max_retries.is_some());
-        assert_eq!(max_retries.unwrap().visibility.as_ref().unwrap(), "protected");
+        assert_eq!(max_retries.unwrap().visibility.as_ref().unwrap(), &Visibility::Protected);
 
         let debug_mode = symbols.iter().find(|s| s.name == "debugMode");
         assert!(debug_mode.is_some());
-        assert_eq!(debug_mode.unwrap().visibility.as_ref().unwrap(), "package");
+        assert_eq!(debug_mode.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         let timestamp = symbols.iter().find(|s| s.name == "timestamp");
         assert!(timestamp.is_some());
@@ -409,7 +409,7 @@ public class Config {
         let logger = symbols.iter().find(|s| s.name == "LOGGER");
         assert!(logger.is_some());
         assert_eq!(logger.unwrap().kind, SymbolKind::Constant);
-        assert_eq!(logger.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(logger.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
     }
 
     // Enum Extraction Tests
@@ -464,7 +464,7 @@ enum Priority {
         assert!(color_enum.is_some());
         assert_eq!(color_enum.unwrap().kind, SymbolKind::Enum);
         assert!(color_enum.unwrap().signature.as_ref().unwrap().contains("public enum Color"));
-        assert_eq!(color_enum.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(color_enum.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let red = symbols.iter().find(|s| s.name == "RED");
         assert!(red.is_some());
@@ -480,7 +480,7 @@ enum Priority {
 
         let priority_enum = symbols.iter().find(|s| s.name == "Priority");
         assert!(priority_enum.is_some());
-        assert_eq!(priority_enum.unwrap().visibility.as_ref().unwrap(), "package"); // no modifier = package
+        assert_eq!(priority_enum.unwrap().visibility.as_ref().unwrap(), &Visibility::Private); // no modifier = package
     }
 
     // Annotation Extraction Tests
@@ -518,11 +518,11 @@ public @interface Test {
         assert!(test_annotation.is_some());
         assert_eq!(test_annotation.unwrap().kind, SymbolKind::Interface); // annotations are special interfaces
         assert!(test_annotation.unwrap().signature.as_ref().unwrap().contains("@interface Test"));
-        assert_eq!(test_annotation.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(test_annotation.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let internal_annotation = symbols.iter().find(|s| s.name == "Internal");
         assert!(internal_annotation.is_some());
-        assert_eq!(internal_annotation.unwrap().visibility.as_ref().unwrap(), "package");
+        assert_eq!(internal_annotation.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
     }
 
     // Generic Types Tests
@@ -646,15 +646,15 @@ public class Outer {
         let static_nested = symbols.iter().find(|s| s.name == "StaticNested");
         assert!(static_nested.is_some());
         assert!(static_nested.unwrap().signature.as_ref().unwrap().contains("static class StaticNested"));
-        assert_eq!(static_nested.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(static_nested.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let inner = symbols.iter().find(|s| s.name == "Inner");
         assert!(inner.is_some());
-        assert_eq!(inner.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(inner.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         let private_inner = symbols.iter().find(|s| s.name == "PrivateInner");
         assert!(private_inner.is_some());
-        assert_eq!(private_inner.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(private_inner.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         // Local classes might be harder to extract, but let's test for them
         let local_class = symbols.iter().find(|s| s.name == "LocalClass");

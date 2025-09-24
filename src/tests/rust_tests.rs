@@ -6,7 +6,7 @@
 // This is one of Miller's most comprehensive extractors with 2000+ lines of tests
 // covering everything from basic structs to unsafe FFI code and procedural macros.
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use crate::extractors::rust::RustExtractor;
 use tree_sitter::Parser;
 
@@ -96,12 +96,12 @@ enum Color { Red, Green, Blue }
             let status_enum = status_enum.unwrap();
             assert_eq!(status_enum.kind, SymbolKind::Class);
             assert!(status_enum.signature.as_ref().unwrap().contains("pub enum Status"));
-            assert_eq!(status_enum.visibility.as_ref().unwrap(), "pub");
+            assert_eq!(status_enum.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let color_enum = symbols.iter().find(|s| s.name == "Color");
             assert!(color_enum.is_some());
             let color_enum = color_enum.unwrap();
-            assert_eq!(color_enum.visibility.as_ref().unwrap(), "private");
+            assert_eq!(color_enum.visibility.as_ref().unwrap(), &Visibility::Private);
         }
     }
 
@@ -139,12 +139,12 @@ trait Clone {
             let display_trait = display_trait.unwrap();
             assert_eq!(display_trait.kind, SymbolKind::Interface);
             assert_eq!(display_trait.signature.as_ref().unwrap(), "pub trait Display");
-            assert_eq!(display_trait.visibility.as_ref().unwrap(), "pub");
+            assert_eq!(display_trait.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let clone_trait = symbols.iter().find(|s| s.name == "Clone");
             assert!(clone_trait.is_some());
             let clone_trait = clone_trait.unwrap();
-            assert_eq!(clone_trait.visibility.as_ref().unwrap(), "private");
+            assert_eq!(clone_trait.visibility.as_ref().unwrap(), &Visibility::Private);
         }
     }
 
@@ -186,7 +186,7 @@ fn private_helper() {}
             let add_func = add_func.unwrap();
             assert_eq!(add_func.kind, SymbolKind::Function);
             assert!(add_func.signature.as_ref().unwrap().contains("pub fn add(a: i32, b: i32)"));
-            assert_eq!(add_func.visibility.as_ref().unwrap(), "pub");
+            assert_eq!(add_func.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let fetch_func = symbols.iter().find(|s| s.name == "fetch_data");
             assert!(fetch_func.is_some());
@@ -201,7 +201,7 @@ fn private_helper() {}
             let private_func = symbols.iter().find(|s| s.name == "private_helper");
             assert!(private_func.is_some());
             let private_func = private_func.unwrap();
-            assert_eq!(private_func.visibility.as_ref().unwrap(), "private");
+            assert_eq!(private_func.visibility.as_ref().unwrap(), &Visibility::Private);
         }
 
         #[test]
@@ -287,12 +287,12 @@ mod private_module {
             let utils_module = utils_module.unwrap();
             assert_eq!(utils_module.kind, SymbolKind::Namespace);
             assert_eq!(utils_module.signature.as_ref().unwrap(), "pub mod utils");
-            assert_eq!(utils_module.visibility.as_ref().unwrap(), "pub");
+            assert_eq!(utils_module.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let private_module = symbols.iter().find(|s| s.name == "private_module");
             assert!(private_module.is_some());
             let private_module = private_module.unwrap();
-            assert_eq!(private_module.visibility.as_ref().unwrap(), "private");
+            assert_eq!(private_module.visibility.as_ref().unwrap(), &Visibility::Private);
         }
     }
 
@@ -370,7 +370,7 @@ static GLOBAL_CONFIG: Config = Config::new();
             let version_const = symbols.iter().find(|s| s.name == "VERSION");
             assert!(version_const.is_some());
             let version_const = version_const.unwrap();
-            assert_eq!(version_const.visibility.as_ref().unwrap(), "pub");
+            assert_eq!(version_const.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let counter_static = symbols.iter().find(|s| s.name == "COUNTER");
             assert!(counter_static.is_some());
