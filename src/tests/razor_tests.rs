@@ -463,6 +463,7 @@ mod razor_extractor_tests {
         assert!(edit_model.is_some());
         assert!(edit_model.unwrap().signature.as_ref().unwrap().contains("private UserEditModel EditModel"));
 
+
         // Lifecycle methods
         let on_initialized = symbols.iter().find(|s| s.name == "OnInitializedAsync");
         assert!(on_initialized.is_some());
@@ -1012,6 +1013,7 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
 
+
         // Two-way binding
         let first_name_binding = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@bind-Value=\"Model.FirstName\"")));
         assert!(first_name_binding.is_some());
@@ -1217,6 +1219,7 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
         let relationships = extract_relationships(razor_code, &symbols);
+
 
         // Should find component usage relationships
         assert!(relationships.len() >= 4);

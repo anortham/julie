@@ -14,6 +14,43 @@ fn init_parser() -> Parser {
     parser
 }
 
+fn debug_tree_structure(tree: &tree_sitter::Tree, target_name: &str, source: &str) {
+    fn walk_node(node: tree_sitter::Node, target_name: &str, depth: usize, source: &str) {
+        let indent = "  ".repeat(depth);
+        let node_text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+        let display_text = if node_text.len() > 50 {
+            format!("{}...", &node_text[..47])
+        } else {
+            node_text.to_string()
+        };
+        println!("{}[{}] {}", indent, node.kind(), display_text.replace('\n', "\\n"));
+
+        // Check if this is our target (class_declaration or object_declaration)
+        if matches!(node.kind(), "class_declaration" | "object_declaration") {
+            let name_node = node.children(&mut node.walk())
+                .find(|n| n.kind() == "identifier");
+            if let Some(name_node) = name_node {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("");
+                if name == target_name {
+                    println!("{}*** FOUND TARGET {}: {} ***", indent, node.kind(), target_name);
+                    // Print all children in detail
+                    for child in node.children(&mut node.walk()) {
+                        walk_node(child, target_name, depth + 1, source);
+                    }
+                    return; // Found our target, don't continue recursing deeper
+                }
+            }
+        }
+
+        // Continue recursing for all children
+        for child in node.children(&mut node.walk()) {
+            walk_node(child, target_name, depth + 1, source);
+        }
+    }
+
+    walk_node(tree.root_node(), target_name, 0, source);
+}
+
 #[cfg(test)]
 mod kotlin_extractor_tests {
     use super::*;
@@ -149,7 +186,8 @@ enum class Color(val rgb: Int) {
         // Data class extending sealed class
         let success = symbols.iter().find(|s| s.name == "Success");
         assert!(success.is_some());
-        assert!(success.unwrap().signature.as_ref().unwrap().contains("data class Success<T>(val data: T) : Result<T>()"));
+        let success_signature = success.unwrap().signature.as_ref().unwrap();
+        assert!(success_signature.contains("data class Success<T>(val data: T) : Result<T>()"));
 
         // Sealed interface
         let command = symbols.iter().find(|s| s.name == "Command");
@@ -762,6 +800,15 @@ sealed class State {
 
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
+
+        // Debug: print actual relationships found
+        println!("Found {} relationships:", relationships.len());
+        for (i, rel) in relationships.iter().enumerate() {
+            println!("  Relationship {}: {} -> {} ({})", i + 1,
+                symbols.iter().find(|s| s.id == rel.from_symbol_id).map(|s| s.name.as_str()).unwrap_or("?"),
+                symbols.iter().find(|s| s.id == rel.to_symbol_id).map(|s| s.name.as_str()).unwrap_or("?"),
+                match rel.kind { crate::extractors::base::RelationshipKind::Extends => "extends", crate::extractors::base::RelationshipKind::Implements => "implements", _ => "other" });
+        }
 
         // Should find inheritance and interface implementation relationships
         assert!(relationships.len() >= 4);

@@ -20,7 +20,17 @@ impl RubyExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.current_visibility = Visibility::Public; // Reset for each file
+
+        // Clear any previous symbols from symbol_map
+        self.base.symbol_map.clear();
+
         self.traverse_tree(tree.root_node(), &mut symbols);
+
+        // Include additional symbols from symbol_map (parallel assignments, etc.)
+        for (_, symbol) in self.base.symbol_map.iter() {
+            symbols.push(symbol.clone());
+        }
+
         symbols
     }
 
@@ -61,8 +71,9 @@ impl RubyExtractor {
                 }
             }
             "assignment" | "operator_assignment" => {
-                if let Some(symbol) = self.extract_assignment(node) {
-                    symbol_opt = Some(symbol);
+                // Handle assignments by extracting symbols
+                if let Some(symbol) = self.extract_assignment(node, parent_id.clone()) {
+                    symbols.push(symbol);
                 }
             }
             "class_variable" | "instance_variable" | "global_variable" => {
@@ -279,13 +290,88 @@ impl RubyExtractor {
         }
     }
 
-    fn extract_assignment(&mut self, node: Node) -> Option<Symbol> {
+    fn extract_assignment(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         // Handle various assignment patterns including parallel assignment
-        let left_side = node.child_by_field_name("left")?;
-        let right_side = node.child_by_field_name("right")?;
+        let left_side = node.child_by_field_name("left").or_else(|| node.children(&mut node.walk()).next())?;
 
+        // Handle parallel assignments (a, b, c = 1, 2, 3)
+        if left_side.kind() == "left_assignment_list" {
+            // For parallel assignments, we need to extract each variable separately
+            // Return the first variable as the primary symbol, and store others in additionalSymbols
+            let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
+            let right_value = right_side.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+            let full_assignment = self.base.get_node_text(&node);
+
+            // Extract identifiers from left_assignment_list
+            let mut cursor = left_side.walk();
+            let identifiers: Vec<_> = left_side.children(&mut cursor)
+                .filter(|child| child.kind() == "identifier")
+                .collect();
+
+            // Extract rest assignments (splat expressions like *rest)
+            let mut cursor = left_side.walk();
+            let rest_assignments: Vec<_> = left_side.children(&mut cursor)
+                .filter(|child| child.kind() == "rest_assignment")
+                .collect();
+
+            // Create symbols for identifiers
+            let mut created_symbols = Vec::new();
+
+            for identifier in &identifiers {
+                let name = self.base.get_node_text(identifier);
+                let symbol = self.base.create_symbol(
+                    &node,
+                    name,
+                    SymbolKind::Variable,
+                    SymbolOptions {
+                        signature: Some(full_assignment.clone()),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.clone(),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                );
+                created_symbols.push(symbol);
+            }
+
+            // Handle rest assignments
+            for rest_node in &rest_assignments {
+                if let Some(rest_identifier) = rest_node.children(&mut rest_node.walk()).find(|c| c.kind() == "identifier") {
+                    let rest_name = self.base.get_node_text(&rest_identifier);
+                    let rest_symbol = self.base.create_symbol(
+                        &node,
+                        rest_name,
+                        SymbolKind::Variable,
+                        SymbolOptions {
+                            signature: Some(full_assignment.clone()),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.clone(),
+                            metadata: None,
+                            doc_comment: None,
+                        },
+                    );
+                    created_symbols.push(rest_symbol);
+                }
+            }
+
+            // Store additional symbols in the base extractor's symbol_map
+            // Since this method only returns one symbol, we add the rest to the symbol_map
+            for symbol in created_symbols.iter().skip(1) {
+                self.base.symbol_map.insert(symbol.id.clone(), symbol.clone());
+            }
+
+            // Return the first symbol (if any were created)
+            return created_symbols.into_iter().next();
+        }
+
+        // Handle regular assignments
+        let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
         let name = self.base.get_node_text(&left_side);
-        let signature = format!("{} = {}", name, self.base.get_node_text(&right_side));
+        let signature = if let Some(right) = right_side {
+            format!("{} = {}", name, self.base.get_node_text(&right))
+        } else {
+            name.clone()
+        };
 
         let kind = self.infer_symbol_kind_from_assignment(&left_side);
 
@@ -296,11 +382,143 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
         ))
+    }
+
+    fn extract_assignment_symbols(&mut self, node: Node, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
+        let left_side = node.child_by_field_name("left").or_else(|| node.children(&mut node.walk()).next());
+
+        if let Some(left) = left_side {
+            // Handle parallel assignments (a, b, c = 1, 2, 3)
+            if left.kind() == "left_assignment_list" {
+                let full_assignment = self.base.get_node_text(&node);
+
+                // Extract all identifiers from left_assignment_list
+                let mut cursor = left.walk();
+                for child in left.children(&mut cursor) {
+                    if child.kind() == "identifier" {
+                        let name = self.base.get_node_text(&child);
+                        let symbol = self.base.create_symbol(
+                            &node,
+                            name,
+                            SymbolKind::Variable,
+                            SymbolOptions {
+                                signature: Some(full_assignment.clone()),
+                                visibility: Some(Visibility::Public),
+                                parent_id: parent_id.clone(),
+                                metadata: None,
+                                doc_comment: None,
+                            },
+                        );
+                        symbols.push(symbol);
+                    } else if child.kind() == "rest_assignment" {
+                        // Handle rest assignments (splat expressions like *rest)
+                        if let Some(rest_identifier) = child.children(&mut child.walk()).find(|c| c.kind() == "identifier") {
+                            let rest_name = self.base.get_node_text(&rest_identifier);
+                            let symbol = self.base.create_symbol(
+                                &node,
+                                rest_name,
+                                SymbolKind::Variable,
+                                SymbolOptions {
+                                    signature: Some(full_assignment.clone()),
+                                    visibility: Some(Visibility::Public),
+                                    parent_id: parent_id.clone(),
+                                    metadata: None,
+                                    doc_comment: None,
+                                },
+                            );
+                            symbols.push(symbol);
+                        }
+                    } else if child.kind() == "splat_argument" || child.kind().contains("splat") {
+                        // Try alternative splat node names
+                        if let Some(rest_identifier) = child.children(&mut child.walk()).find(|c| c.kind() == "identifier") {
+                            let rest_name = self.base.get_node_text(&rest_identifier);
+                            let symbol = self.base.create_symbol(
+                                &node,
+                                rest_name,
+                                SymbolKind::Variable,
+                                SymbolOptions {
+                                    signature: Some(full_assignment.clone()),
+                                    visibility: Some(Visibility::Public),
+                                    parent_id: parent_id.clone(),
+                                    metadata: None,
+                                    doc_comment: None,
+                                },
+                            );
+                            symbols.push(symbol);
+                        }
+                    }
+                }
+                return;
+            } else {
+                // Check if this might be a parallel assignment with different structure
+                let assignment_text = self.base.get_node_text(&node);
+                if assignment_text.contains(",") && (assignment_text.contains("*") || assignment_text.contains("=")) {
+                    // Try to extract variables from a manual parse of the assignment
+                    self.extract_parallel_assignment_fallback(&node, &assignment_text, parent_id.clone(), symbols);
+                    return;
+                }
+            }
+
+            // Handle regular assignments
+            let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
+            let name = self.base.get_node_text(&left);
+            let signature = if let Some(right) = right_side {
+                format!("{} = {}", name, self.base.get_node_text(&right))
+            } else {
+                name.clone()
+            };
+
+            let kind = self.infer_symbol_kind_from_assignment(&left);
+
+            let symbol = self.base.create_symbol(
+                &node,
+                name,
+                kind,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id,
+                    metadata: None,
+                    doc_comment: None,
+                },
+            );
+            symbols.push(symbol);
+        }
+    }
+
+    fn extract_parallel_assignment_fallback(&mut self, node: &Node, assignment_text: &str, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
+        // Fallback method to extract variables from parallel assignments when tree structure is unexpected
+        // Split by '=' to get left and right sides
+        if let Some(eq_pos) = assignment_text.find('=') {
+            let left_side = assignment_text[..eq_pos].trim();
+
+            // Extract variable names from the left side
+            let variables: Vec<&str> = left_side.split(',').map(|s| s.trim()).collect();
+
+            for var in variables {
+                let clean_var = var.trim_start_matches('*'); // Remove splat operator
+                if !clean_var.is_empty() && clean_var.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    let symbol = self.base.create_symbol(
+                        node,
+                        clean_var.to_string(),
+                        SymbolKind::Variable,
+                        SymbolOptions {
+                            signature: Some(assignment_text.to_string()),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.clone(),
+                            metadata: None,
+                            doc_comment: None,
+                        },
+                    );
+                    symbols.push(symbol);
+                }
+            }
+        }
     }
 
     fn extract_variable(&mut self, node: Node) -> Symbol {
@@ -359,13 +577,52 @@ impl RubyExtractor {
 
     // Helper methods for building signatures and extracting names
 
+    fn build_qualified_name(&self, node: Node, name: &str) -> String {
+        let mut namespace_parts = Vec::new();
+        let mut current = node;
+
+        // Walk up the tree to find parent modules/classes
+        while let Some(parent) = current.parent() {
+            if matches!(parent.kind(), "module" | "class") {
+                // Extract the name of the parent module/class
+                if let Some(parent_name) = self.extract_name_from_node(parent, "name")
+                    .or_else(|| self.extract_name_from_node(parent, "constant"))
+                    .or_else(|| {
+                        // Fallback: find first constant child
+                        let mut cursor = parent.walk();
+                        for child in parent.children(&mut cursor) {
+                            if child.kind() == "constant" {
+                                return Some(self.base.get_node_text(&child));
+                            }
+                        }
+                        None
+                    }) {
+                    namespace_parts.push(parent_name);
+                }
+            }
+            current = parent;
+        }
+
+        // Reverse to get the correct order (outermost first)
+        namespace_parts.reverse();
+
+        // If we have namespace parts, join them with ::
+        if namespace_parts.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}::{}", namespace_parts.join("::"), name)
+        }
+    }
+
     fn extract_name_from_node(&self, node: Node, field_name: &str) -> Option<String> {
         node.child_by_field_name(field_name)
             .map(|name_node| self.base.get_node_text(&name_node))
     }
 
     fn build_module_signature(&self, node: &Node, name: &str) -> String {
-        let mut signature = format!("module {}", name);
+        // Build namespace-aware module name
+        let qualified_name = self.build_qualified_name(*node, name);
+        let mut signature = format!("module {}", qualified_name);
 
         // Look for include/extend statements
         let includes = self.find_includes_and_extends(node);
@@ -377,7 +634,9 @@ impl RubyExtractor {
     }
 
     fn build_class_signature(&self, node: &Node, name: &str) -> String {
-        let mut signature = format!("class {}", name);
+        // Build namespace-aware class name
+        let qualified_name = self.build_qualified_name(*node, name);
+        let mut signature = format!("class {}", qualified_name);
 
         // Check for inheritance
         if let Some(superclass) = node.child_by_field_name("superclass") {
@@ -414,7 +673,36 @@ impl RubyExtractor {
             signature.push_str("()");
         }
 
+        // Extract return statements from method body to include in signature
+        if let Some(body) = node.child_by_field_name("body") {
+            self.extract_return_statements_from_body(&body, &mut signature);
+        } else {
+            // Fallback: look for method body in children
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "body_statement" || child.kind() == "block" {
+                    self.extract_return_statements_from_body(&child, &mut signature);
+                    break;
+                }
+            }
+        }
+
         signature
+    }
+
+    fn extract_return_statements_from_body(&self, body_node: &Node, signature: &mut String) {
+        let mut cursor = body_node.walk();
+        for child in body_node.children(&mut cursor) {
+            if child.kind() == "return" {
+                let return_text = self.base.get_node_text(&child);
+                if !signature.contains(&return_text) {
+                    signature.push_str(&format!("\n  {}", return_text));
+                }
+            } else {
+                // Recursively search for return statements in nested blocks
+                self.extract_return_statements_from_body(&child, signature);
+            }
+        }
     }
 
     fn build_singleton_method_signature(&self, node: &Node, name: &str) -> String {
@@ -686,30 +974,44 @@ impl RubyExtractor {
             })
             .unwrap_or_else(|| "Unknown".to_string());
 
+
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "call" {
-                if let Some(method_name) = self.extract_method_name_from_call(child) {
-                    if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
-                        if let Some(arg_node) = child.child_by_field_name("arguments") {
-                            if let Some(module_node) = arg_node.children(&mut arg_node.walk()).next() {
-                                let module_name = self.base.get_node_text(&module_node);
+                // Direct call node
+                self.process_include_extend_call(child, &class_or_module_name, symbols, relationships);
+            } else if child.kind() == "body_statement" {
+                // Call might be inside a body_statement
+                let mut body_cursor = child.walk();
+                for body_child in child.children(&mut body_cursor) {
+                    if body_child.kind() == "call" {
+                        self.process_include_extend_call(body_child, &class_or_module_name, symbols, relationships);
+                    }
+                }
+            }
+        }
+    }
 
-                                if let (Some(from_symbol), Some(to_symbol)) = (
-                                    symbols.iter().find(|s| s.name == class_or_module_name),
-                                    symbols.iter().find(|s| s.name == module_name),
-                                ) {
-                                    relationships.push(Relationship {
-                                        from_symbol_id: from_symbol.id.clone(),
-                                        to_symbol_id: to_symbol.id.clone(),
-                                        kind: RelationshipKind::Implements,
-                                        file_path: self.base.file_path.clone(),
-                                        line_number: child.start_position().row as u32 + 1,
-                                        confidence: 1.0,
-                                        metadata: None,
-                                    });
-                                }
-                            }
+    fn process_include_extend_call(&self, child: tree_sitter::Node, class_or_module_name: &str, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        if let Some(method_name) = self.extract_method_name_from_call(child) {
+            if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
+                if let Some(arg_node) = child.child_by_field_name("arguments") {
+                    if let Some(module_node) = arg_node.children(&mut arg_node.walk()).next() {
+                        let module_name = self.base.get_node_text(&module_node);
+
+                        let from_symbol = symbols.iter().find(|s| s.name == class_or_module_name);
+                        let to_symbol = symbols.iter().find(|s| s.name == module_name);
+
+                        if let (Some(from_symbol), Some(to_symbol)) = (from_symbol, to_symbol) {
+                            relationships.push(Relationship {
+                                from_symbol_id: from_symbol.id.clone(),
+                                to_symbol_id: to_symbol.id.clone(),
+                                kind: RelationshipKind::Implements,
+                                file_path: self.base.file_path.clone(),
+                                line_number: child.start_position().row as u32 + 1,
+                                confidence: 1.0,
+                                metadata: None,
+                            });
                         }
                     }
                 }

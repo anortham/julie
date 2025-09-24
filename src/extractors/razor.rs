@@ -27,6 +27,9 @@ impl RazorExtractor {
         let mut symbol = None;
         let node_type = node.kind();
 
+
+
+
         match node_type {
             "razor_directive" | "razor_inject_directive" | "razor_using_directive"
             | "razor_page_directive" | "razor_namespace_directive" | "razor_model_directive"
@@ -52,9 +55,15 @@ impl RazorExtractor {
             }
             "html_element" | "element" => {
                 symbol = self.extract_html_element(node, parent_id.as_deref());
+                // Also extract binding attributes from HTML elements
+                self.extract_binding_attributes_from_element(node, symbols, parent_id.as_deref());
+                // Create external component symbols for uppercase tag names (Miller's approach)
+                self.create_external_component_symbols_if_needed(node, symbols);
             }
             "razor_component" => {
                 symbol = self.extract_component(node, parent_id.as_deref());
+                // Also create external component symbols for razor components
+                self.create_external_component_symbols_if_needed(node, symbols);
             }
             "csharp_code" => {
                 self.extract_csharp_symbols(node, symbols, parent_id.as_deref());
@@ -396,6 +405,108 @@ impl RazorExtractor {
         }
     }
 
+    fn create_external_component_symbols_if_needed(&mut self, node: Node, symbols: &mut Vec<Symbol>) {
+        let node_text = self.base.get_node_text(&node);
+
+        // Use regex to find all component tags within the element (Miller's approach)
+        if let Ok(component_regex) = regex::Regex::new(r"<([A-Z][A-Za-z0-9]*)\b") {
+            for captures in component_regex.captures_iter(&node_text) {
+                if let Some(tag_match) = captures.get(1) {
+                    let tag_name = tag_match.as_str();
+
+                    // Check if symbol already exists
+                    if !symbols.iter().any(|s| s.name == tag_name) {
+                        // Create external component symbol (Miller's approach)
+                        let component_symbol = self.base.create_symbol(
+                            &node,
+                            tag_name.to_string(),
+                            SymbolKind::Class,
+                            SymbolOptions {
+                                signature: Some(format!("external component {}", tag_name)),
+                                visibility: Some(Visibility::Public),
+                                parent_id: None,
+                                metadata: Some({
+                                    let mut metadata = HashMap::new();
+                                    metadata.insert("type".to_string(), serde_json::Value::String("external-component".to_string()));
+                                    metadata.insert("source".to_string(), serde_json::Value::String("inferred".to_string()));
+                                    metadata
+                                }),
+                                doc_comment: None,
+                            },
+                        );
+                        symbols.push(component_symbol);
+                    }
+                }
+            }
+        }
+    }
+
+    fn extract_binding_attributes_from_element(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+        let element_text = self.base.get_node_text(&node);
+
+        // Extract @bind-Value attributes using regex patterns (Miller approach)
+        if let Ok(value_regex) = regex::Regex::new(r#"@bind-Value="([^"]+)""#) {
+            for captures in value_regex.captures_iter(&element_text) {
+                if let Some(value_match) = captures.get(1) {
+                    let binding_value = value_match.as_str();
+                    let binding_name = format!("{}_binding",
+                        binding_value.replace("Model.", "").replace(".", "_").to_lowercase());
+                    let binding_signature = format!("@bind-Value=\"{}\"", binding_value);
+
+                    let binding_symbol = self.base.create_symbol(
+                        &node,
+                        binding_name,
+                        SymbolKind::Variable,
+                        SymbolOptions {
+                            signature: Some(binding_signature.clone()),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some({
+                                let mut metadata = HashMap::new();
+                                metadata.insert("type".to_string(), serde_json::Value::String("data-binding".to_string()));
+                                metadata.insert("bindingType".to_string(), serde_json::Value::String("two-way".to_string()));
+                                metadata.insert("property".to_string(), serde_json::Value::String(binding_value.to_string()));
+                                metadata
+                            }),
+                            doc_comment: None,
+                        },
+                    );
+                    symbols.push(binding_symbol);
+                }
+            }
+        }
+
+        // Extract @bind-Value:event attributes
+        if let Ok(event_regex) = regex::Regex::new(r#"@bind-Value:event="([^"]+)""#) {
+            for captures in event_regex.captures_iter(&element_text) {
+                if let Some(event_match) = captures.get(1) {
+                    let event_value = event_match.as_str();
+                    let event_name = format!("{}_event_binding", event_value.to_lowercase());
+                    let event_signature = format!("@bind-Value:event=\"{}\"", event_value);
+
+                    let event_symbol = self.base.create_symbol(
+                        &node,
+                        event_name,
+                        SymbolKind::Variable,
+                        SymbolOptions {
+                            signature: Some(event_signature.clone()),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some({
+                                let mut metadata = HashMap::new();
+                                metadata.insert("type".to_string(), serde_json::Value::String("event-binding".to_string()));
+                                metadata.insert("event".to_string(), serde_json::Value::String(event_value.to_string()));
+                                metadata
+                            }),
+                            doc_comment: None,
+                        },
+                    );
+                    symbols.push(event_symbol);
+                }
+            }
+        }
+    }
+
     fn extract_html_element(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let tag_name = self.extract_html_tag_name(node);
         let attributes = self.extract_html_attributes(node);
@@ -522,6 +633,7 @@ impl RazorExtractor {
     fn visit_csharp_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
         let mut symbol = None;
         let current_parent_id = parent_id;
+
 
         match node.kind() {
             "local_declaration_statement" => {
@@ -665,40 +777,24 @@ impl RazorExtractor {
             }
         }
 
-        // Find method name - need to find the correct identifier (not the return type)
+        // Find method name - should be the identifier immediately before parameter_list
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
 
-        // Tree structure debugging (commented out)
-        // println!("DEBUG method_declaration children:");
-        // for (i, child) in children.iter().enumerate() {
-        //     println!("  [{}] '{}' kind: {}", i, self.base.get_node_text(child), child.kind());
-        // }
-
-        // Simple approach: find the identifier that comes immediately before parameter_list
         if let Some(param_list_idx) = children.iter().position(|c| c.kind() == "parameter_list") {
-            // Look backwards from parameter list to find the method name
+            // Look backwards from parameter list to find the method name identifier
             for i in (0..param_list_idx).rev() {
                 if children[i].kind() == "identifier" {
-                    let candidate_name = self.base.get_node_text(&children[i]);
-                    // Skip common keywords that aren't method names
-                    if !["Task", "void", "string", "int", "bool", "async", "override", "public", "private", "protected"].contains(&candidate_name.as_str()) {
-                        name = candidate_name;
-                        break;
-                    }
+                    name = self.base.get_node_text(&children[i]);
+                    break;
                 }
             }
-        }
-
-        // Final fallback - try to find any reasonable identifier
-        if name == "unknownMethod" {
-            for child in &children {
+        } else {
+            // Fallback: find the last identifier (which should be method name in most cases)
+            for child in children.iter().rev() {
                 if child.kind() == "identifier" {
-                    let candidate = self.base.get_node_text(child);
-                    if candidate.ends_with("Async") || candidate.starts_with("On") {
-                        name = candidate;
-                        break;
-                    }
+                    name = self.base.get_node_text(child);
+                    break;
                 }
             }
         }
@@ -723,7 +819,7 @@ impl RazorExtractor {
         Some(self.base.create_symbol(
             &node,
             name,
-            SymbolKind::Function,
+            SymbolKind::Method,
             SymbolOptions {
                 signature: Some(signature_parts.join(" ")),
                 visibility: Some(self.determine_visibility(&modifiers)),
@@ -895,10 +991,28 @@ impl RazorExtractor {
     }
 
     fn extract_local_function(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // Extract function name
+        // Extract function name using same logic as extract_method
         let mut name = "unknownFunction".to_string();
-        if let Some(name_node) = self.find_child_by_type(node, "identifier") {
-            name = self.base.get_node_text(&name_node);
+
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+
+        if let Some(param_list_idx) = children.iter().position(|c| c.kind() == "parameter_list") {
+            // Look backwards from parameter list to find the method name identifier
+            for i in (0..param_list_idx).rev() {
+                if children[i].kind() == "identifier" {
+                    name = self.base.get_node_text(&children[i]);
+                    break;
+                }
+            }
+        } else {
+            // Fallback: find the last identifier (which should be method name in most cases)
+            for child in children.iter().rev() {
+                if child.kind() == "identifier" {
+                    name = self.base.get_node_text(child);
+                    break;
+                }
+            }
         }
 
         let modifiers = self.extract_modifiers(node);
@@ -923,7 +1037,7 @@ impl RazorExtractor {
         Some(self.base.create_symbol(
             &node,
             name,
-            SymbolKind::Function,
+            SymbolKind::Method,
             SymbolOptions {
                 signature: Some(signature_parts.join(" ")),
                 visibility: Some(self.determine_visibility(&modifiers)),
@@ -1619,28 +1733,32 @@ impl RazorExtractor {
         // Extract relationships from HTML elements that might bind to properties
         let element_text = self.base.get_node_text(&node);
 
-        // Check for component usage (e.g., <AppHeader>, <Navigation>)
-        if let Some(tag_name) = self.extract_html_tag_name_from_node(node) {
-            // Component names usually start with uppercase letter
-            if tag_name.chars().next().map_or(false, |c| c.is_uppercase()) {
-                if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class)
-                    .or_else(|| symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@page")))) {
+        // Check for component usage using regex to find all components in the element
+        if let Ok(component_regex) = regex::Regex::new(r"<([A-Z][A-Za-z0-9]*)\b") {
+            for captures in component_regex.captures_iter(&element_text) {
+                if let Some(tag_match) = captures.get(1) {
+                    let tag_name = tag_match.as_str();
 
-                    let to_symbol_id = format!("component-{}", tag_name);
+                    if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class)
+                        .or_else(|| symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@page")))) {
 
-                    relationships.push(self.base.create_relationship(
-                        from_symbol.id.clone(),
-                        to_symbol_id,
-                        crate::extractors::base::RelationshipKind::Uses,
-                        &node,
-                        Some(1.0),
-                        Some({
-                            let mut metadata = HashMap::new();
-                            metadata.insert("component".to_string(), serde_json::Value::String(tag_name.clone()));
-                            metadata.insert("type".to_string(), serde_json::Value::String("component-usage".to_string()));
-                            metadata
-                        }),
-                    ));
+                        // Find the component symbol (should exist now due to symbol extraction)
+                        if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name) {
+                            relationships.push(self.base.create_relationship(
+                                from_symbol.id.clone(),
+                                component_symbol.id.clone(),
+                                crate::extractors::base::RelationshipKind::Uses,
+                                &node,
+                                Some(1.0),
+                                Some({
+                                    let mut metadata = HashMap::new();
+                                    metadata.insert("component".to_string(), serde_json::Value::String(tag_name.to_string()));
+                                    metadata.insert("type".to_string(), serde_json::Value::String("component-usage".to_string()));
+                                    metadata
+                                }),
+                            ));
+                        }
+                    }
                 }
             }
         }

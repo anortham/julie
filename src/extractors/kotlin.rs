@@ -353,6 +353,17 @@ impl KotlinExtractor {
         };
 
         let visibility = self.determine_visibility(&modifiers);
+        let return_type = self.extract_return_type(node);
+
+        let mut metadata = HashMap::from([
+            ("type".to_string(), Value::String(if parent_id.is_some() { "method" } else { "function" }.to_string())),
+            ("modifiers".to_string(), Value::String(modifiers.join(","))),
+        ]);
+
+        // Store return type for type inference
+        if let Some(return_type) = return_type {
+            metadata.insert("returnType".to_string(), Value::String(return_type));
+        }
 
         self.base.create_symbol(
             node,
@@ -362,26 +373,26 @@ impl KotlinExtractor {
                 signature: Some(signature),
                 visibility: Some(visibility),
                 parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(HashMap::from([
-                    ("type".to_string(), Value::String(if parent_id.is_some() { "method" } else { "function" }.to_string())),
-                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
-                ])),
+                metadata: Some(metadata),
                 doc_comment: None,
             },
         )
     }
 
     fn extract_property(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
-        // Look for name in variable_declaration (interface properties)
-        let mut name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "identifier");
+        // Look for name in variable_declaration first (the proper place for property names)
+        let mut name_node = None;
+        let var_decl = node.children(&mut node.walk())
+            .find(|n| n.kind() == "variable_declaration");
+        if let Some(var_decl) = var_decl {
+            name_node = var_decl.children(&mut var_decl.walk())
+                .find(|n| n.kind() == "identifier");
+        }
+
+        // Fallback: look for identifier at top level (for interface properties)
         if name_node.is_none() {
-            let var_decl = node.children(&mut node.walk())
-                .find(|n| n.kind() == "variable_declaration");
-            if let Some(var_decl) = var_decl {
-                name_node = var_decl.children(&mut var_decl.walk())
-                    .find(|n| n.kind() == "identifier");
-            }
+            name_node = node.children(&mut node.walk())
+                .find(|n| n.kind() == "identifier");
         }
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -437,6 +448,19 @@ impl KotlinExtractor {
         };
 
         let visibility = self.determine_visibility(&modifiers);
+        let property_type = self.extract_property_type(node);
+
+        let mut metadata = HashMap::from([
+            ("type".to_string(), Value::String(if is_const { "constant" } else { "property" }.to_string())),
+            ("modifiers".to_string(), Value::String(modifiers.join(","))),
+            ("isVal".to_string(), Value::String(is_val.to_string())),
+            ("isVar".to_string(), Value::String(is_var.to_string())),
+        ]);
+
+        // Store property type for type inference
+        if let Some(property_type) = property_type {
+            metadata.insert("propertyType".to_string(), Value::String(property_type));
+        }
 
         self.base.create_symbol(
             node,
@@ -446,12 +470,7 @@ impl KotlinExtractor {
                 signature: Some(signature),
                 visibility: Some(visibility),
                 parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(HashMap::from([
-                    ("type".to_string(), Value::String(if is_const { "constant" } else { "property" }.to_string())),
-                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
-                    ("isVal".to_string(), Value::String(is_val.to_string())),
-                    ("isVar".to_string(), Value::String(is_var.to_string())),
-                ])),
+                metadata: Some(metadata),
                 doc_comment: None,
             },
         )
@@ -646,11 +665,25 @@ impl KotlinExtractor {
             .find(|n| n.kind() == "delegation_specifiers");
         if let Some(delegation_container) = delegation_container {
             for child in delegation_container.children(&mut delegation_container.walk()) {
-                if child.kind() == "delegated_super_type" {
-                    let type_node = child.children(&mut child.walk())
-                        .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier"));
-                    if let Some(type_node) = type_node {
-                        super_types.push(self.base.get_node_text(&type_node));
+                if child.kind() == "delegation_specifier" {
+                    // Check for explicit_delegation (delegation syntax like "Drawable by drawable")
+                    let explicit_delegation = child.children(&mut child.walk())
+                        .find(|n| n.kind() == "explicit_delegation");
+                    if let Some(explicit_delegation) = explicit_delegation {
+                        // Get the full delegation text including "by" keyword
+                        super_types.push(self.base.get_node_text(&explicit_delegation));
+                    } else {
+                        // Fallback: simple inheritance without delegation
+                        let type_node = child.children(&mut child.walk())
+                            .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier" | "constructor_invocation"));
+                        if let Some(type_node) = type_node {
+                            if type_node.kind() == "constructor_invocation" {
+                                // For constructor invocations like Result<Nothing>(), include the full call
+                                super_types.push(self.base.get_node_text(&type_node));
+                            } else {
+                                super_types.push(self.base.get_node_text(&type_node));
+                            }
+                        }
                     }
                 } else if matches!(child.kind(), "type" | "user_type" | "identifier") {
                     super_types.push(self.base.get_node_text(&child));
@@ -662,7 +695,20 @@ impl KotlinExtractor {
                 .filter(|n| n.kind() == "delegation_specifier")
                 .collect();
             for delegation in delegation_specifiers {
-                super_types.push(self.base.get_node_text(&delegation));
+                let explicit_delegation = delegation.children(&mut delegation.walk())
+                    .find(|n| n.kind() == "explicit_delegation");
+                if let Some(explicit_delegation) = explicit_delegation {
+                    super_types.push(self.base.get_node_text(&explicit_delegation));
+                } else {
+                    // Check for constructor_invocation to include ()
+                    let constructor_invocation = delegation.children(&mut delegation.walk())
+                        .find(|n| n.kind() == "constructor_invocation");
+                    if let Some(constructor_invocation) = constructor_invocation {
+                        super_types.push(self.base.get_node_text(&constructor_invocation));
+                    } else {
+                        super_types.push(self.base.get_node_text(&delegation));
+                    }
+                }
             }
         }
 
@@ -733,60 +779,54 @@ impl KotlinExtractor {
             .find(|n| n.kind() == "primary_constructor");
         let primary_constructor = primary_constructor?;
 
-        // Extract class parameters
-        let mut params = Vec::new();
-        for child in primary_constructor.children(&mut primary_constructor.walk()) {
-            if child.kind() == "class_parameter" {
-                let name_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "identifier");
-                let name = name_node
-                    .map(|n| self.base.get_node_text(&n))
-                    .unwrap_or_else(|| "unknownParam".to_string());
+        // For now, just return the full primary constructor text
+        // This ensures we capture the exact signature including val/var modifiers
+        Some(self.base.get_node_text(&primary_constructor))
+    }
 
-                // Get binding pattern (val/var)
-                let binding_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "binding_pattern_kind");
-                let binding = binding_node
-                    .map(|n| self.base.get_node_text(&n))
-                    .unwrap_or_else(|| "".to_string());
+    fn process_class_parameter(&self, param_node: &Node, params: &mut Vec<String>) {
+        let name_node = param_node.children(&mut param_node.walk())
+            .find(|n| n.kind() == "identifier");
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknownParam".to_string());
 
-                // Get type
-                let type_node = child.children(&mut child.walk())
-                    .find(|n| matches!(n.kind(),
-                        "user_type" | "type" | "nullable_type" | "type_reference"));
-                let param_type = type_node
-                    .map(|n| self.base.get_node_text(&n))
-                    .unwrap_or_else(|| "".to_string());
+        // Get binding pattern (val/var)
+        let binding_node = param_node.children(&mut param_node.walk())
+            .find(|n| n.kind() == "binding_pattern_kind");
+        let binding = binding_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "".to_string());
 
-                // Get modifiers (like private)
-                let modifiers_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "modifiers");
-                let modifiers = modifiers_node
-                    .map(|n| self.base.get_node_text(&n))
-                    .unwrap_or_else(|| "".to_string());
+        // Get type
+        let type_node = param_node.children(&mut param_node.walk())
+            .find(|n| matches!(n.kind(),
+                "user_type" | "type" | "nullable_type" | "type_reference"));
+        let param_type = type_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "".to_string());
 
-                // Build parameter signature
-                let mut param_sig = String::new();
-                if !modifiers.is_empty() {
-                    param_sig.push_str(&format!("{} ", modifiers));
-                }
-                if !binding.is_empty() {
-                    param_sig.push_str(&format!("{} ", binding));
-                }
-                param_sig.push_str(&name);
-                if !param_type.is_empty() {
-                    param_sig.push_str(&format!(": {}", param_type));
-                }
+        // Get modifiers (like private)
+        let modifiers_node = param_node.children(&mut param_node.walk())
+            .find(|n| n.kind() == "modifiers");
+        let modifiers = modifiers_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "".to_string());
 
-                params.push(param_sig);
-            }
+        // Build parameter signature
+        let mut param_sig = String::new();
+        if !modifiers.is_empty() {
+            param_sig.push_str(&format!("{} ", modifiers));
+        }
+        if !binding.is_empty() {
+            param_sig.push_str(&format!("{} ", binding));
+        }
+        param_sig.push_str(&name);
+        if !param_type.is_empty() {
+            param_sig.push_str(&format!(": {}", param_type));
         }
 
-        if params.is_empty() {
-            None
-        } else {
-            Some(format!("({})", params.join(", ")))
-        }
+        params.push(param_sig);
     }
 
     fn extract_where_clause(&self, node: &Node) -> Option<String> {
@@ -1025,6 +1065,7 @@ impl KotlinExtractor {
     fn visit_node_for_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         match node.kind() {
             "class_declaration" | "enum_declaration" | "object_declaration" | "interface_declaration" => {
+                println!("DEBUG: Processing {} node for relationships", node.kind());
                 self.extract_inheritance_relationships(&node, symbols, relationships);
             }
             _ => {}
@@ -1044,18 +1085,47 @@ impl KotlinExtractor {
     ) {
         let class_symbol = self.find_class_symbol(node, symbols);
         if class_symbol.is_none() {
+            println!("DEBUG: Could not find class symbol for {} node", node.kind());
             return;
         }
         let class_symbol = class_symbol.unwrap();
+        println!("DEBUG: Found class symbol: {}", class_symbol.name);
 
         // Look for delegation_specifiers container first (wrapped case)
         let delegation_container = node.children(&mut node.walk())
             .find(|n| n.kind() == "delegation_specifiers");
         let mut base_type_names = Vec::new();
 
+        println!("DEBUG: Looking for delegation_specifiers in {}", class_symbol.name);
         if let Some(delegation_container) = delegation_container {
+            println!("DEBUG: Found delegation_specifiers container");
             for child in delegation_container.children(&mut delegation_container.walk()) {
-                if child.kind() == "delegated_super_type" {
+                println!("DEBUG: Processing delegation child: {}", child.kind());
+                if child.kind() == "delegation_specifier" {
+                    println!("DEBUG: Found delegation_specifier, extracting base type");
+                    let type_node = child.children(&mut child.walk())
+                        .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier" | "constructor_invocation"));
+                    if let Some(type_node) = type_node {
+                        let base_type = if type_node.kind() == "constructor_invocation" {
+                            // For constructor invocations like Widget(), extract just the type name
+                            let user_type_node = type_node.children(&mut type_node.walk())
+                                .find(|n| n.kind() == "user_type");
+                            if let Some(user_type_node) = user_type_node {
+                                self.base.get_node_text(&user_type_node)
+                            } else {
+                                // Fallback: strip parentheses
+                                let full_text = self.base.get_node_text(&type_node);
+                                full_text.split('(').next().unwrap_or(&full_text).to_string()
+                            }
+                        } else {
+                            self.base.get_node_text(&type_node)
+                        };
+                        println!("DEBUG: Extracted base type: {}", base_type);
+                        base_type_names.push(base_type);
+                    } else {
+                        println!("DEBUG: No type node found in delegation_specifier");
+                    }
+                } else if child.kind() == "delegated_super_type" {
                     let type_node = child.children(&mut child.walk())
                         .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier"));
                     if let Some(type_node) = type_node {
@@ -1067,9 +1137,11 @@ impl KotlinExtractor {
             }
         } else {
             // Look for individual delegation_specifier nodes (multiple at same level)
+            println!("DEBUG: No delegation_specifiers container, looking for individual delegation_specifier nodes");
             let delegation_specifiers: Vec<Node> = node.children(&mut node.walk())
                 .filter(|n| n.kind() == "delegation_specifier")
                 .collect();
+            println!("DEBUG: Found {} delegation_specifier nodes", delegation_specifiers.len());
             for delegation in delegation_specifiers {
                 // Extract just the type name from the delegation (remove "by delegate" part)
                 let explicit_delegation = delegation.children(&mut delegation.walk())
@@ -1098,6 +1170,8 @@ impl KotlinExtractor {
                 }
             }
         }
+
+        println!("DEBUG: Extracted {} base types for {}: {:?}", base_type_names.len(), class_symbol.name, base_type_names);
 
         // Create relationships for each base type
         for base_type_name in base_type_names {

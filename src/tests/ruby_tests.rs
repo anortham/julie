@@ -690,7 +690,36 @@ end
         // Multiple return
         let multiple_return = symbols.iter().find(|s| s.name == "multiple_return");
         assert!(multiple_return.is_some());
-        assert!(multiple_return.unwrap().signature.as_ref().unwrap().contains("return 1, 2, 3"));
+        let multiple_return_signature = multiple_return.unwrap().signature.as_ref().unwrap();
+        assert!(multiple_return_signature.contains("return 1, 2, 3"));
+    }
+
+    #[test]
+    fn test_function_signature_includes_return_statement() {
+        let ruby_code = r#"
+def simple_return
+  return "hello"
+end
+
+def multiple_return
+  return 1, 2, 3
+end
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(ruby_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let simple_return = symbols.iter().find(|s| s.name == "simple_return");
+        assert!(simple_return.is_some());
+        let simple_signature = simple_return.unwrap().signature.as_ref().unwrap();
+        assert!(simple_signature.contains("return \"hello\""),
+                "Expected signature '{}' to contain 'return \"hello\"'", simple_signature);
+
+        let multiple_return = symbols.iter().find(|s| s.name == "multiple_return");
+        assert!(multiple_return.is_some());
+        let multiple_signature = multiple_return.unwrap().signature.as_ref().unwrap();
+        assert!(multiple_signature.contains("return 1, 2, 3"),
+                "Expected signature '{}' to contain 'return 1, 2, 3'", multiple_signature);
     }
 
     #[test]
