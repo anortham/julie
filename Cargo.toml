@@ -10,6 +10,7 @@ license = "MIT"
 name = "julie-server"
 path = "src/main.rs"
 
+
 [dependencies]
 # MCP Server SDK
 rust-mcp-sdk = { version = "0.7.0", default-features = false, features = [
@@ -19,7 +20,10 @@ rust-mcp-sdk = { version = "0.7.0", default-features = false, features = [
     "2025_06_18",
 ] }
 
-# Tree-sitter for parsing
+# Tree-sitter for parsing (latest version to match harper-dart)
+# ⚠️  WARNING: DO NOT CHANGE THESE TREE-SITTER VERSIONS! ⚠️
+# ⚠️  CHANGING THESE WILL BREAK EVERYTHING DUE TO API INCOMPATIBILITIES ⚠️
+# ⚠️  WE SPENT HOURS GETTING THESE VERSIONS TO WORK TOGETHER ⚠️
 tree-sitter = "0.25"
 tree-sitter-bash = "0.23"
 tree-sitter-c = "0.24"
@@ -30,7 +34,8 @@ tree-sitter-go = "0.23"
 tree-sitter-html = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-javascript = "0.23"
-tree-sitter-kotlin = "0.3"
+# ⚠️  WARNING: THESE PARSER VERSIONS ARE LOCKED TO TREE-SITTER 0.25 ⚠️
+tree-sitter-kotlin-ng = "1.1.0"  # ⚠️ DO NOT CHANGE - USES MODERN API ⚠️
 tree-sitter-lua = "0.2"
 tree-sitter-php = "0.24"
 tree-sitter-python = "0.23"
@@ -43,12 +48,12 @@ tree-sitter-typescript = "0.23"
 tree-sitter-gdscript = "5.0"
 # tree-sitter-qmljs = "0.2"  # Temporarily disabled due to tree-sitter version conflict
 tree-sitter-regex = "0.23"
-tree-sitter-vue = "0.0.3"
+# tree-sitter-vue removed - we parse SFC sections manually
 tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }
 tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-powershell" }
 
 # Missing languages from Miller
-tree-sitter-dart = "0.0.4"
+harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER 0.25.6+ ⚠️
 tree-sitter-sql = { path = "../tree-sitter-sql", package = "tree-sitter-sequel" }
 tree-sitter-zig = "1.1.2"
 

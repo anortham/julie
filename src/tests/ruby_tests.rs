@@ -123,7 +123,7 @@ end
         let spaceship = symbols.iter().find(|s| s.name == "<=>");
         assert!(spaceship.is_some());
         assert_eq!(spaceship.unwrap().kind, SymbolKind::Method);
-        assert_eq!(spaceship.unwrap().parent_id, comparable.unwrap().id);
+        assert_eq!(spaceship.unwrap().parent_id, Some(comparable.unwrap().id.clone()));
 
         let between = symbols.iter().find(|s| s.name == "between?");
         assert!(between.is_some());
@@ -165,7 +165,7 @@ end
         assert!(species.unwrap().signature.as_ref().unwrap().contains("SPECIES = \"Homo sapiens\""));
 
         // Constructor
-        let initialize = symbols.iter().find(|s| s.name == "initialize" && s.parent_id == person.unwrap().id);
+        let initialize = symbols.iter().find(|s| s.name == "initialize" && s.parent_id == Some(person.unwrap().id.clone()));
         assert!(initialize.is_some());
         assert_eq!(initialize.unwrap().kind, SymbolKind::Constructor);
         assert!(initialize.unwrap().signature.as_ref().unwrap().contains("def initialize(name, age = 0)"));
@@ -632,7 +632,7 @@ end
         // Nested constants
         let host = symbols.iter().find(|s| s.name == "HOST");
         assert!(host.is_some());
-        assert_eq!(host.unwrap().parent_id, database.unwrap().id);
+        assert_eq!(host.unwrap().parent_id, Some(database.unwrap().id.clone()));
 
         let config = symbols.iter().find(|s| s.name == "CONFIG");
         assert!(config.is_some());
@@ -824,7 +824,7 @@ end
         // Nested module
         let class_methods = symbols.iter().find(|s| s.name == "ClassMethods" && s.kind == SymbolKind::Module);
         assert!(class_methods.is_some());
-        assert_eq!(class_methods.unwrap().parent_id, loggable.unwrap().id);
+        assert_eq!(class_methods.unwrap().parent_id, Some(loggable.unwrap().id.clone()));
 
         // Module with prepend callback
         let timestampable = symbols.iter().find(|s| s.name == "Timestampable");

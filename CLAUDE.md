@@ -206,6 +206,33 @@ cargo bloat --release
 
 ---
 
+## 🚨🔴 TREE-SITTER VERSION WARNING 🔴🚨
+
+### ⚠️ ABSOLUTELY DO NOT CHANGE TREE-SITTER VERSIONS ⚠️
+
+**THE FOLLOWING VERSIONS ARE LOCKED AND TESTED:**
+- `tree-sitter = "0.25"` (REQUIRED for harper-tree-sitter-dart)
+- `tree-sitter-kotlin-ng = "1.1.0"` (modern Kotlin parser)
+- `harper-tree-sitter-dart = "0.0.5"` (modern Dart parser)
+
+**CHANGING THESE WILL CAUSE:**
+- ❌ API incompatibilities between different tree-sitter versions
+- ❌ Native library linking conflicts
+- ❌ Hours of debugging version hell
+- ❌ Complete build failures
+- ❌ Breaking all extractors
+
+**IF YOU MUST CHANGE VERSIONS:**
+1. Update ALL parser crates simultaneously
+2. Test every single extractor
+3. Update API calls if needed (0.20 vs 0.25 APIs are different)
+4. Verify no native library conflicts
+5. Test on all platforms
+
+**WE ALREADY WENT THROUGH VERSION HELL - DON'T DO IT AGAIN!**
+
+---
+
 ## 🚨 Critical Success Factors
 
 ### Must-Have Requirements

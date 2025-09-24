@@ -10,7 +10,7 @@ use tree_sitter::Parser;
 /// Initialize Dart parser for Dart files
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_dart::language()).expect("Error loading Dart grammar");
+    parser.set_language(&harper_tree_sitter_dart::LANGUAGE.into()).expect("Error loading Dart grammar");
     parser
 }
 

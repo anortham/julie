@@ -330,16 +330,16 @@ end
         assert_eq!(calculator.unwrap().kind, SymbolKind::Variable);
 
         // Table field
-        let value = symbols.iter().find(|s| s.name == "value" && s.parent_id == calculator.unwrap().id);
+        let value = symbols.iter().find(|s| s.name == "value" && s.parent_id == Some(calculator.unwrap().id.clone()));
         assert!(value.is_some());
         assert_eq!(value.unwrap().kind, SymbolKind::Field);
 
         // Table methods
-        let add_method = symbols.iter().find(|s| s.name == "add" && s.parent_id == calculator.unwrap().id);
+        let add_method = symbols.iter().find(|s| s.name == "add" && s.parent_id == Some(calculator.unwrap().id.clone()));
         assert!(add_method.is_some());
         assert_eq!(add_method.unwrap().kind, SymbolKind::Method);
 
-        let subtract_method = symbols.iter().find(|s| s.name == "subtract" && s.parent_id == calculator.unwrap().id);
+        let subtract_method = symbols.iter().find(|s| s.name == "subtract" && s.parent_id == Some(calculator.unwrap().id.clone()));
         assert!(subtract_method.is_some());
 
         // Colon syntax methods
@@ -356,11 +356,11 @@ end
         assert_eq!(database.unwrap().kind, SymbolKind::Variable);
 
         // Nested table fields
-        let users = symbols.iter().find(|s| s.name == "users" && s.parent_id == database.unwrap().id);
+        let users = symbols.iter().find(|s| s.name == "users" && s.parent_id == Some(database.unwrap().id.clone()));
         assert!(users.is_some());
         assert_eq!(users.unwrap().kind, SymbolKind::Field);
 
-        let settings = symbols.iter().find(|s| s.name == "settings" && s.parent_id == database.unwrap().id);
+        let settings = symbols.iter().find(|s| s.name == "settings" && s.parent_id == Some(database.unwrap().id.clone()));
         assert!(settings.is_some());
 
         // Constructor function
@@ -375,11 +375,11 @@ end
         assert_eq!(animal.unwrap().kind, SymbolKind::Class);
 
         // Class methods
-        let animal_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == animal.unwrap().id);
+        let animal_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(animal.unwrap().id.clone()));
         assert!(animal_new.is_some());
         assert_eq!(animal_new.unwrap().kind, SymbolKind::Method);
 
-        let speak = symbols.iter().find(|s| s.name == "speak" && s.parent_id == animal.unwrap().id);
+        let speak = symbols.iter().find(|s| s.name == "speak" && s.parent_id == Some(animal.unwrap().id.clone()));
         assert!(speak.is_some());
 
         // Inheritance
@@ -388,7 +388,7 @@ end
         assert_eq!(dog.unwrap().kind, SymbolKind::Class);
         // Note: baseClass will be handled by the extractor implementation
 
-        let dog_speak = symbols.iter().find(|s| s.name == "speak" && s.parent_id == dog.unwrap().id);
+        let dog_speak = symbols.iter().find(|s| s.name == "speak" && s.parent_id == Some(dog.unwrap().id.clone()));
         assert!(dog_speak.is_some());
         assert_eq!(dog_speak.unwrap().kind, SymbolKind::Method);
     }
@@ -565,15 +565,15 @@ end
         assert_eq!(m.unwrap().kind, SymbolKind::Variable);
 
         // Module methods
-        let add_method = symbols.iter().find(|s| s.name == "add" && s.parent_id == m.unwrap().id);
+        let add_method = symbols.iter().find(|s| s.name == "add" && s.parent_id == Some(m.unwrap().id.clone()));
         assert!(add_method.is_some());
         assert_eq!(add_method.unwrap().kind, SymbolKind::Method);
 
-        let subtract_method = symbols.iter().find(|s| s.name == "subtract" && s.parent_id == m.unwrap().id);
+        let subtract_method = symbols.iter().find(|s| s.name == "subtract" && s.parent_id == Some(m.unwrap().id.clone()));
         assert!(subtract_method.is_some());
 
         // Module constants
-        let module_pi = symbols.iter().find(|s| s.name == "PI" && s.parent_id == m.unwrap().id);
+        let module_pi = symbols.iter().find(|s| s.name == "PI" && s.parent_id == Some(m.unwrap().id.clone()));
         assert!(module_pi.is_some());
         assert_eq!(module_pi.unwrap().kind, SymbolKind::Field);
 
@@ -581,7 +581,7 @@ end
         let math_utils = symbols.iter().find(|s| s.name == "math_utils");
         assert!(math_utils.is_some());
 
-        let square = symbols.iter().find(|s| s.name == "square" && s.parent_id == math_utils.unwrap().id);
+        let square = symbols.iter().find(|s| s.name == "square" && s.parent_id == Some(math_utils.unwrap().id.clone()));
         assert!(square.is_some());
         assert_eq!(square.unwrap().kind, SymbolKind::Method);
 
@@ -848,7 +848,7 @@ end
         assert!(range.is_some());
 
         // Nested function in iterator
-        let iter = symbols.iter().find(|s| s.name == "iter" && s.parent_id == fibonacci.unwrap().id);
+        let iter = symbols.iter().find(|s| s.name == "iter" && s.parent_id == Some(fibonacci.unwrap().id.clone()));
         assert!(iter.is_some());
         assert_eq!(iter.unwrap().kind, SymbolKind::Function);
         assert_eq!(iter.unwrap().visibility, "private");
@@ -1118,14 +1118,14 @@ end
         assert_eq!(promise.unwrap().kind, SymbolKind::Class);
 
         // Promise methods
-        let promise_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == promise.unwrap().id);
+        let promise_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(promise.unwrap().id.clone()));
         assert!(promise_new.is_some());
         assert_eq!(promise_new.unwrap().kind, SymbolKind::Method);
 
-        let promise_then = symbols.iter().find(|s| s.name == "then" && s.parent_id == promise.unwrap().id);
+        let promise_then = symbols.iter().find(|s| s.name == "then" && s.parent_id == Some(promise.unwrap().id.clone()));
         assert!(promise_then.is_some());
 
-        let run_handlers = symbols.iter().find(|s| s.name == "_runHandlers" && s.parent_id == promise.unwrap().id);
+        let run_handlers = symbols.iter().find(|s| s.name == "_runHandlers" && s.parent_id == Some(promise.unwrap().id.clone()));
         assert!(run_handlers.is_some());
         assert_eq!(run_handlers.unwrap().visibility, "private");
 
@@ -1482,49 +1482,49 @@ end
         assert_eq!(vector.unwrap().kind, SymbolKind::Class);
 
         // Vector constructor
-        let vector_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == vector.unwrap().id);
+        let vector_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_new.is_some());
         assert_eq!(vector_new.unwrap().kind, SymbolKind::Method);
 
         // Arithmetic metamethods
-        let vector_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == vector.unwrap().id);
+        let vector_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_add.is_some());
         assert_eq!(vector_add.unwrap().kind, SymbolKind::Method);
         assert!(vector_add.unwrap().signature.contains("function Vector:__add(other)"));
 
-        let vector_sub = symbols.iter().find(|s| s.name == "__sub" && s.parent_id == vector.unwrap().id);
+        let vector_sub = symbols.iter().find(|s| s.name == "__sub" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_sub.is_some());
 
-        let vector_mul = symbols.iter().find(|s| s.name == "__mul" && s.parent_id == vector.unwrap().id);
+        let vector_mul = symbols.iter().find(|s| s.name == "__mul" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_mul.is_some());
 
-        let vector_div = symbols.iter().find(|s| s.name == "__div" && s.parent_id == vector.unwrap().id);
+        let vector_div = symbols.iter().find(|s| s.name == "__div" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_div.is_some());
 
         // Comparison metamethods
-        let vector_eq = symbols.iter().find(|s| s.name == "__eq" && s.parent_id == vector.unwrap().id);
+        let vector_eq = symbols.iter().find(|s| s.name == "__eq" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_eq.is_some());
 
-        let vector_lt = symbols.iter().find(|s| s.name == "__lt" && s.parent_id == vector.unwrap().id);
+        let vector_lt = symbols.iter().find(|s| s.name == "__lt" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_lt.is_some());
 
         // String representation
-        let vector_tostring = symbols.iter().find(|s| s.name == "__tostring" && s.parent_id == vector.unwrap().id);
+        let vector_tostring = symbols.iter().find(|s| s.name == "__tostring" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_tostring.is_some());
 
         // Length metamethod
-        let vector_len = symbols.iter().find(|s| s.name == "__len" && s.parent_id == vector.unwrap().id);
+        let vector_len = symbols.iter().find(|s| s.name == "__len" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_len.is_some());
 
         // Index metamethods
-        let vector_index = symbols.iter().find(|s| s.name == "__index" && s.parent_id == vector.unwrap().id);
+        let vector_index = symbols.iter().find(|s| s.name == "__index" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_index.is_some());
 
-        let vector_newindex = symbols.iter().find(|s| s.name == "__newindex" && s.parent_id == vector.unwrap().id);
+        let vector_newindex = symbols.iter().find(|s| s.name == "__newindex" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_newindex.is_some());
 
         // Call metamethod
-        let vector_call = symbols.iter().find(|s| s.name == "__call" && s.parent_id == vector.unwrap().id);
+        let vector_call = symbols.iter().find(|s| s.name == "__call" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_call.is_some());
 
         // Complex number class
@@ -1533,13 +1533,13 @@ end
         assert_eq!(complex.unwrap().kind, SymbolKind::Class);
 
         // Complex metamethods
-        let complex_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == complex.unwrap().id);
+        let complex_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == Some(complex.unwrap().id.clone()));
         assert!(complex_add.is_some());
 
-        let complex_pow = symbols.iter().find(|s| s.name == "__pow" && s.parent_id == complex.unwrap().id);
+        let complex_pow = symbols.iter().find(|s| s.name == "__pow" && s.parent_id == Some(complex.unwrap().id.clone()));
         assert!(complex_pow.is_some());
 
-        let complex_unm = symbols.iter().find(|s| s.name == "__unm" && s.parent_id == complex.unwrap().id);
+        let complex_unm = symbols.iter().find(|s| s.name == "__unm" && s.parent_id == Some(complex.unwrap().id.clone()));
         assert!(complex_unm.is_some());
 
         // Matrix class
@@ -1548,13 +1548,13 @@ end
         assert_eq!(matrix.unwrap().kind, SymbolKind::Class);
 
         // Matrix methods and metamethods
-        let matrix_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == matrix.unwrap().id);
+        let matrix_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(matrix.unwrap().id.clone()));
         assert!(matrix_new.is_some());
 
-        let matrix_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == matrix.unwrap().id);
+        let matrix_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == Some(matrix.unwrap().id.clone()));
         assert!(matrix_add.is_some());
 
-        let matrix_mul = symbols.iter().find(|s| s.name == "__mul" && s.parent_id == matrix.unwrap().id);
+        let matrix_mul = symbols.iter().find(|s| s.name == "__mul" && s.parent_id == Some(matrix.unwrap().id.clone()));
         assert!(matrix_mul.is_some());
 
         // Cache class with weak tables
@@ -1562,10 +1562,10 @@ end
         assert!(cache.is_some());
         assert_eq!(cache.unwrap().kind, SymbolKind::Class);
 
-        let cache_set = symbols.iter().find(|s| s.name == "set" && s.parent_id == cache.unwrap().id);
+        let cache_set = symbols.iter().find(|s| s.name == "set" && s.parent_id == Some(cache.unwrap().id.clone()));
         assert!(cache_set.is_some());
 
-        let cache_get = symbols.iter().find(|s| s.name == "get" && s.parent_id == cache.unwrap().id);
+        let cache_get = symbols.iter().find(|s| s.name == "get" && s.parent_id == Some(cache.unwrap().id.clone()));
         assert!(cache_get.is_some());
     }
 
