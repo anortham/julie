@@ -756,36 +756,511 @@ impl RazorExtractor {
     }
 
     // Stub implementations for remaining methods
-    fn extract_field(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Extract field name and type
+        let mut field_name = "unknownField".to_string();
+        let mut field_type = None;
+
+        // Find variable declarator in field declaration
+        if let Some(var_decl) = self.find_child_by_type(node, "variable_declaration") {
+            // Extract type
+            if let Some(type_node) = self.find_child_by_types(var_decl, &[
+                "predefined_type", "identifier", "generic_name", "qualified_name",
+                "nullable_type", "array_type"
+            ]) {
+                field_type = Some(self.base.get_node_text(&type_node));
+            }
+
+            // Find variable declarator(s)
+            if let Some(var_declarator) = self.find_child_by_type(var_decl, "variable_declarator") {
+                if let Some(identifier) = self.find_child_by_type(var_declarator, "identifier") {
+                    field_name = self.base.get_node_text(&identifier);
+                }
+            }
+        }
+
+        let modifiers = self.extract_modifiers(node);
+        let attributes = self.extract_attributes(node);
+
+        let mut signature_parts = Vec::new();
+        if !attributes.is_empty() {
+            signature_parts.push(attributes.join(" "));
+        }
+        if !modifiers.is_empty() {
+            signature_parts.push(modifiers.join(" "));
+        }
+        if let Some(ref f_type) = field_type {
+            signature_parts.push(f_type.clone());
+        }
+        signature_parts.push(field_name.clone());
+
+        Some(self.base.create_symbol(
+            &node,
+            field_name,
+            SymbolKind::Variable,
+            SymbolOptions {
+                signature: Some(signature_parts.join(" ")),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert("type".to_string(), serde_json::Value::String("field".to_string()));
+                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    if let Some(f_type) = field_type {
+                        metadata.insert("fieldType".to_string(), serde_json::Value::String(f_type));
+                    }
+                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 
-    fn extract_local_function(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_local_function(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Extract function name
+        let mut name = "unknownFunction".to_string();
+        if let Some(name_node) = self.find_child_by_type(node, "identifier") {
+            name = self.base.get_node_text(&name_node);
+        }
+
+        let modifiers = self.extract_modifiers(node);
+        let parameters = self.extract_method_parameters(node);
+        let return_type = self.extract_return_type(node);
+        let attributes = self.extract_attributes(node);
+
+        let mut signature_parts = Vec::new();
+        if !attributes.is_empty() {
+            signature_parts.push(attributes.join(" "));
+        }
+        if !modifiers.is_empty() {
+            signature_parts.push(modifiers.join(" "));
+        }
+        if let Some(ref ret_type) = return_type {
+            signature_parts.push(ret_type.clone());
+        } else {
+            signature_parts.push("void".to_string()); // Default return type for local functions
+        }
+        signature_parts.push(format!("{}{}", name, parameters.as_ref().map(|s| s.clone()).unwrap_or_else(|| "()".to_string())));
+
+        Some(self.base.create_symbol(
+            &node,
+            name,
+            SymbolKind::Function,
+            SymbolOptions {
+                signature: Some(signature_parts.join(" ")),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert("type".to_string(), serde_json::Value::String("local-function".to_string()));
+                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    if let Some(params) = &parameters {
+                        metadata.insert("parameters".to_string(), serde_json::Value::String(params.clone()));
+                    }
+                    if let Some(ret_type) = return_type {
+                        metadata.insert("returnType".to_string(), serde_json::Value::String(ret_type));
+                    }
+                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 
-    fn extract_local_variable(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_local_variable(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Extract variable name and type from local declaration
+        let mut variable_name = "unknownVariable".to_string();
+        let mut variable_type = None;
+        let mut initializer = None;
+
+        // Find variable declarator
+        if let Some(var_declarator) = self.find_child_by_type(node, "variable_declarator") {
+            if let Some(identifier) = self.find_child_by_type(var_declarator, "identifier") {
+                variable_name = self.base.get_node_text(&identifier);
+            }
+
+            // Look for initializer (= expression)
+            let mut cursor = var_declarator.walk();
+            let children: Vec<_> = var_declarator.children(&mut cursor).collect();
+            if let Some(equals_pos) = children.iter().position(|c| c.kind() == "=") {
+                if equals_pos + 1 < children.len() {
+                    initializer = Some(self.base.get_node_text(&children[equals_pos + 1]));
+                }
+            }
+        }
+
+        // Find variable type declaration
+        if let Some(var_decl) = self.find_child_by_type(node, "variable_declaration") {
+            if let Some(type_node) = self.find_child_by_types(var_decl, &[
+                "predefined_type", "identifier", "generic_name", "qualified_name",
+                "nullable_type", "array_type"
+            ]) {
+                variable_type = Some(self.base.get_node_text(&type_node));
+            }
+        }
+
+        let modifiers = self.extract_modifiers(node);
+        let attributes = self.extract_attributes(node);
+
+        let mut signature_parts = Vec::new();
+        if !attributes.is_empty() {
+            signature_parts.push(attributes.join(" "));
+        }
+        if !modifiers.is_empty() {
+            signature_parts.push(modifiers.join(" "));
+        }
+        if let Some(ref var_type) = variable_type {
+            signature_parts.push(var_type.clone());
+        }
+        signature_parts.push(variable_name.clone());
+        if let Some(ref init) = initializer {
+            signature_parts.push(format!("= {}", init));
+        }
+
+        Some(self.base.create_symbol(
+            &node,
+            variable_name,
+            SymbolKind::Variable,
+            SymbolOptions {
+                signature: Some(signature_parts.join(" ")),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert("type".to_string(), serde_json::Value::String("local-variable".to_string()));
+                    if let Some(var_type) = variable_type {
+                        metadata.insert("variableType".to_string(), serde_json::Value::String(var_type));
+                    }
+                    if let Some(init) = initializer {
+                        metadata.insert("initializer".to_string(), serde_json::Value::String(init));
+                    }
+                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 
-    fn extract_variable_declaration(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_variable_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Extract variable name and type from variable declaration
+        let mut variable_name = "unknownVariable".to_string();
+        let mut variable_type = None;
+
+        // Find the type (if present)
+        if let Some(type_node) = self.find_child_by_types(node, &[
+            "predefined_type", "identifier", "generic_name", "qualified_name",
+            "nullable_type", "array_type", "var"
+        ]) {
+            let type_text = self.base.get_node_text(&type_node);
+            if type_text != "var" {  // Don't use "var" as the actual type
+                variable_type = Some(type_text);
+            }
+        }
+
+        // Find variable declarators
+        let mut declarators = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "variable_declarator" {
+                if let Some(identifier) = self.find_child_by_type(child, "identifier") {
+                    let name = self.base.get_node_text(&identifier);
+
+                    // Look for initializer
+                    let mut initializer = None;
+                    let mut decl_cursor = child.walk();
+                    let decl_children: Vec<_> = child.children(&mut decl_cursor).collect();
+                    if let Some(equals_pos) = decl_children.iter().position(|c| c.kind() == "=") {
+                        if equals_pos + 1 < decl_children.len() {
+                            initializer = Some(self.base.get_node_text(&decl_children[equals_pos + 1]));
+                        }
+                    }
+
+                    declarators.push((name, initializer));
+                }
+            }
+        }
+
+        // For now, handle the first declarator (most common case)
+        if let Some((name, initializer)) = declarators.first() {
+            variable_name = name.clone();
+
+            let mut signature_parts = Vec::new();
+            if let Some(ref var_type) = variable_type {
+                signature_parts.push(var_type.clone());
+            } else {
+                signature_parts.push("var".to_string());
+            }
+            signature_parts.push(variable_name.clone());
+            if let Some(ref init) = initializer {
+                signature_parts.push(format!("= {}", init));
+            }
+
+            Some(self.base.create_symbol(
+                &node,
+                variable_name,
+                SymbolKind::Variable,
+                SymbolOptions {
+                    signature: Some(signature_parts.join(" ")),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some({
+                        let mut metadata = HashMap::new();
+                        metadata.insert("type".to_string(), serde_json::Value::String("variable-declaration".to_string()));
+                        if let Some(var_type) = variable_type {
+                            metadata.insert("variableType".to_string(), serde_json::Value::String(var_type));
+                        }
+                        if let Some(init) = initializer {
+                            metadata.insert("initializer".to_string(), serde_json::Value::String(init.clone()));
+                        }
+                        metadata
+                    }),
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
     }
 
-    fn extract_assignment(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_assignment(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Extract left side (variable being assigned to) and right side (value)
+        let mut left_side = None;
+        let mut right_side = None;
+
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+
+        // Find the assignment operator (=) and extract left/right sides
+        if let Some(equals_pos) = children.iter().position(|c| c.kind() == "=") {
+            if equals_pos > 0 {
+                left_side = Some(self.base.get_node_text(&children[equals_pos - 1]));
+            }
+            if equals_pos + 1 < children.len() {
+                right_side = Some(self.base.get_node_text(&children[equals_pos + 1]));
+            }
+        }
+
+        if let (Some(left), Some(right)) = (&left_side, &right_side) {
+            let signature = format!("{} = {}", left, right);
+            let variable_name = if left.contains('[') {
+                // Handle ViewData["Title"] -> extract as ViewData assignment
+                left.split('[').next().unwrap_or(left).to_string()
+            } else {
+                left.clone()
+            };
+
+            Some(self.base.create_symbol(
+                &node,
+                variable_name,
+                SymbolKind::Variable,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some({
+                        let mut metadata = HashMap::new();
+                        metadata.insert("type".to_string(), serde_json::Value::String("assignment".to_string()));
+                        metadata.insert("leftSide".to_string(), serde_json::Value::String(left.clone()));
+                        metadata.insert("rightSide".to_string(), serde_json::Value::String(right.clone()));
+                        if left.contains("ViewData") {
+                            metadata.insert("isViewData".to_string(), serde_json::Value::Bool(true));
+                        }
+                        if left.contains("ViewBag") {
+                            metadata.insert("isViewBag".to_string(), serde_json::Value::Bool(true));
+                        }
+                        if left.contains("Layout") {
+                            metadata.insert("isLayout".to_string(), serde_json::Value::Bool(true));
+                        }
+                        metadata
+                    }),
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
     }
 
-    fn extract_invocation(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_invocation(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let invocation_text = self.base.get_node_text(&node);
+
+        // Extract method name and arguments
+        let mut method_name = "unknownMethod".to_string();
+        let mut arguments = None;
+
+        // Look for the invoked expression (method name)
+        if let Some(expression) = self.find_child_by_types(node, &["identifier", "member_access_expression"]) {
+            method_name = self.base.get_node_text(&expression);
+        }
+
+        // Look for argument list
+        if let Some(arg_list) = self.find_child_by_type(node, "argument_list") {
+            arguments = Some(self.base.get_node_text(&arg_list));
+        }
+
+        let signature = if let Some(args) = &arguments {
+            format!("{}{}", method_name, args)
+        } else {
+            format!("{}()", method_name)
+        };
+
+        Some(self.base.create_symbol(
+            &node,
+            method_name.clone(),
+            SymbolKind::Function,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert("type".to_string(), serde_json::Value::String("method-invocation".to_string()));
+                    metadata.insert("methodName".to_string(), serde_json::Value::String(method_name.clone()));
+                    if let Some(args) = arguments {
+                        metadata.insert("arguments".to_string(), serde_json::Value::String(args));
+                    }
+                    // Detect special method types
+                    if method_name.contains("Component.InvokeAsync") {
+                        metadata.insert("isComponentInvocation".to_string(), serde_json::Value::Bool(true));
+                    }
+                    if method_name.contains("Html.Raw") {
+                        metadata.insert("isHtmlHelper".to_string(), serde_json::Value::Bool(true));
+                    }
+                    if method_name.contains("RenderSectionAsync") {
+                        metadata.insert("isRenderSection".to_string(), serde_json::Value::Bool(true));
+                    }
+                    if method_name.contains("RenderBody") {
+                        metadata.insert("isRenderBody".to_string(), serde_json::Value::Bool(true));
+                    }
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 
-    fn extract_element_access(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_element_access(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Handle expressions like ViewData["Title"], ViewBag.MetaDescription
+        let element_text = self.base.get_node_text(&node);
+
+        let mut object_name = "unknown".to_string();
+        let mut access_key = None;
+
+        // Try to find the object being accessed
+        if let Some(expression) = self.find_child_by_type(node, "identifier") {
+            object_name = self.base.get_node_text(&expression);
+        } else if let Some(member_access) = self.find_child_by_type(node, "member_access_expression") {
+            object_name = self.base.get_node_text(&member_access);
+        }
+
+        // Try to find the access key
+        if let Some(bracket_expr) = self.find_child_by_type(node, "bracket_expression") {
+            access_key = Some(self.base.get_node_text(&bracket_expr));
+        }
+
+        let signature = element_text.clone();
+        let symbol_name = if let Some(key) = &access_key {
+            format!("{}[{}]", object_name, key)
+        } else {
+            object_name.clone()
+        };
+
+        Some(self.base.create_symbol(
+            &node,
+            symbol_name,
+            SymbolKind::Variable,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert("type".to_string(), serde_json::Value::String("element-access".to_string()));
+                    metadata.insert("objectName".to_string(), serde_json::Value::String(object_name.clone()));
+                    if let Some(key) = access_key {
+                        metadata.insert("accessKey".to_string(), serde_json::Value::String(key));
+                    }
+                    if object_name.contains("ViewData") {
+                        metadata.insert("isViewData".to_string(), serde_json::Value::Bool(true));
+                    }
+                    if object_name.contains("ViewBag") {
+                        metadata.insert("isViewBag".to_string(), serde_json::Value::Bool(true));
+                    }
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 
-    fn extract_html_attribute(&mut self, _node: Node, _parent_id: Option<&str>, _symbols: &mut Vec<Symbol>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    fn extract_html_attribute(&mut self, node: Node, parent_id: Option<&str>, _symbols: &mut Vec<Symbol>) -> Option<Symbol> {
+        let attribute_text = self.base.get_node_text(&node);
+
+        // Extract attribute name and value
+        let mut attr_name = None;
+        let mut attr_value = None;
+
+        if let Some(name_node) = self.find_child_by_type(node, "attribute_name") {
+            attr_name = Some(self.base.get_node_text(&name_node));
+        } else if let Some(identifier) = self.find_child_by_type(node, "identifier") {
+            attr_name = Some(self.base.get_node_text(&identifier));
+        }
+
+        if let Some(value_node) = self.find_child_by_type(node, "attribute_value") {
+            attr_value = Some(self.base.get_node_text(&value_node));
+        } else if let Some(string_literal) = self.find_child_by_type(node, "string_literal") {
+            attr_value = Some(self.base.get_node_text(&string_literal));
+        }
+
+        // If we can't parse structured, fall back to parsing the text
+        if attr_name.is_none() {
+            if let Some(captures) = regex::Regex::new(r"([^=]+)=(.*)").unwrap().captures(&attribute_text) {
+                attr_name = Some(captures[1].trim().to_string());
+                attr_value = Some(captures[2].trim().to_string());
+            } else {
+                attr_name = Some(attribute_text.clone());
+            }
+        }
+
+        if let Some(name) = attr_name {
+            let signature = if let Some(value) = &attr_value {
+                format!("{}={}", name, value)
+            } else {
+                name.clone()
+            };
+
+            Some(self.base.create_symbol(
+                &node,
+                name.clone(),
+                SymbolKind::Variable,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some({
+                        let mut metadata = HashMap::new();
+                        metadata.insert("type".to_string(), serde_json::Value::String("html-attribute".to_string()));
+                        metadata.insert("attributeName".to_string(), serde_json::Value::String(name.clone()));
+                        if let Some(value) = attr_value {
+                            metadata.insert("attributeValue".to_string(), serde_json::Value::String(value));
+                        }
+                        if name.starts_with("@bind") {
+                            metadata.insert("isDataBinding".to_string(), serde_json::Value::String("true".to_string()));
+                        }
+                        if name.starts_with("@on") {
+                            metadata.insert("isEventBinding".to_string(), serde_json::Value::Bool(true));
+                        }
+                        metadata
+                    }),
+                    doc_comment: None,
+                },
+            ))
+        } else {
+            None
+        }
     }
 
     fn extract_razor_attribute(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
@@ -944,16 +1419,114 @@ impl RazorExtractor {
         }
     }
 
-    fn extract_component_relationships(&self, _node: Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
-        // TODO: Implement component relationships
+    fn extract_component_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        // Extract relationships between Razor components
+        let element_text = self.base.get_node_text(&node);
+
+        // Look for component tag names (uppercase elements indicate components)
+        if let Some(name_node) = self.find_child_by_type(node, "identifier") {
+            let component_name = self.base.get_node_text(&name_node);
+
+            // Find the using component (from symbols)
+            if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
+                // Find the used component (if it exists in symbols)
+                if let Some(to_symbol) = symbols.iter().find(|s| s.name == component_name && s.kind == SymbolKind::Class) {
+                    relationships.push(self.base.create_relationship(
+                        from_symbol.id.clone(),
+                        to_symbol.id.clone(),
+                        crate::extractors::base::RelationshipKind::Uses,
+                        &node,
+                        Some(1.0),
+                        Some({
+                            let mut metadata = HashMap::new();
+                            metadata.insert("component".to_string(), serde_json::Value::String(component_name));
+                            metadata.insert("type".to_string(), serde_json::Value::String("razor-component".to_string()));
+                            metadata
+                        }),
+                    ));
+                }
+            }
+        }
     }
 
-    fn extract_using_relationships(&self, _node: Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
-        // TODO: Implement using relationships
+    fn extract_using_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        // Extract using directive relationships
+        if let Some(qualified_name) = self.find_child_by_type(node, "qualified_name") {
+            let namespace_name = self.base.get_node_text(&qualified_name);
+
+            // Find any symbol that could be using this namespace
+            if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
+                relationships.push(self.base.create_relationship(
+                    from_symbol.id.clone(),
+                    format!("using-{}", namespace_name), // Create synthetic ID for namespaces
+                    crate::extractors::base::RelationshipKind::Uses,
+                    &node,
+                    Some(0.8),
+                    Some({
+                        let mut metadata = HashMap::new();
+                        metadata.insert("namespace".to_string(), serde_json::Value::String(namespace_name));
+                        metadata.insert("type".to_string(), serde_json::Value::String("using-directive".to_string()));
+                        metadata
+                    }),
+                ));
+            }
+        }
     }
 
-    fn extract_element_relationships(&self, _node: Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
-        // TODO: Implement element relationships
+    fn extract_element_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+        // Extract relationships from HTML elements that might bind to properties
+        let element_text = self.base.get_node_text(&node);
+
+        // Check for data binding attributes (e.g., @bind-Value)
+        if element_text.contains("@bind") {
+            if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
+                // Extract property being bound
+                if let Some(captures) = regex::Regex::new(r"@bind-(\w+)").unwrap().captures(&element_text) {
+                    if let Some(property_match) = captures.get(1) {
+                        let property_name = property_match.as_str().to_string();
+
+                        relationships.push(self.base.create_relationship(
+                            from_symbol.id.clone(),
+                            format!("property-{}", property_name), // Create synthetic ID for bound properties
+                            crate::extractors::base::RelationshipKind::Uses,
+                            &node,
+                            Some(0.9),
+                            Some({
+                                let mut metadata = HashMap::new();
+                                metadata.insert("property".to_string(), serde_json::Value::String(property_name));
+                                metadata.insert("type".to_string(), serde_json::Value::String("data-binding".to_string()));
+                                metadata
+                            }),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check for event binding attributes (e.g., @onclick)
+        if element_text.contains("@on") {
+            if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
+                if let Some(captures) = regex::Regex::new(r"@on(\w+)").unwrap().captures(&element_text) {
+                    if let Some(event_match) = captures.get(1) {
+                        let event_name = event_match.as_str().to_string();
+
+                        relationships.push(self.base.create_relationship(
+                            from_symbol.id.clone(),
+                            format!("event-{}", event_name), // Create synthetic ID for events
+                            crate::extractors::base::RelationshipKind::Uses,
+                            &node,
+                            Some(0.9),
+                            Some({
+                                let mut metadata = HashMap::new();
+                                metadata.insert("event".to_string(), serde_json::Value::String(event_name));
+                                metadata.insert("type".to_string(), serde_json::Value::String("event-binding".to_string()));
+                                metadata
+                            }),
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     fn extract_identifier_component_relationships(&self, _node: Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {

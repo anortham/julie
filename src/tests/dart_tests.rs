@@ -334,6 +334,7 @@ T processData<T extends Comparable<T>>(T data, T Function(T) processor) {
 
             let symbols = extractor.extract_symbols(&tree);
 
+
             // Should extract enums
             let color_enum = symbols.iter()
                 .find(|s| s.name == "Color" && s.kind == SymbolKind::Enum);

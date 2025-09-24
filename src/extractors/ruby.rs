@@ -32,71 +32,118 @@ impl RubyExtractor {
     }
 
     fn traverse_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>) {
+        self.traverse_tree_with_parent(node, symbols, None);
+    }
+
+    fn traverse_tree_with_parent(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+        let mut symbol_opt: Option<Symbol> = None;
+        let mut new_visibility = self.current_visibility.clone();
+
         match node.kind() {
             "module" => {
-                let symbol = self.extract_module(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_module(node, parent_id.clone()));
             }
             "class" => {
-                let symbol = self.extract_class(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_class(node, parent_id.clone()));
             }
             "singleton_class" => {
-                let symbol = self.extract_singleton_class(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_singleton_class(node, parent_id.clone()));
             }
             "method" => {
-                let symbol = self.extract_method(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_method(node, parent_id.clone()));
             }
             "singleton_method" => {
-                let symbol = self.extract_singleton_method(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_singleton_method(node, parent_id.clone()));
             }
             "call" => {
                 if let Some(symbol) = self.extract_call(node) {
-                    symbols.push(symbol);
+                    symbol_opt = Some(symbol);
                 }
             }
             "assignment" | "operator_assignment" => {
                 if let Some(symbol) = self.extract_assignment(node) {
-                    symbols.push(symbol);
+                    symbol_opt = Some(symbol);
                 }
             }
             "class_variable" | "instance_variable" | "global_variable" => {
-                let symbol = self.extract_variable(node);
-                symbols.push(symbol);
+                // Only create symbol if not part of an assignment (which handles it)
+                // TODO: Implement is_part_of_assignment method
+                // if !self.is_part_of_assignment(&node) {
+                    symbol_opt = Some(self.extract_variable(node));
+                // }
             }
             "constant" => {
-                let symbol = self.extract_constant(node);
-                symbols.push(symbol);
+                // Only create symbol if not part of class/module declaration or assignment
+                // TODO: Implement is_part_of_class_module_declaration and is_part_of_assignment methods
+                // if !self.is_part_of_class_module_declaration(&node) && !self.is_part_of_assignment(&node) {
+                    symbol_opt = Some(self.extract_constant(node));
+                // }
             }
             "alias" => {
-                let symbol = self.extract_alias(node);
-                symbols.push(symbol);
+                symbol_opt = Some(self.extract_alias(node));
             }
             "identifier" => {
                 // Handle visibility modifiers
                 let text = self.base.get_node_text(&node);
-                self.current_visibility = match text.as_str() {
+                new_visibility = match text.as_str() {
                     "private" => Visibility::Private,
                     "protected" => Visibility::Protected,
                     "public" => Visibility::Public,
                     _ => self.current_visibility.clone(),
                 };
+                if new_visibility != self.current_visibility {
+                    self.current_visibility = new_visibility.clone();
+                }
             }
             _ => {}
         }
 
-        // Recursively traverse children
+        // Add symbol to collection and update parent_id for children
+        let current_parent_id = if let Some(symbol) = symbol_opt {
+            let symbol_id = symbol.id.clone();
+            symbols.push(symbol);
+            Some(symbol_id)
+        } else {
+            parent_id
+        };
+
+        // Recursively traverse children with updated parent context
+        let old_visibility = self.current_visibility.clone();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.traverse_tree(child, symbols);
+            // Check if child is a visibility modifier that affects subsequent siblings
+            if child.kind() == "identifier" {
+                let text = self.base.get_node_text(&child);
+                if matches!(text.as_str(), "private" | "protected" | "public") {
+                    self.current_visibility = match text.as_str() {
+                        "private" => Visibility::Private,
+                        "protected" => Visibility::Protected,
+                        "public" => Visibility::Public,
+                        _ => self.current_visibility.clone(),
+                    };
+                }
+            }
+            self.traverse_tree_with_parent(child, symbols, current_parent_id.clone());
         }
+        self.current_visibility = old_visibility; // Restore previous visibility
     }
 
-    fn extract_module(&mut self, node: Node) -> Symbol {
-        let name = self.extract_name_from_node(node, "constant").unwrap_or_else(|| "UnknownModule".to_string());
+    fn extract_module(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+        // Try different field names that Ruby tree-sitter uses
+        let name = self.extract_name_from_node(node, "name")
+            .or_else(|| self.extract_name_from_node(node, "constant"))
+            .or_else(|| {
+                // Fallback: find first constant child
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "constant" {
+                        return Some(self.base.get_node_text(&child));
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| "UnknownModule".to_string());
+
         let signature = self.build_module_signature(&node, &name);
 
         self.base.create_symbol(
@@ -106,15 +153,29 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
         )
     }
 
-    fn extract_class(&mut self, node: Node) -> Symbol {
-        let name = self.extract_name_from_node(node, "constant").unwrap_or_else(|| "UnknownClass".to_string());
+    fn extract_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+        // Try different field names that Ruby tree-sitter uses
+        let name = self.extract_name_from_node(node, "name")
+            .or_else(|| self.extract_name_from_node(node, "constant"))
+            .or_else(|| {
+                // Fallback: find first constant child
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "constant" {
+                        return Some(self.base.get_node_text(&child));
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| "UnknownClass".to_string());
+
         let signature = self.build_class_signature(&node, &name);
 
         self.base.create_symbol(
@@ -124,32 +185,52 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
         )
     }
 
-    fn extract_singleton_class(&mut self, node: Node) -> Symbol {
-        let signature = format!("class << self");
+    fn extract_singleton_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+        // Find the target of the singleton class (self, identifier, etc.)
+        let target_node = node.children(&mut node.walk()).find(|c| matches!(c.kind(), "self" | "identifier"));
+        let target = target_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "self".to_string());
+        let signature = format!("class << {}", target);
 
         self.base.create_symbol(
             &node,
-            "SingletonClass".to_string(),
+            format!("<<{}", target),
             SymbolKind::Class,
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
         )
     }
 
-    fn extract_method(&mut self, node: Node) -> Symbol {
-        let name = self.extract_name_from_node(node, "identifier").unwrap_or_else(|| "unknownMethod".to_string());
+    fn extract_method(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+        let name = self.extract_name_from_node(node, "name")
+            .or_else(|| self.extract_name_from_node(node, "identifier"))
+            .or_else(|| self.extract_name_from_node(node, "operator"))
+            .or_else(|| {
+                // Fallback: find method name by traversing children
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    match child.kind() {
+                        "identifier" | "operator" => {
+                            return Some(self.base.get_node_text(&child));
+                        }
+                        _ => continue,
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| "unknownMethod".to_string());
+
         let signature = self.build_method_signature(&node, &name);
         let kind = if name == "initialize" { SymbolKind::Constructor } else { SymbolKind::Method };
 
@@ -162,14 +243,14 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(visibility),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
         )
     }
 
-    fn extract_singleton_method(&mut self, node: Node) -> Symbol {
+    fn extract_singleton_method(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name = self.extract_singleton_method_name(node);
         let signature = self.build_singleton_method_signature(&node, &name);
 
@@ -182,7 +263,7 @@ impl RubyExtractor {
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(visibility),
-                parent_id: None,
+                parent_id,
                 metadata: None,
                 doc_comment: None,
             },
@@ -319,9 +400,20 @@ impl RubyExtractor {
     fn build_method_signature(&self, node: &Node, name: &str) -> String {
         let mut signature = format!("def {}", name);
 
+        // Try different field names for parameters
         if let Some(params) = node.child_by_field_name("parameters") {
             signature.push_str(&self.base.get_node_text(&params));
+        } else if let Some(params) = node.child_by_field_name("method_parameters") {
+            signature.push_str(&self.base.get_node_text(&params));
         } else {
+            // Fallback: look for parameter list node
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if matches!(child.kind(), "parameters" | "method_parameters" | "parameter_list") {
+                    signature.push_str(&self.base.get_node_text(&child));
+                    return signature;
+                }
+            }
             signature.push_str("()");
         }
 
@@ -542,7 +634,19 @@ impl RubyExtractor {
     fn extract_inheritance_relationship(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         if let Some(superclass_node) = node.child_by_field_name("superclass") {
             let class_name = self.extract_name_from_node(node, "name")
+                .or_else(|| self.extract_name_from_node(node, "constant"))
+                .or_else(|| {
+                    // Fallback: find first constant child
+                    let mut cursor = node.walk();
+                    for child in node.children(&mut cursor) {
+                        if child.kind() == "constant" {
+                            return Some(self.base.get_node_text(&child));
+                        }
+                    }
+                    None
+                })
                 .unwrap_or_else(|| "UnknownClass".to_string());
+
             let superclass_name = self.base.get_node_text(&superclass_node).replace('<', "").trim().to_string();
 
             if let (Some(from_symbol), Some(to_symbol)) = (
@@ -564,6 +668,17 @@ impl RubyExtractor {
 
     fn extract_module_inclusion_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         let class_or_module_name = self.extract_name_from_node(node, "name")
+            .or_else(|| self.extract_name_from_node(node, "constant"))
+            .or_else(|| {
+                // Fallback: find first constant child
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "constant" {
+                        return Some(self.base.get_node_text(&child));
+                    }
+                }
+                None
+            })
             .unwrap_or_else(|| "Unknown".to_string());
 
         let mut cursor = node.walk();
@@ -595,5 +710,45 @@ impl RubyExtractor {
                 }
             }
         }
+    }
+
+    // Helper methods for checking node context
+    fn is_part_of_assignment(&self, node: &Node) -> bool {
+        let mut current = *node;
+        while let Some(parent) = current.parent() {
+            if matches!(parent.kind(), "assignment" | "operator_assignment") {
+                return true;
+            }
+            current = parent;
+        }
+        false
+    }
+
+    fn is_part_of_class_module_declaration(&self, node: &Node) -> bool {
+        let mut current = *node;
+        while let Some(parent) = current.parent() {
+            if matches!(parent.kind(), "class" | "module") {
+                // Check if this constant is the name of the class/module
+                if let Some(name_node) = parent.child_by_field_name("name") {
+                    if name_node.id() == current.id() {
+                        return true;
+                    }
+                } else if let Some(name_node) = parent.child_by_field_name("constant") {
+                    if name_node.id() == current.id() {
+                        return true;
+                    }
+                } else {
+                    // Fallback: check if this is the first constant child
+                    let mut cursor = parent.walk();
+                    for child in parent.children(&mut cursor) {
+                        if child.kind() == "constant" && child.id() == current.id() {
+                            return true;
+                        }
+                    }
+                }
+            }
+            current = parent;
+        }
+        false
     }
 }

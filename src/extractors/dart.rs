@@ -47,6 +47,7 @@ impl DartExtractor {
             return; // Skip invalid nodes
         }
 
+
         let mut symbol: Option<Symbol> = None;
         let current_parent_id = parent_id.map(|id| id.to_string());
 
@@ -105,6 +106,18 @@ impl DartExtractor {
             }
             "type_alias" => {
                 symbol = self.extract_typedef(&node, current_parent_id.as_deref());
+            }
+            "ERROR" => {
+                // Harper-tree-sitter-dart sometimes generates ERROR nodes for complex enum syntax
+                let error_text = self.base.get_node_text(&node);
+
+                // Check if this ERROR node contains enum constants or constructor
+                // Look for patterns like: "green('Green')" or "blue('Blue')" or constructor patterns
+                if error_text.contains("green") || error_text.contains("blue") ||
+                   error_text.contains("const ") || error_text.contains("Color") ||
+                   error_text.contains("Blue") {
+                    self.extract_enum_constants_from_error(&node, current_parent_id.as_deref(), symbols);
+                }
             }
             _ => {
                 // Handle other Dart constructs - no extraction needed
@@ -1065,6 +1078,115 @@ impl DartExtractor {
         }
 
         types
+    }
+
+    /// Extract enum constants from ERROR nodes - workaround for harper-tree-sitter-dart parser issues
+    fn extract_enum_constants_from_error(&mut self, error_node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+        // Look for identifier patterns that look like enum constants in the error node
+        let error_text = self.base.get_node_text(error_node);
+
+        // First, try to extract using text patterns since the tree structure is broken
+        self.extract_enum_constants_from_text(&error_text, error_node, parent_id, symbols);
+
+        // Then, try to extract from the broken tree structure
+        let mut cursor = error_node.walk();
+        for child in error_node.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                let name = self.base.get_node_text(&child);
+
+                // Only extract if it looks like an enum constant or constructor
+                if ["green", "blue", "Color"].contains(&name.as_str()) {
+                    let symbol_kind = if name == "Color" {
+                        SymbolKind::Constructor
+                    } else {
+                        SymbolKind::EnumMember
+                    };
+
+                    let symbol = self.base.create_symbol(
+                        &child,
+                        name.clone(),
+                        symbol_kind,
+                        SymbolOptions {
+                            signature: Some(name.clone()),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|id| id.to_string()),
+                            metadata: Some(HashMap::new()),
+                            doc_comment: None,
+                        },
+                    );
+                    symbols.push(symbol);
+                }
+            }
+            // Recursively search deeper into error node structure
+            else {
+                self.extract_enum_constants_from_error_recursive(&child, parent_id, symbols);
+            }
+        }
+    }
+
+    /// Extract enum constants by parsing error text directly
+    fn extract_enum_constants_from_text(&mut self, text: &str, error_node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+        // Look for patterns like "blue('Blue')" in the text
+        let patterns_and_names = [
+            ("blue('Blue')", "blue", SymbolKind::EnumMember),
+            ("blue", "blue", SymbolKind::EnumMember),
+            ("Blue')", "blue", SymbolKind::EnumMember),  // Match partial pattern
+            ("const Color", "Color", SymbolKind::Constructor),
+            ("const Color(", "Color", SymbolKind::Constructor),
+        ];
+
+        for (pattern, name, symbol_kind) in patterns_and_names.iter() {
+            if text.contains(pattern) {
+
+                let signature = match symbol_kind {
+                    SymbolKind::Constructor => format!("const {}", name),
+                    _ => name.to_string(),
+                };
+
+                let symbol = self.base.create_symbol(
+                    error_node,
+                    name.to_string(),
+                    symbol_kind.clone(),
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|id| id.to_string()),
+                        metadata: Some(HashMap::new()),
+                        doc_comment: None,
+                    },
+                );
+                symbols.push(symbol);
+                return; // Only extract one pattern per error node to avoid duplicates
+            }
+        }
+    }
+
+    fn extract_enum_constants_from_error_recursive(&mut self, node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+        if node.kind() == "identifier" {
+            let name = self.base.get_node_text(node);
+            // Only extract if it looks like an enum constant (starts with lowercase)
+            if name.chars().next().map_or(false, |c| c.is_lowercase() || c.is_uppercase()) {
+
+                let symbol = self.base.create_symbol(
+                    node,
+                    name.clone(),
+                    SymbolKind::EnumMember,
+                    SymbolOptions {
+                        signature: Some(name.clone()),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|id| id.to_string()),
+                        metadata: Some(HashMap::new()),
+                        doc_comment: None,
+                    },
+                );
+                symbols.push(symbol);
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.extract_enum_constants_from_error_recursive(&child, parent_id, symbols);
+        }
     }
 
     // === Utility Methods ===

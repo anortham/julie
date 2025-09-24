@@ -15,6 +15,37 @@ Your mission: **leverage Miller's significant investment** in extraction logic w
 
 After achieving 100% Miller test parity, if you identify gaps in test coverage or additional edge cases that should be tested, **expand the test suite** following the same TDD methodology. Your language extractor should be the gold standard.
 
+## 🚨 TREE-SITTER VERSION CONSTRAINTS (NEVER VIOLATE)
+
+**CRITICAL**: Julie's tree-sitter versions are LOCKED due to native library conflicts and API incompatibilities:
+
+- `tree-sitter = "0.25"` - **DO NOT CHANGE**
+- All parser crates must be compatible with tree-sitter 0.25
+- **Modern parser replacements** (use these, not outdated ones):
+  - `tree-sitter-kotlin-ng = "1.1.0"` (NOT old tree-sitter-kotlin)
+  - `harper-tree-sitter-dart = "0.0.5"` (NOT old tree-sitter-dart)
+- See `TREE_SITTER_WARNING.md` for full context
+
+**Parser Integration Pattern**:
+```rust
+// ✅ CORRECT - Modern parser usage:
+parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())?;
+parser.set_language(&harper_tree_sitter_dart::LANGUAGE.into())?;
+
+// ❌ WRONG - Old/incompatible patterns:
+parser.set_language(&tree_sitter_kotlin::language())?; // Outdated
+parser.set_language(tree_sitter_dart::language())?;    // Wrong API
+```
+
+**Compilation Error Prevention**:
+```rust
+// ✅ CORRECT - Use working extractors as reference
+// Look at TypeScript, Python, C# extractors for proven patterns
+
+// ❌ WRONG - Don't guess API patterns
+// If unsure, copy exactly from a working extractor
+```
+
 ## 🚨 NON-NEGOTIABLE API SPECIFICATIONS
 
 **CRITICAL**: You MUST use these EXACT API patterns. DO NOT GUESS OR IMPROVISE.
@@ -41,17 +72,20 @@ self.base.create_symbol(
 - `crate::extractors::base::Visibility::Private`
 - `crate::extractors::base::Visibility::Protected`
 
-### ✅ Test Assertion Patterns:
+### ✅ Test Assertion Patterns (CRITICAL - COMMON COMPILATION ERRORS):
 ```rust
-// ✅ CORRECT:
-assert_eq!(symbol.visibility.as_ref().unwrap(), &Visibility::Public);
-assert_eq!(symbol.signature.as_ref().unwrap().contains("function"));
-assert_eq!(symbol.parent_id, Some(parent.id));
+// ✅ CORRECT - Parent ID comparisons:
+assert_eq!(symbol.parent_id, Some(parent.id.clone()));
+let child = symbols.iter().find(|s| s.parent_id == Some(parent.id.clone()));
 
-// ❌ NEVER DO THIS:
-assert_eq!(symbol.visibility.unwrap(), "public"); // WRONG!
-assert!(symbol.signature.contains("function")); // WRONG!
-assert_eq!(symbol.parent_id, parent.id); // WRONG!
+// ✅ CORRECT - Option handling:
+assert_eq!(symbol.visibility.as_ref().unwrap(), &Visibility::Public);
+assert!(symbol.signature.as_ref().unwrap().contains("function"));
+
+// ❌ COMPILATION ERRORS - These patterns will fail:
+assert_eq!(symbol.parent_id, parent.id);     // Type mismatch: Option vs String
+assert_eq!(symbol.visibility.unwrap(), "public"); // Type mismatch: Enum vs String
+assert!(symbol.signature.contains("function"));   // Option not unwrapped
 ```
 
 ### ✅ Required Imports:

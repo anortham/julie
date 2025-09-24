@@ -420,6 +420,9 @@ impl HTMLExtractor {
             "object" => vec!["type", "data", "width", "height"],
             "embed" => vec!["type", "src", "width", "height"],
             "body" => vec!["class", "data-theme"],
+            "custom-video-player" => vec!["src", "controls", "width", "height"],
+            "image-gallery" => vec!["images", "layout", "lazy-loading"],
+            "data-visualization" => vec!["type", "data-source", "refresh-interval"],
             _ => vec![],
         };
 
@@ -435,7 +438,7 @@ impl HTMLExtractor {
             "title" | "alt" | "placeholder" | "value" | "href" | "src" | "target" | "rel" |
             "multiple" | "required" | "disabled" | "readonly" | "checked" | "selected" |
             "autocomplete" | "datetime" | "pattern" | "maxlength" | "minlength" | "rows" |
-            "cols" | "accept" | "open" | "class" | "role" | "novalidate" | "slot"
+            "cols" | "accept" | "open" | "class" | "role" | "novalidate" | "slot" | "controls"
         )
     }
 

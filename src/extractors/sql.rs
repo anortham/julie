@@ -64,10 +64,6 @@ impl SqlExtractor {
     }
 
     fn visit_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
-        if node.is_error() {
-            return;
-        }
-
         let mut symbol: Option<Symbol> = None;
 
         match node.kind() {
@@ -756,7 +752,7 @@ impl SqlExtractor {
         let mut signature = format!("CREATE DOMAIN {}", name);
 
         // Extract the base type (AS datatype)
-        if let Some(as_match) = regex::Regex::new(r"AS\s+([A-Z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap().captures(&node_text) {
+        if let Some(as_match) = regex::Regex::new(r"AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap().captures(&node_text) {
             signature.push_str(&format!(" AS {}", as_match.get(1).unwrap().as_str()));
         }
 
@@ -1197,7 +1193,7 @@ impl SqlExtractor {
         }
 
         // Extract domains
-        let domain_regex = regex::Regex::new(r"CREATE\s+DOMAIN\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+([A-Z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap();
+        let domain_regex = regex::Regex::new(r"CREATE\s+DOMAIN\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap();
         if let Some(captures) = domain_regex.captures(&error_text) {
             if let Some(domain_name) = captures.get(1) {
                 let name = domain_name.as_str().to_string();
@@ -1283,8 +1279,18 @@ impl SqlExtractor {
     }
 
     fn extract_view_columns(&mut self, view_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_view_id: &str) {
-        // TODO: Implement view columns extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's extractViewColumns logic
+        // Look for the SELECT statement inside the view and extract its aliases
+        let nodes = self.base.find_nodes_by_type(&view_node, "select_statement");
+        for select_node in nodes {
+            self.extract_select_aliases(select_node, symbols, Some(parent_view_id));
+        }
+
+        // Also check for just "select" nodes
+        let select_nodes = self.base.find_nodes_by_type(&view_node, "select");
+        for select_node in select_nodes {
+            self.extract_select_aliases(select_node, symbols, Some(parent_view_id));
+        }
     }
 
     fn extract_view_columns_from_error_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_view_id: &str) {

@@ -365,6 +365,7 @@ HAVING COUNT(ae.id) > 0;
 
         let symbols = extract_symbols(sql_code);
 
+
         // Should extract stored procedures
         let get_user_analytics = symbols.iter().find(|s| s.name == "GetUserAnalytics" && s.kind == SymbolKind::Function);
         assert!(get_user_analytics.is_some());
@@ -505,6 +506,7 @@ CREATE AGGREGATE mode(anyelement) (
 "#;
 
         let symbols = extract_symbols(sql_code);
+
 
         // Should extract schemas
         let analytics_schema = symbols.iter().find(|s| s.name == "analytics");

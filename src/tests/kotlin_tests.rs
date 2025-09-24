@@ -18,6 +18,7 @@ fn init_parser() -> Parser {
 mod kotlin_extractor_tests {
     use super::*;
 
+
     #[test]
     fn test_extract_classes_and_data_classes() {
         let code = r#"

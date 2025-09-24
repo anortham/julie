@@ -70,7 +70,7 @@ impl KotlinExtractor {
             "package_header" => {
                 symbol = Some(self.extract_package(&node, parent_id.as_deref()));
             }
-            "import_header" => {
+            "import" => {
                 symbol = Some(self.extract_import(&node, parent_id.as_deref()));
             }
             "type_alias" => {
@@ -93,7 +93,7 @@ impl KotlinExtractor {
 
     fn extract_class(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownClass".to_string());
@@ -180,7 +180,7 @@ impl KotlinExtractor {
 
     fn extract_interface(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownInterface".to_string());
@@ -224,7 +224,7 @@ impl KotlinExtractor {
 
     fn extract_object(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownObject".to_string());
@@ -269,7 +269,7 @@ impl KotlinExtractor {
 
         // Check if companion object has a custom name
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         if let Some(name_node) = name_node {
             let custom_name = self.base.get_node_text(&name_node);
             signature.push_str(&format!(" {}", custom_name));
@@ -293,7 +293,7 @@ impl KotlinExtractor {
 
     fn extract_function(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "simple_identifier");
+            .find(|n| n.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "unknownFunction".to_string());
@@ -374,13 +374,13 @@ impl KotlinExtractor {
     fn extract_property(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         // Look for name in variable_declaration (interface properties)
         let mut name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "simple_identifier");
+            .find(|n| n.kind() == "identifier");
         if name_node.is_none() {
             let var_decl = node.children(&mut node.walk())
                 .find(|n| n.kind() == "variable_declaration");
             if let Some(var_decl) = var_decl {
                 name_node = var_decl.children(&mut var_decl.walk())
-                    .find(|n| n.kind() == "simple_identifier");
+                    .find(|n| n.kind() == "identifier");
             }
         }
         let name = name_node
@@ -461,7 +461,7 @@ impl KotlinExtractor {
         for child in node.children(&mut node.walk()) {
             if child.kind() == "enum_entry" {
                 let name_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "simple_identifier");
+                    .find(|n| n.kind() == "identifier");
                 if let Some(name_node) = name_node {
                     let name = self.base.get_node_text(&name_node);
 
@@ -495,8 +495,9 @@ impl KotlinExtractor {
     }
 
     fn extract_package(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        // Look for qualified_identifier which contains the full package name
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "identifier");
+            .find(|n| n.kind() == "qualified_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownPackage".to_string());
@@ -518,8 +519,9 @@ impl KotlinExtractor {
     }
 
     fn extract_import(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
+        // Look for qualified_identifier which contains the full import name
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "identifier");
+            .find(|n| n.kind() == "qualified_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownImport".to_string());
@@ -542,7 +544,7 @@ impl KotlinExtractor {
 
     fn extract_type_alias(&mut self, node: &Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownTypeAlias".to_string());
@@ -646,11 +648,11 @@ impl KotlinExtractor {
             for child in delegation_container.children(&mut delegation_container.walk()) {
                 if child.kind() == "delegated_super_type" {
                     let type_node = child.children(&mut child.walk())
-                        .find(|n| matches!(n.kind(), "type" | "user_type" | "simple_identifier"));
+                        .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier"));
                     if let Some(type_node) = type_node {
                         super_types.push(self.base.get_node_text(&type_node));
                     }
-                } else if matches!(child.kind(), "type" | "user_type" | "simple_identifier") {
+                } else if matches!(child.kind(), "type" | "user_type" | "identifier") {
                     super_types.push(self.base.get_node_text(&child));
                 }
             }
@@ -686,7 +688,7 @@ impl KotlinExtractor {
                 continue;
             }
             if found_colon && matches!(child.kind(),
-                "type" | "user_type" | "simple_identifier" | "function_type" | "nullable_type") {
+                "type" | "user_type" | "identifier" | "function_type" | "nullable_type") {
                 return Some(self.base.get_node_text(&child));
             }
         }
@@ -736,7 +738,7 @@ impl KotlinExtractor {
         for child in primary_constructor.children(&mut primary_constructor.walk()) {
             if child.kind() == "class_parameter" {
                 let name_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "simple_identifier");
+                    .find(|n| n.kind() == "identifier");
                 let name = name_node
                     .map(|n| self.base.get_node_text(&n))
                     .unwrap_or_else(|| "unknownParam".to_string());
@@ -882,14 +884,14 @@ impl KotlinExtractor {
         for child in node.children(&mut node.walk()) {
             if child.kind() == "class_parameter" {
                 let name_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "simple_identifier");
+                    .find(|n| n.kind() == "identifier");
                 let name = name_node
                     .map(|n| self.base.get_node_text(&n))
                     .unwrap_or_else(|| "unknownParam".to_string());
 
                 // Get binding pattern (val/var)
                 let binding_node = child.children(&mut child.walk())
-                    .find(|n| n.kind() == "binding_pattern_kind");
+                    .find(|n| matches!(n.kind(), "val" | "var"));
                 let binding = binding_node
                     .map(|n| self.base.get_node_text(&n))
                     .unwrap_or_else(|| "val".to_string());
@@ -912,7 +914,7 @@ impl KotlinExtractor {
                 // Get default value (handle various literal types and expressions)
                 let default_value = child.children(&mut child.walk())
                     .find(|n| matches!(n.kind(),
-                        "integer_literal" | "string_literal" | "boolean_literal" |
+                        "number_literal" | "string_literal" | "boolean_literal" |
                         "expression" | "call_expression"));
                 let default_val = default_value
                     .map(|n| format!(" = {}", self.base.get_node_text(&n)))
@@ -1045,11 +1047,11 @@ impl KotlinExtractor {
             for child in delegation_container.children(&mut delegation_container.walk()) {
                 if child.kind() == "delegated_super_type" {
                     let type_node = child.children(&mut child.walk())
-                        .find(|n| matches!(n.kind(), "type" | "user_type" | "simple_identifier"));
+                        .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier"));
                     if let Some(type_node) = type_node {
                         base_type_names.push(self.base.get_node_text(&type_node));
                     }
-                } else if matches!(child.kind(), "type" | "user_type" | "simple_identifier") {
+                } else if matches!(child.kind(), "type" | "user_type" | "identifier") {
                     base_type_names.push(self.base.get_node_text(&child));
                 }
             }
@@ -1070,7 +1072,7 @@ impl KotlinExtractor {
                     // Extract type nodes directly - handle both user_type and constructor_invocation
                     let type_node = delegation.children(&mut delegation.walk())
                         .find(|n| matches!(n.kind(),
-                            "type" | "user_type" | "simple_identifier" | "constructor_invocation"));
+                            "type" | "user_type" | "identifier" | "constructor_invocation"));
                     if let Some(type_node) = type_node {
                         if type_node.kind() == "constructor_invocation" {
                             // For constructor invocations like Widget(), extract just the type name
@@ -1120,7 +1122,7 @@ impl KotlinExtractor {
 
     fn find_class_symbol<'a>(&self, node: &Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
         let name_node = node.children(&mut node.walk())
-            .find(|n| n.kind() == "type_identifier");
+            .find(|n| n.kind() == "identifier");
         let class_name = name_node
             .map(|n| self.base.get_node_text(&n))?;
 
