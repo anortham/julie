@@ -140,3 +140,6 @@ pub mod sql_tests;              // SQL extractor tests - FIXED
 pub mod css_tests;           // CSS extractor tests (TDD GREEN phase)
 pub mod regex_tests;         // Regex extractor tests (TDD GREEN phase)
 // pub mod zig_tests;           // Zig extractor tests (TDD GREEN phase) - Temporarily disabled due to compilation errors (other agent issue)
+
+// Real-World Validation Tests (following Miller's proven methodology)
+pub mod real_world_validation; // Tests all extractors against real-world code files

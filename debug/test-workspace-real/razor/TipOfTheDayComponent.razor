@@ -1,0 +1,21 @@
+﻿@inject ICmsService CmsService
+
+<div class="card shadow rounded-4 mt-4 bg-green-100">
+    <div class="card-body">
+        <h5 class="card-title">MOVING UP</h5>
+        <h6 class="card-subtitle mb-2 text-body-secondary pt-2">
+            @Model?.Subtitle
+        </h6>
+        @if (!string.IsNullOrEmpty(Model?.Body))
+        {
+            <p class="card-text">
+                @((MarkupString)Model.Body)
+            </p>
+        }
+
+    </div>
+</div>
+
+@code {
+    [Parameter] public TipOfTheDay? Model { get; set; }
+}

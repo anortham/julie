@@ -1,0 +1,26 @@
+﻿@inherits LayoutComponentBase
+
+<RadzenComponents @rendermode="InteractiveWebAssembly" />
+
+<ErrorBoundary>
+    <ChildContent>
+        <PortalWarningComponent/>
+        <HeaderComponent/>
+        <BreadcrumbsComponent />
+
+        @Body
+        <FooterComponent @rendermode="InteractiveWebAssembly"/>
+    </ChildContent>
+    <ErrorContent Context="exception">
+        <div class="alert alert-danger m-3" role="alert">
+            <h4 class="alert-heading">An error occurred</h4>
+            <p>We've encountered an unexpected error. The error has been logged and our team has been notified.</p>
+            <hr>
+            <p class="mb-0">Please refresh the page to try again.</p>
+        </div>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+
+}
