@@ -12,9 +12,10 @@
 // - Property delegation
 // - Constructor parameters
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
 use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
+use serde_json::Value;
 
 pub struct KotlinExtractor {
     base: BaseExtractor,
@@ -164,13 +165,16 @@ impl KotlinExtractor {
             node,
             name,
             symbol_kind,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "class".to_string()),
-                ("modifiers".to_string(), final_modifiers.join(",")),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("class".to_string())),
+                    ("modifiers".to_string(), Value::String(final_modifiers.join(","))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -205,13 +209,16 @@ impl KotlinExtractor {
             node,
             name,
             SymbolKind::Interface,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "interface".to_string()),
-                ("modifiers".to_string(), modifiers.join(",")),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("interface".to_string())),
+                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -241,13 +248,16 @@ impl KotlinExtractor {
             node,
             name,
             SymbolKind::Class,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "object".to_string()),
-                ("modifiers".to_string(), modifiers.join(",")),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("object".to_string())),
+                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -269,12 +279,15 @@ impl KotlinExtractor {
             node,
             name,
             SymbolKind::Class,
-            Some(signature),
-            Some("public".to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "companion-object".to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("companion-object".to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -345,13 +358,16 @@ impl KotlinExtractor {
             node,
             name,
             symbol_kind,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), if parent_id.is_some() { "method" } else { "function" }.to_string()),
-                ("modifiers".to_string(), modifiers.join(",")),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String(if parent_id.is_some() { "method" } else { "function" }.to_string())),
+                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -426,15 +442,18 @@ impl KotlinExtractor {
             node,
             name,
             symbol_kind,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), if is_const { "constant" } else { "property" }.to_string()),
-                ("modifiers".to_string(), modifiers.join(",")),
-                ("isVal".to_string(), is_val.to_string()),
-                ("isVar".to_string(), is_var.to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String(if is_const { "constant" } else { "property" }.to_string())),
+                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                    ("isVal".to_string(), Value::String(is_val.to_string())),
+                    ("isVar".to_string(), Value::String(is_var.to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -459,12 +478,15 @@ impl KotlinExtractor {
                         &child,
                         name,
                         SymbolKind::EnumMember,
-                        Some(signature),
-                        Some("public".to_string()),
-                        parent_id.map(|s| s.to_string()),
-                        Some(HashMap::from([
-                            ("type".to_string(), "enum-member".to_string()),
-                        ])),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some(HashMap::from([
+                                ("type".to_string(), Value::String("enum-member".to_string())),
+                            ])),
+                            doc_comment: None,
+                        },
                     );
                     symbols.push(symbol);
                 }
@@ -481,14 +503,17 @@ impl KotlinExtractor {
 
         self.base.create_symbol(
             node,
-            name,
+            name.clone(),
             SymbolKind::Namespace,
-            Some(format!("package {}", name)),
-            Some("public".to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "package".to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(format!("package {}", name)),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("package".to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -501,14 +526,17 @@ impl KotlinExtractor {
 
         self.base.create_symbol(
             node,
-            name,
+            name.clone(),
             SymbolKind::Import,
-            Some(format!("import {}", name)),
-            Some("public".to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "import".to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(format!("import {}", name)),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("import".to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -556,14 +584,17 @@ impl KotlinExtractor {
             node,
             name,
             SymbolKind::Type,
-            Some(signature),
-            Some(visibility.to_string()),
-            parent_id.map(|s| s.to_string()),
-            Some(HashMap::from([
-                ("type".to_string(), "typealias".to_string()),
-                ("modifiers".to_string(), modifiers.join(",")),
-                ("aliasedType".to_string(), aliased_type),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("typealias".to_string())),
+                    ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                    ("aliasedType".to_string(), Value::String(aliased_type)),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -836,13 +867,13 @@ impl KotlinExtractor {
         SymbolKind::Class
     }
 
-    fn determine_visibility(&self, modifiers: &[String]) -> &str {
+    fn determine_visibility(&self, modifiers: &[String]) -> Visibility {
         if modifiers.contains(&"private".to_string()) {
-            "private"
+            Visibility::Private
         } else if modifiers.contains(&"protected".to_string()) {
-            "protected"
+            Visibility::Protected
         } else {
-            "public" // Kotlin defaults to public
+            Visibility::Public // Kotlin defaults to public
         }
     }
 
@@ -888,7 +919,7 @@ impl KotlinExtractor {
                     .unwrap_or_else(|| "".to_string());
 
                 // Alternative: look for assignment pattern (= value)
-                let mut final_signature = if default_val.is_empty() {
+                let final_signature = if default_val.is_empty() {
                     let children: Vec<Node> = child.children(&mut child.walk()).collect();
                     if let Some(equal_index) = children.iter().position(|n| self.base.get_node_text(n) == "=") {
                         if equal_index + 1 < children.len() {
@@ -929,26 +960,29 @@ impl KotlinExtractor {
 
                 // Determine visibility
                 let visibility = if modifiers.contains("private") {
-                    "private"
+                    Visibility::Private
                 } else if modifiers.contains("protected") {
-                    "protected"
+                    Visibility::Protected
                 } else {
-                    "public"
+                    Visibility::Public
                 };
 
                 let property_symbol = self.base.create_symbol(
                     &child,
                     name,
                     SymbolKind::Property,
-                    Some(final_signature),
-                    Some(visibility.to_string()),
-                    parent_id.map(|s| s.to_string()),
-                    Some(HashMap::from([
-                        ("type".to_string(), "property".to_string()),
-                        ("binding".to_string(), binding),
-                        ("dataType".to_string(), param_type),
-                        ("hasDefaultValue".to_string(), (!default_val.is_empty()).to_string()),
-                    ])),
+                    SymbolOptions {
+                        signature: Some(final_signature),
+                        visibility: Some(visibility),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: Some(HashMap::from([
+                            ("type".to_string(), Value::String("property".to_string())),
+                            ("binding".to_string(), Value::String(binding)),
+                            ("dataType".to_string(), Value::String(param_type)),
+                            ("hasDefaultValue".to_string(), Value::String((!default_val.is_empty()).to_string())),
+                        ])),
+                        doc_comment: None,
+                    },
                 );
 
                 symbols.push(property_symbol);
@@ -959,14 +993,12 @@ impl KotlinExtractor {
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
         for symbol in symbols {
-            if let Some(metadata) = &symbol.metadata {
-                if let Some(return_type) = metadata.get("returnType") {
-                    types.insert(symbol.id.clone(), return_type.clone());
-                } else if let Some(property_type) = metadata.get("propertyType") {
-                    types.insert(symbol.id.clone(), property_type.clone());
-                } else if let Some(data_type) = metadata.get("dataType") {
-                    types.insert(symbol.id.clone(), data_type.clone());
-                }
+            if let Some(Value::String(s)) = symbol.metadata.get("returnType") {
+                types.insert(symbol.id.clone(), s.clone());
+            } else if let Some(Value::String(s)) = symbol.metadata.get("propertyType") {
+                types.insert(symbol.id.clone(), s.clone());
+            } else if let Some(Value::String(s)) = symbol.metadata.get("dataType") {
+                types.insert(symbol.id.clone(), s.clone());
             }
         }
         types
@@ -1076,10 +1108,10 @@ impl KotlinExtractor {
                     to_symbol_id: base_type_symbol.id.clone(),
                     kind: relationship_kind,
                     file_path: self.base.file_path.clone(),
-                    line_number: node.start_position().row + 1,
+                    line_number: (node.start_position().row + 1) as u32,
                     confidence: 1.0,
                     metadata: Some(HashMap::from([
-                        ("baseType".to_string(), base_type_name),
+                        ("baseType".to_string(), Value::String(base_type_name)),
                     ])),
                 });
             }

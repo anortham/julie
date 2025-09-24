@@ -3,7 +3,7 @@
 // Direct port of Miller's Kotlin extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/kotlin-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use crate::extractors::kotlin::KotlinExtractor;
 use tree_sitter::Parser;
 
@@ -102,18 +102,18 @@ class Circle(private val radius: Double) : Shape() {
         let vehicle = symbols.iter().find(|s| s.name == "Vehicle");
         assert!(vehicle.is_some());
         assert_eq!(vehicle.unwrap().kind, SymbolKind::Class);
-        assert!(vehicle.unwrap().signature.contains("class Vehicle"));
+        assert!(vehicle.unwrap().signature.as_ref().unwrap().contains("class Vehicle"));
 
         // Primary constructor parameters as properties
         let brand = symbols.iter().find(|s| s.name == "brand");
         assert!(brand.is_some());
         assert_eq!(brand.unwrap().kind, SymbolKind::Property);
-        assert!(brand.unwrap().signature.contains("val brand: String"));
+        assert!(brand.unwrap().signature.as_ref().unwrap().contains("val brand: String"));
 
-        let speed = symbols.iter().find(|s| s.name == "speed" && s.parent_id == vehicle.unwrap().id);
+        let speed = symbols.iter().find(|s| s.name == "speed" && s.parent_id == Some(vehicle.unwrap().id.clone()));
         assert!(speed.is_some());
-        assert_eq!(speed.unwrap().visibility, "private");
-        assert!(speed.unwrap().signature.contains("var speed: Int = 0"));
+        assert_eq!(speed.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
+        assert!(speed.unwrap().signature.as_ref().unwrap().contains("var speed: Int = 0"));
 
         // Methods
         let accelerate = symbols.iter().find(|s| s.name == "accelerate");
@@ -123,48 +123,48 @@ class Circle(private val radius: Double) : Shape() {
         // Expression body function
         let get_speed = symbols.iter().find(|s| s.name == "getSpeed");
         assert!(get_speed.is_some());
-        assert!(get_speed.unwrap().signature.contains("fun getSpeed(): Int = speed"));
+        assert!(get_speed.unwrap().signature.as_ref().unwrap().contains("fun getSpeed(): Int = speed"));
 
         // Companion object
         let companion = symbols.iter().find(|s| s.name == "Companion");
         assert!(companion.is_some());
-        assert!(companion.unwrap().signature.contains("companion object"));
+        assert!(companion.unwrap().signature.as_ref().unwrap().contains("companion object"));
 
         // Const val
         let max_speed = symbols.iter().find(|s| s.name == "MAX_SPEED");
         assert!(max_speed.is_some());
         assert_eq!(max_speed.unwrap().kind, SymbolKind::Constant);
-        assert!(max_speed.unwrap().signature.contains("const val MAX_SPEED = 200"));
+        assert!(max_speed.unwrap().signature.as_ref().unwrap().contains("const val MAX_SPEED = 200"));
 
         // Data class
         let point = symbols.iter().find(|s| s.name == "Point");
         assert!(point.is_some());
-        assert!(point.unwrap().signature.contains("data class Point"));
+        assert!(point.unwrap().signature.as_ref().unwrap().contains("data class Point"));
 
         // Annotation on data class
         let user = symbols.iter().find(|s| s.name == "User");
         assert!(user.is_some());
-        assert!(user.unwrap().signature.contains("@Serializable"));
+        assert!(user.unwrap().signature.as_ref().unwrap().contains("@Serializable"));
 
         // Nullable type
         let email = symbols.iter().find(|s| s.name == "email");
         assert!(email.is_some());
-        assert!(email.unwrap().signature.contains("String?"));
+        assert!(email.unwrap().signature.as_ref().unwrap().contains("String?"));
 
         // Default parameter
         let is_active = symbols.iter().find(|s| s.name == "isActive");
         assert!(is_active.is_some());
-        assert!(is_active.unwrap().signature.contains("= true"));
+        assert!(is_active.unwrap().signature.as_ref().unwrap().contains("= true"));
 
         // Abstract class
         let shape = symbols.iter().find(|s| s.name == "Shape");
         assert!(shape.is_some());
-        assert!(shape.unwrap().signature.contains("abstract class Shape"));
+        assert!(shape.unwrap().signature.as_ref().unwrap().contains("abstract class Shape"));
 
         // Abstract property
-        let area = symbols.iter().find(|s| s.name == "area" && s.parent_id == shape.unwrap().id);
+        let area = symbols.iter().find(|s| s.name == "area" && s.parent_id == Some(shape.unwrap().id.clone()));
         assert!(area.is_some());
-        assert!(area.unwrap().signature.contains("abstract val area: Double"));
+        assert!(area.unwrap().signature.as_ref().unwrap().contains("abstract val area: Double"));
 
         // Override in subclass
         let circle = symbols.iter().find(|s| s.name == "Circle");

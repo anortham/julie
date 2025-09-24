@@ -1,7 +1,7 @@
 // Port of Miller's comprehensive Ruby extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
-use crate::extractors::base::{SymbolKind, RelationshipKind};
+use crate::extractors::base::{SymbolKind, RelationshipKind, Visibility};
 use crate::extractors::ruby::RubyExtractor;
 use tree_sitter::Tree;
 
@@ -183,17 +183,17 @@ end
         // Private method
         let secret_method = symbols.iter().find(|s| s.name == "secret_method");
         assert!(secret_method.is_some());
-        assert_eq!(secret_method.unwrap().visibility.as_ref().unwrap(), "private");
+        assert_eq!(secret_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
 
         // Protected method
         let family_method = symbols.iter().find(|s| s.name == "family_method");
         assert!(family_method.is_some());
-        assert_eq!(family_method.unwrap().visibility.as_ref().unwrap(), "protected");
+        assert_eq!(family_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Protected);
 
         // Public method
         let public_method = symbols.iter().find(|s| s.name == "public_method");
         assert!(public_method.is_some());
-        assert_eq!(public_method.unwrap().visibility.as_ref().unwrap(), "public");
+        assert_eq!(public_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
 
         // Inheritance
         let employee = symbols.iter().find(|s| s.name == "Employee");

@@ -1,26 +1,25 @@
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
 use tree_sitter::{Tree, Node};
-use std::collections::HashMap;
 
 /// Ruby extractor for extracting symbols and relationships from Ruby source code
 /// Port of Miller's comprehensive Ruby extractor with metaprogramming support
 pub struct RubyExtractor {
     base: BaseExtractor,
-    current_visibility: String,
+    current_visibility: Visibility,
 }
 
 impl RubyExtractor {
     pub fn new(file_path: String, content: String) -> Self {
         Self {
             base: BaseExtractor::new("ruby".to_string(), file_path, content),
-            current_visibility: "public".to_string(),
+            current_visibility: Visibility::Public,
         }
     }
 
     /// Extract all symbols from Ruby source code
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
-        self.current_visibility = "public".to_string(); // Reset for each file
+        self.current_visibility = Visibility::Public; // Reset for each file
         self.traverse_tree(tree.root_node(), &mut symbols);
         symbols
     }
@@ -79,9 +78,12 @@ impl RubyExtractor {
             "identifier" => {
                 // Handle visibility modifiers
                 let text = self.base.get_node_text(&node);
-                if matches!(text.as_str(), "private" | "protected" | "public") {
-                    self.current_visibility = text;
-                }
+                self.current_visibility = match text.as_str() {
+                    "private" => Visibility::Private,
+                    "protected" => Visibility::Protected,
+                    "public" => Visibility::Public,
+                    _ => self.current_visibility.clone(),
+                };
             }
             _ => {}
         }
@@ -151,11 +153,7 @@ impl RubyExtractor {
         let signature = self.build_method_signature(&node, &name);
         let kind = if name == "initialize" { SymbolKind::Constructor } else { SymbolKind::Method };
 
-        let visibility = match self.current_visibility.as_str() {
-            "private" => Visibility::Private,
-            "protected" => Visibility::Protected,
-            _ => Visibility::Public,
-        };
+        let visibility = self.current_visibility.clone();
 
         self.base.create_symbol(
             &node,
@@ -175,11 +173,7 @@ impl RubyExtractor {
         let name = self.extract_singleton_method_name(node);
         let signature = self.build_singleton_method_signature(&node, &name);
 
-        let visibility = match self.current_visibility.as_str() {
-            "private" => Visibility::Private,
-            "protected" => Visibility::Protected,
-            _ => Visibility::Public,
-        };
+        let visibility = self.current_visibility.clone();
 
         self.base.create_symbol(
             &node,
@@ -335,7 +329,7 @@ impl RubyExtractor {
     }
 
     fn build_singleton_method_signature(&self, node: &Node, name: &str) -> String {
-        let target = self.extract_singleton_method_target(node);
+        let target = self.extract_singleton_method_target(*node);
         let mut signature = format!("def {}.{}", target, name);
 
         if let Some(params) = node.child_by_field_name("parameters") {

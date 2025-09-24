@@ -133,7 +133,7 @@ impl DartExtractor {
 
         // Check if it's a Flutter widget (extends StatelessWidget, StatefulWidget, etc.)
         let is_widget = self.is_flutter_widget(node);
-        let is_abstract = self.is_abstract_class(node);
+        let _is_abstract = self.is_abstract_class(node); // Unused for now but will be needed for metadata
 
         let mut symbol = self.base.create_symbol(
             node,
@@ -575,54 +575,44 @@ impl DartExtractor {
 
     // Port of Miller's extractVariable method
     fn extract_variable(&mut self, node: &Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // Look for the first variable definition in this node
-        let mut target_var_node: Option<Node> = None;
+        // Simple iterative approach - search for the first initialized_variable_definition
+        // This avoids the complexity of closures and lifetime issues
+        let mut cursor = node.walk();
 
-        // First pass: find the target node
-        self.traverse_tree(*node, &mut |var_node| {
-            if target_var_node.is_some() {
-                return; // Already found one
-            }
+        // Look for initialized_variable_definition directly in children
+        for child in node.children(&mut cursor) {
+            if child.kind() == "initialized_variable_definition" {
+                if let Some(name_node) = self.find_child_by_type(&child, "identifier") {
+                    let name = self.base.get_node_text(&name_node);
+                    let is_private = name.starts_with('_');
+                    let is_final = self.is_final_variable(&child);
+                    let is_const = self.is_const_variable(&child);
 
-            if var_node.kind() == "initialized_variable_definition" {
-                if self.find_child_by_type(&var_node, "identifier").is_some() {
-                    target_var_node = Some(var_node);
+                    let symbol_kind = if is_final || is_const {
+                        SymbolKind::Constant
+                    } else {
+                        SymbolKind::Variable
+                    };
+
+                    let mut symbol = self.base.create_symbol(
+                        &child,
+                        name,
+                        symbol_kind,
+                        SymbolOptions {
+                            signature: Some(self.extract_variable_signature(&child)),
+                            visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                            parent_id: parent_id.map(|id| id.to_string()),
+                            metadata: Some(HashMap::new()),
+                            doc_comment: None,
+                        },
+                    );
+
+                    // Add metadata
+                    symbol.metadata.insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
+                    symbol.metadata.insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+
+                    return Some(symbol);
                 }
-            }
-        });
-
-        // Second pass: extract the symbol
-        if let Some(var_node) = target_var_node {
-            if let Some(name_node) = self.find_child_by_type(&var_node, "identifier") {
-                let name = self.base.get_node_text(&name_node);
-                let is_private = name.starts_with('_');
-                let is_final = self.is_final_variable(&var_node);
-                let is_const = self.is_const_variable(&var_node);
-
-                let symbol_kind = if is_final || is_const {
-                    SymbolKind::Constant
-                } else {
-                    SymbolKind::Variable
-                };
-
-                let mut symbol = self.base.create_symbol(
-                    &var_node,
-                    name,
-                    symbol_kind,
-                    SymbolOptions {
-                        signature: Some(self.extract_variable_signature(&var_node)),
-                        visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
-                        parent_id: parent_id.map(|id| id.to_string()),
-                        metadata: Some(HashMap::new()),
-                        doc_comment: None,
-                    },
-                );
-
-                // Add metadata
-                symbol.metadata.insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
-                symbol.metadata.insert("isConst".to_string(), serde_json::Value::Bool(is_const));
-
-                return Some(symbol);
             }
         }
 
@@ -1079,7 +1069,7 @@ impl DartExtractor {
 
     // === Utility Methods ===
 
-    fn find_child_by_type(&self, node: &Node, node_type: &str) -> Option<Node> {
+    fn find_child_by_type<'a>(&self, node: &Node<'a>, node_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == node_type {

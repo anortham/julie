@@ -115,7 +115,7 @@ impl SqlExtractor {
             _ => {}
         }
 
-        if let Some(mut symbol) = symbol {
+        if let Some(symbol) = symbol {
             symbols.push(symbol.clone());
 
             // Extract additional child symbols for specific node types
@@ -398,83 +398,111 @@ impl SqlExtractor {
     }
 
     fn extract_stored_procedure(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // Port of Miller's extractFromErrorNode for stored procedures
-        let node_text = self.base.get_node_text(&node);
+        // Port Miller's extractStoredProcedure logic for regular nodes (not just ERROR)
+        // Look for function/procedure name - it may be inside an object_reference
+        let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
+        let name_node = if let Some(obj_ref) = object_ref_node {
+            self.base.find_child_by_type(&obj_ref, "identifier")
+        } else {
+            self.base.find_child_by_type(&node, "identifier")
+                .or_else(|| self.base.find_child_by_type(&node, "procedure_name"))
+                .or_else(|| self.base.find_child_by_type(&node, "function_name"))
+        }?;
 
-        // Extract stored procedures from DELIMITER syntax and CREATE PROCEDURE statements
-        let procedure_regex = regex::Regex::new(r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+        let name = self.base.get_node_text(&name_node);
+        let is_function = node.kind().contains("function");
 
-        if let Some(captures) = procedure_regex.captures(&node_text) {
-            if let Some(procedure_name) = captures.get(1) {
-                let name = procedure_name.as_str().to_string();
+        let signature = self.extract_procedure_signature(&node);
 
-                let mut metadata = HashMap::new();
-                metadata.insert("isStoredProcedure".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+        let mut metadata = HashMap::new();
+        metadata.insert("isFunction".to_string(), Value::Bool(is_function));
+        metadata.insert("isStoredProcedure".to_string(), Value::Bool(true));
 
-                let options = SymbolOptions {
-                    signature: Some(format!("CREATE PROCEDURE {}(...)", name)),
-                    visibility: Some(crate::extractors::base::Visibility::Public),
-                    parent_id: parent_id.map(|s| s.to_string()),
-                    doc_comment: None,
-                    metadata: Some(metadata),
-                };
+        let options = SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(crate::extractors::base::Visibility::Public),
+            parent_id: parent_id.map(|s| s.to_string()),
+            doc_comment: self.base.find_doc_comment(&node),
+            metadata: Some(metadata),
+        };
 
-                return Some(self.base.create_symbol(&node, name, SymbolKind::Function, options));
-            }
-        }
+        let symbol_kind = if is_function { SymbolKind::Function } else { SymbolKind::Method };
+        Some(self.base.create_symbol(&node, name, symbol_kind, options))
+    }
 
-        // Also check for function extraction
-        let function_regex = regex::Regex::new(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*RETURNS?\s+([A-Z0-9(),\s]+)").unwrap();
+    fn extract_procedure_signature(&self, node: &tree_sitter::Node) -> String {
+        // Extract function/procedure name from object_reference if present
+        let object_ref_node = self.base.find_child_by_type(node, "object_reference");
+        let name_node = if let Some(obj_ref) = object_ref_node {
+            self.base.find_child_by_type(&obj_ref, "identifier")
+        } else {
+            self.base.find_child_by_type(node, "identifier")
+                .or_else(|| self.base.find_child_by_type(node, "procedure_name"))
+                .or_else(|| self.base.find_child_by_type(node, "function_name"))
+        };
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "unknown".to_string()
+        };
 
-        if let Some(captures) = function_regex.captures(&node_text) {
-            if let Some(function_name) = captures.get(1) {
-                let name = function_name.as_str().to_string();
-                let return_type = captures.get(2).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+        // Extract parameter list
+        let mut params: Vec<String> = Vec::new();
+        self.base.traverse_tree(node, &mut |child_node| {
+            if child_node.kind() == "parameter_declaration" || child_node.kind() == "parameter" {
+                let param_name_node = self.base.find_child_by_type(&child_node, "identifier")
+                    .or_else(|| self.base.find_child_by_type(&child_node, "parameter_name"));
+                let type_node = self.base.find_child_by_type(&child_node, "data_type")
+                    .or_else(|| self.base.find_child_by_type(&child_node, "type_name"));
 
-                let mut metadata = HashMap::new();
-                metadata.insert("isFunction".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
-                if !return_type.is_empty() {
-                    metadata.insert("returnType".to_string(), serde_json::Value::String(return_type.clone()));
+                if let Some(param_name_node) = param_name_node {
+                    let param_name = self.base.get_node_text(&param_name_node);
+                    let param_type = if let Some(type_node) = type_node {
+                        self.base.get_node_text(&type_node)
+                    } else {
+                        String::new()
+                    };
+                    params.push(if !param_type.is_empty() {
+                        format!("{}: {}", param_name, param_type)
+                    } else {
+                        param_name
+                    });
                 }
+            }
+        });
 
-                let options = SymbolOptions {
-                    signature: Some(format!("CREATE FUNCTION {}(...) RETURNS {}", name, return_type)),
-                    visibility: Some(crate::extractors::base::Visibility::Public),
-                    parent_id: parent_id.map(|s| s.to_string()),
-                    doc_comment: None,
-                    metadata: Some(metadata),
-                };
+        let is_function = node.kind().contains("function");
+        let keyword = if is_function { "FUNCTION" } else { "PROCEDURE" };
 
-                return Some(self.base.create_symbol(&node, name, SymbolKind::Function, options));
+        // For functions, try to extract the RETURNS clause and LANGUAGE
+        let mut return_clause = String::new();
+        let mut language_clause = String::new();
+        if is_function {
+            // Look for decimal node for RETURNS DECIMAL(10,2) - search recursively
+            let decimal_nodes = self.base.find_nodes_by_type(node, "decimal");
+            if !decimal_nodes.is_empty() {
+                let decimal_text = self.base.get_node_text(&decimal_nodes[0]);
+                return_clause = format!(" RETURNS {}", decimal_text);
+            } else {
+                // Look for other return types as direct children
+                let return_type_nodes = ["keyword_boolean", "keyword_bigint", "keyword_int", "keyword_varchar", "keyword_text", "keyword_jsonb"];
+                for type_str in &return_type_nodes {
+                    if let Some(type_node) = self.base.find_child_by_type(node, type_str) {
+                        let type_text = self.base.get_node_text(&type_node).replace("keyword_", "").to_uppercase();
+                        return_clause = format!(" RETURNS {}", type_text);
+                        break;
+                    }
+                }
+            }
+
+            // Look for LANGUAGE clause (PostgreSQL functions)
+            if let Some(language_node) = self.base.find_child_by_type(node, "function_language") {
+                let language_text = self.base.get_node_text(&language_node);
+                language_clause = format!(" {}", language_text);
             }
         }
 
-        // Fallback: Extract any CREATE FUNCTION
-        let simple_function_regex = regex::Regex::new(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
-
-        if let Some(captures) = simple_function_regex.captures(&node_text) {
-            if let Some(function_name) = captures.get(1) {
-                let name = function_name.as_str().to_string();
-
-                let mut metadata = HashMap::new();
-                metadata.insert("isFunction".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
-
-                let options = SymbolOptions {
-                    signature: Some(format!("CREATE FUNCTION {}(...)", name)),
-                    visibility: Some(crate::extractors::base::Visibility::Public),
-                    parent_id: parent_id.map(|s| s.to_string()),
-                    doc_comment: None,
-                    metadata: Some(metadata),
-                };
-
-                return Some(self.base.create_symbol(&node, name, SymbolKind::Function, options));
-            }
-        }
-
-        None
+        format!("{} {}({}){}{}", keyword, name, params.join(", "), return_clause, language_clause)
     }
 
     fn extract_view(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -571,9 +599,24 @@ impl SqlExtractor {
     }
 
     fn extract_trigger(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // TODO: Implement trigger extraction
-        // This is a stub that will be implemented as we port Miller's logic
-        None
+        // Port Miller's extractTrigger logic
+        let name_node = self.base.find_child_by_type(&node, "identifier")
+            .or_else(|| self.base.find_child_by_type(&node, "trigger_name"))?;
+
+        let name = self.base.get_node_text(&name_node);
+
+        let mut metadata = HashMap::new();
+        metadata.insert("isTrigger".to_string(), Value::Bool(true));
+
+        let options = SymbolOptions {
+            signature: Some(format!("TRIGGER {}", name)),
+            visibility: Some(crate::extractors::base::Visibility::Public),
+            parent_id: parent_id.map(|s| s.to_string()),
+            doc_comment: self.base.find_doc_comment(&node),
+            metadata: Some(metadata),
+        };
+
+        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
     }
 
     fn extract_cte(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -794,8 +837,58 @@ impl SqlExtractor {
     }
 
     fn extract_constraints_from_alter_table(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
-        // TODO: Implement ALTER TABLE constraints extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's extractConstraintsFromAlterTable logic
+        let node_text = self.base.get_node_text(&node);
+
+        // Extract ADD CONSTRAINT statements
+        let constraint_regex = regex::Regex::new(r"ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)").unwrap();
+        if let Some(captures) = constraint_regex.captures(&node_text) {
+            if let Some(constraint_name) = captures.get(1) {
+                let name = constraint_name.as_str().to_string();
+                let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
+
+                let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+
+                // Add more details based on constraint type
+                if constraint_type == "CHECK" {
+                    let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
+                    if let Some(check_captures) = check_regex.captures(&node_text) {
+                        signature.push_str(&format!(" ({})", check_captures.get(1).unwrap().as_str().trim()));
+                    }
+                } else if constraint_type.contains("FOREIGN") {
+                    let fk_regex = regex::Regex::new(r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+                    if let Some(fk_captures) = fk_regex.captures(&node_text) {
+                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_captures.get(1).unwrap().as_str(), fk_captures.get(2).unwrap().as_str()));
+                    }
+
+                    // Add ON DELETE/UPDATE actions
+                    let on_delete_regex = regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    if let Some(on_delete_captures) = on_delete_regex.captures(&node_text) {
+                        signature.push_str(&format!(" ON DELETE {}", on_delete_captures.get(1).unwrap().as_str().to_uppercase()));
+                    }
+
+                    let on_update_regex = regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    if let Some(on_update_captures) = on_update_regex.captures(&node_text) {
+                        signature.push_str(&format!(" ON UPDATE {}", on_update_captures.get(1).unwrap().as_str().to_uppercase()));
+                    }
+                }
+
+                let mut metadata = HashMap::new();
+                metadata.insert("isConstraint".to_string(), Value::Bool(true));
+                metadata.insert("constraintType".to_string(), Value::String(constraint_type.clone()));
+
+                let options = SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(crate::extractors::base::Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    doc_comment: None,
+                    metadata: Some(metadata),
+                };
+
+                let constraint_symbol = self.base.create_symbol(&node, name, SymbolKind::Property, options);
+                symbols.push(constraint_symbol);
+            }
+        }
     }
 
     fn extract_select_aliases(&mut self, select_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
@@ -1335,8 +1428,7 @@ impl SqlExtractor {
     }
 
     fn extract_relationships_internal(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        // TODO: Implement relationships extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's relationship extraction logic
         match node.kind() {
             "constraint" => {
                 // Check if this is a foreign key constraint
@@ -1364,17 +1456,130 @@ impl SqlExtractor {
     }
 
     fn extract_foreign_key_relationship(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        // TODO: Implement foreign key relationship extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's extractForeignKeyRelationship logic
+        // Extract foreign key relationships between tables
+        // Look for object_reference after keyword_references
+        let references_keyword = self.base.find_child_by_type(&node, "keyword_references");
+        if references_keyword.is_none() {
+            return;
+        }
+
+        let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
+        let referenced_table_node = if let Some(obj_ref) = object_ref_node {
+            self.base.find_child_by_type(&obj_ref, "identifier")
+        } else {
+            self.base.find_child_by_type(&node, "table_name")
+                .or_else(|| self.base.find_child_by_type(&node, "identifier"))
+        };
+
+        let referenced_table_node = match referenced_table_node {
+            Some(node) => node,
+            None => return,
+        };
+
+        let referenced_table = self.base.get_node_text(&referenced_table_node);
+
+        // Find the source table (parent of this foreign key)
+        let mut current_node = node.parent();
+        while let Some(current) = current_node {
+            if current.kind() == "create_table" {
+                break;
+            }
+            current_node = current.parent();
+        }
+
+        let current_node = match current_node {
+            Some(node) => node,
+            None => return,
+        };
+
+        // Look for table name in object_reference (same pattern as extractTableDefinition)
+        let source_object_ref_node = self.base.find_child_by_type(&current_node, "object_reference");
+        let source_table_node = if let Some(obj_ref) = source_object_ref_node {
+            self.base.find_child_by_type(&obj_ref, "identifier")
+        } else {
+            self.base.find_child_by_type(&current_node, "identifier")
+                .or_else(|| self.base.find_child_by_type(&current_node, "table_name"))
+        };
+
+        let source_table_node = match source_table_node {
+            Some(node) => node,
+            None => return,
+        };
+
+        let source_table = self.base.get_node_text(&source_table_node);
+
+        // Find corresponding symbols
+        let source_symbol = symbols.iter().find(|s| s.name == source_table && s.kind == SymbolKind::Class);
+        let target_symbol = symbols.iter().find(|s| s.name == referenced_table && s.kind == SymbolKind::Class);
+
+        // Create relationship if we have at least the source symbol
+        // Target symbol might not exist if referencing external table
+        if let Some(source_symbol) = source_symbol {
+            let mut metadata = HashMap::new();
+            metadata.insert("targetTable".to_string(), Value::String(referenced_table.clone()));
+            metadata.insert("sourceTable".to_string(), Value::String(source_table));
+            metadata.insert("relationshipType".to_string(), Value::String("foreign_key".to_string()));
+            metadata.insert("isExternal".to_string(), Value::Bool(target_symbol.is_none()));
+
+            relationships.push(Relationship {
+                from_symbol_id: source_symbol.id.clone(),
+                to_symbol_id: target_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("external_{}", referenced_table)),
+                kind: RelationshipKind::References, // Foreign key reference
+                file_path: self.base.file_path.clone(),
+                line_number: node.start_position().row as u32,
+                confidence: if target_symbol.is_some() { 1.0 } else { 0.8 }, // Lower confidence for external references
+                metadata: Some(metadata),
+            });
+        }
     }
 
     fn extract_table_references(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        // TODO: Implement table references extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's extractTableReferences logic
+        // Extract table references in SELECT statements for query analysis
+        self.base.traverse_tree(&node, &mut |child_node| {
+            if child_node.kind() == "table_name" ||
+               (child_node.kind() == "identifier" &&
+                child_node.parent().map_or(false, |p| p.kind() == "from_clause")) {
+
+                let table_name = self.base.get_node_text(&child_node);
+                let _table_symbol = symbols.iter().find(|s| s.name == table_name && s.kind == SymbolKind::Class);
+
+                // This represents a query dependency - the query uses this table
+                // We could create a relationship to track which queries use which tables
+                // For now, we're just identifying the table usage
+            }
+        });
     }
 
     fn extract_join_relationships(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        // TODO: Implement join relationships extraction
-        // This is a stub that will be implemented as we port Miller's logic
+        // Port Miller's extractJoinRelationships logic
+        // Extract JOIN relationships from SQL queries
+        self.base.traverse_tree(&node, &mut |child_node| {
+            if child_node.kind() == "table_name" ||
+               (child_node.kind() == "identifier" &&
+                child_node.parent().map_or(false, |p| p.kind() == "object_reference")) {
+
+                let table_name = self.base.get_node_text(&child_node);
+                let table_symbol = symbols.iter().find(|s| s.name == table_name && s.kind == SymbolKind::Class);
+
+                if let Some(table_symbol) = table_symbol {
+                    // Create a join relationship
+                    let mut metadata = HashMap::new();
+                    metadata.insert("joinType".to_string(), Value::String("join".to_string()));
+                    metadata.insert("tableName".to_string(), Value::String(table_name.clone()));
+
+                    relationships.push(Relationship {
+                        from_symbol_id: table_symbol.id.clone(),
+                        to_symbol_id: table_symbol.id.clone(), // Self-reference for joins
+                        kind: RelationshipKind::Joins,
+                        file_path: self.base.file_path.clone(),
+                        line_number: node.start_position().row as u32,
+                        confidence: 0.9,
+                        metadata: Some(metadata),
+                    });
+                }
+            }
+        });
     }
 }

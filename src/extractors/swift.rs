@@ -161,19 +161,21 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "class".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("class".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             symbol_kind,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -204,19 +206,21 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "struct".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("struct".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Struct,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -242,19 +246,21 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "protocol".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("protocol".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Interface,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -285,19 +291,21 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "enum".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("enum".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Enum,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -318,18 +326,20 @@ impl SwiftExtractor {
                     }
 
                     let metadata = HashMap::from([
-                        ("type".to_string(), "enum-case".to_string()),
+                        ("type".to_string(), serde_json::Value::String("enum-case".to_string())),
                     ]);
 
                     let symbol = self.base.create_symbol(
                         &child,
                         name,
                         SymbolKind::EnumMember,
-                        Some(signature),
-                        Some(Visibility::Public),
-                        parent_id.map(|s| s.to_string()),
-                        None,
-                        Some(metadata),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some(metadata),
+                            doc_comment: None,
+                        },
                     );
                     symbols.push(symbol);
                 }
@@ -362,18 +372,20 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "enum-case".to_string()),
+            ("type".to_string(), serde_json::Value::String("enum-case".to_string())),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::EnumMember,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -400,10 +412,13 @@ impl SwiftExtractor {
             signature.push_str(generic_params);
         }
 
-        signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
+        let params_str = parameters.unwrap_or_else(|| "()".to_string());
+        let return_str = return_type.unwrap_or_else(|| "Void".to_string());
 
-        if let Some(ref return_type) = return_type {
-            signature.push_str(&format!(" -> {}", return_type));
+        signature.push_str(&params_str);
+
+        if !return_str.is_empty() && return_str != "Void" {
+            signature.push_str(&format!(" -> {}", return_str));
         }
 
         // Functions inside classes/structs are methods
@@ -414,21 +429,23 @@ impl SwiftExtractor {
         };
 
         let metadata = HashMap::from([
-            ("type".to_string(), "function".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
-            ("parameters".to_string(), parameters.unwrap_or_else(|| "()".to_string())),
-            ("returnType".to_string(), return_type.unwrap_or_else(|| "Void".to_string())),
+            ("type".to_string(), serde_json::Value::String("function".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            ("parameters".to_string(), serde_json::Value::String(params_str)),
+            ("returnType".to_string(), serde_json::Value::String(return_str)),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             symbol_kind,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -438,27 +455,30 @@ impl SwiftExtractor {
         let modifiers = self.extract_modifiers(node);
         let parameters = self.extract_initializer_parameters(node);
 
-        let mut signature = format!("init{}", parameters.unwrap_or_else(|| "()".to_string()));
+        let params_str = parameters.unwrap_or_else(|| "()".to_string());
+        let mut signature = format!("init{}", params_str);
 
         if !modifiers.is_empty() {
             signature = format!("{} {}", modifiers.join(" "), signature);
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "initializer".to_string()),
-            ("parameters".to_string(), parameters.unwrap_or_else(|| "()".to_string())),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("initializer".to_string())),
+            ("parameters".to_string(), serde_json::Value::String(params_str)),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Constructor,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -468,18 +488,20 @@ impl SwiftExtractor {
         let signature = "deinit".to_string();
 
         let metadata = HashMap::from([
-            ("type".to_string(), "deinitializer".to_string()),
+            ("type".to_string(), serde_json::Value::String("deinitializer".to_string())),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Destructor,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -517,22 +539,24 @@ impl SwiftExtractor {
             }
 
             let metadata = HashMap::from([
-                ("type".to_string(), "variable".to_string()),
-                ("modifiers".to_string(), modifiers.join(", ")),
-                ("variableType".to_string(), var_type.unwrap_or_else(|| "Any".to_string())),
-                ("isLet".to_string(), is_let.to_string()),
-                ("isVar".to_string(), is_var.to_string()),
+                ("type".to_string(), serde_json::Value::String("variable".to_string())),
+                ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+                ("variableType".to_string(), serde_json::Value::String(var_type.unwrap_or_else(|| "Any".to_string()))),
+                ("isLet".to_string(), serde_json::Value::String(is_let.to_string())),
+                ("isVar".to_string(), serde_json::Value::String(is_var.to_string())),
             ]);
 
             Some(self.base.create_symbol(
                 &node,
                 name,
                 SymbolKind::Variable,
-                Some(signature),
-                Some(self.determine_visibility(&modifiers)),
-                parent_id.map(|s| s.to_string()),
-                None,
-                Some(metadata),
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(self.determine_visibility(&modifiers)),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some(metadata),
+                    doc_comment: None,
+                },
             ))
         } else {
             None
@@ -564,7 +588,7 @@ impl SwiftExtractor {
 
         // Build signature with non-visibility modifiers
         let non_visibility_modifiers: Vec<_> = modifiers.iter()
-            .filter(|m| !["public", "private", "internal", "fileprivate", "open"].contains(m.as_str()))
+            .filter(|m| !["public", "private", "internal", "fileprivate", "open"].contains(&m.as_str()))
             .cloned()
             .collect();
 
@@ -579,21 +603,23 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "property".to_string()),
-            ("modifiers".to_string(), modifiers.join(", ")),
-            ("propertyType".to_string(), property_type.unwrap_or_else(|| "Any".to_string())),
-            ("keyword".to_string(), keyword),
+            ("type".to_string(), serde_json::Value::String("property".to_string())),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            ("propertyType".to_string(), serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string()))),
+            ("keyword".to_string(), serde_json::Value::String(keyword)),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Property,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -608,28 +634,33 @@ impl SwiftExtractor {
         let parameters = self.extract_parameters(node);
         let return_type = self.extract_return_type(node);
 
-        let mut signature = format!("func {}", name);
-        signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
+        let params_str = parameters.unwrap_or_else(|| "()".to_string());
+        let return_str = return_type.unwrap_or_else(|| "Void".to_string());
 
-        if let Some(ref return_type) = return_type {
-            signature.push_str(&format!(" -> {}", return_type));
+        let mut signature = format!("func {}", name);
+        signature.push_str(&params_str);
+
+        if !return_str.is_empty() && return_str != "Void" {
+            signature.push_str(&format!(" -> {}", return_str));
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "protocol-requirement".to_string()),
-            ("parameters".to_string(), parameters.unwrap_or_else(|| "()".to_string())),
-            ("returnType".to_string(), return_type.unwrap_or_else(|| "Void".to_string())),
+            ("type".to_string(), serde_json::Value::String("protocol-requirement".to_string())),
+            ("parameters".to_string(), serde_json::Value::String(params_str)),
+            ("returnType".to_string(), serde_json::Value::String(return_str)),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Method,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -680,21 +711,23 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "protocol-requirement".to_string()),
-            ("propertyType".to_string(), property_type.unwrap_or_else(|| "Any".to_string())),
-            ("accessors".to_string(), accessors),
-            ("isStatic".to_string(), is_static.to_string()),
+            ("type".to_string(), serde_json::Value::String("protocol-requirement".to_string())),
+            ("propertyType".to_string(), serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string()))),
+            ("accessors".to_string(), serde_json::Value::String(accessors)),
+            ("isStatic".to_string(), serde_json::Value::String(is_static.to_string())),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Property,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -714,18 +747,20 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "associatedtype".to_string()),
+            ("type".to_string(), serde_json::Value::String("associatedtype".to_string())),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Type,
-            Some(signature),
-            Some(Visibility::Public),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -755,21 +790,23 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), "subscript".to_string()),
-            ("parameters".to_string(), parameters),
-            ("returnType".to_string(), return_type.unwrap_or_else(|| "Any".to_string())),
-            ("modifiers".to_string(), modifiers.join(", ")),
+            ("type".to_string(), serde_json::Value::String("subscript".to_string())),
+            ("parameters".to_string(), serde_json::Value::String(parameters)),
+            ("returnType".to_string(), serde_json::Value::String(return_type.unwrap_or_else(|| "Any".to_string()))),
+            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
         ]);
 
         self.base.create_symbol(
             &node,
             name,
             SymbolKind::Method,
-            Some(signature),
-            Some(self.determine_visibility(&modifiers)),
-            parent_id.map(|s| s.to_string()),
-            None,
-            Some(metadata),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(self.determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 

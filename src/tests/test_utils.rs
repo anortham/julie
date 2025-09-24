@@ -41,6 +41,10 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
             parser.set_language(&tree_sitter_regex::LANGUAGE.into())
                 .expect("Error loading Regex grammar");
         }
+        "html" => {
+            parser.set_language(&tree_sitter_html::LANGUAGE.into())
+                .expect("Error loading HTML grammar");
+        }
         _ => panic!("Unsupported language: {}", language),
     }
 

@@ -22,8 +22,9 @@ impl HTMLExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
 
-        // Check if tree is valid and has a root node
-        if let Some(root_node) = tree.root_node().child(0) {
+        // Check if tree is valid and has a root node - start from actual root like Miller
+        let root_node = tree.root_node();
+        if root_node.child_count() > 0 {
             self.visit_node(root_node, &mut symbols, None);
         } else {
             // Fallback extraction when normal parsing fails

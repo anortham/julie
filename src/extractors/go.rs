@@ -31,9 +31,43 @@ impl GoExtractor {
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
-        // Basic implementation for method-receiver relationships
-        self.extract_method_relationships(tree.root_node(), symbols, &mut relationships);
+        let symbol_map = self.build_symbol_map(symbols);
+
+        // Extract relationships from the AST
+        self.walk_tree_for_relationships(tree.root_node(), &symbol_map, &mut relationships);
+
         relationships
+    }
+
+    fn build_symbol_map(&self, symbols: &[Symbol]) -> HashMap<String, &Symbol> {
+        let mut symbol_map = HashMap::new();
+        for symbol in symbols {
+            symbol_map.insert(symbol.name.clone(), symbol);
+        }
+        symbol_map
+    }
+
+    fn walk_tree_for_relationships(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+        relationships: &mut Vec<Relationship>
+    ) {
+        // Handle interface implementations (implicit in Go)
+        if node.kind() == "method_declaration" {
+            self.extract_method_relationships_from_node(node, symbol_map, relationships);
+        }
+
+        // Handle struct embedding
+        if node.kind() == "struct_type" {
+            self.extract_embedding_relationships(node, symbol_map, relationships);
+        }
+
+        // Recursively process children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_relationships(child, symbol_map, relationships);
+        }
     }
 
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
@@ -275,19 +309,21 @@ impl GoExtractor {
     fn extract_type_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut type_identifier = None;
+        let mut type_parameters = None;
         let mut type_def = None;
+        let _is_type_alias = node.kind() == "type_alias";
 
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "type_identifier" => type_identifier = Some(child),
+                "type_identifier" if type_identifier.is_none() => type_identifier = Some(child),
+                "type_parameter_list" => type_parameters = Some(child),
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
-                "type_alias" => type_def = Some(("alias", child)),
                 // Handle basic type definitions (type UserID int64)
                 "primitive_type" | "type_identifier" if type_identifier.is_some() && type_def.is_none() => {
                     type_def = Some(("alias", child));
                 },
-                "pointer_type" | "slice_type" | "map_type" | "array_type" | "channel_type" if type_identifier.is_some() && type_def.is_none() => {
+                "pointer_type" | "slice_type" | "map_type" | "array_type" | "channel_type" | "function_type" | "qualified_type" | "generic_type" if type_identifier.is_some() && type_def.is_none() => {
                     type_def = Some(("alias", child));
                 },
                 _ => {}
@@ -296,6 +332,8 @@ impl GoExtractor {
 
         if let (Some(type_id), Some((type_kind, type_node))) = (type_identifier, type_def) {
             let name = self.get_node_text(type_id);
+            let type_params = type_parameters.map(|tp| self.get_node_text(tp)).unwrap_or_default();
+
             let visibility = if self.is_public(&name) {
                 Some(Visibility::Public)
             } else {
@@ -304,7 +342,7 @@ impl GoExtractor {
 
             match type_kind {
                 "struct" => {
-                    let signature = format!("type {} struct", name);
+                    let signature = format!("type {}{} struct", name, type_params);
                     Some(self.base.create_symbol(
                         &type_id,
                         name,
@@ -319,7 +357,14 @@ impl GoExtractor {
                     ))
                 },
                 "interface" => {
-                    let signature = format!("type {} interface", name);
+                    let mut signature = format!("type {}{} interface", name, type_params);
+
+                    // Extract interface body content for union types and methods
+                    let interface_body = (&*self).extract_interface_body(type_node);
+                    if !interface_body.is_empty() {
+                        signature += &format!(" {{ {} }}", interface_body);
+                    }
+
                     Some(self.base.create_symbol(
                         &type_id,
                         name,
@@ -336,7 +381,7 @@ impl GoExtractor {
                 "alias" => {
                     // For type alias, extract the aliased type
                     let aliased_type = self.extract_type_from_node(type_node);
-                    let signature = format!("type {} = {}", name, aliased_type);
+                    let signature = format!("type {}{} = {}", name, type_params, aliased_type);
                     Some(self.base.create_symbol(
                         &type_id,
                         name,
@@ -419,17 +464,24 @@ impl GoExtractor {
     fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let mut cursor = node.walk();
         let mut func_name = None;
+        let mut type_parameters = None;
         let mut parameters = Vec::new();
         let mut return_type = None;
+        let mut param_list_found = false;
 
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "identifier" => func_name = Some(self.get_node_text(child)),
+                "type_parameter_list" => type_parameters = Some(self.get_node_text(child)),
                 "parameter_list" => {
                     parameters = self.extract_parameter_list(child);
+                    param_list_found = true;
                 },
                 "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "channel_type" | "interface_type" | "function_type" | "map_type" | "array_type" | "qualified_type" | "generic_type" => {
-                    return_type = Some(self.extract_type_from_node(child));
+                    // Only treat as return type if we've seen parameters already
+                    if param_list_found {
+                        return_type = Some(self.extract_type_from_node(child));
+                    }
                 },
                 _ => {}
             }
@@ -444,7 +496,8 @@ impl GoExtractor {
             Some(Visibility::Private)
         };
 
-        let signature = self.build_function_signature("func", &name, &parameters, return_type.as_deref());
+        let type_params = type_parameters.unwrap_or_default();
+        let signature = self.build_function_signature_with_generics("func", &name, &type_params, &parameters, return_type.as_deref());
 
         self.base.create_symbol(
             &node,
@@ -464,13 +517,16 @@ impl GoExtractor {
         let mut cursor = node.walk();
         let mut receiver = None;
         let mut func_name = None;
+        let mut type_parameters = None;
         let mut parameters = Vec::new();
         let mut return_type = None;
+        let mut param_lists_found = 0;
 
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "parameter_list" => {
-                    if receiver.is_none() {
+                    param_lists_found += 1;
+                    if param_lists_found == 1 {
                         // First parameter list is the receiver
                         let receiver_params = self.extract_parameter_list(child);
                         if !receiver_params.is_empty() {
@@ -481,9 +537,13 @@ impl GoExtractor {
                         parameters = self.extract_parameter_list(child);
                     }
                 },
-                "identifier" => func_name = Some(self.get_node_text(child)),
+                "field_identifier" => func_name = Some(self.get_node_text(child)), // Miller uses field_identifier for method names
+                "type_parameter_list" => type_parameters = Some(self.get_node_text(child)),
                 "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "channel_type" | "interface_type" | "function_type" | "map_type" | "array_type" | "qualified_type" | "generic_type" => {
-                    return_type = Some(self.extract_type_from_node(child));
+                    // Only treat as return type if we've seen parameters already
+                    if param_lists_found >= 2 {
+                        return_type = Some(self.extract_type_from_node(child));
+                    }
                 },
                 _ => {}
             }
@@ -496,8 +556,9 @@ impl GoExtractor {
             Some(Visibility::Private)
         };
 
+        let type_params = type_parameters.unwrap_or_default();
         let signature = if let Some(recv) = receiver {
-            format!("func ({}) {}", recv, self.build_function_signature("", &name, &parameters, return_type.as_deref()).trim_start_matches("func "))
+            format!("func ({}) {}{}", recv, name, self.build_method_signature(&type_params, &parameters, return_type.as_deref()))
         } else {
             self.build_function_signature("func", &name, &parameters, return_type.as_deref())
         };
@@ -521,11 +582,14 @@ impl GoExtractor {
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
-            if child.kind() == "parameter_declaration" {
-                let param = self.extract_parameter_declaration(child);
-                if !param.is_empty() {
-                    parameters.push(param);
-                }
+            match child.kind() {
+                "parameter_declaration" | "variadic_parameter_declaration" => {
+                    let param = self.extract_parameter_declaration(child);
+                    if !param.is_empty() {
+                        parameters.push(param);
+                    }
+                },
+                _ => {}
             }
         }
 
@@ -533,6 +597,11 @@ impl GoExtractor {
     }
 
     fn extract_parameter_declaration(&self, node: Node) -> String {
+        // Handle variadic parameter declarations
+        if node.kind() == "variadic_parameter_declaration" {
+            return self.get_node_text(node);
+        }
+
         let mut names = Vec::new();
         let mut param_type = None;
         let mut cursor = node.walk();
@@ -581,13 +650,87 @@ impl GoExtractor {
         }
     }
 
+    fn build_function_signature_with_generics(&self, func_keyword: &str, name: &str, type_params: &str, parameters: &[String], return_type: Option<&str>) -> String {
+        let params = if parameters.is_empty() {
+            "()".to_string()
+        } else {
+            format!("({})", parameters.join(", "))
+        };
+
+        let return_part = return_type.map_or(String::new(), |t| format!(" {}", t));
+
+        if func_keyword.is_empty() {
+            format!("{}{}{}{}", name, type_params, params, return_part)
+        } else {
+            format!("{} {}{}{}{}", func_keyword, name, type_params, params, return_part)
+        }
+    }
+
+    fn build_method_signature(&self, type_params: &str, parameters: &[String], return_type: Option<&str>) -> String {
+        let params = if parameters.is_empty() {
+            "()".to_string()
+        } else {
+            format!("({})", parameters.join(", "))
+        };
+
+        let return_part = return_type.map_or(String::new(), |t| format!(" {}", t));
+        format!("{}{}{}", type_params, params, return_part)
+    }
+
+    fn extract_interface_body(&self, interface_node: Node) -> String {
+        let mut body_parts = Vec::new();
+        let mut cursor = interface_node.walk();
+
+        for child in interface_node.children(&mut cursor) {
+            if child.kind() == "type_elem" {
+                body_parts.push(self.get_node_text(child));
+            }
+        }
+
+        body_parts.join("; ")
+    }
+
     fn extract_field(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
         // Stub - will implement
         None
     }
 
-    fn extract_from_error_node(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        // Stub - will implement
+    fn extract_from_error_node(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Try to recover function signatures from ERROR nodes
+        // Look for identifier + parenthesized_type pattern (function signature)
+        let mut cursor = node.walk();
+        let mut identifier = None;
+        let mut param_type = None;
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => identifier = Some(child),
+                "parenthesized_type" => param_type = Some(child),
+                _ => {}
+            }
+        }
+
+        if let (Some(id_node), Some(param_node)) = (identifier, param_type) {
+            let name = self.get_node_text(id_node);
+            let params = self.get_node_text(param_node);
+
+            // This looks like a function signature trapped in an ERROR node
+            let signature = format!("func {}{}", name, params);
+
+            return Some(self.base.create_symbol(
+                &node,
+                name.clone(),
+                SymbolKind::Function,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: if self.is_public(&name) { Some(Visibility::Public) } else { Some(Visibility::Private) },
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: None,
+                    doc_comment: None,
+                },
+            ));
+        }
+
         None
     }
 
@@ -599,13 +742,18 @@ impl GoExtractor {
 
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "identifier" => alias = Some(self.get_node_text(child)),
+                "package_identifier" => alias = Some(self.get_node_text(child)), // Miller uses package_identifier for alias
                 "interpreted_string_literal" => path = Some(self.get_node_text(child)),
                 _ => {}
             }
         }
 
         if let Some(import_path) = path {
+            // Skip blank imports (_)
+            if alias.as_deref() == Some("_") {
+                return None;
+            }
+
             // Extract package name from path
             let package_name = if let Some(ref a) = alias {
                 a.clone()
@@ -766,55 +914,69 @@ impl GoExtractor {
         }
     }
 
-    // Additional helper methods for relationships and type inference
-    fn extract_method_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        let mut cursor = node.walk();
+    fn extract_method_relationships_from_node(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+        relationships: &mut Vec<Relationship>
+    ) {
+        // Extract method to receiver type relationship
+        let receiver_list = node.children(&mut node.walk()).find(|c| c.kind() == "parameter_list");
+        if let Some(receiver_list) = receiver_list {
+            let param_decl = receiver_list.children(&mut receiver_list.walk())
+                .find(|c| c.kind() == "parameter_declaration");
+            if let Some(param_decl) = param_decl {
+                // Extract receiver type
+                let receiver_type = self.extract_receiver_type_from_param(param_decl);
+                let receiver_symbol = symbol_map.get(&receiver_type);
 
-        for child in node.children(&mut cursor) {
-            match child.kind() {
-                "method_declaration" => {
-                    // Find receiver and method relationships
-                    if let Some(receiver_type) = self.extract_receiver_type(child) {
-                        // Find corresponding struct/interface
-                        if let Some(struct_symbol) = symbols.iter().find(|s| s.name == receiver_type && s.kind == SymbolKind::Class) {
-                            if let Some(method_symbol) = symbols.iter().find(|s| self.is_method_of_node(s, child)) {
-                                // Create method-receiver relationship (placeholder)
-                                // This would require proper relationship creation with RelationshipKind
-                            }
-                        }
+                let name_node = node.children(&mut node.walk()).find(|c| c.kind() == "field_identifier");
+                if let Some(name_node) = name_node {
+                    let method_name = self.get_node_text(name_node);
+                    let method_symbol = symbol_map.get(&method_name);
+
+                    if let (Some(receiver_sym), Some(method_sym)) = (receiver_symbol, method_symbol) {
+                        // Create Uses relationship from method to receiver type
+                        relationships.push(self.base.create_relationship(
+                            method_sym.id.clone(),
+                            receiver_sym.id.clone(),
+                            RelationshipKind::Uses,
+                            &node,
+                            Some(0.9),
+                            None,
+                        ));
                     }
-                }
-                _ => {
-                    // Recursively process children
-                    self.extract_method_relationships(child, symbols, relationships);
                 }
             }
         }
     }
 
-    fn extract_receiver_type(&self, method_node: Node) -> Option<String> {
-        let mut cursor = method_node.walk();
-        for child in method_node.children(&mut cursor) {
-            if child.kind() == "parameter_list" {
-                // First parameter list is the receiver
-                let params = self.extract_parameter_list(child);
-                if !params.is_empty() {
-                    // Extract type from receiver parameter
-                    let receiver = &params[0];
-                    if let Some(type_start) = receiver.rfind(' ') {
-                        let receiver_type = &receiver[type_start + 1..];
-                        return Some(receiver_type.trim_start_matches('*').to_string());
-                    }
-                }
-                break;
+    fn extract_receiver_type_from_param(&self, param_decl: Node) -> String {
+        // Extract type from receiver parameter (handle *Type and Type)
+        let mut cursor = param_decl.walk();
+        for child in param_decl.children(&mut cursor) {
+            if child.kind() == "type_identifier" {
+                return self.get_node_text(child);
+            } else if child.kind() == "pointer_type" {
+                // Handle pointer types like *User
+                let type_id = child.children(&mut child.walk())
+                    .find(|c| c.kind() == "type_identifier");
+                return type_id.map(|tid| self.get_node_text(tid))
+                    .unwrap_or_default();
             }
         }
-        None
+        String::new()
     }
 
-    fn is_method_of_node(&self, symbol: &Symbol, node: Node) -> bool {
-        // Simple check - in a real implementation, we'd compare node positions
-        symbol.kind == SymbolKind::Method
+    fn extract_embedding_relationships(
+        &self,
+        _node: Node,
+        _symbol_map: &HashMap<String, &Symbol>,
+        _relationships: &mut Vec<Relationship>
+    ) {
+        // Go struct embedding creates implicit relationships
+        // This would need more complex parsing to detect embedded types
+        // For now, we'll skip this advanced feature
     }
 
     fn extract_return_type_from_signature(&self, signature: &str) -> Option<String> {

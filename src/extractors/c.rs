@@ -3,9 +3,10 @@
 // Port of Miller's C extractor using proven extraction logic with idiomatic Rust
 // Original: /Users/murphy/Source/miller/src/extractors/c-extractor.ts
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
 use tree_sitter::Tree;
 use std::collections::HashMap;
+use serde_json::Value;
 
 pub struct CExtractor {
     base: BaseExtractor,
@@ -96,18 +97,23 @@ impl CExtractor {
         let signature = self.base.get_node_text(&node);
         let include_path = self.extract_include_path(&signature);
 
-        self.create_symbol(
+        let metadata = self.create_metadata_map(HashMap::from([
+            ("type".to_string(), "include".to_string()),
+            ("path".to_string(), include_path.clone()),
+            ("isSystemHeader".to_string(), self.is_system_header(&signature).to_string()),
+        ]));
+
+        self.base.create_symbol(
             &node,
             include_path.clone(),
             SymbolKind::Import,
-            Some(signature.clone()),
-            "public",
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "include".to_string()),
-                ("path".to_string(), include_path.clone()),
-                ("isSystemHeader".to_string(), self.is_system_header(&signature).to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature.clone()),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -116,19 +122,24 @@ impl CExtractor {
         let signature = self.base.get_node_text(&node);
         let macro_name = self.extract_macro_name(node);
 
-        self.create_symbol(
+        let metadata = self.create_metadata_map(HashMap::from([
+            ("type".to_string(), "macro".to_string()),
+            ("name".to_string(), macro_name.clone()),
+            ("isFunctionLike".to_string(), (node.kind() == "preproc_function_def").to_string()),
+            ("definition".to_string(), signature.clone()),
+        ]));
+
+        self.base.create_symbol(
             &node,
             macro_name.clone(),
             SymbolKind::Constant,
-            Some(signature.clone()),
-            "public",
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "macro".to_string()),
-                ("name".to_string(), macro_name.clone()),
-                ("isFunctionLike".to_string(), (node.kind() == "preproc_function_def").to_string()),
-                ("definition".to_string(), signature),
-            ])),
+            SymbolOptions {
+                signature: Some(signature.clone()),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
         )
     }
 
@@ -1039,7 +1050,7 @@ impl CExtractor {
             file_path: self.base.file_path.clone(),
             line_number: (node.start_position().row + 1) as u32,
             confidence: 1.0,
-            metadata: Some(HashMap::from([("includePath".to_string(), include_path)])),
+            metadata: Some(HashMap::from([("includePath".to_string(), serde_json::Value::String(include_path))])),
         });
     }
 
@@ -1048,37 +1059,11 @@ impl CExtractor {
         None
     }
 
-    // Helper for creating symbols with Julie's pattern
-    fn create_symbol(
-        &mut self,
-        node: &tree_sitter::Node,
-        name: String,
-        kind: SymbolKind,
-        signature: Option<String>,
-        visibility: &str,
-        parent_id: Option<&str>,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Symbol {
-        use crate::extractors::base::{SymbolOptions, Visibility};
-
-        let visibility_enum = match visibility {
-            "private" => Some(Visibility::Private),
-            "public" => Some(Visibility::Public),
-            _ => None,
-        };
-
-        self.base.create_symbol(
-            node,
-            name,
-            kind,
-            SymbolOptions {
-                signature,
-                visibility: visibility_enum,
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata,
-                doc_comment: None,
-            },
-        )
+    // Helper for converting string metadata to serde_json::Value metadata
+    fn create_metadata_map(&self, metadata: HashMap<String, String>) -> HashMap<String, Value> {
+        metadata.into_iter()
+            .map(|(k, v)| (k, Value::String(v)))
+            .collect()
     }
 }
 

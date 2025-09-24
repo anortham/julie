@@ -1000,14 +1000,12 @@ impl RazorExtractor {
                         }
                     }
                 }
-            }
 
             // Handle special cases
             if metadata.get("isDataBinding")
                 .and_then(|v| v.as_str())
                 .map_or(false, |v| v == "true") {
-                    inferred_type = "bool".to_string();
-                }
+                inferred_type = "bool".to_string();
             }
 
             if symbol.kind == SymbolKind::Method {
