@@ -98,49 +98,29 @@ impl ServerHandler for JulieServerHandler {
                 info!("📚 Indexing workspace at: {:?}", self.get_workspace_path());
                 tool.call_tool(self).await
             },
-            JulieTools::SearchCodeTool(tool) => {
-                debug!("🔍 Searching code for: {:?}", tool);
+            // Consolidated fast tools with appealing names
+            JulieTools::FastSearchTool(tool) => {
+                debug!("⚡ Fast search: {:?}", tool);
                 tool.call_tool(self).await
             },
-            JulieTools::GotoDefinitionTool(tool) => {
-                debug!("🎯 Finding definition for: {:?}", tool);
+            JulieTools::FastGotoTool(tool) => {
+                debug!("⚡ Fast goto definition: {:?}", tool);
                 tool.call_tool(self).await
             },
-            JulieTools::FindReferencesTool(tool) => {
-                debug!("🔗 Finding references for: {:?}", tool);
+            JulieTools::FastRefsTool(tool) => {
+                debug!("⚡ Fast find references: {:?}", tool);
                 tool.call_tool(self).await
             },
-            JulieTools::SemanticSearchTool(tool) => {
-                debug!("🧠 Semantic search for: {:?}", tool);
+            JulieTools::FastExploreTool(tool) => {
+                debug!("⚡ Fast explore codebase: {:?}", tool);
                 tool.call_tool(self).await
             },
-            JulieTools::ExploreTool(tool) => {
-                debug!("🧭 Exploring codebase: {:?}", tool);
+            JulieTools::FindLogicTool(tool) => {
+                debug!("🏢 Find business logic: {:?}", tool);
                 tool.call_tool(self).await
             },
-            JulieTools::NavigateTool(tool) => {
-                debug!("🚀 Navigating to: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            // Phase 6.1 Intelligence Tools
-            JulieTools::ExploreOverviewTool(tool) => {
-                debug!("🧭 Exploring codebase overview: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            JulieTools::TraceExecutionTool(tool) => {
-                debug!("🔍 Tracing execution flow: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            JulieTools::GetMinimalContextTool(tool) => {
-                debug!("🎯 Getting minimal context: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            JulieTools::FindBusinessLogicTool(tool) => {
-                debug!("🏢 Finding business logic: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            JulieTools::ScoreCriticalityTool(tool) => {
-                debug!("📊 Scoring criticality: {:?}", tool);
+            JulieTools::FastEditTool(tool) => {
+                debug!("⚡ Fast edit: {:?}", tool);
                 tool.call_tool(self).await
             },
         };

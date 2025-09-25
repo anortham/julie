@@ -13,8 +13,10 @@ mod workspace;
 mod tests;
 
 use std::sync::Arc;
+use std::fs;
 use tracing::{info, error, debug};
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_appender::{non_blocking, rolling};
 
 use handler::JulieServerHandler;
 use rust_mcp_sdk::schema::{
@@ -30,18 +32,46 @@ use rust_mcp_sdk::{
 
 #[tokio::main]
 async fn main() -> SdkResult<()> {
-    // Initialize logging
+    // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
         .unwrap();
 
-    fmt()
-        .with_env_filter(filter)
-        .with_target(false)
+    // Ensure .julie/logs directory exists
+    let logs_dir = ".julie/logs";
+    fs::create_dir_all(logs_dir).unwrap_or_else(|e| {
+        eprintln!("Failed to create logs directory: {}", e);
+    });
+
+    // Set up file appender with daily rolling
+    let file_appender = rolling::daily(logs_dir, "julie.log");
+    let (non_blocking_file, _file_guard) = non_blocking(file_appender);
+
+    // Set up console appender
+    let (non_blocking_console, _console_guard) = non_blocking(std::io::stdout());
+
+    // Create multi-layer subscriber
+    tracing_subscriber::registry()
+        .with(filter.clone())
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking_console)
+                .with_target(false)
+                .with_ansi(true)
+        )
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking_file)
+                .with_target(true)
+                .with_ansi(false)
+                .with_file(true)
+                .with_line_number(true)
+        )
         .init();
 
     info!("🚀 Starting Julie - Cross-Platform Code Intelligence Server");
     debug!("Built with Rust for true cross-platform compatibility");
+    info!("📝 Logging enabled - Console output + File output to .julie/logs/julie.log");
 
     // STEP 1: Define server details and capabilities
     let server_details = InitializeResult {

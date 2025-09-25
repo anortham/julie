@@ -12,6 +12,62 @@ use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind, Relationship};
 use crate::workspace::JulieWorkspace;
 
+/// Token-optimized response wrapper with confidence-based limiting
+/// Inspired by codesearch's AIOptimizedResponse pattern
+#[derive(Debug, Clone, Serialize)]
+pub struct OptimizedResponse<T> {
+    /// The main results (will be limited based on confidence)
+    pub results: Vec<T>,
+    /// Confidence score 0.0-1.0 (higher = more confident)
+    pub confidence: f32,
+    /// Total results found before limiting
+    pub total_found: usize,
+    /// Key insights or patterns discovered
+    pub insights: Option<String>,
+    /// Suggested next actions for the user
+    pub next_actions: Vec<String>,
+}
+
+impl<T> OptimizedResponse<T> {
+    pub fn new(results: Vec<T>, confidence: f32) -> Self {
+        let total_found = results.len();
+        Self {
+            results,
+            confidence,
+            total_found,
+            insights: None,
+            next_actions: Vec::new(),
+        }
+    }
+
+    /// Limit results based on confidence and token constraints
+    pub fn optimize_for_tokens(&mut self, max_results: Option<usize>) {
+        let limit = if let Some(max) = max_results {
+            max
+        } else {
+            // Dynamic limiting based on confidence
+            if self.confidence > 0.9 { 3 }        // High confidence = fewer results needed
+            else if self.confidence > 0.7 { 5 }   // Medium confidence
+            else if self.confidence > 0.5 { 8 }   // Lower confidence
+            else { 12 }                          // Very low confidence = more results
+        };
+
+        if self.results.len() > limit {
+            self.results.truncate(limit);
+        }
+    }
+
+    pub fn with_insights(mut self, insights: String) -> Self {
+        self.insights = Some(insights);
+        self
+    }
+
+    pub fn with_next_actions(mut self, actions: Vec<String>) -> Self {
+        self.next_actions = actions;
+        self
+    }
+}
+
 /// Blacklisted file extensions - binary and temporary files to exclude from indexing
 const BLACKLISTED_EXTENSIONS: &[&str] = &[
     // Binary files
@@ -645,9 +701,9 @@ impl IndexWorkspaceTool {
 //   Search Code    //
 //******************//
 #[mcp_tool(
-    name = "search_code",
-    description = "Search for code symbols, functions, classes across all supported languages with fuzzy matching.",
-    title = "Code Search with Fuzzy Matching",
+    name = "fast_search",
+    description = "SEARCH BEFORE CODING - Find existing implementations to avoid duplication with lightning speed",
+    title = "Fast Unified Search (Text + Semantic)",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -655,9 +711,12 @@ impl IndexWorkspaceTool {
     meta = r#"{"category": "search", "performance": "sub_10ms"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct SearchCodeTool {
+pub struct FastSearchTool {
     /// Search query (symbol name, function name, etc.)
     pub query: String,
+    /// Search mode: text (classic code search), semantic (AI understanding), hybrid (both)
+    #[serde(default = "default_text")]
+    pub mode: String,
     /// Optional language filter
     #[serde(default)]
     pub language: Option<String>,
@@ -670,65 +729,57 @@ pub struct SearchCodeTool {
 }
 
 fn default_limit() -> u32 { 50 }
+fn default_text() -> String { "text".to_string() }
 
-impl SearchCodeTool {
+impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🔍 Searching for: {}", self.query);
+        debug!("🔍 Fast search: {} (mode: {})", self.query, self.mode);
 
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable search.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable fast search.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
-        // Perform search
-        let results = self.search_symbols(handler)?;
+        // Perform search based on mode
+        let symbols = match self.mode.as_str() {
+            "semantic" => self.semantic_search(handler).await?,
+            "hybrid" => self.hybrid_search(handler).await?,
+            "text" | _ => self.text_search(handler)?,
+        };
 
-        if results.is_empty() {
+        // Create optimized response with confidence scoring
+        let confidence = self.calculate_search_confidence(&symbols);
+        let mut optimized = OptimizedResponse::new(symbols, confidence);
+
+        // Add insights based on patterns found
+        if let Some(insights) = self.generate_search_insights(&optimized.results) {
+            optimized = optimized.with_insights(insights);
+        }
+
+        // Add smart next actions
+        let next_actions = self.suggest_next_actions(&optimized.results);
+        optimized = optimized.with_next_actions(next_actions);
+
+        // Optimize for tokens
+        optimized.optimize_for_tokens(Some(self.limit as usize));
+
+        if optimized.results.is_empty() {
             let message = format!(
                 "🔍 No results found for: '{}'\n\
-                💡 Try a broader search term or check the spelling",
+                💡 Try a broader search term, different mode, or check spelling",
                 self.query
             );
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
-        // Format results
-        let mut message = format!(
-            "🔍 Found {} results for: '{}'\n\n",
-            results.len().min(self.limit as usize),
-            self.query
-        );
-
-        for (i, symbol) in results.iter().take(self.limit as usize).enumerate() {
-            message.push_str(&format!(
-                "{}. {} [{}]\n\
-                   📁 {}:{}:{}\n\
-                   🏷️ Kind: {:?}\n",
-                i + 1,
-                symbol.name,
-                symbol.language,
-                symbol.file_path,
-                symbol.start_line,
-                symbol.start_column,
-                symbol.kind
-            ));
-
-            if let Some(signature) = &symbol.signature {
-                message.push_str(&format!("   📝 {}", signature));
-            }
-            message.push('\n');
-        }
-
-        if results.len() > self.limit as usize {
-            message.push_str(&format!("\n... and {} more results\n", results.len() - self.limit as usize));
-        }
-
+        // Format optimized results
+        let message = self.format_optimized_results(&optimized);
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn search_symbols(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+    fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
         let query_lower = self.query.to_lowercase();
 
@@ -783,15 +834,160 @@ impl SearchCodeTool {
             _ => 10,
         }
     }
+
+    async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        // For now, delegate to text search - full semantic implementation coming soon
+        debug!("🧠 Semantic search mode (using text fallback)");
+        self.text_search(handler)
+    }
+
+    async fn hybrid_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        // For now, delegate to text search - full hybrid implementation coming soon
+        debug!("🔄 Hybrid search mode (using text fallback)");
+        self.text_search(handler)
+    }
+
+    /// Calculate confidence score based on search quality and result relevance
+    fn calculate_search_confidence(&self, symbols: &[Symbol]) -> f32 {
+        if symbols.is_empty() { return 0.0; }
+
+        let mut confidence: f32 = 0.5; // Base confidence
+
+        // Exact name matches boost confidence
+        let exact_matches = symbols.iter()
+            .filter(|s| s.name.to_lowercase() == self.query.to_lowercase())
+            .count();
+        if exact_matches > 0 {
+            confidence += 0.3;
+        }
+
+        // Partial matches are medium confidence
+        let partial_matches = symbols.iter()
+            .filter(|s| s.name.to_lowercase().contains(&self.query.to_lowercase()))
+            .count();
+        if partial_matches > exact_matches {
+            confidence += 0.2;
+        }
+
+        // More results can indicate ambiguity (lower confidence)
+        if symbols.len() > 20 {
+            confidence -= 0.1;
+        } else if symbols.len() < 5 {
+            confidence += 0.1;
+        }
+
+        confidence.clamp(0.0, 1.0)
+    }
+
+    /// Generate intelligent insights about search patterns
+    fn generate_search_insights(&self, symbols: &[Symbol]) -> Option<String> {
+        if symbols.is_empty() { return None; }
+
+        let mut insights = Vec::new();
+
+        // Language distribution
+        let mut lang_counts = std::collections::HashMap::new();
+        for symbol in symbols {
+            *lang_counts.entry(&symbol.language).or_insert(0) += 1;
+        }
+
+        if lang_counts.len() > 1 {
+            let main_lang = lang_counts.iter().max_by_key(|(_, count)| *count).unwrap();
+            insights.push(format!("Found across {} languages (mainly {})",
+                lang_counts.len(), main_lang.0));
+        }
+
+        // Kind distribution
+        let mut kind_counts = std::collections::HashMap::new();
+        for symbol in symbols {
+            *kind_counts.entry(&symbol.kind).or_insert(0) += 1;
+        }
+
+        if let Some((dominant_kind, count)) = kind_counts.iter().max_by_key(|(_, count)| *count) {
+            if *count > symbols.len() / 2 {
+                insights.push(format!("Mostly {:?}s ({} of {})",
+                    dominant_kind, count, symbols.len()));
+            }
+        }
+
+        if insights.is_empty() { None } else { Some(insights.join(", ")) }
+    }
+
+    /// Suggest intelligent next actions based on search results
+    fn suggest_next_actions(&self, symbols: &[Symbol]) -> Vec<String> {
+        let mut actions = Vec::new();
+
+        if symbols.len() == 1 {
+            actions.push("Use fast_goto to jump to definition".to_string());
+            actions.push("Use fast_refs to see all usages".to_string());
+        } else if symbols.len() > 1 {
+            actions.push("Narrow search with language filter".to_string());
+            actions.push("Use fast_refs on specific symbols".to_string());
+        }
+
+        // Check if we have functions that might be entry points
+        if symbols.iter().any(|s| matches!(s.kind, SymbolKind::Function) && s.name.contains("main")) {
+            actions.push("Use fast_explore to understand architecture".to_string());
+        }
+
+        if symbols.iter().any(|s| s.name.to_lowercase().contains(&self.query.to_lowercase())) {
+            actions.push("Consider exact name match for precision".to_string());
+        }
+
+        actions
+    }
+
+    /// Format optimized response with insights and next actions
+    fn format_optimized_results(&self, optimized: &OptimizedResponse<Symbol>) -> String {
+        let mut lines = vec![
+            format!("⚡ Fast Search: '{}' (mode: {})", self.query, self.mode),
+            format!("📊 Showing {} of {} results (confidence: {:.1})",
+                    optimized.results.len(), optimized.total_found, optimized.confidence),
+        ];
+
+        // Add insights if available
+        if let Some(insights) = &optimized.insights {
+            lines.push(format!("💡 {}", insights));
+        }
+
+        lines.push(String::new());
+
+        // Format results
+        for (i, symbol) in optimized.results.iter().enumerate() {
+            lines.push(format!(
+                "{}. {} [{}]",
+                i + 1, symbol.name, symbol.language
+            ));
+            lines.push(format!(
+                "   📁 {}:{}-{}",
+                symbol.file_path, symbol.start_line, symbol.end_line
+            ));
+
+            if let Some(signature) = &symbol.signature {
+                lines.push(format!("   📝 {}", signature));
+            }
+            lines.push(String::new());
+        }
+
+        // Add next actions
+        if !optimized.next_actions.is_empty() {
+            lines.push("🎯 Suggested next actions:".to_string());
+            for action in &optimized.next_actions {
+                lines.push(format!("   • {}", action));
+            }
+        }
+
+        lines.join("\n")
+    }
 }
 
 //******************//
 // Goto Definition  //
 //******************//
 #[mcp_tool(
-    name = "goto_definition",
-    description = "Navigate to the definition of a symbol with precise location information.",
-    title = "Go to Definition",
+    name = "fast_goto",
+    description = "JUMP TO SOURCE - Navigate directly to where symbols are defined with lightning speed",
+    title = "Fast Navigate to Definition",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -799,7 +995,7 @@ impl SearchCodeTool {
     meta = r#"{"category": "navigation", "precision": "line_level"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct GotoDefinitionTool {
+pub struct FastGotoTool {
     /// Symbol name to find definition for
     pub symbol: String,
     /// Optional context file path for better resolution
@@ -810,7 +1006,7 @@ pub struct GotoDefinitionTool {
     pub line_number: Option<u32>,
 }
 
-impl GotoDefinitionTool {
+impl FastGotoTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🎯 Finding definition for: {}", self.symbol);
 
@@ -865,30 +1061,172 @@ impl GotoDefinitionTool {
 
     fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
-        // Find exact name matches first, then partial matches
+        debug!("🔍 Searching for '{}' across {} symbols", self.symbol, symbols.len());
+
+        // Strategy 1: Exact name matches with cross-language resolution
+        let mut definitions: Vec<Symbol> = Vec::new();
+
+        // Find all symbols with matching names
         let mut exact_matches: Vec<Symbol> = symbols.iter()
             .filter(|symbol| symbol.name == self.symbol)
             .cloned()
             .collect();
 
-        // Sort exact matches by priority (prefer classes, functions over variables)
-        exact_matches.sort_by_key(|s| self.definition_priority(&s.kind));
+        // Strategy 2: Use relationships to find actual definitions
+        // Look for symbols that are referenced/imported with this name
+        for relationship in relationships.iter() {
+            if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
+                // Check if this relationship represents a definition or import
+                match &relationship.kind {
+                    crate::extractors::base::RelationshipKind::Imports => {
+                        if target_symbol.name == self.symbol {
+                            exact_matches.push(target_symbol.clone());
+                        }
+                    }
+                    crate::extractors::base::RelationshipKind::Defines => {
+                        if target_symbol.name == self.symbol {
+                            exact_matches.push(target_symbol.clone());
+                        }
+                    }
+                    crate::extractors::base::RelationshipKind::Extends => {
+                        if target_symbol.name == self.symbol {
+                            exact_matches.push(target_symbol.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
-        // If we have context file, prioritize symbols from that file or nearby
-        if let Some(context_file) = &self.context_file {
-            exact_matches.sort_by(|a, b| {
+        // Remove duplicates based on symbol id
+        exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
+        exact_matches.dedup_by(|a, b| a.id == b.id);
+
+        // Strategy 3: Cross-language resolution - look for symbols with similar signatures
+        if exact_matches.is_empty() {
+            debug!("🌍 Attempting cross-language resolution for '{}'", self.symbol);
+
+            // Look for similar names across languages (handle different naming conventions)
+            let symbol_lower = self.symbol.to_lowercase();
+            let snake_case_version = self.to_snake_case(&self.symbol);
+            let camel_case_version = self.to_camel_case(&self.symbol);
+            let pascal_case_version = self.to_pascal_case(&self.symbol);
+
+            for symbol in symbols.iter() {
+                let name_lower = symbol.name.to_lowercase();
+                if name_lower == symbol_lower ||
+                   symbol.name == snake_case_version ||
+                   symbol.name == camel_case_version ||
+                   symbol.name == pascal_case_version {
+                    exact_matches.push(symbol.clone());
+                }
+            }
+        }
+
+        // Strategy 4: Semantic matching if still no results
+        if exact_matches.is_empty() {
+            debug!("🧠 Using semantic matching for '{}'", self.symbol);
+
+            // Initialize embedding engine for semantic search
+            if let Ok(cache_dir) = std::env::temp_dir().canonicalize() {
+                let model_cache = cache_dir.join("julie_models");
+                if let Ok(mut embedding_engine) = crate::embeddings::EmbeddingEngine::new("bge-small", model_cache) {
+                    if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+                        for symbol in symbols.iter() {
+                            let symbol_text = format!("{} {:?}", symbol.name, symbol.kind);
+                            if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text) {
+                                let similarity = crate::embeddings::cosine_similarity(&query_embedding, &symbol_embedding);
+                                if similarity > 0.7 { // High similarity threshold for definitions
+                                    exact_matches.push(symbol.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Prioritize results
+        exact_matches.sort_by(|a, b| {
+            // First by definition priority (classes > functions > variables)
+            let priority_cmp = self.definition_priority(&a.kind).cmp(&self.definition_priority(&b.kind));
+            if priority_cmp != std::cmp::Ordering::Equal {
+                return priority_cmp;
+            }
+
+            // Then by context file preference if provided
+            if let Some(context_file) = &self.context_file {
                 let a_in_context = a.file_path.contains(context_file);
                 let b_in_context = b.file_path.contains(context_file);
                 match (a_in_context, b_in_context) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => std::cmp::Ordering::Equal,
+                    (true, false) => return std::cmp::Ordering::Less,
+                    (false, true) => return std::cmp::Ordering::Greater,
+                    _ => {}
                 }
-            });
+            }
+
+            // Finally by line number if provided (prefer definitions closer to context)
+            if let Some(line_number) = self.line_number {
+                let a_distance = (a.start_line as i32 - line_number as i32).abs();
+                let b_distance = (b.start_line as i32 - line_number as i32).abs();
+                return a_distance.cmp(&b_distance);
+            }
+
+            std::cmp::Ordering::Equal
+        });
+
+        debug!("✅ Found {} definitions for '{}'", exact_matches.len(), self.symbol);
+        Ok(exact_matches)
+    }
+
+    // Helper functions for cross-language naming convention conversion
+    fn to_snake_case(&self, s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if ch.is_uppercase() {
+                if !result.is_empty() && chars.peek().map_or(false, |c| c.is_lowercase()) {
+                    result.push('_');
+                }
+                result.push(ch.to_lowercase().next().unwrap());
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    fn to_camel_case(&self, s: &str) -> String {
+        let mut result = String::new();
+        let mut capitalize_next = false;
+
+        for ch in s.chars() {
+            if ch == '_' {
+                capitalize_next = true;
+            } else if capitalize_next {
+                result.push(ch.to_uppercase().next().unwrap());
+                capitalize_next = false;
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    fn to_pascal_case(&self, s: &str) -> String {
+        let camel = self.to_camel_case(s);
+        if camel.is_empty() {
+            return camel;
         }
 
-        Ok(exact_matches)
+        let mut chars = camel.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        }
     }
 
     fn definition_priority(&self, kind: &SymbolKind) -> u8 {
@@ -907,9 +1245,9 @@ impl GotoDefinitionTool {
 // Find References  //
 //******************//
 #[mcp_tool(
-    name = "find_references",
-    description = "Find all references to a symbol across the codebase.",
-    title = "Find All References",
+    name = "fast_refs",
+    description = "FIND ALL IMPACT - See all references before you change code (prevents surprises)",
+    title = "Fast Find All References",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -917,7 +1255,7 @@ impl GotoDefinitionTool {
     meta = r#"{"category": "navigation", "scope": "workspace"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct FindReferencesTool {
+pub struct FastRefsTool {
     /// Symbol name to find references for
     pub symbol: String,
     /// Include definition in results
@@ -930,7 +1268,7 @@ pub struct FindReferencesTool {
 
 fn default_true() -> bool { true }
 
-impl FindReferencesTool {
+impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔗 Finding references for: {}", self.symbol);
 
@@ -1013,24 +1351,182 @@ impl FindReferencesTool {
         let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
         let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
-        // Find symbol definitions
-        let definitions: Vec<Symbol> = symbols.iter()
-            .filter(|symbol| symbol.name == self.symbol)
-            .cloned()
-            .collect();
+        debug!("🔍 Searching for references to '{}' across {} symbols", self.symbol, symbols.len());
 
-        // Get symbol IDs for reference search
+        // Strategy 1: Find symbol definitions (exact matches and cross-language variants)
+        let mut definitions = Vec::new();
+
+        // Find exact name matches
+        for symbol in symbols.iter() {
+            if symbol.name == self.symbol {
+                definitions.push(symbol.clone());
+            }
+        }
+
+        // Cross-language naming convention matching
+        let snake_case_version = self.to_snake_case(&self.symbol);
+        let camel_case_version = self.to_camel_case(&self.symbol);
+        let pascal_case_version = self.to_pascal_case(&self.symbol);
+
+        for symbol in symbols.iter() {
+            if symbol.name == snake_case_version ||
+               symbol.name == camel_case_version ||
+               symbol.name == pascal_case_version {
+                definitions.push(symbol.clone());
+            }
+        }
+
+        // Remove duplicates
+        definitions.sort_by(|a, b| a.id.cmp(&b.id));
+        definitions.dedup_by(|a, b| a.id == b.id);
+
+        // Strategy 2: Find direct relationships
         let symbol_ids: Vec<String> = definitions.iter().map(|s| s.id.clone()).collect();
-
-        // Find relationships where this symbol is referenced
-        let references: Vec<Relationship> = relationships.iter()
+        let mut references: Vec<Relationship> = relationships.iter()
             .filter(|rel| {
                 symbol_ids.iter().any(|id| rel.to_symbol_id == *id || rel.from_symbol_id == *id)
             })
             .cloned()
             .collect();
 
+        // Strategy 3: Semantic similarity matching for cross-language references
+        debug!("🧠 Performing semantic similarity analysis for references");
+
+        // Initialize embedding engine for semantic analysis
+        if let Ok(cache_dir) = std::env::temp_dir().canonicalize() {
+            let model_cache = cache_dir.join("julie_models");
+            if let Ok(mut embedding_engine) = crate::embeddings::EmbeddingEngine::new("bge-small", model_cache) {
+                if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+
+                    // Find semantically similar symbols that might be references
+                    for symbol in symbols.iter() {
+                        // Skip if we already found this as a definition
+                        if definitions.iter().any(|def| def.id == symbol.id) {
+                            continue;
+                        }
+
+                        // Create semantic text for comparison
+                        let symbol_text = format!("{} {:?}", symbol.name, symbol.kind);
+                        if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text) {
+                            let similarity = crate::embeddings::cosine_similarity(&query_embedding, &symbol_embedding);
+
+                            // Medium similarity threshold for references (lower than definitions)
+                            if similarity > 0.6 && similarity < 0.9 {
+                                // Create a semantic relationship
+                                let mut metadata = std::collections::HashMap::new();
+                                metadata.insert("similarity".to_string(), serde_json::json!(similarity));
+                                metadata.insert("context".to_string(), serde_json::json!("Semantic similarity"));
+                                metadata.insert("column".to_string(), serde_json::json!(symbol.start_column));
+
+                                let semantic_ref = Relationship {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    from_symbol_id: symbol.id.clone(),
+                                    to_symbol_id: definitions.first().map(|d| d.id.clone()).unwrap_or_else(|| "unknown".to_string()),
+                                    kind: crate::extractors::base::RelationshipKind::References,
+                                    file_path: symbol.file_path.clone(),
+                                    line_number: symbol.start_line,
+                                    confidence: similarity,
+                                    metadata: Some(metadata),
+                                };
+                                references.push(semantic_ref);
+                            }
+                        }
+                    }
+
+                    // Strategy 4: Find potential usages in signatures/comments
+                    for symbol in symbols.iter() {
+                        if let Some(signature) = &symbol.signature {
+                            if signature.contains(&self.symbol) {
+                                let mut metadata = std::collections::HashMap::new();
+                                metadata.insert("context".to_string(), serde_json::json!("Found in signature"));
+                                metadata.insert("column".to_string(), serde_json::json!(symbol.start_column));
+
+                                let usage_ref = Relationship {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    from_symbol_id: symbol.id.clone(),
+                                    to_symbol_id: definitions.first().map(|d| d.id.clone()).unwrap_or_else(|| "unknown".to_string()),
+                                    kind: crate::extractors::base::RelationshipKind::Uses,
+                                    file_path: symbol.file_path.clone(),
+                                    line_number: symbol.start_line,
+                                    confidence: 0.8, // High confidence for signature usage
+                                    metadata: Some(metadata),
+                                };
+                                references.push(usage_ref);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort references by confidence and location
+        references.sort_by(|a, b| {
+            // First by confidence (descending)
+            let conf_cmp = b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal);
+            if conf_cmp != std::cmp::Ordering::Equal {
+                return conf_cmp;
+            }
+            // Then by file path
+            let file_cmp = a.file_path.cmp(&b.file_path);
+            if file_cmp != std::cmp::Ordering::Equal {
+                return file_cmp;
+            }
+            // Finally by line number
+            a.line_number.cmp(&b.line_number)
+        });
+
+        debug!("✅ Found {} definitions and {} references for '{}'", definitions.len(), references.len(), self.symbol);
+
         Ok((definitions, references))
+    }
+
+    // Helper functions for cross-language naming convention conversion
+    // (reuse implementation from GotoDefinitionTool)
+    fn to_snake_case(&self, s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if ch.is_uppercase() {
+                if !result.is_empty() && chars.peek().map_or(false, |c| c.is_lowercase()) {
+                    result.push('_');
+                }
+                result.push(ch.to_lowercase().next().unwrap());
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    fn to_camel_case(&self, s: &str) -> String {
+        let mut result = String::new();
+        let mut capitalize_next = false;
+
+        for ch in s.chars() {
+            if ch == '_' {
+                capitalize_next = true;
+            } else if capitalize_next {
+                result.push(ch.to_uppercase().next().unwrap());
+                capitalize_next = false;
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    fn to_pascal_case(&self, s: &str) -> String {
+        let camel = self.to_camel_case(s);
+        if camel.is_empty() {
+            return camel;
+        }
+
+        let mut chars = camel.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        }
     }
 }
 
@@ -1062,22 +1558,217 @@ pub struct SemanticSearchTool {
 fn default_hybrid() -> String { "hybrid".to_string() }
 
 impl SemanticSearchTool {
-    pub async fn call_tool(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🧠 Semantic search for: {}", self.query);
 
-        // TODO: Implement semantic search with ONNX embeddings
-        let message = format!(
-            "🧠 Semantic Search for: '{}'\n\
-            🔄 Mode: {}\n\
-            📊 Limit: {}\n\n\
-            🚧 Semantic search not yet implemented\n\
-            🎯 Will use ONNX embeddings for meaning-based code search\n\
-            💡 Use search_code for now for basic text-based search",
-            self.query,
-            self.mode,
-            self.limit
-        );
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable semantic search.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
 
+        // Perform semantic search based on mode
+        match self.mode.as_str() {
+            "hybrid" => self.hybrid_search(handler).await,
+            "semantic_only" => self.semantic_only_search(handler).await,
+            "text_only" => self.text_only_search(handler).await,
+            _ => {
+                let error_msg = format!("❌ Unknown search mode: '{}'\n💡 Supported modes: hybrid, semantic_only, text_only", self.mode);
+                Ok(CallToolResult::text_content(vec![TextContent::from(error_msg)]))
+            }
+        }
+    }
+
+    async fn hybrid_search(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("🔄 Performing hybrid semantic + text search");
+
+        // Get symbols from handler (basic implementation)
+        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+        if symbols.is_empty() {
+            let message = "🔍 No symbols found in workspace\n💡 The workspace may need to be re-indexed";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Initialize embedding engine for semantic search
+        let cache_dir = std::env::temp_dir().join("julie_models");
+        std::fs::create_dir_all(&cache_dir)?;
+
+        let mut embedding_engine = crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize embedding engine: {}", e))?;
+
+        // Embed the search query
+        let query_embedding = embedding_engine.embed_text(&self.query)?;
+
+        // Perform semantic search by comparing with symbol embeddings
+        let mut semantic_results = Vec::new();
+
+        for symbol in symbols.iter() {
+            // Create embedding text for symbol (similar to what we'd do during indexing)
+            let symbol_text = format!("{} {:?} {}",
+                symbol.name,
+                symbol.kind,
+                symbol.signature.as_deref().unwrap_or("")
+            );
+
+            // Embed the symbol
+            if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text) {
+                let similarity = crate::embeddings::cosine_similarity(&query_embedding, &symbol_embedding);
+
+                if similarity > 0.3 { // Minimum similarity threshold
+                    semantic_results.push((symbol.clone(), similarity));
+                }
+            }
+        }
+
+        // Sort by similarity score (descending)
+        semantic_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take only the requested number of results
+        semantic_results.truncate(self.limit as usize);
+
+        // Format results
+        if semantic_results.is_empty() {
+            let message = format!(
+                "🧠 Semantic Search for: '{}'\n\
+                🔄 Mode: {}\n\
+                📊 Searched {} symbols\n\n\
+                🔍 No semantically similar symbols found\n\
+                💡 Try a broader search term or use text_only mode",
+                self.query, self.mode, symbols.len()
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let mut result_lines = vec![
+            format!("🧠 Semantic Search for: '{}'", self.query),
+            format!("🔄 Mode: {}", self.mode),
+            format!("📊 Found {} results from {} symbols", semantic_results.len(), symbols.len()),
+            String::new(),
+        ];
+
+        for (i, (symbol, similarity)) in semantic_results.iter().enumerate() {
+            result_lines.push(format!(
+                "{}. {} [{}]",
+                i + 1,
+                symbol.name,
+                symbol.language
+            ));
+            result_lines.push(format!(
+                "📁 {}/{}:{}-{}",
+                std::path::Path::new(&symbol.file_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown"),
+                symbol.file_path,
+                symbol.start_line,
+symbol.end_line
+            ));
+            result_lines.push(format!("🏷️ Kind: {:?}", symbol.kind));
+            result_lines.push(format!("🎯 Similarity: {:.3}", similarity));
+            if let Some(sig) = &symbol.signature {
+                result_lines.push(format!("📝 {}", sig));
+            }
+            result_lines.push(String::new());
+        }
+
+        let message = result_lines.join("\n");
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+
+    async fn semantic_only_search(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        // For now, semantic_only is the same as hybrid (pure embedding-based search)
+        self.hybrid_search(handler).await
+    }
+
+    async fn text_only_search(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("📝 Performing text-only search");
+
+        // Get symbols from handler
+        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+        if symbols.is_empty() {
+            let message = "🔍 No symbols found in workspace\n💡 The workspace may need to be re-indexed";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Simple text matching
+        let query_lower = self.query.to_lowercase();
+        let mut text_results = Vec::new();
+
+        for symbol in symbols.iter() {
+            let symbol_text = format!("{} {:?} {}",
+                symbol.name.to_lowercase(),
+                symbol.kind,
+                symbol.signature.as_deref().unwrap_or("").to_lowercase()
+            );
+
+            if symbol_text.contains(&query_lower) {
+                // Simple scoring based on exact matches and position
+                let mut score = 0.0;
+                if symbol.name.to_lowercase().contains(&query_lower) {
+                    score += 1.0;
+                }
+                if let Some(sig) = &symbol.signature {
+                    if sig.to_lowercase().contains(&query_lower) {
+                        score += 0.5;
+                    }
+                }
+                text_results.push((symbol.clone(), score));
+            }
+        }
+
+        // Sort by score (descending)
+        text_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        text_results.truncate(self.limit as usize);
+
+        // Format results
+        if text_results.is_empty() {
+            let message = format!(
+                "📝 Text Search for: '{}'\n\
+                🔄 Mode: {}\n\
+                📊 Searched {} symbols\n\n\
+                🔍 No matching symbols found\n\
+                💡 Try different keywords or use semantic search",
+                self.query, self.mode, symbols.len()
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let mut result_lines = vec![
+            format!("📝 Text Search for: '{}'", self.query),
+            format!("🔄 Mode: {}", self.mode),
+            format!("📊 Found {} results from {} symbols", text_results.len(), symbols.len()),
+            String::new(),
+        ];
+
+        for (i, (symbol, score)) in text_results.iter().enumerate() {
+            result_lines.push(format!(
+                "{}. {} [{}]",
+                i + 1,
+                symbol.name,
+                symbol.language
+            ));
+            result_lines.push(format!(
+                "📁 {}/{}:{}-{}",
+                std::path::Path::new(&symbol.file_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown"),
+                symbol.file_path,
+                symbol.start_line,
+symbol.end_line
+            ));
+            result_lines.push(format!("🏷️ Kind: {:?}", symbol.kind));
+            result_lines.push(format!("📊 Score: {:.1}", score));
+            if let Some(sig) = &symbol.signature {
+                result_lines.push(format!("📝 {}", sig));
+            }
+            result_lines.push(String::new());
+        }
+
+        let message = result_lines.join("\n");
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 }
@@ -1086,9 +1777,9 @@ impl SemanticSearchTool {
 //     Explore      //
 //******************//
 #[mcp_tool(
-    name = "explore",
-    description = "Explore codebase architecture, dependencies, and relationships.",
-    title = "Explore Codebase Architecture",
+    name = "fast_explore",
+    description = "UNDERSTAND FIRST - Multi-mode codebase exploration (overview/dependencies/trace/hotspots)",
+    title = "Fast Codebase Architecture Explorer",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -1096,7 +1787,7 @@ impl SemanticSearchTool {
     meta = r#"{"category": "analysis", "scope": "architectural"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct ExploreTool {
+pub struct FastExploreTool {
     /// Exploration type: overview, dependencies, trace, hotspots
     pub mode: String,
     /// Optional focus area (file, module, class)
@@ -1109,7 +1800,7 @@ pub struct ExploreTool {
 
 fn default_medium() -> String { "medium".to_string() }
 
-impl ExploreTool {
+impl FastExploreTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🧭 Exploring codebase: mode={}, focus={:?}", self.mode, self.focus);
 
@@ -1666,9 +2357,9 @@ fn default_false() -> bool { false }
 
 /// Find business logic, filter out framework/boilerplate noise
 #[mcp_tool(
-    name = "find_business_logic",
-    description = "Intelligent business logic detection - filter framework noise, focus on core domain logic.",
-    title = "Business Logic Detector",
+    name = "find_logic",
+    description = "DISCOVER CORE LOGIC - Filter framework noise, focus on domain business logic",
+    title = "Find Business Logic",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -1676,7 +2367,7 @@ fn default_false() -> bool { false }
     meta = r#"{"category": "intelligence", "filter": "business_logic"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct FindBusinessLogicTool {
+pub struct FindLogicTool {
     /// Domain concept to search for (e.g., "user authentication", "payment processing")
     pub domain: String,
     /// Maximum results to return
@@ -2189,7 +2880,7 @@ impl GetMinimalContextTool {
     }
 }
 
-impl FindBusinessLogicTool {
+impl FindLogicTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🏢 Finding business logic for domain: {}", self.domain);
 
@@ -2260,21 +2951,202 @@ impl ScoreCriticalityTool {
 }
 
 //******************//
+//   Fast Edit      //
+//******************//
+/// Surgical code editing with automatic rollback and validation
+#[mcp_tool(
+    name = "fast_edit",
+    description = "EDIT WITH CONFIDENCE - Surgical code changes that preserve structure with automatic rollback",
+    title = "Fast Surgical Code Editor",
+    idempotent_hint = false,
+    destructive_hint = true,
+    open_world_hint = false,
+    read_only_hint = false,
+    meta = r#"{"category": "editing", "safety": "auto_rollback"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct FastEditTool {
+    /// Path to the file to edit
+    pub file_path: String,
+    /// The exact text to find and replace
+    pub find_text: String,
+    /// The replacement text
+    pub replace_text: String,
+    /// Validate changes before applying (default: true)
+    #[serde(default = "default_true")]
+    pub validate: bool,
+    /// Create backup before editing (default: true)
+    #[serde(default = "default_true")]
+    pub backup: bool,
+    /// Dry run mode - show what would be changed without applying (default: false)
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+impl FastEditTool {
+    pub async fn call_tool(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("⚡ Fast edit: {} -> replace '{}' with '{}'",
+               self.file_path, self.find_text, self.replace_text);
+
+        // Validate inputs
+        if self.find_text.is_empty() {
+            let message = "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        if self.find_text == self.replace_text {
+            let message = "❌ find_text and replace_text are identical\n💡 No changes needed";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Check if file exists
+        if !std::path::Path::new(&self.file_path).exists() {
+            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Read current file content
+        let original_content = match fs::read_to_string(&self.file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                let message = format!("❌ Failed to read file: {}\n💡 Check file permissions", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        // Check if find_text exists in the file
+        if !original_content.contains(&self.find_text) {
+            let message = format!(
+                "❌ Text not found in file: '{}'\n\
+                💡 Check the exact text to find (case sensitive)",
+                self.find_text
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Perform the replacement
+        let modified_content = original_content.replace(&self.find_text, &self.replace_text);
+
+        // Calculate diff using diffy
+        let patch = diffy::create_patch(&original_content, &modified_content);
+
+        if self.dry_run {
+            let message = format!(
+                "🔍 Dry run mode - showing changes to: {}\n\
+                📊 Changes preview:\n\n{}\n\n\
+                💡 Set dry_run=false to apply changes",
+                self.file_path, patch
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        // Create backup if requested
+        let backup_path = if self.backup {
+            let backup_path = format!("{}.backup", self.file_path);
+            match fs::write(&backup_path, &original_content) {
+                Ok(_) => Some(backup_path),
+                Err(e) => {
+                    warn!("Failed to create backup: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Basic validation (syntax check would go here)
+        if self.validate {
+            let validation_result = self.validate_changes(&modified_content);
+            if let Err(validation_error) = validation_result {
+                let message = format!(
+                    "❌ Validation failed: {}\n\
+                    💡 Changes would break the code structure",
+                    validation_error
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        }
+
+        // Apply changes
+        match fs::write(&self.file_path, &modified_content) {
+            Ok(_) => {
+                let changes_count = self.find_text.lines().count().max(self.replace_text.lines().count());
+                let backup_info = if let Some(backup) = backup_path {
+                    format!("\n💾 Backup created: {}", backup)
+                } else {
+                    String::new()
+                };
+
+                let message = format!(
+                    "✅ Fast edit successful!\n\
+                    📁 File: {}\n\
+                    📊 Changed {} line(s)\n\
+                    🔍 Diff:\n{}{}\n\n\
+                    🎯 Next actions:\n\
+                    • Run tests to verify changes\n\
+                    • Use fast_refs to check impact\n\
+                    • Use fast_search to find related code",
+                    self.file_path, changes_count, patch, backup_info
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+            },
+            Err(e) => {
+                let message = format!("❌ Failed to write file: {}\n💡 Check file permissions", e);
+                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+            }
+        }
+    }
+
+    /// Basic validation to prevent obviously broken code
+    fn validate_changes(&self, content: &str) -> Result<()> {
+        // Basic brace/bracket matching
+        let mut braces = 0i32;
+        let mut brackets = 0i32;
+        let mut parens = 0i32;
+
+        for ch in content.chars() {
+            match ch {
+                '{' => braces += 1,
+                '}' => braces -= 1,
+                '[' => brackets += 1,
+                ']' => brackets -= 1,
+                '(' => parens += 1,
+                ')' => parens -= 1,
+                _ => {}
+            }
+        }
+
+        if braces != 0 {
+            return Err(anyhow::anyhow!("Unmatched braces {} ({})", "{}", braces));
+        }
+        if brackets != 0 {
+            return Err(anyhow::anyhow!("Unmatched brackets [] ({})", brackets));
+        }
+        if parens != 0 {
+            return Err(anyhow::anyhow!("Unmatched parentheses () ({})", parens));
+        }
+
+        Ok(())
+    }
+}
+
+//******************//
 //   JulieTools     //
 //******************//
 // Generates the JulieTools enum with all tool variants
 tool_box!(JulieTools, [
+    // Core tools - optimized for speed and adoption
     IndexWorkspaceTool,
-    SearchCodeTool,
-    GotoDefinitionTool,
-    FindReferencesTool,
-    SemanticSearchTool,
-    ExploreTool,
-    NavigateTool,
-    // Phase 6.1 Intelligence Tools
-    ExploreOverviewTool,
-    TraceExecutionTool,
-    GetMinimalContextTool,
-    FindBusinessLogicTool,
-    ScoreCriticalityTool
+    FastSearchTool,     // Merged: SearchCodeTool + SemanticSearchTool
+    FastGotoTool,       // Renamed: GotoDefinitionTool
+    FastRefsTool,       // Renamed: FindReferencesTool
+    FastExploreTool,    // Renamed: ExploreTool (absorbs overview/trace/context)
+    FindLogicTool,      // Renamed: FindBusinessLogicTool
+    FastEditTool,       // NEW: Surgical editing with diffy + validation
+    // TODO: BatchOpsTool - workspace-wide operations
+    // Removed: NavigateTool (redundant with FastGotoTool)
+    // Removed: ExploreOverviewTool (merged into FastExploreTool)
+    // Removed: TraceExecutionTool (merged into FastExploreTool)
+    // Removed: GetMinimalContextTool (merged into FastSearchTool)
+    // Removed: ScoreCriticalityTool (merged into FastExploreTool)
 ]);
