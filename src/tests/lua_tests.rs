@@ -19,6 +19,72 @@ mod lua_extractor_tests {
     use super::*;
 
     #[test]
+    fn debug_colon_syntax() {
+        let code = r#"
+local Vector = {}
+function Vector:new(x, y)
+  return {x = x or 0, y = y or 0}
+end
+function Vector:__add(other)
+  return Vector:new(self.x + other.x, self.y + other.y)
+end
+"#;
+
+        println!("🔍 Testing colon syntax method definitions...");
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Print tree structure
+        fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+            let first_line = text.lines().next().unwrap_or("").trim();
+            println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+            for child in node.children(&mut node.walk()) {
+                print_node(child, depth + 1, source);
+            }
+        }
+
+        print_node(tree.root_node(), 0, code);
+
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        println!("Found {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  - Name: '{}', Kind: {:?}, Parent: {:?}", symbol.name, symbol.kind, symbol.parent_id);
+        }
+
+        // Check if Vector exists
+        let vector_symbol = symbols.iter().find(|s| s.name == "Vector");
+        println!("Vector symbol found: {:?}", vector_symbol.is_some());
+        if let Some(vector) = vector_symbol {
+            println!("Vector symbol ID: {}", vector.id);
+        }
+
+        // Check if new method exists
+        let new_method = symbols.iter().find(|s| s.name == "new");
+        println!("new method found: {:?}", new_method.is_some());
+        if let Some(new) = new_method {
+            println!("new method parent_id: {:?}, kind: {:?}", new.parent_id, new.kind);
+        }
+
+        // Check if __add method exists
+        let add_method = symbols.iter().find(|s| s.name == "__add");
+        println!("__add method found: {:?}", add_method.is_some());
+        if let Some(add) = add_method {
+            println!("__add method parent_id: {:?}, kind: {:?}", add.parent_id, add.kind);
+        }
+    }
+
+    #[test]
     fn debug_function_assignment() {
         let code = r#"
 local math_utils = {}

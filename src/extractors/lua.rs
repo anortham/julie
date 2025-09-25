@@ -85,7 +85,9 @@ impl LuaExtractor {
 
         if name_node.is_none() {
             // Check for colon syntax: function obj:method() or dot syntax: function obj.method()
-            if let Some(variable_node) = self.find_child_by_type(node, "variable").or_else(|| self.find_child_by_type(node, "dot_index_expression")) {
+            if let Some(variable_node) = self.find_child_by_type(node, "variable")
+                .or_else(|| self.find_child_by_type(node, "dot_index_expression"))
+                .or_else(|| self.find_child_by_type(node, "method_index_expression")) {
                 let full_name = self.base.get_node_text(&variable_node);
 
                 // Handle colon syntax: function obj:method()
