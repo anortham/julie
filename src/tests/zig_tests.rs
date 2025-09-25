@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod zig_extractor_tests {
-    use crate::extractors::base::{SymbolKind, Visibility};
+    use crate::extractors::base::SymbolKind;
     use crate::extractors::zig::ZigExtractor;
     use crate::tests::test_utils::init_parser;
 

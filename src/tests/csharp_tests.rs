@@ -10,10 +10,9 @@
 // - Modern C# features, generics, LINQ, exception handling
 // - Testing patterns, performance testing, edge cases
 
-use crate::extractors::base::{Symbol, SymbolKind, RelationshipKind};
+use crate::extractors::base::{Symbol, SymbolKind};
 use crate::extractors::csharp::CSharpExtractor;
 use tree_sitter::Parser;
-use std::collections::HashMap;
 
 /// Initialize C# parser for testing
 fn init_parser() -> Parser {

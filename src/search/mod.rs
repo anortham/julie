@@ -7,16 +7,14 @@ pub mod tokenizers;
 pub mod schema;
 
 use anyhow::Result;
-use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, Term};
+use tantivy::{Index, IndexReader, IndexWriter, Term};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::query::{Query, QueryParser, TermQuery};
 use tantivy::schema::{Field, Value};
 use std::path::Path;
-use std::sync::Arc;
 
 use crate::extractors::Symbol;
 use self::schema::{CodeSearchSchema, SearchDocument, QueryProcessor, QueryIntent, LanguageBoosting};
-use self::tokenizers::CodeAwareTokenizer;
 
 /// Main search engine implementing the Search Accelerator pillar
 pub struct SearchEngine {
@@ -403,7 +401,7 @@ impl SearchEngine {
                 }
                 QueryIntent::GenericType => {
                     // Extract generic type patterns
-                    if let Some(start) = query.find('<') {
+                    if let Some(_start) = query.find('<') {
                         if let Some(end) = query.find('>') {
                             let generic_part = &query[..=end];
                             self.generic_type_search(generic_part).await?
@@ -500,7 +498,7 @@ pub struct SearchResult {
 mod tests {
     use super::*;
     use crate::extractors::{SymbolKind, base::Symbol};
-    use tempfile::TempDir;
+    
 
     #[tokio::test]
     async fn test_basic_search_functionality() {

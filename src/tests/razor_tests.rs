@@ -1,4 +1,4 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
+use crate::extractors::base::{Symbol, SymbolKind, Relationship};
 use crate::extractors::razor::RazorExtractor;
 use crate::tests::test_utils::init_parser;
 
@@ -1125,7 +1125,7 @@ mod razor_extractor_tests {
         let symbols = extract_symbols(razor_code);
         let types = {
             let tree = init_parser(razor_code, "razor");
-            let mut extractor = RazorExtractor::new("razor".to_string(), "test.razor".to_string(), razor_code.to_string());
+            let extractor = RazorExtractor::new("razor".to_string(), "test.razor".to_string(), razor_code.to_string());
             extractor.infer_types(&symbols)
         };
 

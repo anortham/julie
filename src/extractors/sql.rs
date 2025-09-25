@@ -1622,7 +1622,7 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_table_references(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_table_references(&mut self, node: tree_sitter::Node, symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
         // Port Miller's extractTableReferences logic
         // Extract table references in SELECT statements for query analysis
         self.base.traverse_tree(&node, &mut |child_node| {

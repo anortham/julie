@@ -47,7 +47,6 @@ impl RubyExtractor {
 
     fn traverse_tree_with_parent(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
         let mut symbol_opt: Option<Symbol> = None;
-        let mut new_visibility = self.current_visibility.clone();
 
         match node.kind() {
             "module" => {
@@ -93,7 +92,7 @@ impl RubyExtractor {
             "identifier" => {
                 // Handle visibility modifiers
                 let text = self.base.get_node_text(&node);
-                new_visibility = match text.as_str() {
+                let new_visibility = match text.as_str() {
                     "private" => Visibility::Private,
                     "protected" => Visibility::Protected,
                     "public" => Visibility::Public,
@@ -299,7 +298,7 @@ impl RubyExtractor {
             // For parallel assignments, we need to extract each variable separately
             // Return the first variable as the primary symbol, and store others in additionalSymbols
             let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
-            let right_value = right_side.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+            let _right_value = right_side.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
             let full_assignment = self.base.get_node_text(&node);
 
             // Extract identifiers from left_assignment_list
@@ -389,6 +388,7 @@ impl RubyExtractor {
         ))
     }
 
+    #[allow(dead_code)]
     fn extract_assignment_symbols(&mut self, node: Node, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
         let left_side = node.child_by_field_name("left").or_else(|| node.children(&mut node.walk()).next());
 
@@ -491,6 +491,7 @@ impl RubyExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn extract_parallel_assignment_fallback(&mut self, node: &Node, assignment_text: &str, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
         // Fallback method to extract variables from parallel assignments when tree structure is unexpected
         // Split by '=' to get left and right sides
@@ -1022,6 +1023,7 @@ impl RubyExtractor {
     }
 
     // Helper methods for checking node context
+    #[allow(dead_code)]
     fn is_part_of_assignment(&self, node: &Node) -> bool {
         let mut current = *node;
         while let Some(parent) = current.parent() {
@@ -1033,6 +1035,7 @@ impl RubyExtractor {
         false
     }
 
+    #[allow(dead_code)]
     fn is_part_of_class_module_declaration(&self, node: &Node) -> bool {
         let mut current = *node;
         while let Some(parent) = current.parent() {

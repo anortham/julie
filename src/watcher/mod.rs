@@ -4,7 +4,6 @@
 // to all three pillars: SQLite database, Tantivy search index, and FastEmbed vectors
 
 use notify::{Watcher, RecursiveMode, Event, EventKind};
-use blake3::Hash;
 use std::collections::{VecDeque, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -17,13 +16,14 @@ use tracing::{info, debug, warn, error};
 use crate::database::SymbolDatabase;
 use crate::search::SearchEngine;
 use crate::embeddings::EmbeddingEngine;
-use crate::extractors::{Symbol, ExtractorManager};
+use crate::extractors::ExtractorManager;
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<Mutex<SymbolDatabase>>,
     search_index: Arc<RwLock<SearchEngine>>,
+    #[allow(dead_code)]
     embedding_engine: Arc<EmbeddingEngine>,
     extractor_manager: Arc<ExtractorManager>,
 
@@ -242,6 +242,7 @@ impl IncrementalIndexer {
     }
 
     /// Queue a file change event for processing
+    #[allow(dead_code)]
     async fn queue_file_change(&self, event: FileChangeEvent) {
         debug!("Queueing file change: {:?}", event);
 
@@ -256,6 +257,7 @@ impl IncrementalIndexer {
     }
 
     /// Process the file change queue
+    #[allow(dead_code)]
     async fn process_queue(&self) {
         while let Some(event) = {
             let mut queue = self.index_queue.lock().await;
@@ -312,7 +314,7 @@ impl IncrementalIndexer {
         drop(db);
 
         // 3. Detect language and extract symbols
-        let language = self.detect_language(&path)?;
+        let _language = self.detect_language(&path)?;
         let content_str = String::from_utf8_lossy(&content);
 
         let symbols = self.extractor_manager
@@ -362,7 +364,7 @@ impl IncrementalIndexer {
         let path_str = path.to_string_lossy();
 
         // Remove from SQLite database
-        let mut db = self.db.lock().await;
+        let db = self.db.lock().await;
         db.delete_symbols_for_file(&path_str).await?;
         db.delete_file_record(&path_str)?;
         drop(db);
@@ -394,6 +396,7 @@ impl IncrementalIndexer {
     }
 
     /// Check if a file should be indexed based on extension and ignore patterns
+    #[allow(dead_code)]
     fn should_index_file(&self, path: &Path) -> bool {
         // Check if it's a file
         if !path.is_file() {

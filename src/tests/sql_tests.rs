@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod sql_extractor_tests {
-    use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind};
+    use crate::extractors::base::{Symbol, SymbolKind, Relationship, RelationshipKind};
     use crate::extractors::sql::SqlExtractor;
-    use std::collections::HashMap;
-    use tree_sitter::Parser;
+    
+    
 
     fn init_parser() -> tree_sitter::Parser {
         let mut parser = tree_sitter::Parser::new();

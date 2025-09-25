@@ -1,14 +1,14 @@
 // Port of Miller's comprehensive PowerShell extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
-use crate::extractors::base::{SymbolKind, RelationshipKind, Visibility};
+use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::powershell::PowerShellExtractor;
 use tree_sitter::Tree;
 
 #[cfg(test)]
 mod powershell_extractor_tests {
     use super::*;
-    use std::collections::HashMap;
+    
 
     // Helper function to create a PowerShellExtractor and parse PowerShell code
     fn create_extractor_and_parse(code: &str) -> (PowerShellExtractor, Tree) {

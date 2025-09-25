@@ -39,7 +39,7 @@ pub mod powershell;             // PowerShell extractor (Phase 1 SUCCESS)
 pub mod zig;                    // Zig extractor - FIXING metadata access patterns
 
 // Re-export the base extractor types
-pub use base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, TypeInfo};
+pub use base::{Symbol, SymbolKind, Relationship, RelationshipKind};
 
 /// Manager for all language extractors
 pub struct ExtractorManager {
@@ -62,7 +62,7 @@ impl ExtractorManager {
     }
 
     /// Extract symbols from file content
-    pub async fn extract_symbols(&self, file_path: &str, content: &str) -> Result<Vec<Symbol>, anyhow::Error> {
+    pub async fn extract_symbols(&self, file_path: &str, _content: &str) -> Result<Vec<Symbol>, anyhow::Error> {
         use std::path::Path;
 
         // Determine language from file extension

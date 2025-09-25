@@ -6,7 +6,7 @@
 // This is one of Miller's most comprehensive extractors with 2000+ lines of tests
 // covering everything from basic structs to unsafe FFI code and procedural macros.
 
-use crate::extractors::base::{Symbol, SymbolKind, Visibility};
+use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::rust::RustExtractor;
 use tree_sitter::Parser;
 

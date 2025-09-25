@@ -5,6 +5,7 @@ use serde_json::Value;
 
 /// Common regex patterns used for Vue SFC parsing
 /// Compiled once for better performance
+#[allow(dead_code)]
 struct VuePatterns {
     template_start: Regex,
     script_start: Regex,
@@ -51,15 +52,19 @@ impl VuePatterns {
 /// Port of Miller's Vue extractor with comprehensive Vue SFC feature support
 pub struct VueExtractor {
     base: BaseExtractor,
+    #[allow(dead_code)]
     patterns: VuePatterns,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct VueSection {
     section_type: String, // "template", "script", "style"
     content: String,
     start_line: usize,
+    #[allow(dead_code)]
     end_line: usize,
+    #[allow(dead_code)]
     lang: Option<String>, // e.g., 'ts', 'scss'
 }
 
@@ -113,7 +118,7 @@ impl VueExtractor {
                     symbols.push(component_symbol);
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 // Error extracting Vue symbols - continue silently
             }
         }

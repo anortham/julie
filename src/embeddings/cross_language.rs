@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
 use crate::extractors::base::Symbol;
 use super::{EmbeddingEngine, CodeContext, cosine_similarity, SimilarityResult};
 

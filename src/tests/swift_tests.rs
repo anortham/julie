@@ -8,7 +8,7 @@ use tree_sitter::Tree;
 #[cfg(test)]
 mod swift_extractor_tests {
     use super::*;
-    use std::collections::HashMap;
+    
 
     // Helper function to create a SwiftExtractor and parse Swift code
     fn create_extractor_and_parse(code: &str) -> (SwiftExtractor, Tree) {

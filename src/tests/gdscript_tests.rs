@@ -1,4 +1,4 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
+use crate::extractors::base::{Symbol, SymbolKind, Relationship, Visibility};
 use crate::extractors::gdscript::GDScriptExtractor;
 use crate::tests::test_utils::{init_parser};
 

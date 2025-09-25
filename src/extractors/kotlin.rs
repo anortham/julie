@@ -784,6 +784,7 @@ impl KotlinExtractor {
         Some(self.base.get_node_text(&primary_constructor))
     }
 
+    #[allow(dead_code)]
     fn process_class_parameter(&self, param_node: &Node, params: &mut Vec<String>) {
         let name_node = param_node.children(&mut param_node.walk())
             .find(|n| n.kind() == "identifier");

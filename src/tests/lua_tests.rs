@@ -3,7 +3,7 @@
 // Direct port of Miller's Lua extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/lua-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind, Visibility};
+use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::lua::LuaExtractor;
 use tree_sitter::Parser;
 

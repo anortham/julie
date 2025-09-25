@@ -11,8 +11,11 @@ use uuid::Uuid;
 /// The revolutionary cross-language tracing engine
 /// This is what makes Julie unique - tracing data flow across the entire polyglot stack
 pub struct CrossLanguageTracer {
+    #[allow(dead_code)]
     db: Arc<Mutex<SymbolDatabase>>,
+    #[allow(dead_code)]
     search: Arc<RwLock<SearchEngine>>,
+    #[allow(dead_code)]
     embeddings: Arc<EmbeddingEngine>,
 }
 
@@ -337,6 +340,7 @@ impl CrossLanguageTracer {
     }
 
     /// Strategy 1: Check direct relationships from SQLite
+    #[allow(dead_code)]
     async fn find_direct_relationship(
         &self,
         _symbol: &Symbol,
@@ -347,6 +351,7 @@ impl CrossLanguageTracer {
     }
 
     /// Strategy 2: Pattern matching for common architectural flows
+    #[allow(dead_code)]
     async fn find_pattern_match(
         &self,
         _symbol: &Symbol,
@@ -357,6 +362,7 @@ impl CrossLanguageTracer {
     }
 
     /// Strategy 3: Semantic similarity via embeddings (the magic!)
+    #[allow(dead_code)]
     async fn find_semantic_connection(
         &self,
         _symbol: &Symbol,
@@ -367,6 +373,7 @@ impl CrossLanguageTracer {
     }
 
     /// Calculate confidence score for a potential connection
+    #[allow(dead_code)]
     fn calculate_confidence(
         &self,
         _from: &Symbol,

@@ -3,7 +3,7 @@
 // Direct port of Miller's HTML extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/html-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::SymbolKind;
 use crate::extractors::html::HTMLExtractor;
 use tree_sitter::Parser;
 

@@ -15,7 +15,6 @@
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
 use tree_sitter::Tree;
 use std::collections::{HashMap, HashSet};
-use tracing::{warn, debug};
 
 pub struct BashExtractor {
     base: BaseExtractor,
@@ -536,6 +535,7 @@ impl BashExtractor {
         children
     }
 
+    #[allow(dead_code)]
     fn walk_tree<'a, F>(&self, node: tree_sitter::Node<'a>, callback: &mut F)
     where
         F: FnMut(tree_sitter::Node<'a>),

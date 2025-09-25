@@ -76,6 +76,7 @@ impl TypeScriptExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn create_minimal_symbol(
         &mut self,
         node: &tree_sitter::Node,
@@ -83,7 +84,7 @@ impl TypeScriptExtractor {
         kind: SymbolKind,
         signature: Option<String>,
     ) -> Symbol {
-        use crate::extractors::base::{SymbolOptions, Visibility};
+        use crate::extractors::base::SymbolOptions;
 
         self.base.create_symbol(
             node,

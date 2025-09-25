@@ -9,7 +9,7 @@
 // - Maintains Miller's same edge case handling
 // - Converts to Rust Option<T>, Result<T>, iterators, ownership system
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
 use tree_sitter::Tree;
 use std::collections::HashMap;
 use serde_json::json;

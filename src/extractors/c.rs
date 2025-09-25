@@ -161,7 +161,7 @@ impl CExtractor {
         }
 
         // Check if this is a function declaration
-        if let Some(function_declarator) = self.find_function_declarator(node) {
+        if let Some(_function_declarator) = self.find_function_declarator(node) {
             if let Some(function_symbol) = self.extract_function_declaration(node, parent_id) {
                 symbols.push(function_symbol);
                 return symbols;
@@ -312,7 +312,7 @@ impl CExtractor {
     // Type definition extraction - Miller's extractTypeDefinition
     fn extract_type_definition(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Symbol {
         let typedef_name = self.extract_typedef_name_from_type_definition(node);
-        let raw_signature = self.base.get_node_text(&node);
+        let _raw_signature = self.base.get_node_text(&node);
         let underlying_type = self.extract_underlying_type_from_type_definition(node);
 
         // Build signature that preserves alignment attributes
@@ -1067,6 +1067,7 @@ impl CExtractor {
         "unknown".to_string()
     }
 
+    #[allow(dead_code)]
     fn find_type_identifiers(&self, node: tree_sitter::Node, identifiers: &mut Vec<String>) {
         if node.kind() == "type_identifier" {
             let text = self.base.get_node_text(&node);
@@ -1285,6 +1286,7 @@ impl CExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn build_enhanced_typedef_signature(&self, raw_signature: &str, typedef_name: &str, node: tree_sitter::Node) -> String {
         // Check if this is a struct typedef with alignment attributes
         if raw_signature.contains("typedef struct") && raw_signature.contains("ALIGN(") {
@@ -1319,6 +1321,7 @@ impl CExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn extract_struct_body_from_signature(&self, signature: &str) -> String {
         if let Some(start) = signature.find('{') {
             if let Some(end) = signature.rfind('}') {
@@ -1337,6 +1340,7 @@ impl CExtractor {
         String::new()
     }
 
+    #[allow(dead_code)]
     fn reconstruct_typedef_signature_from_node(&self, node: tree_sitter::Node, typedef_name: &str) -> String {
         // Try to reconstruct signature from tree-sitter node
         let raw_text = self.base.get_node_text(&node);
@@ -1556,5 +1560,6 @@ struct StructField {
 #[derive(Debug, Clone)]
 struct EnumValue {
     name: String,
+    #[allow(dead_code)]
     value: Option<String>,
 }

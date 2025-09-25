@@ -3,7 +3,7 @@
 // Direct port of Miller's JavaScript extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/javascript-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind, Visibility};
+use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::javascript::JavaScriptExtractor;
 use tree_sitter::Parser;
 

@@ -1,4 +1,4 @@
-use rust_mcp_sdk::schema::{schema_utils::CallToolError, CallToolResult, TextContent};
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use rust_mcp_sdk::{macros::mcp_tool, tool_box};
 use rust_mcp_sdk::macros::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -7,10 +7,9 @@ use tracing::{info, debug, warn, error};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashSet;
-use sha2::{Sha256, Digest};
 
 use crate::handler::JulieServerHandler;
-use crate::extractors::{Symbol, SymbolKind, Relationship, BaseExtractor};
+use crate::extractors::{Symbol, SymbolKind, Relationship};
 use crate::workspace::JulieWorkspace;
 
 /// Blacklisted file extensions - binary and temporary files to exclude from indexing
@@ -55,6 +54,7 @@ const BLACKLISTED_DIRECTORIES: &[&str] = &[
 ];
 
 /// File extensions that are likely to contain code and should be indexed
+#[allow(dead_code)]
 const KNOWN_CODE_EXTENSIONS: &[&str] = &[
     // Core languages (supported by extractors)
     ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cs", ".php",
@@ -102,7 +102,7 @@ impl IndexWorkspaceTool {
         info!("🎯 Resolved workspace path: {}", workspace_path.display());
 
         // Initialize or load workspace
-        let workspace = self.initialize_workspace(&workspace_path, force_reindex)?;
+        let _workspace = self.initialize_workspace(&workspace_path, force_reindex)?;
 
         // Check if already indexed and not forcing reindex
         if !force_reindex {

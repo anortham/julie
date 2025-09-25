@@ -8,8 +8,7 @@
 
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use tree_sitter::{Tree, Node, Point};
-use anyhow::Result;
+use tree_sitter::Node;
 use tracing::{warn, debug};
 use md5;
 
@@ -720,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_symbol_creation() {
-        let mut extractor = BaseExtractor::new(
+        let extractor = BaseExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             "function test() {}".to_string(),

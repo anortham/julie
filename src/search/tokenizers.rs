@@ -3,7 +3,6 @@
 // These tokenizers are designed specifically for code search, preserving important
 // programming language constructs that standard tokenizers would break apart.
 
-use anyhow::Result;
 use tantivy::tokenizer::{Token, TokenStream, Tokenizer};
 
 /// Operator-preserving tokenizer that keeps programming operators intact

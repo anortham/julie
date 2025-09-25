@@ -687,7 +687,7 @@ impl HTMLExtractor {
         // Enhanced regex for HTML elements - handles both self-closing and container elements
         let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</\1>|>)"#).unwrap();
 
-        for (index, captures) in re.captures_iter(content).enumerate() {
+        for (_index, captures) in re.captures_iter(content).enumerate() {
             if let Some(tag_name_match) = captures.get(1) {
                 let tag_name = tag_name_match.as_str().to_string();
                 let attributes_text = captures.get(2).map(|m| m.as_str()).unwrap_or("");

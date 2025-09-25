@@ -59,7 +59,7 @@ impl ServerHandler for JulieServerHandler {
     /// Handle ListToolsRequest - return all available Julie tools
     async fn handle_list_tools_request(
         &self,
-        request: ListToolsRequest,
+        _request: ListToolsRequest,
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<ListToolsResult, RpcError> {
         debug!("📋 Listing available Julie tools");
@@ -78,7 +78,7 @@ impl ServerHandler for JulieServerHandler {
     async fn handle_call_tool_request(
         &self,
         request: CallToolRequest,
-        runtime: Arc<dyn McpServer>,
+        _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
         debug!("🛠️  Executing tool: {}", request.params.name);
 

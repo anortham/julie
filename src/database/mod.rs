@@ -1122,7 +1122,7 @@ mod tests {
         let db = SymbolDatabase::new(&db_path).unwrap();
 
         // Simulate what an extractor would create
-        use crate::extractors::base::{BaseExtractor, SymbolOptions};
+        use crate::extractors::base::BaseExtractor;
 
         let source_code = r#"
         function getUserById(id: string): Promise<User> {

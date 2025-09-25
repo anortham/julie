@@ -314,7 +314,6 @@ impl GoExtractor {
         let mut type_identifier = None;
         let mut type_parameters = None;
         let mut type_def = None;
-        let mut has_equals_sign = false;
         let mut second_type_identifier = None;
 
 
@@ -329,7 +328,7 @@ impl GoExtractor {
                 "type_parameter_list" => type_parameters = Some(child),
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
-                "=" => has_equals_sign = true,  // Detect type alias syntax (backup detection)
+                "=" => {}, // Type alias syntax detected (handled by second_type_identifier)
                 // Handle basic type definitions (type UserID int64) and aliases (type UserID = int64)
                 "primitive_type" if type_identifier.is_some() && type_def.is_none() => {
                     type_def = Some(("definition", child));
@@ -667,6 +666,7 @@ impl GoExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn build_function_signature(&self, func_keyword: &str, name: &str, parameters: &[String], return_type: Option<&str>) -> String {
         let params = if parameters.is_empty() {
             "()".to_string()
@@ -699,6 +699,7 @@ impl GoExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn build_method_signature(&self, type_params: &str, parameters: &[String], return_type: Option<&str>) -> String {
         let params = if parameters.is_empty() {
             "()".to_string()

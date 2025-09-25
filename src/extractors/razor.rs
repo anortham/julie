@@ -1,4 +1,4 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
 use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
 
@@ -627,6 +627,7 @@ impl RazorExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn extract_html_tag_name_from_node(&self, node: Node) -> Option<String> {
         if let Some(tag_node) = self.find_child_by_types(node, &["tag_name", "identifier"]) {
             return Some(self.base.get_node_text(&tag_node));
@@ -1214,7 +1215,6 @@ impl RazorExtractor {
 
     fn extract_variable_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract variable name and type from variable declaration
-        let mut variable_name = "unknownVariable".to_string();
         let mut variable_type = None;
 
         // Find the type (if present)
@@ -1253,7 +1253,7 @@ impl RazorExtractor {
 
         // For now, handle the first declarator (most common case)
         if let Some((name, initializer)) = declarators.first() {
-            variable_name = name.clone();
+            let variable_name = name.clone();
 
             let mut signature_parts = Vec::new();
             if let Some(ref var_type) = variable_type {
@@ -1353,7 +1353,7 @@ impl RazorExtractor {
     }
 
     fn extract_invocation(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let invocation_text = self.base.get_node_text(&node);
+        let _invocation_text = self.base.get_node_text(&node);
 
         // Extract method name and arguments
         let mut method_name = "unknownMethod".to_string();
@@ -1750,7 +1750,7 @@ impl RazorExtractor {
 
     fn extract_component_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         // Extract relationships between Razor components
-        let element_text = self.base.get_node_text(&node);
+        let _element_text = self.base.get_node_text(&node);
 
         // Look for component tag names (uppercase elements indicate components)
         if let Some(name_node) = self.find_child_by_type(node, "identifier") {

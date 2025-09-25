@@ -3,7 +3,7 @@
 // Direct port of Miller's Dart extractor tests (TDD RED phase)
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/dart-extractor.test.ts
 
-use crate::extractors::base::{Symbol, SymbolKind, Relationship};
+use crate::extractors::base::SymbolKind;
 use crate::extractors::dart::DartExtractor;
 use tree_sitter::Parser;
 

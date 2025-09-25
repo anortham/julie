@@ -10,7 +10,7 @@
 // 4. CSS At-Rules and Media Queries
 // 5. Advanced CSS Selectors and Pseudo-elements
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::SymbolKind;
 use crate::extractors::css::CSSExtractor;
 use tree_sitter::Parser;
 

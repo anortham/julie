@@ -415,14 +415,12 @@ impl LuaExtractor {
 
                     // Determine kind and type based on the assignment
                     let mut kind = SymbolKind::Field; // Property assignments are fields
-                    let mut data_type = "unknown".to_string();
-
-                    if right.kind() == "function_definition" {
+                    let data_type = if right.kind() == "function_definition" {
                         kind = SymbolKind::Method; // Methods on objects
-                        data_type = "function".to_string();
+                        "function".to_string()
                     } else {
-                        data_type = self.infer_type_from_expression(right);
-                    }
+                        self.infer_type_from_expression(right)
+                    };
 
                     // Find the object this property belongs to
                     let property_parent_id = self.symbols.iter()
@@ -453,14 +451,12 @@ impl LuaExtractor {
 
                     // Determine kind and type based on the assignment
                     let mut kind = SymbolKind::Variable;
-                    let mut data_type = "unknown".to_string();
-
-                    if right.kind() == "function_definition" {
+                    let data_type = if right.kind() == "function_definition" {
                         kind = SymbolKind::Function;
-                        data_type = "function".to_string();
+                        "function".to_string()
                     } else {
-                        data_type = self.infer_type_from_expression(right);
-                    }
+                        self.infer_type_from_expression(right)
+                    };
 
                     let mut metadata = HashMap::new();
                     metadata.insert("dataType".to_string(), data_type.clone().into());
@@ -615,6 +611,7 @@ impl LuaExtractor {
         }
     }
 
+    #[allow(dead_code)]
     fn extract_table_field(&mut self, node: Node, parent_id: Option<&str>) {
         // Handle field definitions like: field = value or field = function() end
         let mut cursor = node.walk();
@@ -636,14 +633,12 @@ impl LuaExtractor {
 
         // Determine if this is a method (function) or field (value)
         let mut kind = SymbolKind::Field;
-        let mut data_type = "unknown".to_string();
-
-        if value_node.kind() == "function_definition" {
+        let data_type = if value_node.kind() == "function_definition" {
             kind = SymbolKind::Method;
-            data_type = "function".to_string();
+            "function".to_string()
         } else {
-            data_type = self.infer_type_from_expression(value_node);
-        }
+            self.infer_type_from_expression(value_node)
+        };
 
         let mut metadata = HashMap::new();
         metadata.insert("dataType".to_string(), data_type.clone().into());
@@ -677,13 +672,12 @@ impl LuaExtractor {
         let signature = self.base.get_node_text(&node);
         // Determine if this is a method (function) or field (value)
         let mut kind = SymbolKind::Field;
-        let mut data_type = "unknown".to_string();
-        if value_node.kind() == "function_definition" {
+        let data_type = if value_node.kind() == "function_definition" {
             kind = SymbolKind::Method;
-            data_type = "function".to_string();
+            "function".to_string()
         } else {
-            data_type = self.infer_type_from_expression(value_node);
-        }
+            self.infer_type_from_expression(value_node)
+        };
         let mut metadata = HashMap::new();
         metadata.insert("dataType".to_string(), data_type.clone().into());
         let options = SymbolOptions {
@@ -697,6 +691,7 @@ impl LuaExtractor {
         Some(self.base.create_symbol(&name_node, name, kind, options))
     }
 
+    #[allow(dead_code)]
     fn is_table_handled_by_parent(&self, node: Node) -> bool {
         // Check if this table is part of a variable assignment
         // Look for patterns: local var = { ... } or var = { ... }

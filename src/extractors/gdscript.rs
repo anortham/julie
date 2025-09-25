@@ -330,7 +330,7 @@ impl GDScriptExtractor {
     }
 
     fn extract_function_definition(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
-        let (name_node, func_node, parent_node) = if node.kind() == "function_definition" {
+        let (name_node, _func_node, parent_node) = if node.kind() == "function_definition" {
             // Processing function_definition node - find child nodes
             let children = node.children(&mut node.walk()).collect::<Vec<_>>();
             let func_node = children.iter().find(|c| c.kind() == "func").cloned();
@@ -620,7 +620,7 @@ impl GDScriptExtractor {
         Some(enum_symbol)
     }
 
-    fn extract_enum_member(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
+    fn extract_enum_member(&mut self, node: Node, _parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
         // Check if this identifier is inside an enum by checking the parent chain
         let enum_parent = self.find_enum_parent(node, symbols)?;
 

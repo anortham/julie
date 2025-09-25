@@ -23,6 +23,7 @@ pub struct RustExtractor {
 struct ImplBlockInfo {
     node: Node<'static>,
     type_name: String,
+    #[allow(dead_code)]
     parent_id: Option<String>,
 }
 
@@ -512,7 +513,7 @@ impl RustExtractor {
             .unwrap_or_default();
 
         // Extract the type definition (after =)
-        let mut children: Vec<_> = node.children(&mut node.walk()).collect();
+        let children: Vec<_> = node.children(&mut node.walk()).collect();
         let equals_index = children.iter().position(|c| c.kind() == "=");
         let type_def = if let Some(index) = equals_index {
             if index + 1 < children.len() {
