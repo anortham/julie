@@ -60,10 +60,9 @@ impl LuaExtractor {
                 symbol = self.extract_variable_assignment(node, parent_id.as_deref());
             }
             "table_constructor" | "table" => {
-                // Only extract table fields if not already handled by variable assignment
-                if !self.is_table_handled_by_parent(node) {
-                    self.extract_table_fields(node, parent_id.as_deref());
-                }
+                // Table constructors can contain fields that should be extracted as child symbols
+                self.extract_table_fields(node, parent_id.as_deref());
+                return; // Table constructor itself doesn't create a symbol, just its fields
             }
             _ => {}
         }
@@ -483,6 +482,7 @@ impl LuaExtractor {
         None
     }
 
+
     fn extract_variable_assignment(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract global variable assignments like: PI = 3.14159
         let variable_list = self.find_child_by_type(node, "variable_list")?;
@@ -607,12 +607,9 @@ impl LuaExtractor {
         // Extract fields from table constructor: { field = value, method = function() end }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "field_list" {
-                let mut field_cursor = child.walk();
-                for field_child in child.children(&mut field_cursor) {
-                    if field_child.kind() == "field" {
-                        self.extract_table_field(field_child, parent_id);
-                    }
+            if child.kind() == "field" {
+                if let Some(field_symbol) = self.extract_table_field_symbol(child, parent_id) {
+                    self.symbols.push(field_symbol);
                 }
             }
         }
@@ -661,6 +658,43 @@ impl LuaExtractor {
 
         let symbol = self.base.create_symbol(&name_node, name, kind, options);
         self.symbols.push(symbol);
+    }
+
+    fn extract_table_field_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Handle field definitions like: field = value or field = function() end
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+        if children.len() < 3 {
+            return None;
+        }
+        let name_node = children[0]; // field name
+        let equal_node = children[1]; // '=' operator
+        let value_node = children[2]; // field value
+        if equal_node.kind() != "=" || name_node.kind() != "identifier" {
+            return None;
+        }
+        let name = self.base.get_node_text(&name_node);
+        let signature = self.base.get_node_text(&node);
+        // Determine if this is a method (function) or field (value)
+        let mut kind = SymbolKind::Field;
+        let mut data_type = "unknown".to_string();
+        if value_node.kind() == "function_definition" {
+            kind = SymbolKind::Method;
+            data_type = "function".to_string();
+        } else {
+            data_type = self.infer_type_from_expression(value_node);
+        }
+        let mut metadata = HashMap::new();
+        metadata.insert("dataType".to_string(), data_type.clone().into());
+        let options = SymbolOptions {
+            signature: Some(signature),
+            parent_id: parent_id.map(|s| s.to_string()),
+            visibility: Some(Visibility::Public),
+            metadata: Some(metadata),
+            ..Default::default()
+        };
+
+        Some(self.base.create_symbol(&name_node, name, kind, options))
     }
 
     fn is_table_handled_by_parent(&self, node: Node) -> bool {

@@ -19,6 +19,71 @@ mod lua_extractor_tests {
     use super::*;
 
     #[test]
+    fn debug_table_constructor() {
+        let code = r#"
+local calculator = {
+  value = 0,
+  add = function(self, num)
+    return self.value + num
+  end
+}
+"#;
+
+        println!("🔍 Testing table constructor field extraction...");
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Print tree structure
+        fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+            let first_line = text.lines().next().unwrap_or("").trim();
+            println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+            for child in node.children(&mut node.walk()) {
+                print_node(child, depth + 1, source);
+            }
+        }
+
+        print_node(tree.root_node(), 0, code);
+
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        println!("Found {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  - Name: '{}', Kind: {:?}, Parent: {:?}", symbol.name, symbol.kind, symbol.parent_id);
+        }
+
+        // Check if calculator exists
+        let calculator_symbol = symbols.iter().find(|s| s.name == "calculator");
+        println!("calculator symbol found: {:?}", calculator_symbol.is_some());
+        if let Some(calculator) = calculator_symbol {
+            println!("calculator symbol ID: {}", calculator.id);
+        }
+
+        // Check if value field exists
+        let value_field = symbols.iter().find(|s| s.name == "value");
+        println!("value field found: {:?}", value_field.is_some());
+        if let Some(value) = value_field {
+            println!("value field parent_id: {:?}, kind: {:?}", value.parent_id, value.kind);
+        }
+
+        // Check if add method exists
+        let add_method = symbols.iter().find(|s| s.name == "add");
+        println!("add method found: {:?}", add_method.is_some());
+        if let Some(add) = add_method {
+            println!("add method parent_id: {:?}, kind: {:?}", add.parent_id, add.kind);
+        }
+    }
+
+    #[test]
     fn debug_colon_syntax() {
         let code = r#"
 local Vector = {}
