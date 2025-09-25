@@ -19,6 +19,247 @@ mod lua_extractor_tests {
     use super::*;
 
     #[test]
+    fn debug_function_assignment() {
+        let code = r#"
+local math_utils = {}
+math_utils.square = function(x)
+  return x * x
+end
+"#;
+
+        println!("🔍 Testing function assignment to property...");
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Print tree structure
+        fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+            let first_line = text.lines().next().unwrap_or("").trim();
+            println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+            for child in node.children(&mut node.walk()) {
+                print_node(child, depth + 1, source);
+            }
+        }
+
+        print_node(tree.root_node(), 0, code);
+
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        println!("Found {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  - Name: '{}', Kind: {:?}, Parent: {:?}", symbol.name, symbol.kind, symbol.parent_id);
+        }
+    }
+
+    #[test]
+    fn debug_module_properties() {
+        let code = r#"
+local M = {}
+M.PI = 3.14159
+M.VERSION = "2.0.0"
+"#;
+
+        println!("🔍 Testing module property assignments...");
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Print detailed tree structure to see what node types we get for property assignments
+        fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+            let first_line = text.lines().next().unwrap_or("").trim();
+            println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+            for child in node.children(&mut node.walk()) {
+                print_node(child, depth + 1, source);
+            }
+        }
+
+        print_node(tree.root_node(), 0, code);
+
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "modules.lua".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        println!("Found {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  - Name: '{}', Kind: {:?}, Parent: {:?}", symbol.name, symbol.kind, symbol.parent_id);
+        }
+
+        // Check if M exists
+        let m_symbol = symbols.iter().find(|s| s.name == "M");
+        println!("M symbol found: {:?}", m_symbol.is_some());
+        if let Some(m) = m_symbol {
+            println!("M symbol ID: {}", m.id);
+        }
+
+        // Check if PI property exists
+        let pi_symbol = symbols.iter().find(|s| s.name == "PI");
+        println!("PI symbol found: {:?}", pi_symbol.is_some());
+        if let Some(pi) = pi_symbol {
+            println!("PI symbol parent_id: {:?}, kind: {:?}", pi.parent_id, pi.kind);
+        }
+    }
+
+    #[test]
+    fn debug_module_structure() {
+        let code = r#"
+-- Module definition pattern 2: return table
+local M = {}
+
+function M.add(a, b)
+  return a + b
+end
+"#;
+
+        println!("🔍 Testing module method structure...");
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Print detailed tree structure to see what node types we get
+        fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+            let first_line = text.lines().next().unwrap_or("").trim();
+            println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+            for child in node.children(&mut node.walk()) {
+                print_node(child, depth + 1, source);
+            }
+        }
+
+        print_node(tree.root_node(), 0, code);
+
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "modules.lua".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        println!("Found {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  - Name: '{}', Kind: {:?}, Parent: {:?}", symbol.name, symbol.kind, symbol.parent_id);
+        }
+
+        // Check if M exists
+        let m_symbol = symbols.iter().find(|s| s.name == "M");
+        println!("M symbol found: {:?}", m_symbol.is_some());
+        if let Some(m) = m_symbol {
+            println!("M symbol ID: {}", m.id);
+        }
+
+        // Check if add method exists
+        let add_method = symbols.iter().find(|s| s.name == "add");
+        println!("add method found: {:?}", add_method.is_some());
+        if let Some(add) = add_method {
+            println!("add method parent_id: {:?}", add.parent_id);
+        }
+    }
+
+    #[test]
+    fn debug_require_structure() {
+        let lua_code = r#"
+local json = require("json")
+"#;
+
+        println!("🔍 Testing require call structure...");
+
+        let mut parser = init_parser();
+        match parser.parse(lua_code, None) {
+            Some(tree) => {
+                println!("✅ Parse successful!");
+                println!("Root kind: {}", tree.root_node().kind());
+
+                // Print detailed tree structure
+                fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+                    let indent = "  ".repeat(depth);
+                    let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+                    let first_line = text.lines().next().unwrap_or("").trim();
+                    println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+                    for child in node.children(&mut node.walk()) {
+                        print_node(child, depth + 1, source);
+                    }
+                }
+
+                print_node(tree.root_node(), 0, lua_code);
+
+            },
+            None => println!("❌ Parse failed!"),
+        }
+    }
+
+    #[test]
+    fn debug_lua_parser() {
+        let lua_code = r#"
+-- Local function
+local function validateInput(value)
+  if type(value) ~= "number" then
+    error("Expected number, got " .. type(value))
+  end
+  return true
+end
+"#;
+
+        println!("🔍 Testing Lua parser integration...");
+
+        let mut parser = init_parser();
+        match parser.parse(lua_code, None) {
+            Some(tree) => {
+                println!("✅ Parse successful!");
+                println!("Root kind: {}", tree.root_node().kind());
+                println!("Root child count: {}", tree.root_node().child_count());
+
+                // Print tree structure
+                fn print_node(node: tree_sitter::Node, depth: usize, source: &str) {
+                    let indent = "  ".repeat(depth);
+                    let text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+                    let first_line = text.lines().next().unwrap_or("").trim();
+                    println!("{}Kind: '{}' | Text: '{}'", indent, node.kind(), first_line);
+
+                    for child in node.children(&mut node.walk()) {
+                        print_node(child, depth + 1, source);
+                    }
+                }
+
+                print_node(tree.root_node(), 0, lua_code);
+
+                // Test extractor
+                let mut extractor = LuaExtractor::new(
+                    "lua".to_string(),
+                    "test.lua".to_string(),
+                    lua_code.to_string(),
+                );
+
+                let symbols = extractor.extract_symbols(&tree);
+                println!("🔍 Extractor produced {} symbols", symbols.len());
+                for symbol in &symbols {
+                    println!("  Symbol: {} ({:?}) - {:?}", symbol.name, symbol.kind, symbol.signature);
+                }
+
+            },
+            None => println!("❌ Parse failed!"),
+        }
+    }
+
+    #[test]
     fn test_basic_functions_and_variables() {
         let code = r#"
 -- Global function
@@ -88,6 +329,13 @@ end
         );
 
         let symbols = extractor.extract_symbols(&tree);
+
+        // DEBUG: Print all extracted symbols to see what's missing
+        println!("🔍 DEBUG: Extracted {} symbols:", symbols.len());
+        for symbol in &symbols {
+            println!("  Symbol: '{}' ({:?}) | Visibility: {:?} | Signature: {:?}",
+                     symbol.name, symbol.kind, symbol.visibility, symbol.signature);
+        }
 
         // Global function
         let calculate_area = symbols.iter().find(|s| s.name == "calculateArea");

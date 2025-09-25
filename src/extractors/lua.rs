@@ -26,9 +26,8 @@ impl LuaExtractor {
         self.symbols.clear();
         self.relationships.clear();
 
-        if let Some(root_node) = tree.root_node().child(0) {
-            self.traverse_node(root_node, None);
-        }
+        // Traverse the root node directly - it contains the statements we need
+        self.traverse_node(tree.root_node(), None);
 
         // Post-process to detect Lua class patterns
         self.detect_lua_classes();
@@ -43,14 +42,15 @@ impl LuaExtractor {
     fn traverse_node(&mut self, node: Node, parent_id: Option<String>) {
         let mut symbol: Option<Symbol> = None;
 
+
         match node.kind() {
-            "function_definition_statement" => {
+            "function_definition_statement" | "function_declaration" => {
                 symbol = self.extract_function_definition_statement(node, parent_id.as_deref());
             }
-            "local_function_definition_statement" => {
+            "local_function_definition_statement" | "local_function_declaration" => {
                 symbol = self.extract_local_function_definition_statement(node, parent_id.as_deref());
             }
-            "local_variable_declaration" => {
+            "local_variable_declaration" | "variable_declaration" => {
                 symbol = self.extract_local_variable_declaration(node, parent_id.as_deref());
             }
             "assignment_statement" => {
@@ -85,7 +85,7 @@ impl LuaExtractor {
 
         if name_node.is_none() {
             // Check for colon syntax: function obj:method() or dot syntax: function obj.method()
-            if let Some(variable_node) = self.find_child_by_type(node, "variable") {
+            if let Some(variable_node) = self.find_child_by_type(node, "variable").or_else(|| self.find_child_by_type(node, "dot_index_expression")) {
                 let full_name = self.base.get_node_text(&variable_node);
 
                 // Handle colon syntax: function obj:method()
@@ -135,13 +135,16 @@ impl LuaExtractor {
 
         let signature = self.base.get_node_text(&node);
 
-        // Determine visibility: underscore prefix indicates private
-        let visibility = if name.starts_with('_') { "private" } else { "public" };
+        // Determine visibility: check if function is local (contains "local" keyword) or uses underscore prefix
+        let node_text = self.base.get_node_text(&node);
+        let is_local = node_text.trim_start().starts_with("local function");
+        let has_underscore = name.starts_with('_');
+        let visibility = if is_local || has_underscore { Visibility::Private } else { Visibility::Public };
 
         let options = SymbolOptions {
             signature: Some(signature),
             parent_id: method_parent_id,
-            visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+            visibility: Some(visibility),
             ..Default::default()
         };
 
@@ -155,6 +158,7 @@ impl LuaExtractor {
         let name = self.base.get_node_text(&name_node);
         let signature = self.base.get_node_text(&node);
 
+        // Local functions are always private (regardless of underscore prefix)
         let options = SymbolOptions {
             signature: Some(signature),
             parent_id: parent_id.map(|s| s.to_string()),
@@ -168,8 +172,12 @@ impl LuaExtractor {
     }
 
     fn extract_local_variable_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let variable_list = self.find_child_by_type(node, "variable_list")?;
-        let expression_list = self.find_child_by_type(node, "expression_list");
+        // Get the assignment_statement child first
+        let assignment_statement = self.find_child_by_type(node, "assignment_statement")?;
+
+        // Now get variable_list and expression_list from assignment_statement
+        let variable_list = self.find_child_by_type(assignment_statement, "variable_list")?;
+        let expression_list = self.find_child_by_type(assignment_statement, "expression_list");
 
         let signature = self.base.get_node_text(&node);
         let mut cursor = variable_list.walk();
@@ -207,9 +215,21 @@ impl LuaExtractor {
 
                 if let Some(expression) = expression {
                     match expression.kind() {
-                        "function_definition" => {
+                        "function_definition" | "function" | "function_expression" => {
                             kind = SymbolKind::Function;
                             data_type = "function".to_string();
+                        }
+                        "expression_list" => {
+                            // Check if expression_list contains a function_definition (for anonymous functions)
+                            if self.contains_function_definition(*expression) {
+                                kind = SymbolKind::Function;
+                                data_type = "function".to_string();
+                            } else {
+                                data_type = self.infer_type_from_expression(*expression);
+                                if data_type == "import" {
+                                    kind = SymbolKind::Import;
+                                }
+                            }
                         }
                         _ => {
                             data_type = self.infer_type_from_expression(*expression);
@@ -265,13 +285,11 @@ impl LuaExtractor {
             "nil" => "nil".to_string(),
             "function_definition" => "function".to_string(),
             "table_constructor" | "table" => "table".to_string(),
-            "call" => {
+            "function_call" => {
                 // Check if this is a require() call
-                if let Some(callee) = self.find_child_by_type(node, "variable") {
-                    if let Some(identifier) = self.find_child_by_type(callee, "identifier") {
-                        if self.base.get_node_text(&identifier) == "require" {
-                            return "import".to_string();
-                        }
+                if let Some(identifier) = self.find_child_by_type(node, "identifier") {
+                    if self.base.get_node_text(&identifier) == "require" {
+                        return "import".to_string();
                     }
                 }
                 "unknown".to_string()
@@ -283,6 +301,7 @@ impl LuaExtractor {
     fn extract_assignment_statement(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
+
         if children.len() < 3 {
             return None;
         }
@@ -294,53 +313,91 @@ impl LuaExtractor {
         if left.kind() == "variable_list" {
             let mut left_cursor = left.walk();
             let variables: Vec<Node> = left.children(&mut left_cursor)
-                .filter(|child| child.kind() == "variable")
+                .filter(|child| child.kind() == "variable" || child.kind() == "identifier" || child.kind() == "dot_index_expression")
                 .collect();
 
             for (i, var_node) in variables.iter().enumerate() {
-                if let Some(name_node) = self.find_child_by_type(*var_node, "identifier") {
-                    let name = self.base.get_node_text(&name_node);
-                    let signature = self.base.get_node_text(&node);
+                // Handle "variable" nodes, direct "identifier" nodes, and "dot_index_expression" nodes
+                let name_node = if var_node.kind() == "identifier" {
+                    *var_node
+                } else if var_node.kind() == "dot_index_expression" {
+                    // Handle dot notation assignments like M.PI = 3.14159
+                    *var_node
+                } else {
+                    self.find_child_by_type(*var_node, "identifier")?
+                };
 
-                    // Determine kind and type based on the assignment
-                    let mut kind = SymbolKind::Variable;
-                    let mut data_type = "unknown".to_string();
+                let name = self.base.get_node_text(&name_node);
+                let signature = self.base.get_node_text(&node);
 
-                    if right.kind() == "expression_list" {
-                        let mut right_cursor = right.walk();
-                        let expressions: Vec<Node> = right.children(&mut right_cursor)
-                            .filter(|child| child.kind() != ",")
-                            .collect();
+                // Handle dot notation assignments like M.PI = 3.14159
+                let (actual_name, parent_symbol_id, kind_override) = if var_node.kind() == "dot_index_expression" && name.contains('.') {
+                    let parts: Vec<&str> = name.split('.').collect();
+                    if parts.len() == 2 {
+                        let object_name = parts[0];
+                        let property_name = parts[1];
 
-                        if let Some(expression) = expressions.get(i) {
-                            if expression.kind() == "function_definition" {
-                                kind = SymbolKind::Function;
-                                data_type = "function".to_string();
-                            } else {
-                                data_type = self.infer_type_from_expression(*expression);
-                            }
-                        }
-                    } else if right.kind() == "function_definition" {
-                        kind = SymbolKind::Function;
-                        data_type = "function".to_string();
+                        // Find the parent object
+                        let parent_id = self.symbols.iter()
+                            .find(|s| s.name == object_name)
+                            .map(|s| s.id.clone());
+
+                        (property_name.to_string(), parent_id, Some(SymbolKind::Field))
                     } else {
-                        data_type = self.infer_type_from_expression(right);
+                        (name, None, None)
                     }
+                } else {
+                    (name, None, None)
+                };
 
-                    let mut metadata = HashMap::new();
-                    metadata.insert("dataType".to_string(), data_type.clone().into());
+                // Determine kind and type based on the assignment
+                let is_field_assignment = matches!(kind_override, Some(SymbolKind::Field));
+                let mut kind = kind_override.unwrap_or(SymbolKind::Variable);
+                let mut data_type = "unknown".to_string();
 
-                    let options = SymbolOptions {
-                        signature: Some(signature),
-                        parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some(Visibility::Public),
-                        metadata: Some(metadata),
-                        ..Default::default()
-                    };
+                if right.kind() == "expression_list" {
+                    let mut right_cursor = right.walk();
+                    let expressions: Vec<Node> = right.children(&mut right_cursor)
+                        .filter(|child| child.kind() != ",")
+                        .collect();
 
-                    let symbol = self.base.create_symbol(&name_node, name, kind, options);
-                    self.symbols.push(symbol);
+                    if let Some(expression) = expressions.get(i) {
+                        if expression.kind() == "function_definition" {
+                            // Override kind based on context
+                            kind = if is_field_assignment {
+                                SymbolKind::Method // Function assigned to object property = Method
+                            } else {
+                                SymbolKind::Function
+                            };
+                            data_type = "function".to_string();
+                        } else {
+                            data_type = self.infer_type_from_expression(*expression);
+                        }
+                    }
+                } else if right.kind() == "function_definition" {
+                    kind = SymbolKind::Function;
+                    data_type = "function".to_string();
+                } else {
+                    data_type = self.infer_type_from_expression(right);
+                    // Update kind based on inferred type
+                    if data_type == "import" {
+                        kind = SymbolKind::Import;
+                    }
                 }
+
+                let mut metadata = HashMap::new();
+                metadata.insert("dataType".to_string(), data_type.clone().into());
+
+                let options = SymbolOptions {
+                    signature: Some(signature),
+                    parent_id: parent_symbol_id,
+                    visibility: Some(Visibility::Public),
+                    metadata: Some(metadata),
+                    ..Default::default()
+                };
+
+                let symbol = self.base.create_symbol(&name_node, actual_name, kind, options);
+                self.symbols.push(symbol);
             }
         }
         // Handle simple identifier assignments and dot notation
@@ -356,11 +413,11 @@ impl LuaExtractor {
                     let signature = self.base.get_node_text(&node);
 
                     // Determine kind and type based on the assignment
-                    let mut kind = SymbolKind::Variable;
+                    let mut kind = SymbolKind::Field; // Property assignments are fields
                     let mut data_type = "unknown".to_string();
 
                     if right.kind() == "function_definition" {
-                        kind = SymbolKind::Function;
+                        kind = SymbolKind::Method; // Methods on objects
                         data_type = "function".to_string();
                     } else {
                         data_type = self.infer_type_from_expression(right);
@@ -709,5 +766,16 @@ impl LuaExtractor {
             }
         }
         None
+    }
+
+    fn contains_function_definition(&self, node: Node) -> bool {
+        // Check if this node contains a function_definition child
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "function_definition" {
+                return true;
+            }
+        }
+        false
     }
 }
