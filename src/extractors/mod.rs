@@ -21,22 +21,22 @@ pub mod cpp;                 // C++ extractor - FIXING lifetime annotation error
 pub mod java;                // Java extractor - FIXING API compatibility errors - MY ASSIGNED TASK
 pub mod csharp;              // C# extractor - Testing if it works
 pub mod ruby;                // Ruby extractor - API FIXED, testing compilation
-pub mod php;                 // PHP extractor - COMPLETE Miller parity implementation
-pub mod swift;               // Swift extractor (GREEN phase) - ENABLED by Swift Specialist
-pub mod kotlin;              // Kotlin extractor - TEMPORARILY ENABLED to test API fixes
+pub mod php;                 // PHP extractor - FIXING metadata access patterns
+pub mod swift;               // Swift extractor - FIXING metadata access patterns
+pub mod kotlin;              // Kotlin extractor - FIXING metadata access patterns
 
 // Phase 2 - Specialized Languages:
 pub mod gdscript;              // GDScript extractor (Phase 1 SUCCESS - FIXED)
-pub mod lua;                    // Lua extractor - FIXING API errors
+pub mod lua;                    // Lua extractor - FIXING metadata access patterns
 pub mod vue;
-pub mod razor;                 // Razor extractor - Fixed bracket syntax errors
-pub mod sql;                    // SQL extractor - FIXED
-pub mod html;                // HTML extractor - REPAIRING API errors - MY ASSIGNED TASK
+pub mod razor;                 // Razor extractor - FIXING metadata access patterns
+pub mod sql;                    // SQL extractor - FIXING metadata access patterns
+pub mod html;                // HTML extractor - FIXING metadata access patterns
 pub mod css;                    // CSS extractor (Phase 1 SUCCESS)
-pub mod regex;                  // Regex extractor (Phase 1 SUCCESS)
+pub mod regex;                  // Regex extractor - FIXING metadata access patterns
 pub mod bash;                   // Bash extractor (TDD GREEN phase)
 pub mod powershell;             // PowerShell extractor (Phase 1 SUCCESS)
-pub mod zig;                    // Zig extractor (Phase 1 SUCCESS - FIXED)
+pub mod zig;                    // Zig extractor - FIXING metadata access patterns
 
 // Re-export the base extractor types
 pub use base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, TypeInfo};

@@ -866,6 +866,7 @@ impl PythonExtractor {
                     };
 
                     let relationship = Relationship {
+                        id: format!("{}_{}_{:?}_{}", class_symbol.id, base_symbol.id, relationship_kind, node.start_position().row),
                         from_symbol_id: class_symbol.id.clone(),
                         to_symbol_id: base_symbol.id.clone(),
                         kind: relationship_kind,
@@ -896,6 +897,7 @@ impl PythonExtractor {
                     // Find the enclosing function/method that contains this call
                     if let Some(caller_symbol) = self.find_containing_function(node, symbol_map) {
                         let relationship = Relationship {
+                            id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
                             from_symbol_id: caller_symbol.id.clone(),
                             to_symbol_id: called_symbol.id.clone(),
                             kind: RelationshipKind::Calls,

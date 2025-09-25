@@ -953,6 +953,7 @@ impl CSharpExtractor {
                 };
 
                 let relationship = Relationship {
+                    id: format!("{}_{}_{:?}_{}", current_symbol.id, base_symbol.id, relationship_kind, node.start_position().row),
                     from_symbol_id: current_symbol.id.clone(),
                     to_symbol_id: base_symbol.id.clone(),
                     kind: relationship_kind,

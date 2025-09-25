@@ -200,7 +200,7 @@ impl DartExtractor {
 
         // Add async annotation
         if is_async {
-            symbol.metadata.insert("isAsync".to_string(), serde_json::Value::Bool(true));
+            symbol.metadata.get_or_insert_with(HashMap::new).insert("isAsync".to_string(), serde_json::Value::Bool(true));
         }
 
         Some(symbol)
@@ -254,10 +254,10 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.insert("isAsync".to_string(), serde_json::Value::Bool(is_async));
-        symbol.metadata.insert("isStatic".to_string(), serde_json::Value::Bool(is_static));
-        symbol.metadata.insert("isOverride".to_string(), serde_json::Value::Bool(is_override));
-        symbol.metadata.insert("isFlutterLifecycle".to_string(), serde_json::Value::Bool(is_flutter_lifecycle));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isAsync".to_string(), serde_json::Value::Bool(is_async));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isStatic".to_string(), serde_json::Value::Bool(is_static));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isOverride".to_string(), serde_json::Value::Bool(is_override));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isFlutterLifecycle".to_string(), serde_json::Value::Bool(is_flutter_lifecycle));
 
         Some(symbol)
     }
@@ -323,8 +323,8 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.insert("isFactory".to_string(), serde_json::Value::Bool(is_factory));
-        symbol.metadata.insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isFactory".to_string(), serde_json::Value::Bool(is_factory));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isConst".to_string(), serde_json::Value::Bool(is_const));
 
         Some(symbol)
     }
@@ -538,9 +538,9 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.insert("isMixin".to_string(), serde_json::Value::Bool(true));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isMixin".to_string(), serde_json::Value::Bool(true));
         if let Some(constraint_type) = constraint_type_name {
-            symbol.metadata.insert("constraintType".to_string(), serde_json::Value::String(constraint_type));
+            symbol.metadata.get_or_insert_with(HashMap::new).insert("constraintType".to_string(), serde_json::Value::String(constraint_type));
         }
 
         Some(symbol)
@@ -578,9 +578,9 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.insert("isExtension".to_string(), serde_json::Value::Bool(true));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isExtension".to_string(), serde_json::Value::Bool(true));
         if let Some(extended_type) = extended_type_name {
-            symbol.metadata.insert("extendedType".to_string(), serde_json::Value::String(extended_type));
+            symbol.metadata.get_or_insert_with(HashMap::new).insert("extendedType".to_string(), serde_json::Value::String(extended_type));
         }
 
         Some(symbol)
@@ -621,8 +621,8 @@ impl DartExtractor {
                     );
 
                     // Add metadata
-                    symbol.metadata.insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
-                    symbol.metadata.insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+                    symbol.metadata.get_or_insert_with(HashMap::new).insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
+                    symbol.metadata.get_or_insert_with(HashMap::new).insert("isConst".to_string(), serde_json::Value::Bool(is_const));
 
                     return Some(symbol);
                 }
@@ -680,8 +680,8 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.insert("isTypedef".to_string(), serde_json::Value::Bool(true));
-        symbol.metadata.insert("aliasedType".to_string(), serde_json::Value::String(aliased_type.trim().to_string()));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("isTypedef".to_string(), serde_json::Value::Bool(true));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert("aliasedType".to_string(), serde_json::Value::String(aliased_type.trim().to_string()));
 
         Some(symbol)
     }
@@ -1026,6 +1026,7 @@ impl DartExtractor {
                     .find(|s| s.name == superclass_name && s.kind == SymbolKind::Class) {
 
                     relationships.push(Relationship {
+                        id: format!("{}_{}_{:?}_{}", class_symbol.id, superclass_symbol.id, RelationshipKind::Extends, node.start_position().row),
                         from_symbol_id: class_symbol.id.clone(),
                         to_symbol_id: superclass_symbol.id.clone(),
                         kind: RelationshipKind::Extends,
@@ -1053,6 +1054,7 @@ impl DartExtractor {
                                 .find(|s| s.name == generic_type_name && s.kind == SymbolKind::Class) {
 
                                 relationships.push(Relationship {
+                                    id: format!("{}_{}_{:?}_{}", class_symbol.id, generic_type_symbol.id, RelationshipKind::Uses, node.start_position().row),
                                     from_symbol_id: class_symbol.id.clone(),
                                     to_symbol_id: generic_type_symbol.id.clone(),
                                     kind: RelationshipKind::Uses,
@@ -1083,6 +1085,7 @@ impl DartExtractor {
                             .find(|s| s.name == mixin_type_name && s.kind == SymbolKind::Interface) {
 
                             relationships.push(Relationship {
+                                id: format!("{}_{}_{:?}_{}", class_symbol.id, mixin_type_symbol.id, RelationshipKind::Uses, node.start_position().row),
                                 from_symbol_id: class_symbol.id.clone(),
                                 to_symbol_id: mixin_type_symbol.id.clone(),
                                 kind: RelationshipKind::Uses,
@@ -1120,12 +1123,12 @@ impl DartExtractor {
             }
 
             // Use metadata for final/const detection
-            if let Some(is_final) = symbol.metadata.get("isFinal") {
+            if let Some(is_final) = symbol.metadata.as_ref().and_then(|m| m.get("isFinal")) {
                 if is_final.as_bool() == Some(true) {
                     types.entry(symbol.name.clone()).or_insert_with(|| "final".to_string());
                 }
             }
-            if let Some(is_const) = symbol.metadata.get("isConst") {
+            if let Some(is_const) = symbol.metadata.as_ref().and_then(|m| m.get("isConst")) {
                 if is_const.as_bool() == Some(true) {
                     types.entry(symbol.name.clone()).or_insert_with(|| "const".to_string());
                 }

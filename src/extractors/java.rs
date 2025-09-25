@@ -535,6 +535,7 @@ impl JavaExtractor {
                 s.name == superclass && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
             }) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", type_symbol.id, base_type_symbol.id, RelationshipKind::Extends, node.start_position().row),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: base_type_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -557,6 +558,7 @@ impl JavaExtractor {
                 s.name == interface_name && s.kind == SymbolKind::Interface
             }) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", type_symbol.id, interface_symbol.id, RelationshipKind::Implements, node.start_position().row),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: interface_symbol.id.clone(),
                     kind: RelationshipKind::Implements,

@@ -33,7 +33,7 @@ impl HTMLExtractor {
 
         // If we only extracted error symbols, try basic structure fallback
         let has_only_errors = symbols.len() > 0 && symbols.iter().all(|s|
-            s.metadata.get("isError").and_then(|v| v.as_bool()).unwrap_or(false)
+            s.metadata.as_ref().and_then(|m| m.get("isError")).and_then(|v| v.as_bool()).unwrap_or(false)
         );
 
         if has_only_errors || symbols.is_empty() {
@@ -532,6 +532,7 @@ impl HTMLExtractor {
         if let Some(href) = attributes.get("href") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", element.id, format!("url:{}", href), RelationshipKind::References, node.start_position().row),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("url:{}", href),
                     kind: RelationshipKind::References,
@@ -551,6 +552,7 @@ impl HTMLExtractor {
         if let Some(src) = attributes.get("src") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", element.id, format!("resource:{}", src), RelationshipKind::Uses, node.start_position().row),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("resource:{}", src),
                     kind: RelationshipKind::Uses,
@@ -570,6 +572,7 @@ impl HTMLExtractor {
         if let Some(action) = attributes.get("action") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", element.id, format!("endpoint:{}", action), RelationshipKind::Calls, node.start_position().row),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("endpoint:{}", action),
                     kind: RelationshipKind::Calls,
@@ -599,12 +602,13 @@ impl HTMLExtractor {
 
         if let Some(src) = attributes.get("src") {
             if let Some(script_symbol) = symbols.iter().find(|s|
-                s.metadata.get("type")
+                s.metadata.as_ref().and_then(|m| m.get("type"))
                     .and_then(|v| v.as_str())
                     .map(|t| t == "script-element")
                     .unwrap_or(false)
             ) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", script_symbol.id, format!("script:{}", src), RelationshipKind::Imports, node.start_position().row),
                     from_symbol_id: script_symbol.id.clone(),
                     to_symbol_id: format!("script:{}", src),
                     kind: RelationshipKind::Imports,
@@ -766,9 +770,9 @@ impl HTMLExtractor {
 
         for symbol in symbols {
             let metadata = &symbol.metadata;
-            if let Some(symbol_type) = metadata.get("type").and_then(|v| v.as_str()) {
+            if let Some(symbol_type) = metadata.as_ref().and_then(|m| m.get("type")).and_then(|v| v.as_str()) {
                 types.insert(symbol.id.clone(), symbol_type.to_string());
-            } else if let Some(tag_name) = metadata.get("tagName").and_then(|v| v.as_str()) {
+            } else if let Some(tag_name) = metadata.as_ref().and_then(|m| m.get("tagName")).and_then(|v| v.as_str()) {
                 types.insert(symbol.id.clone(), format!("html:{}", tag_name));
             }
         }

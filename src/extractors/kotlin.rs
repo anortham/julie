@@ -1045,11 +1045,11 @@ impl KotlinExtractor {
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
         for symbol in symbols {
-            if let Some(Value::String(s)) = symbol.metadata.get("returnType") {
+            if let Some(Value::String(s)) = symbol.metadata.as_ref().and_then(|m| m.get("returnType")) {
                 types.insert(symbol.id.clone(), s.clone());
-            } else if let Some(Value::String(s)) = symbol.metadata.get("propertyType") {
+            } else if let Some(Value::String(s)) = symbol.metadata.as_ref().and_then(|m| m.get("propertyType")) {
                 types.insert(symbol.id.clone(), s.clone());
-            } else if let Some(Value::String(s)) = symbol.metadata.get("dataType") {
+            } else if let Some(Value::String(s)) = symbol.metadata.as_ref().and_then(|m| m.get("dataType")) {
                 types.insert(symbol.id.clone(), s.clone());
             }
         }
@@ -1190,6 +1190,7 @@ impl KotlinExtractor {
                 };
 
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", class_symbol.id, base_type_symbol.id, relationship_kind, node.start_position().row),
                     from_symbol_id: class_symbol.id.clone(),
                     to_symbol_id: base_type_symbol.id.clone(),
                     kind: relationship_kind,

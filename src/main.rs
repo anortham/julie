@@ -7,6 +7,7 @@ mod search;
 mod embeddings;
 mod database;
 mod utils;
+mod workspace;
 
 #[cfg(test)]
 mod tests;

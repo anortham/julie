@@ -959,6 +959,7 @@ impl ZigExtractor {
                             if referenced_symbol.id != target_symbol.id {
                                 // Create composition relationship
                                 relationships.push(Relationship {
+                                    id: format!("{}_{}_{:?}_{}", target_symbol.id, referenced_symbol.id, RelationshipKind::Contains, field_node.start_position().row),
                                     from_symbol_id: target_symbol.id.clone(),
                                     to_symbol_id: referenced_symbol.id.clone(),
                                     kind: RelationshipKind::Contains,
@@ -1004,6 +1005,7 @@ impl ZigExtractor {
                             if let Some(caller_symbol) = caller_symbol {
                                 if caller_symbol.id != called_symbol.id {
                                     relationships.push(Relationship {
+                                        id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
                                         from_symbol_id: caller_symbol.id.clone(),
                                         to_symbol_id: called_symbol.id.clone(),
                                         kind: RelationshipKind::Calls,
@@ -1037,12 +1039,12 @@ impl ZigExtractor {
             }
 
             // Use metadata for Zig-specific types
-            if let Some(is_error) = symbol.metadata.get("isErrorType").and_then(|v| v.as_bool()) {
+            if let Some(is_error) = symbol.metadata.as_ref().and_then(|m| m.get("isErrorType")).and_then(|v| v.as_bool()) {
                 if is_error {
                     types.insert(symbol.name.clone(), "error".to_string());
                 }
             }
-            if let Some(is_type_alias) = symbol.metadata.get("isTypeAlias").and_then(|v| v.as_bool()) {
+            if let Some(is_type_alias) = symbol.metadata.as_ref().and_then(|m| m.get("isTypeAlias")).and_then(|v| v.as_bool()) {
                 if is_type_alias {
                     types.insert(symbol.name.clone(), "type".to_string());
                 }
@@ -1050,7 +1052,7 @@ impl ZigExtractor {
 
             match symbol.kind {
                 SymbolKind::Class => {
-                    if symbol.metadata.get("isErrorType").and_then(|v| v.as_bool()) != Some(true) {
+                    if symbol.metadata.as_ref().and_then(|m| m.get("isErrorType")).and_then(|v| v.as_bool()) != Some(true) {
                         types.insert(symbol.name.clone(), "struct".to_string());
                     }
                 }

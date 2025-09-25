@@ -996,6 +996,7 @@ impl RustExtractor {
                 (symbol_map.get(&trait_name), symbol_map.get(&type_name))
             {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", type_symbol.id, trait_symbol.id, RelationshipKind::Implements, node.start_position().row),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: trait_symbol.id.clone(),
                     kind: RelationshipKind::Implements,
@@ -1047,6 +1048,7 @@ impl RustExtractor {
                 if let Some(referenced_symbol) = symbol_map.get(&referenced_type_name) {
                     if referenced_symbol.id != container_symbol.id {
                         relationships.push(Relationship {
+                            id: format!("{}_{}_{:?}_{}", container_symbol.id, referenced_symbol.id, RelationshipKind::Uses, field_node.start_position().row),
                             from_symbol_id: container_symbol.id.clone(),
                             to_symbol_id: referenced_symbol.id.clone(),
                             kind: RelationshipKind::Uses,
@@ -1080,6 +1082,7 @@ impl RustExtractor {
                         if let Some(calling_function) = self.find_containing_function(node) {
                             if let Some(caller_symbol) = symbol_map.get(&calling_function) {
                                 relationships.push(Relationship {
+                                    id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
                                     from_symbol_id: caller_symbol.id.clone(),
                                     to_symbol_id: called_symbol.id.clone(),
                                     kind: RelationshipKind::Calls,
@@ -1100,6 +1103,7 @@ impl RustExtractor {
                     if let Some(calling_function) = self.find_containing_function(node) {
                         if let Some(caller_symbol) = symbol_map.get(&calling_function) {
                             relationships.push(Relationship {
+                                id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
                                 from_symbol_id: caller_symbol.id.clone(),
                                 to_symbol_id: called_symbol.id.clone(),
                                 kind: RelationshipKind::Calls,

@@ -1247,6 +1247,7 @@ impl SwiftExtractor {
             ]);
 
             relationships.push(Relationship {
+                id: format!("{}_{}_{:?}_{}", type_symbol.id, base_type_symbol.id, relationship_kind, node.start_position().row),
                 from_symbol_id: type_symbol.id.clone(),
                 to_symbol_id: base_type_symbol.id.clone(),
                 kind: relationship_kind,
@@ -1264,7 +1265,7 @@ impl SwiftExtractor {
         for symbol in symbols {
             // For functions/methods, prefer returnType over generic type
             if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
-                if let Some(return_type) = symbol.metadata.get("returnType") {
+                if let Some(return_type) = symbol.metadata.as_ref().and_then(|m| m.get("returnType")) {
                     if let Some(return_type_str) = return_type.as_str() {
                         types.insert(symbol.id.clone(), return_type_str.to_string());
                         continue;
@@ -1273,13 +1274,13 @@ impl SwiftExtractor {
             }
             // For properties/variables, prefer propertyType or variableType
             else if matches!(symbol.kind, SymbolKind::Property | SymbolKind::Variable) {
-                if let Some(property_type) = symbol.metadata.get("propertyType") {
+                if let Some(property_type) = symbol.metadata.as_ref().and_then(|m| m.get("propertyType")) {
                     if let Some(property_type_str) = property_type.as_str() {
                         types.insert(symbol.id.clone(), property_type_str.to_string());
                         continue;
                     }
                 }
-                if let Some(variable_type) = symbol.metadata.get("variableType") {
+                if let Some(variable_type) = symbol.metadata.as_ref().and_then(|m| m.get("variableType")) {
                     if let Some(variable_type_str) = variable_type.as_str() {
                         types.insert(symbol.id.clone(), variable_type_str.to_string());
                         continue;
@@ -1288,11 +1289,11 @@ impl SwiftExtractor {
             }
 
             // Fallback to generic type from metadata
-            if let Some(symbol_type) = symbol.metadata.get("type") {
+            if let Some(symbol_type) = symbol.metadata.as_ref().and_then(|m| m.get("type")) {
                 if let Some(symbol_type_str) = symbol_type.as_str() {
                     types.insert(symbol.id.clone(), symbol_type_str.to_string());
                 }
-            } else if let Some(return_type) = symbol.metadata.get("returnType") {
+            } else if let Some(return_type) = symbol.metadata.as_ref().and_then(|m| m.get("returnType")) {
                 if let Some(return_type_str) = return_type.as_str() {
                     types.insert(symbol.id.clone(), return_type_str.to_string());
                 }

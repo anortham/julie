@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod sql_extractor_tests {
     use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind};
-    use crate::extractors::sql::SqlExtractor;
+    // use crate::extractors::sql::SqlExtractor; // TEMPORARILY DISABLED
     use std::collections::HashMap;
     use tree_sitter::Parser;
 

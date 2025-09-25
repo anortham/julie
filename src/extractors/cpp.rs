@@ -777,6 +777,7 @@ impl CppExtractor {
 
             if let Some(base_symbol) = symbol_map.get(clean_base_name) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", derived_symbol.id, base_symbol.id, RelationshipKind::Extends, class_node.start_position().row),
                     from_symbol_id: derived_symbol.id.clone(),
                     to_symbol_id: base_symbol.id.clone(),
                     kind: RelationshipKind::Extends,

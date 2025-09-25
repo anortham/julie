@@ -1907,13 +1907,13 @@ impl RazorExtractor {
 
             // Use actual type information from metadata
             let metadata = &symbol.metadata;
-            if let Some(property_type) = metadata.get("propertyType").and_then(|v| v.as_str()) {
+            if let Some(property_type) = metadata.as_ref().and_then(|m| m.get("propertyType")).and_then(|v| v.as_str()) {
                     inferred_type = property_type.to_string();
-                } else if let Some(field_type) = metadata.get("fieldType").and_then(|v| v.as_str()) {
+                } else if let Some(field_type) = metadata.as_ref().and_then(|m| m.get("fieldType")).and_then(|v| v.as_str()) {
                     inferred_type = field_type.to_string();
-                } else if let Some(variable_type) = metadata.get("variableType").and_then(|v| v.as_str()) {
+                } else if let Some(variable_type) = metadata.as_ref().and_then(|m| m.get("variableType")).and_then(|v| v.as_str()) {
                     inferred_type = variable_type.to_string();
-                } else if let Some(return_type) = metadata.get("returnType").and_then(|v| v.as_str()) {
+                } else if let Some(return_type) = metadata.as_ref().and_then(|m| m.get("returnType")).and_then(|v| v.as_str()) {
                     inferred_type = return_type.to_string();
                 } else if let Some(signature) = &symbol.signature {
                     // Try to extract type from signature
@@ -1938,7 +1938,7 @@ impl RazorExtractor {
                 }
 
             // Handle special cases
-            if metadata.get("isDataBinding")
+            if metadata.as_ref().and_then(|m| m.get("isDataBinding"))
                 .and_then(|v| v.as_str())
                 .map_or(false, |v| v == "true") {
                 inferred_type = "bool".to_string();

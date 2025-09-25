@@ -123,102 +123,146 @@
 
 ---
 
-## Phase 3: Search Infrastructure (Days 9-11)
+## Phase 3: The Three-Pillar Architecture (Days 9-12)
 
-### Milestone 3.1: Tantivy Integration
-- [ ] Create src/search/mod.rs with search infrastructure
-- [ ] Set up Tantivy with custom schema for code symbols
-- [ ] Create custom analyzers for code (CamelCase, snake_case, kebab-case)
-- [ ] Implement indexing pipeline for extracted symbols
-- [ ] Create incremental indexing system
-- [ ] Port search logic from Miller to Rust
-- [ ] Add fuzzy search capabilities
-- [ ] Implement search result ranking
-- **Verification**: Sub-10ms search latency achieved
+### Milestone 3.1: .julie Workspace Setup ✅ COMPLETE
+- [x] Create src/workspace/mod.rs with JulieWorkspace struct
+- [x] Implement .julie folder structure at project root
+- [x] Set up folder hierarchy: db/, index/tantivy/, vectors/, models/, cache/, logs/, config/
+- [x] Create workspace initialization and detection logic
+- [x] Implement configuration management (julie.toml)
+- [x] Add workspace health checks and validation
+- **Verification**: ✅ .julie workspace initializes correctly (3/3 tests passing)
 
-### Milestone 3.2: Semantic Search
-- [ ] Create src/embeddings/mod.rs for ML capabilities
-- [ ] Integrate ort crate for ONNX runtime
-- [ ] Download and embed code-specific models (CodeBERT/GraphCodeBERT)
-- [ ] Port embedding generation logic from Miller
-- [ ] Implement vector storage with efficient similarity search
-- [ ] Create hybrid search combining lexical + semantic
-- [ ] Add embedding caching for performance
-- **Verification**: Semantic search returns relevant results
+### Milestone 3.2: SQLite - The Source of Truth
+- [ ] Design comprehensive schema for symbols, relationships, files, embeddings
+- [ ] Implement file tracking with Blake3 hashing for change detection
+- [ ] Create symbol storage with rich metadata (semantic_group, confidence)
+- [ ] Build relationship mapping system (calls, implements, extends, uses)
+- [ ] Add incremental update support with transaction management
+- [ ] Create efficient indexes for cross-language queries
+- **Verification**: Complex relational queries execute sub-100ms
 
----
+### Milestone 3.3: Tantivy - The Search Accelerator
+- [ ] Create src/search/tokenizers.rs with custom code-aware tokenizers
+- [ ] Implement OperatorPreservingTokenizer (preserves &&, ||, =>, <>)
+- [ ] Implement GenericAwareTokenizer (handles List<T>, Map<K,V>)
+- [ ] Implement CodeIdentifierTokenizer (splits camelCase, snake_case)
+- [ ] Design multi-field schema with exact + tokenized fields
+- [ ] Create intelligent query processing with intent detection
+- [ ] Implement language-specific field boosting and ranking
+- **Verification**: Code pattern searches ("List<User>", "&&") work perfectly
 
-## Phase 4: MCP Tools Implementation (Days 12-14)
-
-### Milestone 4.1: Core Tools
-- [ ] Create src/tools/mod.rs for MCP tool implementations
-- [ ] Implement search_code tool with fuzzy matching
-- [ ] Implement goto_definition tool with precise navigation
-- [ ] Implement find_references tool across codebase
-- [ ] Implement explore tool (overview, trace, dependencies)
-- [ ] Implement semantic search with hybrid mode
-- [ ] Implement navigate tool with surgical precision
-- [ ] Add comprehensive error handling for all tools
-- **Verification**: All core tools callable via MCP and return correct results
-
-### Milestone 4.2: Advanced Tools
-- [ ] Implement edit_code tool with line-precise targeting
-- [ ] Create context extraction capabilities
-- [ ] Implement batch operations for efficiency
-- [ ] Add cross-language binding detection
-- [ ] Create relationship mapping between symbols
-- [ ] Implement workspace-wide refactoring support
-- [ ] Add incremental updates on file changes
-- **Verification**: Complex editing operations work correctly
+### Milestone 3.4: FastEmbed - The Semantic Bridge
+- [ ] Create src/embeddings/mod.rs with FastEmbed integration
+- [ ] Integrate BGE-Small, Nomic, and Jina Code models
+- [ ] Implement context-aware embedding generation for symbols
+- [ ] Create vector storage with efficient similarity search (HNSW)
+- [ ] Build semantic grouping engine for cross-language concepts
+- [ ] Implement architectural pattern detection (DTO, Service, Entity)
+- [ ] Add embedding caching with hash-based invalidation
+- **Verification**: Cross-language semantic grouping works (TS interface ↔ C# class ↔ SQL table)
 
 ---
 
-## Phase 5: Performance & Polish (Days 15-16)
+## Phase 4: File Watcher & Incremental Updates (Days 13-14)
 
-### Milestone 5.1: Optimization
+### Milestone 4.1: Incremental Indexing System
+- [ ] Create src/watcher/mod.rs with notify crate integration
+- [ ] Implement Blake3-based change detection for files
+- [ ] Build efficient file change event processing queue
+- [ ] Create smart filtering (ignore node_modules, build folders)
+- [ ] Implement incremental symbol extraction and diffing
+- [ ] Add background processing for embedding updates
+- [ ] Create graceful handling of file renames and deletions
+- **Verification**: File changes update all indexes within 100ms
+
+---
+
+## Phase 5: Cross-Language Tracing Engine (Days 15-16)
+
+### Milestone 5.1: Polyglot Data Flow Tracer
+- [ ] Create src/tracing/mod.rs with CrossLanguageTracer
+- [ ] Implement direct relationship tracing via AST analysis
+- [ ] Build pattern matching for common architectural flows
+- [ ] Create semantic connection finding via embeddings
+- [ ] Implement layer progression detection (Frontend → Backend → DB)
+- [ ] Add API endpoint to handler mapping logic
+- [ ] Build confidence scoring for trace completeness
+- **Verification**: Can trace "button click to database" across languages
+
+---
+
+## Phase 6: "Heart of Codebase" MCP Tools (Days 17-18)
+
+### Milestone 6.1: Intelligence Tools
+- [ ] Implement explore_overview - find critical files, filter noise
+- [ ] Implement trace_execution - full stack data flow tracing
+- [ ] Implement get_minimal_context - smart AI context window optimization
+- [ ] Implement find_business_logic - filter framework/boilerplate code
+- [ ] Implement score_criticality - importance scoring for symbols/files
+- [ ] Create architectural pattern detection and reporting
+- [ ] Add cross-language refactoring impact analysis
+- **Verification**: AI agents can understand codebases like senior developers
+
+### Milestone 6.2: Advanced Code Intelligence
+- [ ] Implement semantic_search with hybrid lexical + embedding modes
+- [ ] Create goto_definition with cross-language symbol resolution
+- [ ] Build find_references with semantic similarity matching
+- [ ] Add edit_code with surgical precision and impact analysis
+- [ ] Implement batch operations for workspace-wide changes
+- [ ] Create smart context extraction for AI interactions
+- **Verification**: Complex cross-language operations work flawlessly
+
+---
+
+## Phase 7: Performance & Optimization (Days 19-20)
+
+### Milestone 7.1: Performance Tuning
 - [ ] Benchmark all operations against Miller baseline
-- [ ] Optimize parsing with rayon parallelism
-- [ ] Implement smart caching strategies
-- [ ] Optimize memory usage patterns
-- [ ] Add connection pooling for database operations
-- [ ] Implement lazy loading for large codebases
-- [ ] Add performance monitoring and metrics
-- **Verification**: 5-10x faster than Miller in benchmarks
+- [ ] Optimize parsing with rayon parallelism across all cores
+- [ ] Implement smart caching strategies (AST cache, embedding cache)
+- [ ] Optimize memory usage patterns with Arc and lazy loading
+- [ ] Add connection pooling for SQLite database operations
+- [ ] Implement streaming for large result sets
+- [ ] Add performance monitoring and metrics collection
+- **Verification**: Achieve 5-10x performance improvement over Miller
 
-### Milestone 5.2: Cross-Platform Testing
-- [ ] Test build on Windows (using cross-compilation)
-- [ ] Test build on macOS (native)
-- [ ] Test build on Linux (using cross-compilation or CI)
-- [ ] Ensure single binary compilation for all platforms
-- [ ] Verify no external dependencies required
-- [ ] Test MCP server functionality on all platforms
-- [ ] Create platform-specific CI/CD pipelines
-- **Verification**: Julie works identically on Windows, macOS, and Linux
+### Milestone 7.2: Cross-Platform Production Testing
+- [ ] Test single binary build on Windows (cross-compilation)
+- [ ] Test native build on macOS with all MCP tools
+- [ ] Test build on Linux (Ubuntu, CentOS) with full functionality
+- [ ] Verify .julie workspace works across all platforms
+- [ ] Test large codebase performance (10k+ files) on each platform
+- [ ] Validate embedding models download correctly everywhere
+- [ ] Create automated CI/CD pipeline for all platforms
+- **Verification**: Perfect cross-platform compatibility
 
 ---
 
-## Phase 6: Production Ready (Days 17-18)
+## Phase 8: Production Ready (Days 21-22)
 
-### Milestone 6.1: Final Integration
-- [ ] Complete MCP server implementation with all tools
-- [ ] Add comprehensive error handling and recovery
-- [ ] Implement graceful shutdown mechanisms
-- [ ] Add configuration file support
-- [ ] Implement telemetry and diagnostics
-- [ ] Add health check endpoints
-- [ ] Create migration tools from Miller databases
-- [ ] Performance tuning and final optimizations
-- **Verification**: Production stability under load
+### Milestone 8.1: Final Integration & Stability
+- [ ] Complete MCP server implementation with all intelligence tools
+- [ ] Add comprehensive error handling and graceful recovery
+- [ ] Implement proper shutdown sequences for all background processes
+- [ ] Create julie.toml configuration system with validation
+- [ ] Add telemetry, diagnostics, and health monitoring
+- [ ] Create migration tools from Miller to Julie workspaces
+- [ ] Implement backup and restore for .julie workspaces
+- [ ] Add workspace repair and consistency checking tools
+- **Verification**: Rock-solid stability under production load
 
-### Milestone 6.2: Documentation & Release
-- [ ] Generate comprehensive API documentation
-- [ ] Create user installation guides
-- [ ] Write migration guide from Miller to Julie
-- [ ] Create performance comparison documentation
-- [ ] Build optimized release binaries for all platforms
-- [ ] Create installation scripts/packages
-- [ ] Set up automated release pipeline
-- **Verification**: Ready for production deployment
+### Milestone 8.2: Documentation & Release
+- [ ] Generate comprehensive API documentation for all MCP tools
+- [ ] Create user installation and setup guides
+- [ ] Write detailed migration guide from Miller to Julie
+- [ ] Document the three-pillar architecture and design decisions
+- [ ] Create performance benchmarks and comparison charts
+- [ ] Build optimized release binaries for Windows, macOS, Linux
+- [ ] Create installation packages and distribution system
+- [ ] Set up automated release pipeline with semantic versioning
+- **Verification**: Ready for widespread production deployment
 
 ---
 
@@ -245,11 +289,16 @@
 
 ### Success Metrics
 - [ ] All Miller extractor tests passing (100%)
-- [ ] Search latency under 10ms (measured)
-- [ ] Memory usage under 100MB typical (profiled)
-- [ ] Single binary deployment (verified)
-- [ ] Cross-platform compatibility (tested)
+- [ ] Search latency under 10ms (measured with Tantivy)
+- [ ] Initial indexing under 30s for 10k files (Blake3 + parallel processing)
+- [ ] Incremental updates under 100ms per file (file watcher)
+- [ ] Memory usage under 200MB typical (profiled with vectors)
+- [ ] Cross-language tracing under 500ms (semantic bridge)
+- [ ] Single binary deployment with embedded models (verified)
+- [ ] Cross-platform compatibility (.julie works everywhere)
 - [ ] 5-10x performance improvement over Miller (benchmarked)
+- [ ] Semantic search relevance >90% (embedding quality)
+- [ ] "Heart of codebase" detection accuracy >95% (criticality scoring)
 
 ---
 
@@ -292,9 +341,11 @@ cargo build --target x86_64-unknown-linux-gnu --release
 
 *This checklist will be updated as implementation progresses. Each checkbox should be verified through automated testing where possible.*
 
-**Last Updated**: Phase 2.5 - COMPLETE ✅ + C/C++ FIXED ✅
-**Current Status**: Complete foundation ready, 24/24 languages working with production code
-**Next Milestone**: Phase 3.1 - Tantivy Search Infrastructure
+**Last Updated**: Phase 2.5 - COMPLETE ✅ → Updated for Three-Pillar Architecture
+**Current Status**: Complete foundation ready → Ready for Search Infrastructure Implementation
+**Next Milestone**: Phase 3.1 - .julie Workspace Setup
+**Architecture Decision**: Three Pillars + Semantic Glue (SQLite + Tantivy + FastEmbed)
+
 **Key Achievements**:
 - ✅ **Phase 0**: Foundation Setup - Zero breaking dependency changes, 26 language parsers ready
 - ✅ **Phase 1**: Tree-sitter Integration - All core extractors and test framework operational
@@ -304,3 +355,11 @@ cargo build --target x86_64-unknown-linux-gnu --release
 - 🚀 **Performance**: Native Rust speed, sub-millisecond parsing of real-world files
 - 📊 **Scale**: 751 symbols from regex, 230 from Zig, 193 from Ruby, **46 from C, 43 from C++**
 - 🏆 **Reliability**: 100% success rate on actual production code across **24 languages**
+
+**Updated Architecture**:
+- 🎯 **Three-Pillar Design**: SQLite (truth) + Tantivy (search) + FastEmbed (semantic)
+- 📁 **.julie Workspace**: Project-local data storage with organized folder structure
+- ⚡ **Custom Tokenizers**: Code-aware search that handles operators, generics, identifiers
+- 🔄 **File Watcher**: Blake3-based incremental updates with notify crate
+- 🌐 **Cross-Language Tracing**: Semantic bridge connecting polyglot codebases
+- 🧠 **Heart Detection**: AI tools that find critical code and filter framework noise

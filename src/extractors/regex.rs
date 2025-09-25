@@ -506,7 +506,9 @@ impl RegexExtractor {
                     doc_comment: None,
                     visibility: Some(Visibility::Public),
                     parent_id: None,
-                    metadata,
+                    metadata: Some(metadata),
+                    semantic_group: None, // Regex patterns don't have cross-language groups
+                    confidence: None, // Will be set during validation
                 };
                 symbols.push(symbol);
             }
@@ -849,7 +851,7 @@ impl RegexExtractor {
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
         for symbol in symbols {
-            if let Some(symbol_type) = symbol.metadata.get("type") {
+            if let Some(symbol_type) = symbol.metadata.as_ref().and_then(|m| m.get("type")) {
                 if let Some(type_str) = symbol_type.as_str() {
                     types.insert(symbol.id.clone(), format!("regex:{}", type_str));
                 }

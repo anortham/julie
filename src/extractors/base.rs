@@ -49,7 +49,11 @@ pub struct Symbol {
     /// Parent symbol ID (for methods in classes, etc.)
     pub parent_id: Option<String>,
     /// Additional language-specific metadata
-    pub metadata: HashMap<String, serde_json::Value>,
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// Semantic group for cross-language linking
+    pub semantic_group: Option<String>,
+    /// Confidence score for symbol extraction (0.0 to 1.0)
+    pub confidence: Option<f32>,
 }
 
 /// Symbol kinds - direct port of Miller's SymbolKind enum
@@ -84,6 +88,67 @@ pub enum SymbolKind {
     Delegate,
 }
 
+impl SymbolKind {
+    /// Convert from string representation (for database deserialization)
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "class" => SymbolKind::Class,
+            "interface" => SymbolKind::Interface,
+            "function" => SymbolKind::Function,
+            "method" => SymbolKind::Method,
+            "variable" => SymbolKind::Variable,
+            "constant" => SymbolKind::Constant,
+            "property" => SymbolKind::Property,
+            "enum" => SymbolKind::Enum,
+            "enum_member" => SymbolKind::EnumMember,
+            "module" => SymbolKind::Module,
+            "namespace" => SymbolKind::Namespace,
+            "type" => SymbolKind::Type,
+            "trait" => SymbolKind::Trait,
+            "struct" => SymbolKind::Struct,
+            "union" => SymbolKind::Union,
+            "field" => SymbolKind::Field,
+            "constructor" => SymbolKind::Constructor,
+            "destructor" => SymbolKind::Destructor,
+            "operator" => SymbolKind::Operator,
+            "import" => SymbolKind::Import,
+            "export" => SymbolKind::Export,
+            "event" => SymbolKind::Event,
+            "delegate" => SymbolKind::Delegate,
+            _ => SymbolKind::Variable, // Default fallback
+        }
+    }
+
+    /// Convert to string representation (for database serialization)
+    pub fn to_string(&self) -> String {
+        match self {
+            SymbolKind::Class => "class",
+            SymbolKind::Interface => "interface",
+            SymbolKind::Function => "function",
+            SymbolKind::Method => "method",
+            SymbolKind::Variable => "variable",
+            SymbolKind::Constant => "constant",
+            SymbolKind::Property => "property",
+            SymbolKind::Enum => "enum",
+            SymbolKind::EnumMember => "enum_member",
+            SymbolKind::Module => "module",
+            SymbolKind::Namespace => "namespace",
+            SymbolKind::Type => "type",
+            SymbolKind::Trait => "trait",
+            SymbolKind::Struct => "struct",
+            SymbolKind::Union => "union",
+            SymbolKind::Field => "field",
+            SymbolKind::Constructor => "constructor",
+            SymbolKind::Destructor => "destructor",
+            SymbolKind::Operator => "operator",
+            SymbolKind::Import => "import",
+            SymbolKind::Export => "export",
+            SymbolKind::Event => "event",
+            SymbolKind::Delegate => "delegate",
+        }.to_string()
+    }
+}
+
 /// Visibility levels for symbols - direct port from Miller
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -96,6 +161,8 @@ pub enum Visibility {
 /// Relationship between two symbols - direct port from Miller
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Relationship {
+    /// Unique identifier for this relationship
+    pub id: String,
     /// Source symbol ID
     #[serde(rename = "fromSymbolId")]
     pub from_symbol_id: String,
@@ -152,6 +219,47 @@ impl std::fmt::Display for RelationshipKind {
             RelationshipKind::Contains => write!(f, "contains"),
             RelationshipKind::Joins => write!(f, "joins"),
         }
+    }
+}
+
+impl RelationshipKind {
+    /// Convert from string representation (for database deserialization)
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "calls" => RelationshipKind::Calls,
+            "extends" => RelationshipKind::Extends,
+            "implements" => RelationshipKind::Implements,
+            "uses" => RelationshipKind::Uses,
+            "returns" => RelationshipKind::Returns,
+            "parameter" => RelationshipKind::Parameter,
+            "imports" => RelationshipKind::Imports,
+            "instantiates" => RelationshipKind::Instantiates,
+            "references" => RelationshipKind::References,
+            "defines" => RelationshipKind::Defines,
+            "overrides" => RelationshipKind::Overrides,
+            "contains" => RelationshipKind::Contains,
+            "joins" => RelationshipKind::Joins,
+            _ => RelationshipKind::Uses, // Default fallback
+        }
+    }
+
+    /// Convert to string representation (for database serialization)
+    pub fn to_string(&self) -> String {
+        match self {
+            RelationshipKind::Calls => "calls",
+            RelationshipKind::Extends => "extends",
+            RelationshipKind::Implements => "implements",
+            RelationshipKind::Uses => "uses",
+            RelationshipKind::Returns => "returns",
+            RelationshipKind::Parameter => "parameter",
+            RelationshipKind::Imports => "imports",
+            RelationshipKind::Instantiates => "instantiates",
+            RelationshipKind::References => "references",
+            RelationshipKind::Defines => "defines",
+            RelationshipKind::Overrides => "overrides",
+            RelationshipKind::Contains => "contains",
+            RelationshipKind::Joins => "joins",
+        }.to_string()
     }
 }
 
@@ -282,7 +390,9 @@ impl BaseExtractor {
             doc_comment: options.doc_comment.or_else(|| self.find_doc_comment(node)),
             visibility: options.visibility,
             parent_id: options.parent_id,
-            metadata: options.metadata.unwrap_or_default(),
+            metadata: Some(options.metadata.unwrap_or_default()),
+            semantic_group: None, // Will be populated during cross-language analysis
+            confidence: None, // Will be calculated based on parsing context
         };
 
         self.symbol_map.insert(id, symbol.clone());
@@ -300,6 +410,7 @@ impl BaseExtractor {
         metadata: Option<HashMap<String, serde_json::Value>>,
     ) -> Relationship {
         Relationship {
+            id: format!("{}_{}_{:?}_{}", from_symbol_id, to_symbol_id, kind, node.start_position().row),
             from_symbol_id,
             to_symbol_id,
             kind,

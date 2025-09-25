@@ -404,6 +404,7 @@ impl TypeScriptExtractor {
 
                         use crate::extractors::base::RelationshipKind;
                         let relationship = Relationship {
+                            id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
                             from_symbol_id: caller_symbol.id.clone(),
                             to_symbol_id: called_symbol.id.clone(),
                             kind: RelationshipKind::Calls,
@@ -452,6 +453,7 @@ impl TypeScriptExtractor {
 
                                             use crate::extractors::base::RelationshipKind;
                                             let relationship = Relationship {
+                                                id: format!("{}_{}_{:?}_{}", class_symbol.id, superclass_symbol.id, RelationshipKind::Extends, child.start_position().row),
                                                 from_symbol_id: class_symbol.id.clone(),
                                                 to_symbol_id: superclass_symbol.id.clone(),
                                                 kind: RelationshipKind::Extends,

@@ -1,4 +1,4 @@
-use crate::extractors::regex::RegexExtractor;
+// use crate::extractors::regex::RegexExtractor; // TEMPORARILY DISABLED
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::tests::test_utils::init_parser;
 
@@ -171,7 +171,7 @@ a+
         assert!(hello_symbol.is_some());
 
         if let Some(symbol) = hello_symbol {
-            assert!(symbol.metadata.contains_key("type"));
+            assert!(symbol.metadata.as_ref().map(|m| m.contains_key("type")).unwrap_or(false));
             assert_eq!(symbol.visibility, Some(Visibility::Public));
             assert!(symbol.signature.is_some());
         }

@@ -947,6 +947,7 @@ impl RubyExtractor {
                 symbols.iter().find(|s| s.name == superclass_name),
             ) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", from_symbol.id, to_symbol.id, RelationshipKind::Extends, node.start_position().row),
                     from_symbol_id: from_symbol.id.clone(),
                     to_symbol_id: to_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -1004,6 +1005,7 @@ impl RubyExtractor {
 
                         if let (Some(from_symbol), Some(to_symbol)) = (from_symbol, to_symbol) {
                             relationships.push(Relationship {
+                                id: format!("{}_{}_{:?}_{}", from_symbol.id, to_symbol.id, RelationshipKind::Implements, child.start_position().row),
                                 from_symbol_id: from_symbol.id.clone(),
                                 to_symbol_id: to_symbol.id.clone(),
                                 kind: RelationshipKind::Implements,

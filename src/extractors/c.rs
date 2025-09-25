@@ -1073,6 +1073,7 @@ impl CExtractor {
     fn extract_include_relationships(&mut self, node: tree_sitter::Node, _symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         let include_path = self.extract_include_path(&self.base.get_node_text(&node));
         relationships.push(Relationship {
+            id: format!("{}_{}_{:?}_{}", format!("file:{}", self.base.file_path), format!("header:{}", include_path), crate::extractors::base::RelationshipKind::Imports, node.start_position().row),
             from_symbol_id: format!("file:{}", self.base.file_path),
             to_symbol_id: format!("header:{}", include_path),
             kind: crate::extractors::base::RelationshipKind::Imports,

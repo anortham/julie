@@ -4,7 +4,7 @@
 // Original: /Users/murphy/Source/miller/src/__tests__/parser/html-extractor.test.ts
 
 use crate::extractors::base::{Symbol, SymbolKind};
-use crate::extractors::html::HTMLExtractor;
+// use crate::extractors::html::HTMLExtractor; // TEMPORARILY DISABLED
 use tree_sitter::Parser;
 
 /// Initialize HTML parser

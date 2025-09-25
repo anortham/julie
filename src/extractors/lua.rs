@@ -234,7 +234,13 @@ impl LuaExtractor {
                 let mut symbol = self.base.create_symbol(&name_node, name, kind, options);
 
                 // Set dataType as direct property for tests (matching Miller's pattern)
-                symbol.metadata.insert("dataType".to_string(), data_type.into());
+                if let Some(ref mut metadata) = symbol.metadata {
+                    metadata.insert("dataType".to_string(), data_type.into());
+                } else {
+                    let mut metadata = HashMap::new();
+                    metadata.insert("dataType".to_string(), data_type.into());
+                    symbol.metadata = Some(metadata);
+                }
 
                 self.symbols.push(symbol);
 
@@ -630,7 +636,8 @@ impl LuaExtractor {
                 let class_name = &symbol.name;
 
                 // Pattern 1: Tables with metatable setup (local Class = {})
-                let is_table = symbol.metadata.get("dataType")
+                let is_table = symbol.metadata.as_ref()
+                    .and_then(|m| m.get("dataType"))
                     .map(|dt| dt.as_str() == Some("table"))
                     .unwrap_or(false);
 
@@ -678,7 +685,8 @@ impl LuaExtractor {
                         let parent_exists = self.symbols.iter().any(|s| {
                             s.name == parent_class_name &&
                             (s.kind == SymbolKind::Class ||
-                             s.metadata.get("dataType")
+                             s.metadata.as_ref()
+                                 .and_then(|m| m.get("dataType"))
                                  .map(|dt| dt.as_str() == Some("table"))
                                  .unwrap_or(false))
                         });

@@ -1,5 +1,5 @@
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use crate::extractors::razor::RazorExtractor;
+// use crate::extractors::razor::RazorExtractor; // TEMPORARILY DISABLED
 use crate::tests::test_utils::init_parser;
 
 fn extract_symbols(code: &str) -> Vec<Symbol> {

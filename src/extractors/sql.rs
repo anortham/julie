@@ -49,13 +49,13 @@ impl SqlExtractor {
             }
 
             // Use metadata for SQL-specific types
-            if symbol.metadata.get("isTable").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol.metadata.as_ref().and_then(|m| m.get("isTable")).and_then(|v| v.as_bool()).unwrap_or(false) {
                 types.insert(symbol.id.clone(), "TABLE".to_string());
             }
-            if symbol.metadata.get("isView").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol.metadata.as_ref().and_then(|m| m.get("isView")).and_then(|v| v.as_bool()).unwrap_or(false) {
                 types.insert(symbol.id.clone(), "VIEW".to_string());
             }
-            if symbol.metadata.get("isStoredProcedure").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol.metadata.as_ref().and_then(|m| m.get("isStoredProcedure")).and_then(|v| v.as_bool()).unwrap_or(false) {
                 types.insert(symbol.id.clone(), "PROCEDURE".to_string());
             }
         }
@@ -125,11 +125,11 @@ impl SqlExtractor {
                 }
                 "ERROR" => {
                     let metadata = &symbol.metadata;
-                    if metadata.get("isView").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if metadata.as_ref().and_then(|m| m.get("isView")).and_then(|v| v.as_bool()).unwrap_or(false) {
                         self.extract_view_columns_from_error_node(node, symbols, &symbol.id);
                     }
-                    if metadata.get("isStoredProcedure").and_then(|v| v.as_bool()).unwrap_or(false) ||
-                       metadata.get("isFunction").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if metadata.as_ref().and_then(|m| m.get("isStoredProcedure")).and_then(|v| v.as_bool()).unwrap_or(false) ||
+                       metadata.as_ref().and_then(|m| m.get("isFunction")).and_then(|v| v.as_bool()).unwrap_or(false) {
                         self.extract_parameters_from_error_node(node, symbols, &symbol.id);
                     }
                 }
@@ -1610,6 +1610,7 @@ impl SqlExtractor {
             metadata.insert("isExternal".to_string(), Value::Bool(target_symbol.is_none()));
 
             relationships.push(Relationship {
+                id: format!("{}_{}_{:?}_{}", source_symbol.id, target_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("external_{}", referenced_table)), RelationshipKind::References, node.start_position().row),
                 from_symbol_id: source_symbol.id.clone(),
                 to_symbol_id: target_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("external_{}", referenced_table)),
                 kind: RelationshipKind::References, // Foreign key reference
@@ -1657,6 +1658,7 @@ impl SqlExtractor {
                     metadata.insert("tableName".to_string(), Value::String(table_name.clone()));
 
                     relationships.push(Relationship {
+                        id: format!("{}_{}_{:?}_{}", table_symbol.id, table_symbol.id, RelationshipKind::Joins, node.start_position().row),
                         from_symbol_id: table_symbol.id.clone(),
                         to_symbol_id: table_symbol.id.clone(), // Self-reference for joins
                         kind: RelationshipKind::Joins,

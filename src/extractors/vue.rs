@@ -259,7 +259,9 @@ impl VueExtractor {
             doc_comment: options.doc_comment,
             visibility: options.visibility,
             parent_id: options.parent_id,
-            metadata: options.metadata.unwrap_or_default(),
+            metadata: Some(options.metadata.unwrap_or_default()),
+            semantic_group: None, // Vue components don't have cross-language groups yet
+            confidence: None, // Will be set during validation
         }
     }
 

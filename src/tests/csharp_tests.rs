@@ -2017,7 +2017,7 @@ impl VisibilityExt for crate::extractors::base::Visibility {
 // Helper function to get C# visibility including internal from metadata
 fn get_csharp_visibility(symbol: &crate::extractors::base::Symbol) -> String {
     // Check metadata for stored csharp_visibility
-    if let Some(csharp_visibility) = symbol.metadata.get("csharp_visibility") {
+    if let Some(csharp_visibility) = symbol.metadata.as_ref().and_then(|m| m.get("csharp_visibility")) {
         if let Some(vis) = csharp_visibility.as_str() {
             return vis.to_string();
         }

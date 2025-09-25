@@ -37,15 +37,15 @@ impl PhpExtractor {
         let mut types = HashMap::new();
         for symbol in symbols {
             let metadata = &symbol.metadata;
-                if let Some(return_type) = metadata.get("returnType") {
+                if let Some(return_type) = metadata.as_ref().and_then(|m| m.get("returnType")) {
                     if let Some(type_str) = return_type.as_str() {
                         types.insert(symbol.id.clone(), type_str.to_string());
                     }
-                } else if let Some(property_type) = metadata.get("propertyType") {
+                } else if let Some(property_type) = metadata.as_ref().and_then(|m| m.get("propertyType")) {
                     if let Some(type_str) = property_type.as_str() {
                         types.insert(symbol.id.clone(), type_str.to_string());
                     }
-                } else if let Some(type_val) = metadata.get("type") {
+                } else if let Some(type_val) = metadata.as_ref().and_then(|m| m.get("type")) {
                     if let Some(type_str) = type_val.as_str() {
                         if !matches!(type_str, "function" | "property") {
                             types.insert(symbol.id.clone(), type_str.to_string());
@@ -772,6 +772,7 @@ impl PhpExtractor {
             if let Some(base_class_symbol) = symbols.iter().find(|s|
                 s.name == base_class_name && s.kind == SymbolKind::Class) {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", class_symbol.id, base_class_symbol.id, RelationshipKind::Extends, node.start_position().row),
                     from_symbol_id: class_symbol.id.clone(),
                     to_symbol_id: base_class_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -804,6 +805,7 @@ impl PhpExtractor {
                 );
 
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", class_symbol.id, interface_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("php-interface:{}", interface_name)), RelationshipKind::Implements, node.start_position().row),
                     from_symbol_id: class_symbol.id.clone(),
                     to_symbol_id: interface_symbol
                         .map(|s| s.id.clone())
@@ -840,6 +842,7 @@ impl PhpExtractor {
 
             for base_interface_name in base_interface_names {
                 relationships.push(Relationship {
+                    id: format!("{}_{}_{:?}_{}", interface_symbol.id, format!("php-interface:{}", base_interface_name), RelationshipKind::Extends, node.start_position().row),
                     from_symbol_id: interface_symbol.id.clone(),
                     to_symbol_id: format!("php-interface:{}", base_interface_name),
                     kind: RelationshipKind::Extends,
