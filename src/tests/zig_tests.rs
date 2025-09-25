@@ -5,15 +5,13 @@ mod zig_extractor_tests {
     use crate::tests::test_utils::init_parser;
 
     fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
-        let language = tree_sitter_zig::LANGUAGE;
-        let tree = init_parser(language, code);
+        let tree = init_parser(code, "zig");
         let mut extractor = ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string());
         extractor.extract_symbols(&tree)
     }
 
     fn extract_relationships(code: &str, symbols: &[crate::extractors::base::Symbol]) -> Vec<crate::extractors::base::Relationship> {
-        let language = tree_sitter_zig::LANGUAGE;
-        let tree = init_parser(language, code);
+        let tree = init_parser(code, "zig");
         let mut extractor = ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string());
         extractor.extract_relationships(&tree, symbols)
     }

@@ -10,7 +10,14 @@ pub mod embeddings;
 pub mod utils;
 pub mod workspace;
 pub mod watcher;
+pub mod tracing;
+pub mod tools;
+pub mod handler;
+
+#[cfg(test)]
+pub mod tests;
 
 // Re-export common types
 pub use workspace::{JulieWorkspace, WorkspaceConfig, WorkspaceHealth};
 pub use extractors::{Symbol, SymbolKind, Relationship, RelationshipKind};
+pub use tracing::{CrossLanguageTracer, DataFlowTrace, TraceStep, ConnectionType, ArchitecturalLayer, TraceOptions};

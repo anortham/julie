@@ -1574,6 +1574,692 @@ impl NavigateTool {
 }
 
 //******************//
+// Phase 6.1: Heart of Codebase Intelligence Tools //
+//******************//
+
+/// Find critical files, filter noise, and provide architectural overview
+#[mcp_tool(
+    name = "explore_overview",
+    description = "Intelligent codebase overview - find critical files, filter noise, detect architecture patterns.",
+    title = "Heart of Codebase - Overview",
+    idempotent_hint = true,
+    destructive_hint = false,
+    open_world_hint = false,
+    read_only_hint = true,
+    meta = r#"{"category": "intelligence", "priority": "critical"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ExploreOverviewTool {
+    /// Focus area: "critical_files", "architecture", "entry_points", "data_flows"
+    #[serde(default = "default_critical_files")]
+    pub focus: String,
+    /// Maximum number of critical files to return
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    /// Include architectural pattern detection
+    #[serde(default = "default_true")]
+    pub include_architecture: bool,
+    /// Filter out boilerplate/framework code
+    #[serde(default = "default_true")]
+    pub filter_noise: bool,
+}
+
+fn default_critical_files() -> String { "critical_files".to_string() }
+
+/// Trace execution flow across the entire polyglot stack
+#[mcp_tool(
+    name = "trace_execution",
+    description = "Revolutionary cross-language execution tracing - follow data flow from UI to database across all languages.",
+    title = "Polyglot Execution Tracer",
+    idempotent_hint = true,
+    destructive_hint = false,
+    open_world_hint = false,
+    read_only_hint = true,
+    meta = r#"{"category": "intelligence", "feature": "revolutionary"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct TraceExecutionTool {
+    /// Starting symbol/function name to trace from
+    pub start_point: String,
+    /// Maximum trace depth (layers to follow)
+    #[serde(default = "default_trace_depth")]
+    pub max_depth: u32,
+    /// Include semantic connections (embedding-based)
+    #[serde(default = "default_true")]
+    pub include_semantic: bool,
+    /// Minimum confidence threshold for trace steps
+    #[serde(default = "default_confidence")]
+    pub min_confidence: f32,
+}
+
+fn default_trace_depth() -> u32 { 10 }
+fn default_confidence() -> f32 { 0.6 }
+
+/// Get exactly the context needed for AI - no more, no less
+#[mcp_tool(
+    name = "get_minimal_context",
+    description = "Smart AI context optimization - get exactly the code context needed within token limits.",
+    title = "AI Context Optimizer",
+    idempotent_hint = true,
+    destructive_hint = false,
+    open_world_hint = false,
+    read_only_hint = true,
+    meta = r#"{"category": "intelligence", "purpose": "ai_optimization"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct GetMinimalContextTool {
+    /// Target symbol/function to get context for
+    pub target: String,
+    /// Maximum tokens for context (approximate)
+    #[serde(default = "default_context_tokens")]
+    pub max_tokens: u32,
+    /// Include dependency context
+    #[serde(default = "default_true")]
+    pub include_dependencies: bool,
+    /// Include usage examples
+    #[serde(default = "default_false")]
+    pub include_examples: bool,
+}
+
+fn default_context_tokens() -> u32 { 4000 }
+fn default_false() -> bool { false }
+
+/// Find business logic, filter out framework/boilerplate noise
+#[mcp_tool(
+    name = "find_business_logic",
+    description = "Intelligent business logic detection - filter framework noise, focus on core domain logic.",
+    title = "Business Logic Detector",
+    idempotent_hint = true,
+    destructive_hint = false,
+    open_world_hint = false,
+    read_only_hint = true,
+    meta = r#"{"category": "intelligence", "filter": "business_logic"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct FindBusinessLogicTool {
+    /// Domain concept to search for (e.g., "user authentication", "payment processing")
+    pub domain: String,
+    /// Maximum results to return
+    #[serde(default = "default_limit")]
+    pub max_results: u32,
+    /// Group by architectural layer
+    #[serde(default = "default_true")]
+    pub group_by_layer: bool,
+    /// Minimum business logic confidence score
+    #[serde(default = "default_business_confidence")]
+    pub min_business_score: f32,
+}
+
+fn default_business_confidence() -> f32 { 0.7 }
+
+/// Score code criticality and importance (0-100)
+#[mcp_tool(
+    name = "score_criticality",
+    description = "Calculate code criticality scores - identify the most important symbols/files for AI focus.",
+    title = "Criticality Scoring Engine",
+    idempotent_hint = true,
+    destructive_hint = false,
+    open_world_hint = false,
+    read_only_hint = true,
+    meta = r#"{"category": "intelligence", "metric": "criticality"}"#
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ScoreCriticalityTool {
+    /// Target to score: symbol name, file path, or "all" for overview
+    pub target: String,
+    /// Include detailed breakdown of scoring factors
+    #[serde(default = "default_true")]
+    pub include_breakdown: bool,
+    /// Score type: "symbol", "file", "overview"
+    #[serde(default = "default_symbol")]
+    pub score_type: String,
+}
+
+fn default_symbol() -> String { "symbol".to_string() }
+
+//******************//
+// Phase 6.1 Intelligence Tool Implementations //
+//******************//
+
+impl ExploreOverviewTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("🧭 Exploring codebase overview: focus={}", self.focus);
+
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable intelligent overview.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        match self.focus.as_str() {
+            "critical_files" => self.find_critical_files(handler).await,
+            "architecture" => self.detect_architecture(handler).await,
+            "entry_points" => self.find_entry_points(handler).await,
+            "data_flows" => self.analyze_data_flows(handler).await,
+            _ => {
+                let message = format!(
+                    "❌ Unknown focus area: '{}'\n\
+                    💡 Supported: critical_files, architecture, entry_points, data_flows",
+                    self.focus
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+            }
+        }
+    }
+
+    /// Find the most critical files in the codebase - the "heart" files
+    async fn find_critical_files(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+        // Calculate criticality scores for each file
+        let mut file_scores = std::collections::HashMap::new();
+        let mut file_symbol_counts = std::collections::HashMap::new();
+        let mut file_languages = std::collections::HashMap::new();
+
+        // Count symbols and relationships per file
+        for symbol in symbols.iter() {
+            *file_symbol_counts.entry(&symbol.file_path).or_insert(0) += 1;
+            file_languages.insert(symbol.file_path.clone(), symbol.language.clone());
+
+            // Base score from symbol importance
+            let symbol_score = match symbol.kind {
+                SymbolKind::Class | SymbolKind::Interface => 10.0,
+                SymbolKind::Function | SymbolKind::Method => 5.0,
+                SymbolKind::Type | SymbolKind::Enum => 3.0,
+                _ => 1.0,
+            };
+            *file_scores.entry(&symbol.file_path).or_insert(0.0) += symbol_score;
+        }
+
+        // Boost scores based on relationships (how connected the file is)
+        for rel in relationships.iter() {
+            *file_scores.entry(&rel.file_path).or_insert(0.0) += 2.0;
+        }
+
+        // Apply noise filtering if enabled
+        let mut scored_files: Vec<_> = file_scores.iter()
+            .map(|(path, score)| {
+                let adjusted_score = if self.filter_noise {
+                    self.adjust_score_for_noise(path, *score)
+                } else {
+                    *score
+                };
+                ((*path).clone(), adjusted_score)
+            })
+            .collect();
+
+        // Sort by criticality score (highest first)
+        scored_files.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Format results
+        let mut message = format!(
+            "🎯 **Critical Files Analysis** (Top {})\n\
+            ====================================\n\n",
+            self.limit.min(scored_files.len() as u32)
+        );
+
+        for (i, (file_path, score)) in scored_files.iter().take(self.limit as usize).enumerate() {
+            let file_name = std::path::Path::new(file_path)
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
+                .to_string_lossy();
+
+            let symbol_count = file_symbol_counts.get(file_path).unwrap_or(&0);
+            let language = file_languages.get(file_path).map(|s| s.as_str()).unwrap_or("unknown");
+
+            message.push_str(&format!(
+                "{}. **{}** [{}]\n\
+                   📊 Criticality: {:.1} | 🔍 Symbols: {} | 📁 {}\n\n",
+                i + 1, file_name, language, score, symbol_count, file_path
+            ));
+        }
+
+        // Add architectural insights if requested
+        if self.include_architecture {
+            message.push_str(&self.add_architectural_insights(&scored_files, &file_languages)?);
+        }
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+
+    /// Detect architectural patterns in the codebase
+    async fn detect_architecture(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+        let mut message = "🏗️ **Architecture Analysis**\n========================\n\n".to_string();
+
+        // Language distribution
+        let mut language_counts = std::collections::HashMap::new();
+        let mut layer_detection = std::collections::HashMap::new();
+
+        for symbol in symbols.iter() {
+            *language_counts.entry(&symbol.language).or_insert(0) += 1;
+
+            // Detect architectural layers based on file paths
+            let layer = self.detect_layer_from_path(&symbol.file_path);
+            layer_detection.insert(layer.clone(), layer_detection.get(&layer).unwrap_or(&0) + 1);
+        }
+
+        // Multi-language architecture detection
+        message.push_str("🌐 **Technology Stack:**\n");
+        let mut sorted_langs: Vec<_> = language_counts.iter().collect();
+        sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+
+        for (lang, count) in sorted_langs {
+            let percentage = (*count as f32 / symbols.len() as f32) * 100.0;
+            message.push_str(&format!("  • {}: {} symbols ({:.1}%)\n", lang, count, percentage));
+        }
+
+        // Architectural pattern detection
+        message.push_str("\n🏛️ **Detected Patterns:**\n");
+        let patterns = self.detect_architectural_patterns(&symbols, &relationships);
+        for pattern in patterns {
+            message.push_str(&format!("  • {}\n", pattern));
+        }
+
+        // Layer analysis
+        message.push_str("\n📚 **Architectural Layers:**\n");
+        let mut sorted_layers: Vec<_> = layer_detection.iter().collect();
+        sorted_layers.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+
+        for (layer, count) in sorted_layers {
+            if *count > 5 { // Only show significant layers
+                message.push_str(&format!("  • {}: {} symbols\n", layer, count));
+            }
+        }
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+
+    /// Find main entry points (main functions, controllers, etc.)
+    async fn find_entry_points(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+        let mut entry_points = Vec::new();
+
+        for symbol in symbols.iter() {
+            if self.is_entry_point(symbol) {
+                entry_points.push(symbol.clone());
+            }
+        }
+
+        // Sort by importance (main functions first, then controllers, etc.)
+        entry_points.sort_by_key(|symbol| self.entry_point_priority(symbol));
+
+        let mut message = format!(
+            "🚪 **Entry Points Analysis** ({} found)\n\
+            =======================================\n\n",
+            entry_points.len()
+        );
+
+        if entry_points.is_empty() {
+            message.push_str("ℹ️ No clear entry points detected.\n💡 This might be a library or the analysis needs refinement.");
+        } else {
+            for (i, symbol) in entry_points.iter().take(self.limit as usize).enumerate() {
+                let entry_type = self.classify_entry_point(symbol);
+                message.push_str(&format!(
+                    "{}. **{}** [{}]\n\
+                       🏷️ Type: {} | 📁 {}:{}:{}\n",
+                    i + 1,
+                    symbol.name,
+                    symbol.language,
+                    entry_type,
+                    symbol.file_path,
+                    symbol.start_line,
+                    symbol.start_column
+                ));
+
+                if let Some(signature) = &symbol.signature {
+                    message.push_str(&format!("   📝 {}\n", signature));
+                }
+                message.push('\n');
+            }
+        }
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+
+    /// Analyze main data flow patterns
+    async fn analyze_data_flows(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let message = "🌊 **Data Flow Analysis**\n\
+                      =======================\n\n\
+                      🚧 Advanced data flow analysis coming soon!\n\
+                      🎯 Will trace data movement across:\n\
+                      • UI Components → Services → APIs\n\
+                      • Controllers → Business Logic → Databases\n\
+                      • Cross-language data transformations\n\n\
+                      💡 Use trace_execution for now to trace specific flows.".to_string();
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+
+    /// Adjust criticality score based on noise filtering
+    fn adjust_score_for_noise(&self, file_path: &str, base_score: f32) -> f32 {
+        let path_lower = file_path.to_lowercase();
+
+        // Reduce score for likely boilerplate/framework files
+        if path_lower.contains("test") || path_lower.contains("spec") {
+            return base_score * 0.3; // Test files are less critical for understanding
+        }
+
+        if path_lower.contains("config") || path_lower.contains("setting") {
+            return base_score * 0.5; // Config files are important but not core logic
+        }
+
+        if path_lower.contains("migration") || path_lower.contains("seed") {
+            return base_score * 0.4; // Database migrations are less critical
+        }
+
+        // Boost score for likely core business files
+        if path_lower.contains("service") || path_lower.contains("controller") ||
+           path_lower.contains("model") || path_lower.contains("entity") ||
+           path_lower.contains("domain") || path_lower.contains("business") {
+            return base_score * 1.5; // Business logic is more critical
+        }
+
+        if path_lower.contains("main") || path_lower.contains("index") ||
+           path_lower.contains("app") {
+            return base_score * 2.0; // Entry points are very critical
+        }
+
+        base_score
+    }
+
+    /// Add architectural insights to the analysis
+    fn add_architectural_insights(&self, scored_files: &[(String, f32)], file_languages: &std::collections::HashMap<String, String>) -> Result<String> {
+        let mut insights = "\n🏗️ **Architectural Insights:**\n".to_string();
+
+        // Multi-language detection
+        let unique_languages: std::collections::HashSet<_> = file_languages.values().collect();
+        if unique_languages.len() > 3 {
+            insights.push_str(&format!("  🌐 Polyglot architecture detected ({} languages)\n", unique_languages.len()));
+        }
+
+        // High-criticality file concentration
+        let top_10_avg = scored_files.iter().take(10).map(|(_, score)| score).sum::<f32>() / 10.0;
+        let overall_avg = scored_files.iter().map(|(_, score)| score).sum::<f32>() / scored_files.len() as f32;
+
+        if top_10_avg > overall_avg * 3.0 {
+            insights.push_str("  🎯 High concentration of critical code (potential refactoring opportunity)\n");
+        }
+
+        // Framework detection
+        let framework_indicators = [
+            ("React", "tsx"), ("Vue", "vue"), ("Angular", "component"),
+            ("Spring", "Controller"), ("Django", "models"), ("Rails", "controller"),
+            ("Express", "router"), ("FastAPI", "endpoint")
+        ];
+
+        for (framework, indicator) in framework_indicators {
+            if scored_files.iter().any(|(path, _)| path.to_lowercase().contains(&indicator.to_lowercase())) {
+                insights.push_str(&format!("  🚀 {} framework detected\n", framework));
+            }
+        }
+
+        Ok(insights)
+    }
+
+    /// Detect architectural layer from file path
+    fn detect_layer_from_path(&self, path: &str) -> String {
+        let path_lower = path.to_lowercase();
+
+        if path_lower.contains("controller") || path_lower.contains("router") || path_lower.contains("endpoint") {
+            "API Layer".to_string()
+        } else if path_lower.contains("service") || path_lower.contains("business") || path_lower.contains("domain") {
+            "Business Layer".to_string()
+        } else if path_lower.contains("model") || path_lower.contains("entity") || path_lower.contains("repository") {
+            "Data Layer".to_string()
+        } else if path_lower.contains("component") || path_lower.contains("view") || path_lower.contains("ui") {
+            "Presentation Layer".to_string()
+        } else if path_lower.contains("config") || path_lower.contains("util") || path_lower.contains("helper") {
+            "Infrastructure Layer".to_string()
+        } else {
+            "Core Logic".to_string()
+        }
+    }
+
+    /// Detect architectural patterns based on symbols and relationships
+    fn detect_architectural_patterns(&self, symbols: &[Symbol], relationships: &[Relationship]) -> Vec<String> {
+        let mut patterns = Vec::new();
+
+        // MVC pattern detection
+        let has_controllers = symbols.iter().any(|s| s.name.to_lowercase().contains("controller"));
+        let has_models = symbols.iter().any(|s| s.name.to_lowercase().contains("model") ||
+                                                 matches!(s.kind, SymbolKind::Class));
+        let has_views = symbols.iter().any(|s| s.file_path.to_lowercase().contains("view") ||
+                                               s.file_path.to_lowercase().contains("template"));
+
+        if has_controllers && has_models && has_views {
+            patterns.push("MVC (Model-View-Controller) Architecture".to_string());
+        }
+
+        // Microservices indicators
+        let service_count = symbols.iter()
+            .filter(|s| s.name.to_lowercase().contains("service"))
+            .count();
+        if service_count > 5 {
+            patterns.push(format!("Service-Oriented Architecture ({} services)", service_count));
+        }
+
+        // Repository pattern
+        let has_repositories = symbols.iter().any(|s| s.name.to_lowercase().contains("repository"));
+        if has_repositories {
+            patterns.push("Repository Pattern".to_string());
+        }
+
+        // High relationship density (complex architecture)
+        let relationship_density = relationships.len() as f32 / symbols.len() as f32;
+        if relationship_density > 2.0 {
+            patterns.push("High Interconnectivity (Complex Architecture)".to_string());
+        }
+
+        if patterns.is_empty() {
+            patterns.push("Custom/Unknown Architecture Pattern".to_string());
+        }
+
+        patterns
+    }
+
+    /// Check if a symbol represents an entry point
+    fn is_entry_point(&self, symbol: &Symbol) -> bool {
+        // Main functions
+        if symbol.name == "main" || symbol.name == "Main" {
+            return true;
+        }
+
+        // HTTP controllers/endpoints
+        if symbol.name.to_lowercase().contains("controller") ||
+           symbol.name.to_lowercase().contains("endpoint") ||
+           symbol.name.to_lowercase().contains("handler") {
+            return true;
+        }
+
+        // React/Vue components that might be root components
+        if (symbol.language == "typescript" || symbol.language == "javascript") &&
+           (symbol.name == "App" || symbol.name == "Root" || symbol.name == "Main") {
+            return true;
+        }
+
+        // CLI entry points
+        if symbol.signature.as_ref().map_or(false, |sig| sig.contains("args")) &&
+           matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Get priority for entry point (lower = higher priority)
+    fn entry_point_priority(&self, symbol: &Symbol) -> u8 {
+        if symbol.name == "main" || symbol.name == "Main" { return 1; }
+        if symbol.name.to_lowercase().contains("controller") { return 2; }
+        if symbol.name == "App" { return 3; }
+        if symbol.name.to_lowercase().contains("handler") { return 4; }
+        5 // Default
+    }
+
+    /// Classify the type of entry point
+    fn classify_entry_point(&self, symbol: &Symbol) -> String {
+        if symbol.name == "main" || symbol.name == "Main" {
+            "Application Entry Point".to_string()
+        } else if symbol.name.to_lowercase().contains("controller") {
+            "HTTP Controller".to_string()
+        } else if symbol.name == "App" && (symbol.language == "typescript" || symbol.language == "javascript") {
+            "React/JS App Component".to_string()
+        } else if symbol.name.to_lowercase().contains("handler") {
+            "Event Handler".to_string()
+        } else {
+            "Entry Point".to_string()
+        }
+    }
+}
+
+impl TraceExecutionTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("🔍 Tracing execution flow from: {}", self.start_point);
+
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable execution tracing.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let message = format!(
+            "🔍 **Cross-Language Execution Tracing**\n\
+            ========================================\n\n\
+            🎯 Tracing from: {}\n\
+            📊 Max depth: {}\n\
+            🧠 Semantic connections: {}\n\
+            ⚡ Min confidence: {:.1}\n\n\
+            🚧 Revolutionary polyglot tracing coming soon!\n\
+            🌊 Will trace data flow across:\n\
+            • React Components → TypeScript Services\n\
+            • API Controllers → C# Business Logic\n\
+            • Database Calls → SQL Procedures\n\
+            • Cross-language dependency chains\n\n\
+            💡 This will be the first code intelligence platform capable of\n\
+            complete polyglot stack understanding!",
+            self.start_point,
+            self.max_depth,
+            self.include_semantic,
+            self.min_confidence
+        );
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+}
+
+impl GetMinimalContextTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("🎯 Getting minimal context for: {}", self.target);
+
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable context optimization.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let message = format!(
+            "🎯 **AI Context Optimization**\n\
+            ===============================\n\n\
+            🎯 Target: {}\n\
+            📊 Max tokens: {}\n\
+            🔗 Include dependencies: {}\n\
+            📚 Include examples: {}\n\n\
+            🚧 Smart context optimization coming soon!\n\
+            🧠 Will provide exactly the right context for AI:\n\
+            • Intelligent dependency ranking\n\
+            • Smart code chunking (preserve meaning)\n\
+            • Token-aware context fitting\n\
+            • Remove framework noise, keep business logic\n\
+            • Usage examples when helpful\n\n\
+            💡 This will maximize AI understanding within token limits!",
+            self.target,
+            self.max_tokens,
+            self.include_dependencies,
+            self.include_examples
+        );
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+}
+
+impl FindBusinessLogicTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("🏢 Finding business logic for domain: {}", self.domain);
+
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable business logic detection.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let message = format!(
+            "🏢 **Business Logic Detection**\n\
+            ==============================\n\n\
+            🎯 Domain: {}\n\
+            📊 Max results: {}\n\
+            🏛️ Group by layer: {}\n\
+            ⚡ Min business score: {:.1}\n\n\
+            🚧 Intelligent business logic detection coming soon!\n\
+            🎯 Will filter framework noise and focus on:\n\
+            • Core domain logic (high business value)\n\
+            • Service layer business rules\n\
+            • Domain entities and aggregates\n\
+            • Business process workflows\n\
+            • Validation and business constraints\n\n\
+            💡 Perfect for understanding what the code actually does!",
+            self.domain,
+            self.max_results,
+            self.group_by_layer,
+            self.min_business_score
+        );
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+}
+
+impl ScoreCriticalityTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("📊 Scoring criticality for: {}", self.target);
+
+        // Check if workspace is indexed
+        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        if !is_indexed {
+            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable criticality scoring.";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
+
+        let message = format!(
+            "📊 **Criticality Scoring Engine**\n\
+            ==================================\n\n\
+            🎯 Target: {}\n\
+            📈 Score type: {}\n\
+            📋 Include breakdown: {}\n\n\
+            🚧 Advanced criticality scoring coming soon!\n\
+            📊 Will calculate 0-100 criticality scores based on:\n\
+            • Usage frequency (how often referenced)\n\
+            • Cross-language dependencies\n\
+            • Business logic importance\n\
+            • Entry point proximity\n\
+            • Architectural significance\n\n\
+            💡 Perfect for AI agents to focus on what matters most!",
+            self.target,
+            self.score_type,
+            self.include_breakdown
+        );
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+    }
+}
+
+//******************//
 //   JulieTools     //
 //******************//
 // Generates the JulieTools enum with all tool variants
@@ -1584,5 +2270,11 @@ tool_box!(JulieTools, [
     FindReferencesTool,
     SemanticSearchTool,
     ExploreTool,
-    NavigateTool
+    NavigateTool,
+    // Phase 6.1 Intelligence Tools
+    ExploreOverviewTool,
+    TraceExecutionTool,
+    GetMinimalContextTool,
+    FindBusinessLogicTool,
+    ScoreCriticalityTool
 ]);

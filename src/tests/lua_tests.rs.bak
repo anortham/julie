@@ -122,36 +122,36 @@ end
 
         let version = symbols.iter().find(|s| s.name == "VERSION");
         assert!(version.is_some());
-        assert!(version.unwrap().signature.as_ref().unwrap().contains("VERSION = \"1.0.0\""));
+        assert!(version.unwrap().signature.contains("VERSION = \"1.0.0\""));
 
         // Local variables
         let user_name = symbols.iter().find(|s| s.name == "userName");
         assert!(user_name.is_some());
         assert_eq!(user_name.unwrap().kind, SymbolKind::Variable);
         assert_eq!(user_name.unwrap().visibility, "private");
-        assert!(user_name.unwrap().signature.as_ref().unwrap().contains("local userName = \"John Doe\""));
+        assert!(user_name.unwrap().signature.contains("local userName = \"John Doe\""));
 
         let is_active = symbols.iter().find(|s| s.name == "isActive");
         assert!(is_active.is_some());
-        assert!(is_active.unwrap().signature.as_ref().unwrap().contains("local isActive = true"));
+        assert!(is_active.unwrap().signature.contains("local isActive = true"));
 
         // Multiple assignment variables
         let x = symbols.iter().find(|s| s.name == "x");
         assert!(x.is_some());
-        assert!(x.unwrap().signature.as_ref().unwrap().contains("local x, y, z = 10, 20, 30"));
+        assert!(x.unwrap().signature.contains("local x, y, z = 10, 20, 30"));
 
         // Functions with special features
         let get_coordinates = symbols.iter().find(|s| s.name == "getCoordinates");
         assert!(get_coordinates.is_some());
-        assert!(get_coordinates.unwrap().signature.as_ref().unwrap().contains("function getCoordinates()"));
+        assert!(get_coordinates.unwrap().signature.contains("function getCoordinates()"));
 
         let sum_fn = symbols.iter().find(|s| s.name == "sum");
         assert!(sum_fn.is_some());
-        assert!(sum_fn.unwrap().signature.as_ref().unwrap().contains("function sum(...)"));
+        assert!(sum_fn.unwrap().signature.contains("function sum(...)"));
 
         let greet = symbols.iter().find(|s| s.name == "greet");
         assert!(greet.is_some());
-        assert!(greet.unwrap().signature.as_ref().unwrap().contains("function greet(name)"));
+        assert!(greet.unwrap().signature.contains("function greet(name)"));
     }
 
     #[test]
@@ -343,11 +343,11 @@ end
         assert!(subtract_method.is_some());
 
         // Colon syntax methods
-        let multiply = symbols.iter().find(|s| s.name == "multiply" && s.signature.as_ref().unwrap().contains("calculator:multiply"));
+        let multiply = symbols.iter().find(|s| s.name == "multiply" && s.signature.contains("calculator:multiply"));
         assert!(multiply.is_some());
         assert_eq!(multiply.unwrap().kind, SymbolKind::Method);
 
-        let divide = symbols.iter().find(|s| s.name == "divide" && s.signature.as_ref().unwrap().contains("calculator:divide"));
+        let divide = symbols.iter().find(|s| s.name == "divide" && s.signature.contains("calculator:divide"));
         assert!(divide.is_some());
 
         // Nested table
@@ -367,7 +367,7 @@ end
         let person = symbols.iter().find(|s| s.name == "Person");
         assert!(person.is_some());
         assert_eq!(person.unwrap().kind, SymbolKind::Function);
-        assert!(person.unwrap().signature.as_ref().unwrap().contains("function Person(name, age)"));
+        assert!(person.unwrap().signature.contains("function Person(name, age)"));
 
         // Class-like pattern
         let animal = symbols.iter().find(|s| s.name == "Animal");
@@ -532,21 +532,21 @@ end
         let symbols = extractor.extract_symbols(&tree);
 
         // Require statements
-        let json_require = symbols.iter().find(|s| s.name == "json" && s.signature.as_ref().unwrap().contains("require(\"json\")"));
+        let json_require = symbols.iter().find(|s| s.name == "json" && s.signature.contains("require(\"json\")"));
         assert!(json_require.is_some());
         assert_eq!(json_require.unwrap().kind, SymbolKind::Import);
 
-        let socket_require = symbols.iter().find(|s| s.name == "socket" && s.signature.as_ref().unwrap().contains("require(\"socket\")"));
+        let socket_require = symbols.iter().find(|s| s.name == "socket" && s.signature.contains("require(\"socket\")"));
         assert!(socket_require.is_some());
 
-        let http_require = symbols.iter().find(|s| s.name == "http" && s.signature.as_ref().unwrap().contains("require(\"socket.http\")"));
+        let http_require = symbols.iter().find(|s| s.name == "http" && s.signature.contains("require(\"socket.http\")"));
         assert!(http_require.is_some());
 
         // Relative requires
-        let utils_require = symbols.iter().find(|s| s.name == "utils" && s.signature.as_ref().unwrap().contains("require(\"./utils\")"));
+        let utils_require = symbols.iter().find(|s| s.name == "utils" && s.signature.contains("require(\"./utils\")"));
         assert!(utils_require.is_some());
 
-        let config_require = symbols.iter().find(|s| s.name == "config" && s.signature.as_ref().unwrap().contains("require(\"../config/settings\")"));
+        let config_require = symbols.iter().find(|s| s.name == "config" && s.signature.contains("require(\"../config/settings\")"));
         assert!(config_require.is_some());
 
         // Module functions
@@ -588,11 +588,11 @@ end
         // Package functions
         let load_module = symbols.iter().find(|s| s.name == "loadModule");
         assert!(load_module.is_some());
-        assert!(load_module.unwrap().signature.as_ref().unwrap().contains("local function loadModule(name)"));
+        assert!(load_module.unwrap().signature.contains("local function loadModule(name)"));
 
         let get_cached_module = symbols.iter().find(|s| s.name == "getCachedModule");
         assert!(get_cached_module.is_some());
-        assert!(get_cached_module.unwrap().signature.as_ref().unwrap().contains("local function getCachedModule(name)"));
+        assert!(get_cached_module.unwrap().signature.contains("local function getCachedModule(name)"));
     }
 
     #[test]
@@ -1093,7 +1093,7 @@ end
         let worker = symbols.iter().find(|s| s.name == "worker");
         assert!(worker.is_some());
         assert_eq!(worker.unwrap().kind, SymbolKind::Function);
-        assert!(worker.unwrap().signature.as_ref().unwrap().contains("local function worker()"));
+        assert!(worker.unwrap().signature.contains("local function worker()"));
 
         // Coroutine variable
         let worker_co = symbols.iter().find(|s| s.name == "workerCo");
@@ -1110,7 +1110,7 @@ end
         // Async pattern function
         let async_operation = symbols.iter().find(|s| s.name == "asyncOperation");
         assert!(async_operation.is_some());
-        assert!(async_operation.unwrap().signature.as_ref().unwrap().contains("local function asyncOperation(data, callback)"));
+        assert!(async_operation.unwrap().signature.contains("local function asyncOperation(data, callback)"));
 
         // Promise-like class
         let promise = symbols.iter().find(|s| s.name == "Promise");
@@ -1132,7 +1132,7 @@ end
         // Async/await helpers
         let async_fn = symbols.iter().find(|s| s.name == "async");
         assert!(async_fn.is_some());
-        assert!(async_fn.unwrap().signature.as_ref().unwrap().contains("local function async(fn)"));
+        assert!(async_fn.unwrap().signature.contains("local function async(fn)"));
 
         let await_fn = symbols.iter().find(|s| s.name == "await");
         assert!(await_fn.is_some());
@@ -1490,7 +1490,7 @@ end
         let vector_add = symbols.iter().find(|s| s.name == "__add" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_add.is_some());
         assert_eq!(vector_add.unwrap().kind, SymbolKind::Method);
-        assert!(vector_add.unwrap().signature.as_ref().unwrap().contains("function Vector:__add(other)"));
+        assert!(vector_add.unwrap().signature.contains("function Vector:__add(other)"));
 
         let vector_sub = symbols.iter().find(|s| s.name == "__sub" && s.parent_id == Some(vector.unwrap().id.clone()));
         assert!(vector_sub.is_some());
@@ -1864,7 +1864,7 @@ end
         let validate_email = symbols.iter().find(|s| s.name == "validateEmail");
         assert!(validate_email.is_some());
         assert_eq!(validate_email.unwrap().kind, SymbolKind::Function);
-        assert!(validate_email.unwrap().signature.as_ref().unwrap().contains("local function validateEmail(email)"));
+        assert!(validate_email.unwrap().signature.contains("local function validateEmail(email)"));
 
         let extract_numbers = symbols.iter().find(|s| s.name == "extractNumbers");
         assert!(extract_numbers.is_some());

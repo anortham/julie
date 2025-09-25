@@ -6,7 +6,7 @@
 // Port Status: RED phase - All tests should fail initially until extractor is implemented
 
 use crate::extractors::base::{Symbol, SymbolKind, Relationship, RelationshipKind, Visibility};
-// use crate::extractors::php::PhpExtractor; // TEMPORARILY DISABLED
+use crate::extractors::php::PhpExtractor;
 use tree_sitter::Parser;
 
 // Helper function to initialize PHP parser

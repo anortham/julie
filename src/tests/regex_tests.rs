@@ -1,4 +1,4 @@
-// use crate::extractors::regex::RegexExtractor; // TEMPORARILY DISABLED
+use crate::extractors::regex::RegexExtractor;
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::tests::test_utils::init_parser;
 

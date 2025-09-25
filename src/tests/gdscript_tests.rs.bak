@@ -133,7 +133,7 @@ var experience: float:
         assert!(player.is_some());
         let player = player.unwrap();
         assert_eq!(player.kind, SymbolKind::Class);
-        assert!(player.signature.as_ref().unwrap().contains("class_name Player"));
+        assert!(player.signature.contains("class_name Player"));
         assert_eq!(player.metadata.as_ref().and_then(|m| m.get("baseClass").map(|v| v.as_str().unwrap())), Some("CharacterBody2D"));
 
         let enemy = symbols.iter().find(|s| s.name == "Enemy");
@@ -149,12 +149,12 @@ var experience: float:
         let take_damage = symbols.iter().find(|s| s.name == "take_damage" && s.parent_id == health_component.unwrap().parent_id);
         assert!(take_damage.is_some());
         assert_eq!(take_damage.unwrap().kind, SymbolKind::Method);
-        assert!(take_damage.unwrap().signature.as_ref().unwrap().contains("func take_damage(amount: int) -> bool"));
+        assert!(take_damage.unwrap().signature.contains("func take_damage(amount: int) -> bool"));
 
         // Tool class
         let custom_resource = symbols.iter().find(|s| s.name == "CustomResource");
         assert!(custom_resource.is_some());
-        assert!(custom_resource.unwrap().signature.as_ref().unwrap().contains("@tool"));
+        assert!(custom_resource.unwrap().signature.contains("@tool"));
 
         // Class variables
         let health = symbols.iter().find(|s| s.name == "health");
@@ -162,7 +162,7 @@ var experience: float:
         let health = health.unwrap();
         assert_eq!(health.kind, SymbolKind::Field);
         assert_eq!(health.metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("int"));
-        assert!(health.signature.as_ref().unwrap().contains("var health: int = 100"));
+        assert!(health.signature.contains("var health: int = 100"));
 
         let player_name = symbols.iter().find(|s| s.name == "player_name");
         assert!(player_name.is_some());
@@ -172,23 +172,23 @@ var experience: float:
         let speed = symbols.iter().find(|s| s.name == "speed");
         assert!(speed.is_some());
         let speed = speed.unwrap();
-        assert!(speed.signature.as_ref().unwrap().contains("@export var speed: float = 200.0"));
+        assert!(speed.signature.contains("@export var speed: float = 200.0"));
         assert_eq!(speed.visibility.as_ref().unwrap(), &Visibility::Public);
 
         let armor = symbols.iter().find(|s| s.name == "armor");
         assert!(armor.is_some());
-        assert!(armor.unwrap().signature.as_ref().unwrap().contains("@export_range(0, 100)"));
+        assert!(armor.unwrap().signature.contains("@export_range(0, 100)"));
 
         // Legacy export
         let legacy_speed = symbols.iter().find(|s| s.name == "legacy_speed");
         assert!(legacy_speed.is_some());
-        assert!(legacy_speed.unwrap().signature.as_ref().unwrap().contains("export var legacy_speed"));
+        assert!(legacy_speed.unwrap().signature.contains("export var legacy_speed"));
 
         // OnReady variables
         let sprite = symbols.iter().find(|s| s.name == "sprite");
         assert!(sprite.is_some());
         let sprite = sprite.unwrap();
-        assert!(sprite.signature.as_ref().unwrap().contains("@onready var sprite: Sprite2D"));
+        assert!(sprite.signature.contains("@onready var sprite: Sprite2D"));
         assert_eq!(sprite.metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("Sprite2D"));
 
         // Constants
@@ -196,7 +196,7 @@ var experience: float:
         assert!(max_lives.is_some());
         let max_lives = max_lives.unwrap();
         assert_eq!(max_lives.kind, SymbolKind::Constant);
-        assert!(max_lives.signature.as_ref().unwrap().contains("const MAX_LIVES: int = 3"));
+        assert!(max_lives.signature.contains("const MAX_LIVES: int = 3"));
 
         // Enums
         let state_enum = symbols.iter().find(|s| s.name == "State");
@@ -214,12 +214,12 @@ var experience: float:
         // Static variables
         let instance_count = symbols.iter().find(|s| s.name == "instance_count");
         assert!(instance_count.is_some());
-        assert!(instance_count.unwrap().signature.as_ref().unwrap().contains("static var instance_count"));
+        assert!(instance_count.unwrap().signature.contains("static var instance_count"));
 
         // Setget properties
         let score = symbols.iter().find(|s| s.name == "_score");
         assert!(score.is_some());
-        assert!(score.unwrap().signature.as_ref().unwrap().contains("setget set_score, get_score"));
+        assert!(score.unwrap().signature.contains("setget set_score, get_score"));
 
         let set_score = symbols.iter().find(|s| s.name == "set_score");
         assert!(set_score.is_some());
@@ -228,7 +228,7 @@ var experience: float:
         // Modern property syntax
         let level = symbols.iter().find(|s| s.name == "level");
         assert!(level.is_some());
-        assert!(level.unwrap().signature.as_ref().unwrap().contains("var level: int = 1:"));
+        assert!(level.unwrap().signature.contains("var level: int = 1:"));
     }
 
     #[test]
@@ -424,7 +424,7 @@ func outer_function(data: Array):
         assert!(health_changed.is_some());
         let health_changed = health_changed.unwrap();
         assert_eq!(health_changed.kind, SymbolKind::Event);
-        assert!(health_changed.signature.as_ref().unwrap().contains("signal health_changed(new_health: int)"));
+        assert!(health_changed.signature.contains("signal health_changed(new_health: int)"));
 
         let player_died = symbols.iter().find(|s| s.name == "player_died");
         assert!(player_died.is_some());
@@ -432,7 +432,7 @@ func outer_function(data: Array):
 
         let item_collected = symbols.iter().find(|s| s.name == "item_collected");
         assert!(item_collected.is_some());
-        assert!(item_collected.unwrap().signature.as_ref().unwrap().contains("signal item_collected(item_name: String, quantity: int)"));
+        assert!(item_collected.unwrap().signature.contains("signal item_collected(item_name: String, quantity: int)"));
 
         // Built-in lifecycle functions
         let init = symbols.iter().find(|s| s.name == "_init");
@@ -443,18 +443,18 @@ func outer_function(data: Array):
         assert!(ready.is_some());
         let ready = ready.unwrap();
         assert_eq!(ready.kind, SymbolKind::Method);
-        assert!(ready.signature.as_ref().unwrap().contains("func _ready()"));
+        assert!(ready.signature.contains("func _ready()"));
 
         let process = symbols.iter().find(|s| s.name == "_process");
         assert!(process.is_some());
-        assert!(process.unwrap().signature.as_ref().unwrap().contains("func _process(delta: float)"));
+        assert!(process.unwrap().signature.contains("func _process(delta: float)"));
 
         let physics_process = symbols.iter().find(|s| s.name == "_physics_process");
         assert!(physics_process.is_some());
 
         let input = symbols.iter().find(|s| s.name == "_input");
         assert!(input.is_some());
-        assert!(input.unwrap().signature.as_ref().unwrap().contains("func _input(event: InputEvent)"));
+        assert!(input.unwrap().signature.contains("func _input(event: InputEvent)"));
 
         // Custom functions
         let simple_function = symbols.iter().find(|s| s.name == "simple_function");
@@ -463,21 +463,21 @@ func outer_function(data: Array):
 
         let function_with_params = symbols.iter().find(|s| s.name == "function_with_params");
         assert!(function_with_params.is_some());
-        assert!(function_with_params.unwrap().signature.as_ref().unwrap().contains("func function_with_params(name: String, age: int, active: bool = true)"));
+        assert!(function_with_params.unwrap().signature.contains("func function_with_params(name: String, age: int, active: bool = true)"));
 
         let function_with_return = symbols.iter().find(|s| s.name == "function_with_return");
         assert!(function_with_return.is_some());
-        assert!(function_with_return.unwrap().signature.as_ref().unwrap().contains("-> Vector2"));
+        assert!(function_with_return.unwrap().signature.contains("-> Vector2"));
 
         // Static functions
         let calculate_distance = symbols.iter().find(|s| s.name == "calculate_distance");
         assert!(calculate_distance.is_some());
-        assert!(calculate_distance.unwrap().signature.as_ref().unwrap().contains("static func calculate_distance"));
+        assert!(calculate_distance.unwrap().signature.contains("static func calculate_distance"));
 
         // Virtual functions
         let can_drop_data = symbols.iter().find(|s| s.name == "_can_drop_data");
         assert!(can_drop_data.is_some());
-        assert!(can_drop_data.unwrap().signature.as_ref().unwrap().contains("-> bool"));
+        assert!(can_drop_data.unwrap().signature.contains("-> bool"));
 
         // Private functions (convention)
         let setup_connections = symbols.iter().find(|s| s.name == "_setup_connections");
@@ -490,7 +490,7 @@ func outer_function(data: Array):
         // Signal handlers
         let on_health_changed = symbols.iter().find(|s| s.name == "_on_health_changed");
         assert!(on_health_changed.is_some());
-        assert!(on_health_changed.unwrap().signature.as_ref().unwrap().contains("func _on_health_changed(new_health: int)"));
+        assert!(on_health_changed.unwrap().signature.contains("func _on_health_changed(new_health: int)"));
 
         let on_player_died = symbols.iter().find(|s| s.name == "_on_player_died");
         assert!(on_player_died.is_some());
@@ -501,7 +501,7 @@ func outer_function(data: Array):
         // Coroutine functions
         let fade_out = symbols.iter().find(|s| s.name == "fade_out");
         assert!(fade_out.is_some());
-        assert!(fade_out.unwrap().signature.as_ref().unwrap().contains("func fade_out(duration: float = 1.0)"));
+        assert!(fade_out.unwrap().signature.contains("func fade_out(duration: float = 1.0)"));
 
         let move_to_position = symbols.iter().find(|s| s.name == "move_to_position");
         assert!(move_to_position.is_some());
@@ -525,8 +525,8 @@ func outer_function(data: Array):
         let process_data = symbols.iter().find(|s| s.name == "process_data");
         assert!(process_data.is_some());
         let process_data = process_data.unwrap();
-        assert!(process_data.signature.as_ref().unwrap().contains("Array[Dictionary]"));
-        assert!(process_data.signature.as_ref().unwrap().contains("-> Array[String]"));
+        assert!(process_data.signature.contains("Array[Dictionary]"));
+        assert!(process_data.signature.contains("-> Array[String]"));
 
         // Outer function with nested function
         let outer_function = symbols.iter().find(|s| s.name == "outer_function");
@@ -817,7 +817,7 @@ func _background_processing(data: Array):
         assert!(player.is_some());
         let player = player.unwrap();
         assert_eq!(player.metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("CharacterBody2D"));
-        assert!(player.signature.as_ref().unwrap().contains("@onready var player: CharacterBody2D = $Player"));
+        assert!(player.signature.contains("@onready var player: CharacterBody2D = $Player"));
 
         let ui_manager = symbols.iter().find(|s| s.name == "ui_manager");
         assert!(ui_manager.is_some());
@@ -825,19 +825,19 @@ func _background_processing(data: Array):
 
         let camera = symbols.iter().find(|s| s.name == "camera");
         assert!(camera.is_some());
-        assert!(camera.unwrap().signature.as_ref().unwrap().contains("$Player/Camera2D"));
+        assert!(camera.unwrap().signature.contains("$Player/Camera2D"));
 
         // Resource preloading
         let player_scene = symbols.iter().find(|s| s.name == "PlayerScene");
         assert!(player_scene.is_some());
         let player_scene = player_scene.unwrap();
         assert_eq!(player_scene.kind, SymbolKind::Constant);
-        assert!(player_scene.signature.as_ref().unwrap().contains("preload(\"res://scenes/Player.tscn\")"));
+        assert!(player_scene.signature.contains("preload(\"res://scenes/Player.tscn\")"));
 
         // Resource loading
         let enemy_texture = symbols.iter().find(|s| s.name == "enemy_texture");
         assert!(enemy_texture.is_some());
-        assert!(enemy_texture.unwrap().signature.as_ref().unwrap().contains("load(\"res://textures/enemy.png\")"));
+        assert!(enemy_texture.unwrap().signature.contains("load(\"res://textures/enemy.png\")"));
 
         // Game state enum
         let game_state = symbols.iter().find(|s| s.name == "GameState");
@@ -852,7 +852,7 @@ func _background_processing(data: Array):
         // Input handling
         let handle_keyboard_input = symbols.iter().find(|s| s.name == "_handle_keyboard_input");
         assert!(handle_keyboard_input.is_some());
-        assert!(handle_keyboard_input.unwrap().signature.as_ref().unwrap().contains("func _handle_keyboard_input(event: InputEventKey)"));
+        assert!(handle_keyboard_input.unwrap().signature.contains("func _handle_keyboard_input(event: InputEventKey)"));
 
         let unhandled_key_input = symbols.iter().find(|s| s.name == "_unhandled_key_input");
         assert!(unhandled_key_input.is_some());
@@ -867,11 +867,11 @@ func _background_processing(data: Array):
         // Node manipulation
         let spawn_enemy = symbols.iter().find(|s| s.name == "spawn_enemy");
         assert!(spawn_enemy.is_some());
-        assert!(spawn_enemy.unwrap().signature.as_ref().unwrap().contains("func spawn_enemy(position: Vector2)"));
+        assert!(spawn_enemy.unwrap().signature.contains("func spawn_enemy(position: Vector2)"));
 
         let find_nodes_by_group = symbols.iter().find(|s| s.name == "find_nodes_by_group");
         assert!(find_nodes_by_group.is_some());
-        assert!(find_nodes_by_group.unwrap().signature.as_ref().unwrap().contains("-> Array[Node]"));
+        assert!(find_nodes_by_group.unwrap().signature.contains("-> Array[Node]"));
 
         // Physics callbacks
         let on_area_body_entered = symbols.iter().find(|s| s.name == "_on_area_2d_body_entered");
@@ -908,7 +908,7 @@ func _background_processing(data: Array):
 
         let load_game = symbols.iter().find(|s| s.name == "load_game");
         assert!(load_game.is_some());
-        assert!(load_game.unwrap().signature.as_ref().unwrap().contains("-> bool"));
+        assert!(load_game.unwrap().signature.contains("-> bool"));
 
         // Visual effects
         let create_explosion = symbols.iter().find(|s| s.name == "create_explosion");
@@ -1224,7 +1224,7 @@ func _cleanup_resources():
         let typed_array = symbols.iter().find(|s| s.name == "typed_array");
         assert!(typed_array.is_some());
         let typed_array = typed_array.unwrap();
-        assert!(typed_array.signature.as_ref().unwrap().contains("var typed_array: Array[String]"));
+        assert!(typed_array.signature.contains("var typed_array: Array[String]"));
         assert_eq!(typed_array.metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("Array[String]"));
 
         let vector_array = symbols.iter().find(|s| s.name == "vector_array");
@@ -1234,31 +1234,31 @@ func _cleanup_resources():
         // Export annotations
         let player_speed = symbols.iter().find(|s| s.name == "player_speed");
         assert!(player_speed.is_some());
-        assert!(player_speed.unwrap().signature.as_ref().unwrap().contains("@export_category(\"Player Settings\")"));
+        assert!(player_speed.unwrap().signature.contains("@export_category(\"Player Settings\")"));
 
         let damage = symbols.iter().find(|s| s.name == "damage");
         assert!(damage.is_some());
-        assert!(damage.unwrap().signature.as_ref().unwrap().contains("@export_group(\"Combat\")"));
+        assert!(damage.unwrap().signature.contains("@export_group(\"Combat\")"));
 
         let weapon_damage = symbols.iter().find(|s| s.name == "weapon_damage");
         assert!(weapon_damage.is_some());
-        assert!(weapon_damage.unwrap().signature.as_ref().unwrap().contains("@export_subgroup(\"Weapons\")"));
+        assert!(weapon_damage.unwrap().signature.contains("@export_subgroup(\"Weapons\")"));
 
         let difficulty = symbols.iter().find(|s| s.name == "difficulty");
         assert!(difficulty.is_some());
-        assert!(difficulty.unwrap().signature.as_ref().unwrap().contains("@export_enum"));
+        assert!(difficulty.unwrap().signature.contains("@export_enum"));
 
         let elements = symbols.iter().find(|s| s.name == "elements");
         assert!(elements.is_some());
-        assert!(elements.unwrap().signature.as_ref().unwrap().contains("@export_flags"));
+        assert!(elements.unwrap().signature.contains("@export_flags"));
 
         let config_file = symbols.iter().find(|s| s.name == "config_file");
         assert!(config_file.is_some());
-        assert!(config_file.unwrap().signature.as_ref().unwrap().contains("@export_file(\"*.json\")"));
+        assert!(config_file.unwrap().signature.contains("@export_file(\"*.json\")"));
 
         let description = symbols.iter().find(|s| s.name == "description");
         assert!(description.is_some());
-        assert!(description.unwrap().signature.as_ref().unwrap().contains("@export_multiline"));
+        assert!(description.unwrap().signature.contains("@export_multiline"));
 
         // Tool script
         let editor_interface = symbols.iter().find(|s| s.name == "editor_interface");
@@ -1285,14 +1285,14 @@ func _cleanup_resources():
         // Interface-like methods
         let move_func = symbols.iter().find(|s| s.name == "move");
         assert!(move_func.is_some());
-        assert!(move_func.unwrap().signature.as_ref().unwrap().contains("func move(direction: Vector2)"));
+        assert!(move_func.unwrap().signature.contains("func move(direction: Vector2)"));
 
         let take_damage = symbols.iter().find(|s| s.name == "take_damage");
         assert!(take_damage.is_some());
 
         let is_alive = symbols.iter().find(|s| s.name == "is_alive");
         assert!(is_alive.is_some());
-        assert!(is_alive.unwrap().signature.as_ref().unwrap().contains("-> bool"));
+        assert!(is_alive.unwrap().signature.contains("-> bool"));
 
         // Lambda usage
         let use_advanced_lambdas = symbols.iter().find(|s| s.name == "use_advanced_lambdas");
@@ -1308,7 +1308,7 @@ func _cleanup_resources():
         // Advanced property with getter/setter
         let energy = symbols.iter().find(|s| s.name == "energy");
         assert!(energy.is_some());
-        assert!(energy.unwrap().signature.as_ref().unwrap().contains("var energy: float:"));
+        assert!(energy.unwrap().signature.contains("var energy: float:"));
 
         // Signals for energy
         let energy_changed = symbols.iter().find(|s| s.name == "energy_changed");
@@ -1321,11 +1321,11 @@ func _cleanup_resources():
         // Generic functions
         let process_collection = symbols.iter().find(|s| s.name == "process_collection");
         assert!(process_collection.is_some());
-        assert!(process_collection.unwrap().signature.as_ref().unwrap().contains("func process_collection[T]"));
+        assert!(process_collection.unwrap().signature.contains("func process_collection[T]"));
 
         let safe_cast = symbols.iter().find(|s| s.name == "safe_cast");
         assert!(safe_cast.is_some());
-        assert!(safe_cast.unwrap().signature.as_ref().unwrap().contains("func safe_cast[T]"));
+        assert!(safe_cast.unwrap().signature.contains("func safe_cast[T]"));
 
         // Custom iterator class
         let number_range = symbols.iter().find(|s| s.name == "NumberRange");
@@ -1353,7 +1353,7 @@ func _cleanup_resources():
         // Notification handling
         let notification = symbols.iter().find(|s| s.name == "_notification");
         assert!(notification.is_some());
-        assert!(notification.unwrap().signature.as_ref().unwrap().contains("func _notification(what: int)"));
+        assert!(notification.unwrap().signature.contains("func _notification(what: int)"));
 
         let cleanup_resources = symbols.iter().find(|s| s.name == "_cleanup_resources");
         assert!(cleanup_resources.is_some());
@@ -1671,7 +1671,7 @@ func load_from_file(path: String = "user://settings.cfg"):
         // Resource properties
         let version = symbols.iter().find(|s| s.name == "version");
         assert!(version.is_some());
-        assert!(version.unwrap().signature.as_ref().unwrap().contains("@export var version: String = \"1.0\""));
+        assert!(version.unwrap().signature.contains("@export var version: String = \"1.0\""));
 
         let player_data = symbols.iter().find(|s| s.name == "player_data");
         assert!(player_data.is_some());
@@ -1686,7 +1686,7 @@ func load_from_file(path: String = "user://settings.cfg"):
         assert!(serialize.is_some());
         let serialize = serialize.unwrap();
         assert_eq!(serialize.kind, SymbolKind::Method);
-        assert!(serialize.signature.as_ref().unwrap().contains("-> Dictionary"));
+        assert!(serialize.signature.contains("-> Dictionary"));
 
         let deserialize = symbols.iter().find(|s| s.name == "deserialize" && s.parent_id == game_data.parent_id);
         assert!(deserialize.is_some());
@@ -1730,7 +1730,7 @@ func load_from_file(path: String = "user://settings.cfg"):
         assert!(resource_loaded.is_some());
         let resource_loaded = resource_loaded.unwrap();
         assert_eq!(resource_loaded.kind, SymbolKind::Event);
-        assert!(resource_loaded.signature.as_ref().unwrap().contains("signal resource_loaded(path: String, resource: Resource)"));
+        assert!(resource_loaded.signature.contains("signal resource_loaded(path: String, resource: Resource)"));
 
         let resource_failed = symbols.iter().find(|s| s.name == "resource_failed");
         assert!(resource_failed.is_some());
@@ -1738,7 +1738,7 @@ func load_from_file(path: String = "user://settings.cfg"):
         // Resource manager methods
         let load_resource_async = symbols.iter().find(|s| s.name == "load_resource_async");
         assert!(load_resource_async.is_some());
-        assert!(load_resource_async.unwrap().signature.as_ref().unwrap().contains("-> Resource"));
+        assert!(load_resource_async.unwrap().signature.contains("-> Resource"));
 
         let cache_resource = symbols.iter().find(|s| s.name == "_cache_resource");
         assert!(cache_resource.is_some());
@@ -1763,16 +1763,16 @@ func load_from_file(path: String = "user://settings.cfg"):
 
         let render_scale = symbols.iter().find(|s| s.name == "render_scale");
         assert!(render_scale.is_some());
-        assert!(render_scale.unwrap().signature.as_ref().unwrap().contains("@export_range(0.5, 2.0)"));
+        assert!(render_scale.unwrap().signature.contains("@export_range(0.5, 2.0)"));
 
         let quality_preset = symbols.iter().find(|s| s.name == "quality_preset");
         assert!(quality_preset.is_some());
-        assert!(quality_preset.unwrap().signature.as_ref().unwrap().contains("@export_enum"));
+        assert!(quality_preset.unwrap().signature.contains("@export_enum"));
 
         // Audio settings
         let master_volume = symbols.iter().find(|s| s.name == "master_volume");
         assert!(master_volume.is_some());
-        assert!(master_volume.unwrap().signature.as_ref().unwrap().contains("@export_range(0.0, 1.0)"));
+        assert!(master_volume.unwrap().signature.contains("@export_range(0.0, 1.0)"));
 
         // Input settings
         let mouse_sensitivity = symbols.iter().find(|s| s.name == "mouse_sensitivity");

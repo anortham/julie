@@ -114,32 +114,38 @@ impl UserService {
 // Test utilities
 pub mod test_utils;
 
-// Extractor test modules (following TDD - tests first!)
-pub mod typescript_tests;
-pub mod python_tests;
-// pub mod c_tests;    // C extractor tests - TEMPORARILY DISABLED
-// pub mod cpp_tests;           // C++ extractor tests (TDD GREEN phase) - TEMPORARILY DISABLED (build errors)
-pub mod kotlin_tests;        // Kotlin extractor tests - ENABLED for API testing
-pub mod dart_tests;          // Dart extractor tests - RE-ENABLING for Dart Specialist work
-pub mod java_tests;          // Java extractor tests - FIXING API compatibility errors
-pub mod csharp_tests;        // C# extractor tests - Testing
-pub mod ruby_tests;          // Ruby extractor tests - API FIXED, testing compilation
-pub mod swift_tests;         // Swift extractor tests (TDD GREEN phase) - ENABLED by Swift Specialist
-// pub mod javascript_tests;    // JavaScript extractor tests - TEMPORARILY DISABLED
-// pub mod rust_tests;          // Rust extractor tests - TEMPORARILY DISABLED
-// pub mod go_tests;         // Go extractor tests - TEMPORARILY DISABLED
-pub mod php_tests;           // PHP extractor tests - COMPLETE Miller parity implementation
-pub mod bash_tests;          // Bash extractor tests (TDD GREEN phase)
-pub mod powershell_tests;    // PowerShell extractor tests (TDD GREEN phase)
-pub mod vue_tests;           // Vue extractor tests (TDD RED phase)
-pub mod razor_tests;         // Razor extractor tests - Fixed bracket syntax errors
-pub mod html_tests;          // HTML extractor tests - FIXING for Miller parity
-pub mod sql_tests;              // SQL extractor tests - FIXED
-// pub mod lua_tests;           // Lua extractor tests - 100+ API errors
-// pub mod gdscript_tests;      // GDScript extractor tests (TDD GREEN phase) - Temporarily disabled due to compilation errors
-pub mod css_tests;           // CSS extractor tests (TDD GREEN phase)
-pub mod regex_tests;         // Regex extractor tests (TDD GREEN phase)
-// pub mod zig_tests;           // Zig extractor tests (TDD GREEN phase) - Temporarily disabled due to compilation errors (other agent issue)
+// ALL 26 Extractor test modules - NO EXCEPTIONS, ALL MUST PASS
+pub mod typescript_tests;        // TypeScript extractor tests
+pub mod python_tests;            // Python extractor tests
+pub mod javascript_tests;        // JavaScript extractor tests
+pub mod rust_tests;              // Rust extractor tests
+pub mod c_tests;                 // C extractor tests
+pub mod cpp_tests;               // C++ extractor tests
+pub mod kotlin_tests;            // Kotlin extractor tests
+pub mod dart_tests;              // Dart extractor tests
+pub mod java_tests;              // Java extractor tests
+pub mod csharp_tests;            // C# extractor tests
+pub mod ruby_tests;              // Ruby extractor tests
+pub mod swift_tests;             // Swift extractor tests
+pub mod go_tests;                // Go extractor tests
+pub mod php_tests;               // PHP extractor tests
+pub mod bash_tests;              // Bash extractor tests
+pub mod powershell_tests;        // PowerShell extractor tests
+pub mod vue_tests;               // Vue extractor tests
+pub mod razor_tests;             // Razor extractor tests
+pub mod html_tests;              // HTML extractor tests
+pub mod sql_tests;               // SQL extractor tests
+pub mod lua_tests;               // Lua extractor tests
+pub mod gdscript_tests;          // GDScript extractor tests
+pub mod css_tests;               // CSS extractor tests
+pub mod regex_tests;             // Regex extractor tests
+pub mod zig_tests;               // Zig extractor tests
 
 // Real-World Validation Tests (following Miller's proven methodology)
 pub mod real_world_validation; // Tests all extractors against real-world code files
+
+// Cross-Language Tracing Tests (Phase 5 - The Revolutionary Feature)
+// pub mod tracing_tests; // Tests the killer feature - cross-language data flow tracing - TEMP DISABLED
+
+// Phase 6.1 Intelligence Tools Tests (Heart of Codebase)
+// pub mod intelligence_tools_tests; // Tests for AI-native code intelligence tools - TEMP DISABLED

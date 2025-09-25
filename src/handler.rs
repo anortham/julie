@@ -122,6 +122,27 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🚀 Navigating to: {:?}", tool);
                 tool.call_tool(self).await
             },
+            // Phase 6.1 Intelligence Tools
+            JulieTools::ExploreOverviewTool(tool) => {
+                debug!("🧭 Exploring codebase overview: {:?}", tool);
+                tool.call_tool(self).await
+            },
+            JulieTools::TraceExecutionTool(tool) => {
+                debug!("🔍 Tracing execution flow: {:?}", tool);
+                tool.call_tool(self).await
+            },
+            JulieTools::GetMinimalContextTool(tool) => {
+                debug!("🎯 Getting minimal context: {:?}", tool);
+                tool.call_tool(self).await
+            },
+            JulieTools::FindBusinessLogicTool(tool) => {
+                debug!("🏢 Finding business logic: {:?}", tool);
+                tool.call_tool(self).await
+            },
+            JulieTools::ScoreCriticalityTool(tool) => {
+                debug!("📊 Scoring criticality: {:?}", tool);
+                tool.call_tool(self).await
+            },
         };
 
         match result {

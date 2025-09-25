@@ -45,6 +45,63 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
             parser.set_language(&tree_sitter_html::LANGUAGE.into())
                 .expect("Error loading HTML grammar");
         }
+        "zig" => {
+            parser.set_language(&tree_sitter_zig::LANGUAGE.into())
+                .expect("Error loading Zig grammar");
+        }
+        "c" => {
+            parser.set_language(&tree_sitter_c::LANGUAGE.into())
+                .expect("Error loading C grammar");
+        }
+        "cpp" => {
+            parser.set_language(&tree_sitter_cpp::LANGUAGE.into())
+                .expect("Error loading C++ grammar");
+        }
+        "csharp" => {
+            parser.set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+                .expect("Error loading C# grammar");
+        }
+        "kotlin" => {
+            parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())
+                .expect("Error loading Kotlin grammar");
+        }
+        "dart" => {
+            parser.set_language(&harper_tree_sitter_dart::LANGUAGE.into())
+                .expect("Error loading Dart grammar");
+        }
+        "java" => {
+            parser.set_language(&tree_sitter_java::LANGUAGE.into())
+                .expect("Error loading Java grammar");
+        }
+        "ruby" => {
+            parser.set_language(&tree_sitter_ruby::LANGUAGE.into())
+                .expect("Error loading Ruby grammar");
+        }
+        "php" => {
+            parser.set_language(&tree_sitter_php::LANGUAGE.into())
+                .expect("Error loading PHP grammar");
+        }
+        "bash" => {
+            parser.set_language(&tree_sitter_bash::LANGUAGE.into())
+                .expect("Error loading Bash grammar");
+        }
+        "lua" => {
+            parser.set_language(&tree_sitter_lua::LANGUAGE.into())
+                .expect("Error loading Lua grammar");
+        }
+        "gdscript" => {
+            parser.set_language(&tree_sitter_gdscript::LANGUAGE.into())
+                .expect("Error loading GDScript grammar");
+        }
+        "sql" => {
+            parser.set_language(&tree_sitter_sql::LANGUAGE.into())
+                .expect("Error loading SQL grammar");
+        }
+        "vue" => {
+            // Vue SFCs are parsed as JavaScript for now
+            parser.set_language(&tree_sitter_javascript::LANGUAGE.into())
+                .expect("Error loading JavaScript grammar for Vue");
+        }
         _ => panic!("Unsupported language: {}", language),
     }
 

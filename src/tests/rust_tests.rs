@@ -652,7 +652,7 @@ pub extern "C" fn create_point(x: f64, y: f64, z: f64) -> Point3D {
             assert_eq!(raw_buffer.kind, SymbolKind::Class);
             assert!(raw_buffer.signature.as_ref().unwrap().contains("pub struct RawBuffer"));
 
-            let unsafe_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == raw_buffer.parent_id);
+            let unsafe_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(raw_buffer.id.clone()));
             assert!(unsafe_new.is_some());
             let unsafe_new = unsafe_new.unwrap();
             assert!(unsafe_new.signature.as_ref().unwrap().contains("pub unsafe fn new"));
