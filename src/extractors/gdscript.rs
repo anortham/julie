@@ -23,52 +23,51 @@ impl GDScriptExtractor {
         self.pending_inheritance.clear();
         self.processed_positions.clear();
 
-        if let Some(root_node) = tree.root_node().child(0) {
-            // First pass: collect inheritance information
-            self.collect_inheritance_info(root_node);
+        let root_node = tree.root_node();
+        // First pass: collect inheritance information
+        self.collect_inheritance_info(root_node);
 
-            // Check for top-level extends statement (creates implicit class)
-            let mut implicit_class_id: Option<String> = None;
-            for i in 0..root_node.child_count() {
-                if let Some(child) = root_node.child(i) {
-                    if child.kind() == "extends_statement" {
-                        if let Some(type_node) = self.find_child_by_type(child, "type") {
-                            let base_class_name = self.base.get_node_text(&type_node);
+        // Check for top-level extends statement (creates implicit class)
+        let mut implicit_class_id: Option<String> = None;
+        for i in 0..root_node.child_count() {
+            if let Some(child) = root_node.child(i) {
+                if child.kind() == "extends_statement" {
+                    if let Some(type_node) = self.find_child_by_type(child, "type") {
+                        let base_class_name = self.base.get_node_text(&type_node);
 
-                            // Create implicit class based on file name
-                            let file_name = self.base.file_path
-                                .split('/')
-                                .last()
-                                .unwrap_or("ImplicitClass")
-                                .replace(".gd", "");
+                        // Create implicit class based on file name
+                        let file_name = self.base.file_path
+                            .split('/')
+                            .last()
+                            .unwrap_or("ImplicitClass")
+                            .replace(".gd", "");
 
-                            let mut metadata = HashMap::new();
-                            metadata.insert("baseClass".to_string(), Value::String(base_class_name.clone()));
+                        let mut metadata = HashMap::new();
+                        metadata.insert("baseClass".to_string(), Value::String(base_class_name.clone()));
 
-                            let implicit_class = self.base.create_symbol(
-                                &child,
-                                file_name,
-                                SymbolKind::Class,
-                                SymbolOptions {
-                                    signature: Some(format!("extends {}", base_class_name)),
-                                    visibility: Some(Visibility::Public),
-                                    parent_id: None,
-                                    metadata: Some(metadata),
-                                    doc_comment: None,
-                                },
-                            );
+                        let implicit_class = self.base.create_symbol(
+                            &child,
+                            file_name,
+                            SymbolKind::Class,
+                            SymbolOptions {
+                                signature: Some(format!("extends {}", base_class_name)),
+                                visibility: Some(Visibility::Public),
+                                parent_id: None,
+                                metadata: Some(metadata),
+                                doc_comment: None,
+                            },
+                        );
 
-                            implicit_class_id = Some(implicit_class.id.clone());
-                            symbols.push(implicit_class);
-                            break;
-                        }
+                        implicit_class_id = Some(implicit_class.id.clone());
+                        symbols.push(implicit_class);
+                        break;
                     }
                 }
             }
-
-            // Second pass: extract symbols with implicit class context
-            self.traverse_node(root_node, implicit_class_id.as_ref(), &mut symbols);
         }
+
+        // Second pass: extract symbols with implicit class context
+        self.traverse_node(root_node, implicit_class_id.as_ref(), &mut symbols);
 
         symbols
     }

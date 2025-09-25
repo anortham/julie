@@ -20,6 +20,12 @@ impl RazorExtractor {
     }
 
     fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+        // Handle ERROR nodes by falling back to text-based extraction
+        if node.kind() == "ERROR" {
+            self.extract_from_text_content(node, symbols, parent_id.as_deref());
+            return;
+        }
+
         if !self.is_valid_node(&node) {
             return;
         }
@@ -123,6 +129,77 @@ impl RazorExtractor {
 
     fn is_valid_node(&self, node: &Node) -> bool {
         !node.kind().is_empty() && !node.is_error()
+    }
+
+    fn extract_from_text_content(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+        let content = self.base.get_node_text(&node);
+
+        // Extract Razor directives from text
+        use regex::Regex;
+
+        // Look for @inherits directive
+        let inherits_regex = Regex::new(r"@inherits\s+(\S+)").unwrap();
+        if let Some(captures) = inherits_regex.captures(&content) {
+            if let Some(base_class) = captures.get(1) {
+                let symbol = self.base.create_symbol(
+                    &node,
+                    format!("inherits {}", base_class.as_str()),
+                    SymbolKind::Import,
+                    SymbolOptions {
+                        signature: Some(format!("@inherits {}", base_class.as_str())),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                );
+                symbols.push(symbol);
+            }
+        }
+
+        // Look for HTML elements/components
+        let component_regex = Regex::new(r"<(\w+)").unwrap();
+        for captures in component_regex.captures_iter(&content) {
+            if let Some(tag_name) = captures.get(1) {
+                let tag = tag_name.as_str();
+                // Only extract custom components (starting with uppercase)
+                if tag.chars().next().unwrap_or('a').is_uppercase() {
+                    let symbol = self.base.create_symbol(
+                        &node,
+                        tag.to_string(),
+                        SymbolKind::Class,
+                        SymbolOptions {
+                            signature: Some(format!("<{}>", tag)),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment: None,
+                        },
+                    );
+                    symbols.push(symbol);
+                }
+            }
+        }
+
+        // Look for @rendermode directives
+        let rendermode_regex = Regex::new(r#"@rendermode="([^"]+)""#).unwrap();
+        for captures in rendermode_regex.captures_iter(&content) {
+            if let Some(mode) = captures.get(1) {
+                let symbol = self.base.create_symbol(
+                    &node,
+                    format!("rendermode {}", mode.as_str()),
+                    SymbolKind::Property,
+                    SymbolOptions {
+                        signature: Some(format!("@rendermode=\"{}\"", mode.as_str())),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                );
+                symbols.push(symbol);
+            }
+        }
     }
 
     fn extract_directive(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
