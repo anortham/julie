@@ -861,7 +861,7 @@ impl CppExtractor {
 
     // Helper methods for function extraction - ported from Miller's proven logic
 
-    fn extract_function_name(&self, func_node: Node) -> Option<Node> {
+    fn extract_function_name<'a>(&self, func_node: Node<'a>) -> Option<Node<'a>> {
         // Handle different types of function names - Miller's extractFunctionName
 
         // operator_name (operator overloading)
@@ -1108,7 +1108,7 @@ impl CppExtractor {
         storage_class.iter().any(|sc| sc == "constexpr")
     }
 
-    fn extract_declarator_name(&self, declarator: Node) -> Option<Node> {
+    fn extract_declarator_name<'a>(&self, declarator: Node<'a>) -> Option<Node<'a>> {
         // Look for identifier in declarator
         declarator.children(&mut declarator.walk())
             .find(|c| c.kind() == "identifier")

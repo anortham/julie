@@ -39,7 +39,7 @@ impl GoExtractor {
         relationships
     }
 
-    fn build_symbol_map(&self, symbols: &[Symbol]) -> HashMap<String, &Symbol> {
+    fn build_symbol_map<'a>(&self, symbols: &'a [Symbol]) -> HashMap<String, &'a Symbol> {
         let mut symbol_map = HashMap::new();
         for symbol in symbols {
             symbol_map.insert(symbol.name.clone(), symbol);

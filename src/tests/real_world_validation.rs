@@ -40,6 +40,10 @@ mod real_world_tests {
             "regex" => tree_sitter_regex::LANGUAGE,
             "sql" => tree_sitter_sql::LANGUAGE,
             "zig" => tree_sitter_zig::LANGUAGE,
+            "c" => tree_sitter_c::LANGUAGE,
+            "cpp" => tree_sitter_cpp::LANGUAGE,
+            "go" => tree_sitter_go::LANGUAGE,
+            "lua" => tree_sitter_lua::LANGUAGE,
             _ => panic!("Unsupported language: {}", language),
         };
 
@@ -120,7 +124,14 @@ mod real_world_tests {
                 );
                 extractor.extract_symbols(&tree)
             },
-            // "go" => { /* Disabled */ },
+            "go" => {
+                let mut extractor = go::GoExtractor::new(
+                    language.to_string(),
+                    file_path.to_string_lossy().to_string(),
+                    content.clone()
+                );
+                extractor.extract_symbols(&tree)
+            },
             "php" => {
                 let mut extractor = php::PhpExtractor::new(
                     language.to_string(),
@@ -219,6 +230,29 @@ mod real_world_tests {
             },
             "zig" => {
                 let mut extractor = zig::ZigExtractor::new(
+                    language.to_string(),
+                    file_path.to_string_lossy().to_string(),
+                    content.clone()
+                );
+                extractor.extract_symbols(&tree)
+            },
+            "c" => {
+                let mut extractor = c::CExtractor::new(
+                    language.to_string(),
+                    file_path.to_string_lossy().to_string(),
+                    content.clone()
+                );
+                extractor.extract_symbols(&tree)
+            },
+            "cpp" => {
+                let mut extractor = cpp::CppExtractor::new(
+                    file_path.to_string_lossy().to_string(),
+                    content.clone()
+                );
+                extractor.extract_symbols(&tree)
+            },
+            "lua" => {
+                let mut extractor = lua::LuaExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone()
@@ -352,9 +386,19 @@ mod real_world_tests {
         }
     }
 
-    // Go Real-World Tests - DISABLED (extractor not enabled)
-    // #[test]
-    // fn test_go_real_world_files() { ... }
+    // Go Real-World Tests
+    #[test]
+    fn test_go_real_world_files() {
+        let go_dir = Path::new(REAL_WORLD_TEST_DIR).join("go");
+        let go_files = get_files_with_extension(&go_dir, &["go"]);
+        if go_files.is_empty() {
+            println!("⚠️ No Go real-world test files found in {}", go_dir.display());
+            return;
+        }
+        for file_path in go_files {
+            test_real_world_file(&file_path, "go");
+        }
+    }
 
     // Java Real-World Tests
     #[test]
@@ -628,6 +672,52 @@ mod real_world_tests {
         }
     }
 
+    // C Real-World Tests
+    #[test]
+    fn test_c_real_world_files() {
+        let c_dir = Path::new(REAL_WORLD_TEST_DIR).join("c");
+        let c_files = get_files_with_extension(&c_dir, &["c", "h"]);
+
+        if c_files.is_empty() {
+            println!("⚠️ No C real-world test files found in {}", c_dir.display());
+            return;
+        }
+
+        for file_path in c_files {
+            test_real_world_file(&file_path, "c");
+        }
+    }
+
+    // C++ Real-World Tests
+    #[test]
+    fn test_cpp_real_world_files() {
+        let cpp_dir = Path::new(REAL_WORLD_TEST_DIR).join("cpp");
+        let cpp_files = get_files_with_extension(&cpp_dir, &["cpp", "cc", "cxx", "hpp", "h"]);
+
+        if cpp_files.is_empty() {
+            println!("⚠️ No C++ real-world test files found in {}", cpp_dir.display());
+            return;
+        }
+
+        for file_path in cpp_files {
+            test_real_world_file(&file_path, "cpp");
+        }
+    }
+
+    // Lua Real-World Tests
+    #[test]
+    fn test_lua_real_world_files() {
+        let lua_dir = Path::new(REAL_WORLD_TEST_DIR).join("lua");
+        let lua_files = get_files_with_extension(&lua_dir, &["lua"]);
+        if lua_files.is_empty() {
+            println!("⚠️ No Lua real-world test files found in {}", lua_dir.display());
+            return;
+        }
+        for file_path in lua_files {
+            test_real_world_file(&file_path, "lua");
+        }
+    }
+
     /// Integration test: Process multiple languages in sequence
     /// This validates cross-language consistency following Miller's approach
     #[test]
@@ -659,6 +749,8 @@ mod real_world_tests {
             ("regex", vec!["regex", "regexp"]),
             ("sql", vec!["sql"]),
             ("zig", vec!["zig"]),
+            ("c", vec!["c", "h"]),
+            ("cpp", vec!["cpp", "cc", "cxx", "hpp", "h"]),
         ];
 
         println!("🌍 Starting cross-language real-world integration test...");

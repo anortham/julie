@@ -172,21 +172,24 @@ impl CExtractor {
         let signature = self.build_function_signature(node);
         let visibility = if self.is_static_function(node) { "private" } else { "public" };
 
-        self.create_symbol(
+        self.base.create_symbol(
             &node,
             function_name.clone(),
             SymbolKind::Function,
-            Some(signature),
-            visibility,
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "function".to_string()),
-                ("name".to_string(), function_name),
-                ("returnType".to_string(), self.extract_return_type(node)),
-                ("parameters".to_string(), self.extract_function_parameters(node).join(", ")),
-                ("isDefinition".to_string(), "true".to_string()),
-                ("isStatic".to_string(), self.is_static_function(node).to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String("function".to_string())),
+                    ("name".to_string(), serde_json::Value::String(function_name)),
+                    ("returnType".to_string(), serde_json::Value::String(self.extract_return_type(node))),
+                    ("parameters".to_string(), serde_json::Value::String(self.extract_function_parameters(node).join(", "))),
+                    ("isDefinition".to_string(), serde_json::Value::String("true".to_string())),
+                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_function(node).to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -196,21 +199,24 @@ impl CExtractor {
         let signature = self.build_function_declaration_signature(node);
         let visibility = if self.is_static_function(node) { "private" } else { "public" };
 
-        Some(self.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             function_name.clone(),
             SymbolKind::Function,
-            Some(signature),
-            visibility,
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "function".to_string()),
-                ("name".to_string(), function_name),
-                ("returnType".to_string(), self.extract_return_type_from_declaration(node)),
-                ("parameters".to_string(), self.extract_function_parameters_from_declaration(node).join(", ")),
-                ("isDefinition".to_string(), "false".to_string()),
-                ("isStatic".to_string(), self.is_static_function(node).to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String("function".to_string())),
+                    ("name".to_string(), serde_json::Value::String(function_name)),
+                    ("returnType".to_string(), serde_json::Value::String(self.extract_return_type_from_declaration(node))),
+                    ("parameters".to_string(), serde_json::Value::String(self.extract_function_parameters_from_declaration(node).join(", "))),
+                    ("isDefinition".to_string(), serde_json::Value::String("false".to_string())),
+                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_function(node).to_string())),
+                ])),
+                doc_comment: None,
+            },
         ))
     }
 
@@ -220,24 +226,27 @@ impl CExtractor {
         let signature = self.build_variable_signature(node, declarator);
         let visibility = if self.is_static_variable(node) { "private" } else { "public" };
 
-        Some(self.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             variable_name.clone(),
             SymbolKind::Variable,
-            Some(signature),
-            visibility,
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "variable".to_string()),
-                ("name".to_string(), variable_name),
-                ("dataType".to_string(), self.extract_variable_type(node)),
-                ("isStatic".to_string(), self.is_static_variable(node).to_string()),
-                ("isExtern".to_string(), self.is_extern_variable(node).to_string()),
-                ("isConst".to_string(), self.is_const_variable(node).to_string()),
-                ("isVolatile".to_string(), self.is_volatile_variable(node).to_string()),
-                ("isArray".to_string(), self.is_array_variable(declarator).to_string()),
-                ("initializer".to_string(), self.extract_initializer(declarator).unwrap_or_default()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String("variable".to_string())),
+                    ("name".to_string(), serde_json::Value::String(variable_name)),
+                    ("dataType".to_string(), serde_json::Value::String(self.extract_variable_type(node))),
+                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_variable(node).to_string())),
+                    ("isExtern".to_string(), serde_json::Value::String(self.is_extern_variable(node).to_string())),
+                    ("isConst".to_string(), serde_json::Value::String(self.is_const_variable(node).to_string())),
+                    ("isVolatile".to_string(), serde_json::Value::String(self.is_volatile_variable(node).to_string())),
+                    ("isArray".to_string(), serde_json::Value::String(self.is_array_variable(declarator).to_string())),
+                    ("initializer".to_string(), serde_json::Value::String(self.extract_initializer(declarator).unwrap_or_default())),
+                ])),
+                doc_comment: None,
+            },
         ))
     }
 
@@ -246,18 +255,21 @@ impl CExtractor {
         let struct_name = self.extract_struct_name(node);
         let signature = self.build_struct_signature(node);
 
-        self.create_symbol(
+        self.base.create_symbol(
             &node,
             struct_name.clone(),
             SymbolKind::Class,
-            Some(signature),
-            "public",
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "struct".to_string()),
-                ("name".to_string(), struct_name),
-                ("fields".to_string(), format!("{} fields", self.extract_struct_fields(node).len())),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String("struct".to_string())),
+                    ("name".to_string(), serde_json::Value::String(struct_name)),
+                    ("fields".to_string(), serde_json::Value::String(format!("{} fields", self.extract_struct_fields(node).len()))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -266,18 +278,21 @@ impl CExtractor {
         let enum_name = self.extract_enum_name(node);
         let signature = self.build_enum_signature(node);
 
-        self.create_symbol(
+        self.base.create_symbol(
             &node,
             enum_name.clone(),
             SymbolKind::Enum,
-            Some(signature),
-            "public",
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), "enum".to_string()),
-                ("name".to_string(), enum_name),
-                ("values".to_string(), format!("{} values", self.extract_enum_values(node).len())),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String("enum".to_string())),
+                    ("name".to_string(), serde_json::Value::String(enum_name)),
+                    ("values".to_string(), serde_json::Value::String(format!("{} values", self.extract_enum_values(node).len()))),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -292,19 +307,22 @@ impl CExtractor {
         let struct_type = if symbol_kind == SymbolKind::Class { "struct" } else { "typedef" };
         let is_struct = symbol_kind == SymbolKind::Class;
 
-        self.create_symbol(
+        self.base.create_symbol(
             &node,
             typedef_name.clone(),
             symbol_kind,
-            Some(signature),
-            "public",
-            parent_id,
-            Some(HashMap::from([
-                ("type".to_string(), struct_type.to_string()),
-                ("name".to_string(), typedef_name),
-                ("underlyingType".to_string(), underlying_type),
-                ("isStruct".to_string(), is_struct.to_string()),
-            ])),
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), serde_json::Value::String(struct_type.to_string())),
+                    ("name".to_string(), serde_json::Value::String(typedef_name)),
+                    ("underlyingType".to_string(), serde_json::Value::String(underlying_type)),
+                    ("isStruct".to_string(), serde_json::Value::String(is_struct.to_string())),
+                ])),
+                doc_comment: None,
+            },
         )
     }
 
@@ -317,17 +335,20 @@ impl CExtractor {
                 let linkage_text = self.base.get_node_text(&child);
                 if linkage_text.contains("\"C\"") {
                     let signature = format!("extern {}", linkage_text);
-                    return Some(self.create_symbol(
+                    return Some(self.base.create_symbol(
                         &node,
                         "extern_c_block".to_string(),
                         SymbolKind::Namespace,
-                        Some(signature),
-                        "public",
-                        parent_id,
-                        Some(HashMap::from([
-                            ("type".to_string(), "linkage_specification".to_string()),
-                            ("linkage".to_string(), "C".to_string()),
-                        ])),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some(HashMap::from([
+                                ("type".to_string(), serde_json::Value::String("linkage_specification".to_string())),
+                                ("linkage".to_string(), serde_json::Value::String("C".to_string())),
+                            ])),
+                            doc_comment: None,
+                        },
                     ));
                 }
             }
@@ -346,18 +367,21 @@ impl CExtractor {
                 // Check if this looks like a typedef name by looking at siblings
                 if self.looks_like_typedef_name(&node, &identifier_name) {
                     let signature = self.build_typedef_signature(&node, &identifier_name);
-                    return Some(self.create_symbol(
+                    return Some(self.base.create_symbol(
                         &node,
                         identifier_name.clone(),
                         SymbolKind::Class,
-                        Some(signature),
-                        "public",
-                        parent_id,
-                        Some(HashMap::from([
-                            ("type".to_string(), "struct".to_string()),
-                            ("name".to_string(), identifier_name),
-                            ("fromExpressionStatement".to_string(), "true".to_string()),
-                        ])),
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: Some(HashMap::from([
+                                ("type".to_string(), serde_json::Value::String("struct".to_string())),
+                                ("name".to_string(), serde_json::Value::String(identifier_name)),
+                                ("fromExpressionStatement".to_string(), serde_json::Value::String("true".to_string())),
+                            ])),
+                            doc_comment: None,
+                        },
                     ));
                 }
             }
@@ -385,19 +409,22 @@ impl CExtractor {
                                 signature = format!("{} = {}", signature, val);
                             }
 
-                            let enum_value_symbol = self.create_symbol(
+                            let enum_value_symbol = self.base.create_symbol(
                                 &enum_child,
                                 name.clone(),
                                 SymbolKind::Constant,
-                                Some(signature),
-                                "public",
-                                Some(parent_enum_id),
-                                Some(HashMap::from([
-                                    ("type".to_string(), "enum_value".to_string()),
-                                    ("name".to_string(), name),
-                                    ("value".to_string(), value.unwrap_or_default()),
-                                    ("enumParent".to_string(), parent_enum_id.to_string()),
-                                ])),
+                                SymbolOptions {
+                                    signature: Some(signature),
+                                    visibility: Some(Visibility::Public),
+                                    parent_id: Some(parent_enum_id.to_string()),
+                                    metadata: Some(HashMap::from([
+                                        ("type".to_string(), serde_json::Value::String("enum_value".to_string())),
+                                        ("name".to_string(), serde_json::Value::String(name)),
+                                        ("value".to_string(), serde_json::Value::String(value.unwrap_or_default())),
+                                        ("enumParent".to_string(), serde_json::Value::String(parent_enum_id.to_string())),
+                                    ])),
+                                    doc_comment: None,
+                                },
                             );
 
                             enum_value_symbols.push(enum_value_symbol);
@@ -1030,10 +1057,12 @@ impl CExtractor {
                 if let Some(called_symbol) = symbols.iter().find(|s| s.name == function_name && s.kind == SymbolKind::Function) {
                     if let Some(containing_symbol) = self.find_containing_symbol(node, symbols) {
                         relationships.push(self.base.create_relationship(
-                            &containing_symbol.id,
-                            &called_symbol.id,
+                            containing_symbol.id.clone(),
+                            called_symbol.id.clone(),
                             crate::extractors::base::RelationshipKind::Calls,
                             &node,
+                            None,
+                            None,
                         ));
                     }
                 }

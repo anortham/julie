@@ -3,7 +3,7 @@
 // Port of Miller's Lua extractor with idiomatic Rust patterns
 // Original: /Users/murphy/Source/miller/src/extractors/lua-extractor.ts
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
 use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
 
@@ -141,7 +141,7 @@ impl LuaExtractor {
         let options = SymbolOptions {
             signature: Some(signature),
             parent_id: method_parent_id,
-            visibility: Some(visibility.to_string()),
+            visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
             ..Default::default()
         };
 
@@ -158,7 +158,7 @@ impl LuaExtractor {
         let options = SymbolOptions {
             signature: Some(signature),
             parent_id: parent_id.map(|s| s.to_string()),
-            visibility: Some("private".to_string()),
+            visibility: Some(Visibility::Private),
             ..Default::default()
         };
 
@@ -212,7 +212,7 @@ impl LuaExtractor {
                             data_type = "function".to_string();
                         }
                         _ => {
-                            data_type = self.infer_type_from_expression(**expression);
+                            data_type = self.infer_type_from_expression(*expression);
                             if data_type == "import" {
                                 kind = SymbolKind::Import;
                             }
@@ -226,7 +226,7 @@ impl LuaExtractor {
                 let options = SymbolOptions {
                     signature: Some(signature.clone()),
                     parent_id: parent_id.map(|s| s.to_string()),
-                    visibility: Some("private".to_string()),
+                    visibility: Some(Visibility::Private),
                     metadata: Some(metadata),
                     ..Default::default()
                 };
@@ -234,16 +234,15 @@ impl LuaExtractor {
                 let mut symbol = self.base.create_symbol(&name_node, name, kind, options);
 
                 // Set dataType as direct property for tests (matching Miller's pattern)
-                if let Some(metadata) = &mut symbol.metadata {
-                    metadata.insert("dataType".to_string(), data_type.into());
-                }
+                symbol.metadata.insert("dataType".to_string(), data_type.into());
 
                 self.symbols.push(symbol);
 
                 // If this is a table, extract its fields with this symbol as parent
                 if let Some(expression) = expression {
                     if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                        self.extract_table_fields(**expression, Some(&self.symbols.last().unwrap().id));
+                        let parent_id = self.symbols.last().unwrap().id.clone();
+                        self.extract_table_fields(*expression, Some(&parent_id));
                     }
                 }
             }
@@ -312,7 +311,7 @@ impl LuaExtractor {
                                 kind = SymbolKind::Function;
                                 data_type = "function".to_string();
                             } else {
-                                data_type = self.infer_type_from_expression(**expression);
+                                data_type = self.infer_type_from_expression(*expression);
                             }
                         }
                     } else if right.kind() == "function_definition" {
@@ -328,7 +327,7 @@ impl LuaExtractor {
                     let options = SymbolOptions {
                         signature: Some(signature),
                         parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some("public".to_string()),
+                        visibility: Some(Visibility::Public),
                         metadata: Some(metadata),
                         ..Default::default()
                     };
@@ -373,7 +372,7 @@ impl LuaExtractor {
                     let options = SymbolOptions {
                         signature: Some(signature),
                         parent_id: property_parent_id,
-                        visibility: Some("public".to_string()),
+                        visibility: Some(Visibility::Public),
                         metadata: Some(metadata),
                         ..Default::default()
                     };
@@ -405,7 +404,7 @@ impl LuaExtractor {
                     let options = SymbolOptions {
                         signature: Some(signature),
                         parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some("public".to_string()), // Global assignments are public
+                        visibility: Some(Visibility::Public), // Global assignments are public
                         metadata: Some(metadata),
                         ..Default::default()
                     };
@@ -460,7 +459,7 @@ impl LuaExtractor {
                             kind = SymbolKind::Method; // Module methods should be Method, not Function
                             data_type = "function".to_string();
                         } else {
-                            data_type = self.infer_type_from_expression(**expression);
+                            data_type = self.infer_type_from_expression(*expression);
                         }
                     }
 
@@ -476,7 +475,7 @@ impl LuaExtractor {
                     let options = SymbolOptions {
                         signature: Some(signature.clone()),
                         parent_id: property_parent_id,
-                        visibility: Some("public".to_string()),
+                        visibility: Some(Visibility::Public),
                         metadata: Some(metadata),
                         ..Default::default()
                     };
@@ -487,7 +486,8 @@ impl LuaExtractor {
                     // If this is a table, extract its fields with this symbol as parent
                     if let Some(expression) = expressions.get(i) {
                         if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                            self.extract_table_fields(**expression, Some(&self.symbols.last().unwrap().id));
+                            let parent_id = self.symbols.last().unwrap().id.clone();
+                            self.extract_table_fields(*expression, Some(&parent_id));
                         }
                     }
                 }
@@ -506,7 +506,7 @@ impl LuaExtractor {
                             kind = SymbolKind::Function;
                             data_type = "function".to_string();
                         } else {
-                            data_type = self.infer_type_from_expression(**expression);
+                            data_type = self.infer_type_from_expression(*expression);
                         }
                     }
 
@@ -516,7 +516,7 @@ impl LuaExtractor {
                     let options = SymbolOptions {
                         signature: Some(signature.clone()),
                         parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some("public".to_string()), // Global variables are public
+                        visibility: Some(Visibility::Public), // Global variables are public
                         metadata: Some(metadata),
                         ..Default::default()
                     };
@@ -527,7 +527,8 @@ impl LuaExtractor {
                     // If this is a table, extract its fields with this symbol as parent
                     if let Some(expression) = expressions.get(i) {
                         if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                            self.extract_table_fields(**expression, Some(&self.symbols.last().unwrap().id));
+                            let parent_id = self.symbols.last().unwrap().id.clone();
+                            self.extract_table_fields(*expression, Some(&parent_id));
                         }
                     }
                 }
@@ -539,11 +540,14 @@ impl LuaExtractor {
 
     fn extract_table_fields(&mut self, node: Node, parent_id: Option<&str>) {
         // Extract fields from table constructor: { field = value, method = function() end }
-        if let Some(field_list) = self.find_child_by_type(node, "field_list") {
-            let mut cursor = field_list.walk();
-            for child in field_list.children(&mut cursor) {
-                if child.kind() == "field" {
-                    self.extract_table_field(child, parent_id);
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "field_list" {
+                let mut field_cursor = child.walk();
+                for field_child in child.children(&mut field_cursor) {
+                    if field_child.kind() == "field" {
+                        self.extract_table_field(field_child, parent_id);
+                    }
                 }
             }
         }
@@ -585,7 +589,7 @@ impl LuaExtractor {
         let options = SymbolOptions {
             signature: Some(signature),
             parent_id: parent_id.map(|s| s.to_string()),
-            visibility: Some("public".to_string()),
+            visibility: Some(Visibility::Public),
             metadata: Some(metadata),
             ..Default::default()
         };
@@ -626,27 +630,28 @@ impl LuaExtractor {
                 let class_name = &symbol.name;
 
                 // Pattern 1: Tables with metatable setup (local Class = {})
-                let is_table = symbol.metadata.as_ref()
-                    .and_then(|m| m.get("dataType"))
+                let is_table = symbol.metadata.get("dataType")
                     .map(|dt| dt.as_str() == Some("table"))
                     .unwrap_or(false);
 
                 // Pattern 2: Variables created with setmetatable (local Dog = setmetatable({}, Animal))
-                let is_setmetatable = symbol.signature.contains("setmetatable(");
+                let is_setmetatable = symbol.signature.as_ref()
+                    .map(|s| s.contains("setmetatable("))
+                    .unwrap_or(false);
 
                 // Only check class patterns for tables or setmetatable creations
                 if is_table || is_setmetatable {
                     // Look for metatable patterns that indicate this is a class
                     let has_index_pattern = self.symbols.iter().any(|s| {
-                        s.signature.contains(&format!("{}.__index = {}", class_name, class_name))
+                        s.signature.as_ref().map(|sig| sig.contains(&format!("{}.__index = {}", class_name, class_name))).unwrap_or(false)
                     });
 
                     let has_new_method = self.symbols.iter().any(|s| {
-                        s.name == "new" && s.signature.contains(&format!("{}.new", class_name))
+                        s.name == "new" && s.signature.as_ref().map(|sig| sig.contains(&format!("{}.new", class_name))).unwrap_or(false)
                     });
 
                     let has_colon_methods = self.symbols.iter().any(|s| {
-                        s.kind == SymbolKind::Method && s.signature.contains(&format!("{}:", class_name))
+                        s.kind == SymbolKind::Method && s.signature.as_ref().map(|sig| sig.contains(&format!("{}:", class_name))).unwrap_or(false)
                     });
 
                     // If it has metatable patterns, upgrade to Class
@@ -665,7 +670,7 @@ impl LuaExtractor {
             if is_setmetatable {
                 if let Some(captures) = regex::Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)")
                     .ok()
-                    .and_then(|re| re.captures(&signature))
+                    .and_then(|re| signature.as_ref().and_then(|s| re.captures(s)))
                 {
                     if let Some(parent_class_name) = captures.get(1) {
                         let parent_class_name = parent_class_name.as_str();
@@ -673,8 +678,7 @@ impl LuaExtractor {
                         let parent_exists = self.symbols.iter().any(|s| {
                             s.name == parent_class_name &&
                             (s.kind == SymbolKind::Class ||
-                             s.metadata.as_ref()
-                                 .and_then(|m| m.get("dataType"))
+                             s.metadata.get("dataType")
                                  .map(|dt| dt.as_str() == Some("table"))
                                  .unwrap_or(false))
                         });
@@ -689,7 +693,7 @@ impl LuaExtractor {
         }
     }
 
-    fn find_child_by_type(&self, node: Node, node_type: &str) -> Option<Node> {
+    fn find_child_by_type<'a>(&self, node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == node_type {
