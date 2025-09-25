@@ -128,7 +128,7 @@ end
         let user_name = symbols.iter().find(|s| s.name == "userName");
         assert!(user_name.is_some());
         assert_eq!(user_name.unwrap().kind, SymbolKind::Variable);
-        assert_eq!(user_name.unwrap().visibility, Some(Visibility::Private));
+        assert_eq!(user_name.unwrap().visibility, "private");
         assert!(user_name.unwrap().signature.as_ref().unwrap().contains("local userName = \"John Doe\""));
 
         let is_active = symbols.iter().find(|s| s.name == "isActive");
@@ -553,11 +553,11 @@ end
         let public_function = symbols.iter().find(|s| s.name == "publicFunction");
         assert!(public_function.is_some());
         assert_eq!(public_function.unwrap().kind, SymbolKind::Function);
-        assert_eq!(public_function.unwrap().visibility, Some(Visibility::Public));
+        assert_eq!(public_function.unwrap().visibility, "public");
 
         let private_function = symbols.iter().find(|s| s.name == "privateFunction");
         assert!(private_function.is_some());
-        assert_eq!(private_function.unwrap().visibility, Some(Visibility::Private));
+        assert_eq!(private_function.unwrap().visibility, "private");
 
         // Module table pattern
         let m = symbols.iter().find(|s| s.name == "M");
@@ -820,11 +820,11 @@ end
         assert!(process_numbers.is_some());
 
         // Local variables in control structures should be detected
-        let error_msg = symbols.iter().find(|s| s.name == "errorMsg" && s.visibility == Some(Visibility::Private));
+        let error_msg = symbols.iter().find(|s| s.name == "errorMsg" && s.visibility == "private");
         assert!(error_msg.is_some());
         assert_eq!(error_msg.unwrap().kind, SymbolKind::Variable);
 
-        let status = symbols.iter().find(|s| s.name == "status" && s.visibility == Some(Visibility::Private));
+        let status = symbols.iter().find(|s| s.name == "status" && s.visibility == "private");
         assert!(status.is_some());
 
         // Loop-related functions
@@ -851,7 +851,7 @@ end
         let iter = symbols.iter().find(|s| s.name == "iter" && s.parent_id == Some(fibonacci.unwrap().id.clone()));
         assert!(iter.is_some());
         assert_eq!(iter.unwrap().kind, SymbolKind::Function);
-        assert_eq!(iter.unwrap().visibility, Some(Visibility::Private));
+        assert_eq!(iter.unwrap().visibility, "private");
     }
 
     #[test]
@@ -1127,7 +1127,7 @@ end
 
         let run_handlers = symbols.iter().find(|s| s.name == "_runHandlers" && s.parent_id == Some(promise.unwrap().id.clone()));
         assert!(run_handlers.is_some());
-        assert_eq!(run_handlers.unwrap().visibility, Some(Visibility::Private));
+        assert_eq!(run_handlers.unwrap().visibility, "private");
 
         // Async/await helpers
         let async_fn = symbols.iter().find(|s| s.name == "async");

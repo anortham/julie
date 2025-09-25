@@ -138,7 +138,7 @@ var experience: float:
 
         let enemy = symbols.iter().find(|s| s.name == "Enemy");
         assert!(enemy.is_some());
-        assert_eq!(enemy.metadata.as_ref().and_then(|m| m.get("baseClass").map(|v| v.as_str().unwrap())), Some("Actor"));
+        assert_eq!(enemy.unwrap().metadata.as_ref().and_then(|m| m.get("baseClass").map(|v| v.as_str().unwrap())), Some("Actor"));
 
         // Inner class
         let health_component = symbols.iter().find(|s| s.name == "HealthComponent");

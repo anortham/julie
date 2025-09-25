@@ -78,8 +78,8 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
                 .expect("Error loading Ruby grammar");
         }
         "php" => {
-            parser.set_language(&tree_sitter_php::LANGUAGE.into())
-                .expect("Error loading PHP grammar");
+            // TODO: Fix tree-sitter-php integration - crate doesn't expose expected API
+            panic!("PHP parser not yet integrated - need to investigate tree-sitter-php crate API");
         }
         "bash" => {
             parser.set_language(&tree_sitter_bash::LANGUAGE.into())
