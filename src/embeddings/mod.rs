@@ -1,30 +1,147 @@
-// Julie's Embeddings Module
+// Julie's Embeddings Module - The Semantic Bridge
 //
-// This module provides semantic search capabilities using ONNX embeddings.
-// It generates vector representations of code for meaning-based search.
+// This module provides semantic search capabilities using FastEmbed for easy model integration.
+// It enables cross-language understanding by generating meaning-based vector representations.
 
 use anyhow::Result;
+use fastembed::{TextEmbedding, EmbeddingModel, TextInitOptions};
+use std::path::PathBuf;
+use crate::extractors::base::Symbol;
 
-/// Embedding service for semantic search
-pub struct EmbeddingService {
-    // TODO: Add ONNX runtime and model
+pub mod cross_language;
+pub mod vector_store;
+
+/// Context information for generating richer embeddings
+#[derive(Debug, Clone)]
+pub struct CodeContext {
+    pub parent_symbol: Option<Box<Symbol>>,
+    pub surrounding_code: Option<String>,
+    pub file_context: Option<String>,
 }
 
-impl EmbeddingService {
-    pub fn new() -> Result<Self> {
-        // TODO: Initialize ONNX runtime and load models
-        Ok(Self {})
+impl CodeContext {
+    pub fn new() -> Self {
+        Self {
+            parent_symbol: None,
+            surrounding_code: None,
+            file_context: None,
+        }
     }
 
-    pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
-        // TODO: Generate embeddings using ONNX
-        Ok(vec![])
+    pub fn from_symbol(symbol: &Symbol) -> Self {
+        Self {
+            parent_symbol: None,
+            surrounding_code: None,
+            file_context: Some(symbol.file_path.clone()),
+        }
+    }
+}
+
+/// The embedding engine that powers semantic code understanding
+pub struct EmbeddingEngine {
+    model: TextEmbedding,
+    model_name: String,
+    dimensions: usize,
+}
+
+impl EmbeddingEngine {
+    /// Create a new embedding engine with the specified model
+    pub fn new(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
+        let (model, dimensions) = match model_name {
+            "bge-small" => {
+                let options = TextInitOptions::new(EmbeddingModel::BGESmallENV15)
+                    .with_cache_dir(cache_dir);
+                (TextEmbedding::try_new(options)?, 384)
+            }
+            _ => {
+                // Default to BGE Small for now
+                let options = TextInitOptions::new(EmbeddingModel::BGESmallENV15)
+                    .with_cache_dir(cache_dir);
+                (TextEmbedding::try_new(options)?, 384)
+            }
+        };
+
+        Ok(Self {
+            model,
+            model_name: model_name.to_string(),
+            dimensions,
+        })
     }
 
-    pub async fn similarity_search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<SimilarityResult>> {
-        // TODO: Perform vector similarity search
-        Ok(vec![])
+    /// Generate context-aware embedding for a symbol
+    pub fn embed_symbol(&mut self, symbol: &Symbol, context: &CodeContext) -> Result<Vec<f32>> {
+        let enriched_text = self.build_embedding_text(symbol, context);
+
+        // Generate embedding
+        let embeddings = self.model.embed(vec![enriched_text], None)?;
+        Ok(embeddings.into_iter().next().unwrap())
     }
+
+    /// Generate embedding for arbitrary text
+    pub fn embed_text(&mut self, text: &str) -> Result<Vec<f32>> {
+        let embeddings = self.model.embed(vec![text.to_string()], None)?;
+        Ok(embeddings.into_iter().next().unwrap())
+    }
+
+    /// Get the dimensions of embeddings produced by this model
+    pub fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+
+    /// Get the model name
+    pub fn model_name(&self) -> &str {
+        &self.model_name
+    }
+
+    pub fn build_embedding_text(&self, symbol: &Symbol, context: &CodeContext) -> String {
+        // Combine multiple sources of information for richer embeddings
+        let mut parts = vec![
+            symbol.name.clone(),
+            symbol.kind.to_string(),
+        ];
+
+        // Add signature if available
+        if let Some(sig) = &symbol.signature {
+            parts.push(sig.clone());
+        }
+
+        // Add parent context
+        if let Some(parent) = &context.parent_symbol {
+            parts.push(format!("in {}", parent.name));
+        }
+
+        // Type information would be included in signature if available
+        // (removed type_info field since it doesn't exist in Symbol struct)
+
+        // Add surrounding code context (first few lines)
+        if let Some(surrounding) = &context.surrounding_code {
+            parts.push(surrounding.clone());
+        }
+
+        // Add filename context (helps with architectural understanding)
+        if let Some(filename) = std::path::Path::new(&symbol.file_path).file_name() {
+            parts.push(filename.to_string_lossy().to_string());
+        }
+
+        parts.join(" ")
+    }
+}
+
+/// Calculate cosine similarity between two embedding vectors
+pub fn cosine_similarity(vec_a: &[f32], vec_b: &[f32]) -> f32 {
+    if vec_a.len() != vec_b.len() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = vec_a.iter().zip(vec_b.iter()).map(|(a, b)| a * b).sum();
+    let norm_a: f32 = vec_a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = vec_b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+
+    dot_product / (norm_a * norm_b)
 }
 
 /// Similarity search result
@@ -33,4 +150,195 @@ pub struct SimilarityResult {
     pub symbol_id: String,
     pub similarity_score: f32,
     pub embedding: Vec<f32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::extractors::base::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_embedding_engine_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        // Test creating with different models
+        let engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        assert_eq!(engine.dimensions(), 384);
+        assert_eq!(engine.model_name(), "bge-small");
+    }
+
+    #[tokio::test]
+    async fn test_symbol_embedding_generation() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+
+        // Create a test symbol
+        let symbol = Symbol {
+            id: "test-id".to_string(),
+            name: "getUserData".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: "/test/user.ts".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 15,
+            end_column: 1,
+            start_byte: 200,
+            end_byte: 350,
+            signature: Some("function getUserData(): Promise<User>".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+        };
+
+        let context = CodeContext::from_symbol(&symbol);
+        let embedding = engine.embed_symbol(&symbol, &context).unwrap();
+
+        // Should generate embedding with correct dimensions
+        assert_eq!(embedding.len(), 384);
+
+        // Should be normalized (roughly)
+        let magnitude: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(magnitude > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_text_embedding_generation() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+
+        let embedding1 = engine.embed_text("function getUserData").unwrap();
+        let embedding2 = engine.embed_text("function getUserData").unwrap();
+        let embedding3 = engine.embed_text("class UserRepository").unwrap();
+
+        // Same text should produce identical embeddings
+        assert_eq!(embedding1, embedding2);
+
+        // Different text should produce different embeddings
+        assert_ne!(embedding1, embedding3);
+
+        // Should have correct dimensions
+        assert_eq!(embedding1.len(), 384);
+    }
+
+    #[tokio::test]
+    async fn test_cross_language_similarity() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+
+        // Test similar concepts in different languages
+        let ts_embedding = engine.embed_text("interface User { id: string; name: string; }").unwrap();
+        let cs_embedding = engine.embed_text("class User { public string Id; public string Name; }").unwrap();
+        let sql_embedding = engine.embed_text("CREATE TABLE users (id VARCHAR, name VARCHAR)").unwrap();
+
+        // Should have high similarity for same concept
+        let ts_cs_similarity = cosine_similarity(&ts_embedding, &cs_embedding);
+        let ts_sql_similarity = cosine_similarity(&ts_embedding, &sql_embedding);
+
+        // Should be reasonably similar (>0.5) for same concept across languages
+        assert!(ts_cs_similarity > 0.5, "TypeScript and C# similarity: {}", ts_cs_similarity);
+        assert!(ts_sql_similarity > 0.3, "TypeScript and SQL similarity: {}", ts_sql_similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity() {
+        let vec_a = vec![1.0, 0.0, 0.0];
+        let vec_b = vec![1.0, 0.0, 0.0];
+        let vec_c = vec![0.0, 1.0, 0.0];
+
+        // Identical vectors should have similarity of 1.0
+        assert!((cosine_similarity(&vec_a, &vec_b) - 1.0).abs() < f32::EPSILON);
+
+        // Orthogonal vectors should have similarity of 0.0
+        assert!((cosine_similarity(&vec_a, &vec_c) - 0.0).abs() < f32::EPSILON);
+
+        // Different lengths should return 0.0
+        let vec_d = vec![1.0, 0.0];
+        assert_eq!(cosine_similarity(&vec_a, &vec_d), 0.0);
+    }
+
+    #[test]
+    fn test_code_context_creation() {
+        let context = CodeContext::new();
+        assert!(context.parent_symbol.is_none());
+        assert!(context.surrounding_code.is_none());
+        assert!(context.file_context.is_none());
+
+        // Test context from symbol
+        let symbol = Symbol {
+            id: "test".to_string(),
+            name: "test".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "/test.rs".to_string(),
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: 10,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+        };
+
+        let context = CodeContext::from_symbol(&symbol);
+        assert_eq!(context.file_context, Some("/test.rs".to_string()));
+    }
+
+    #[test]
+    fn test_build_embedding_text() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        let engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+
+        let symbol = Symbol {
+            id: "test".to_string(),
+            name: "getUserData".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: "/src/services/user.ts".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 15,
+            end_column: 1,
+            start_byte: 200,
+            end_byte: 350,
+            signature: Some("function getUserData(): Promise<User>".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+        };
+
+        let mut context = CodeContext::from_symbol(&symbol);
+        context.surrounding_code = Some("// Fetch user data from API".to_string());
+
+        let embedding_text = engine.build_embedding_text(&symbol, &context);
+
+        // Should include all the important information
+        assert!(embedding_text.contains("getUserData"));
+        assert!(embedding_text.contains("function"));  // SymbolKind::Function.to_string() returns "function" lowercase
+        assert!(embedding_text.contains("function getUserData(): Promise<User>"));
+        assert!(embedding_text.contains("user.ts"));
+        assert!(embedding_text.contains("Fetch user data from API"));
+    }
 }

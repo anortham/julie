@@ -324,11 +324,22 @@ debug!(file_path = %path, symbols_found = symbols.len(), "Extracted symbols");
 - `rayon`: Data parallelism
 
 ### Adding New Dependencies
-Before adding any dependency, consider:
-1. Does it break single binary deployment?
-2. Does it require external libraries?
-3. Is it cross-platform compatible?
-4. Does it impact startup time significantly?
+
+**🔴 CRITICAL: ALWAYS verify dependency versions first!**
+
+Before adding any dependency:
+1. **Use crates.io search to verify the latest version**: https://crates.io/search?q=CRATE_NAME
+2. **Use web search to verify the API and examples** - Don't guess API!
+3. **Check current documentation and examples** for breaking changes
+4. Does it break single binary deployment?
+5. Does it require external libraries?
+6. Is it cross-platform compatible?
+7. Does it impact startup time significantly?
+
+**Examples**:
+- Before adding `tokio = "1.47"`, search https://crates.io/search?q=tokio (latest is 1.47.1)
+- Before adding `blake3 = "1.5"`, search https://crates.io/search?q=blake3 (latest is 1.8.0)
+- Search "FastEmbed Rust API documentation" to understand current API and avoid compilation errors
 
 ---
 

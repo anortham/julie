@@ -64,11 +64,11 @@ tree-sitter-zig = "1.1.2"
 # Search engine
 tantivy = "0.25"
 
-# Embeddings (using ort for ONNX compatibility)
-ort = "2.0.0-rc.10"
+# Embeddings (using FastEmbed for easy model integration)
+fastembed = "5.2"
 
 # Async runtime
-tokio = { version = "1.47", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 
 # Parallelism
 rayon = "1.10"
@@ -92,7 +92,10 @@ thiserror = "2.0"
 anyhow = "1.0"
 md5 = "0.7"
 regex = "1.11"
-blake3 = "1.5"
+blake3 = "1.8"
+hex = "0.4"
+shellexpand = "3.1"
+sha2 = "0.10"
 
 # Logging
 tracing = "0.1"

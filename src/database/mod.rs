@@ -289,6 +289,34 @@ impl SymbolDatabase {
         }
     }
 
+    /// Update file hash for incremental change detection
+    pub fn update_file_hash(&self, file_path: &str, new_hash: &str) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "UPDATE files SET hash = ?1, last_indexed = ?2 WHERE path = ?3",
+            params![new_hash, now, file_path],
+        )?;
+
+        debug!("Updated hash for file: {}", file_path);
+        Ok(())
+    }
+
+    /// Delete file record and associated symbols
+    pub fn delete_file_record(&self, file_path: &str) -> Result<()> {
+        // Symbols will be cascade-deleted due to foreign key constraint
+        let count = self.conn.execute(
+            "DELETE FROM files WHERE path = ?1",
+            params![file_path],
+        )?;
+
+        debug!("Deleted file record for: {} ({} rows affected)", file_path, count);
+        Ok(())
+    }
+
     /// Store symbols in a transaction
     pub async fn store_symbols(&self, symbols: &[Symbol]) -> Result<()> {
         if symbols.is_empty() {

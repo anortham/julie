@@ -9,6 +9,7 @@ pub mod search;
 pub mod embeddings;
 pub mod utils;
 pub mod workspace;
+pub mod watcher;
 
 // Re-export common types
 pub use workspace::{JulieWorkspace, WorkspaceConfig, WorkspaceHealth};

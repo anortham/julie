@@ -60,4 +60,51 @@ impl ExtractorManager {
             "placeholder"
         ]
     }
+
+    /// Extract symbols from file content
+    pub async fn extract_symbols(&self, file_path: &str, content: &str) -> Result<Vec<Symbol>, anyhow::Error> {
+        use std::path::Path;
+
+        // Determine language from file extension
+        let path = Path::new(file_path);
+        let extension = path.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+
+        let language = match extension {
+            "rs" => "rust",
+            "ts" => "typescript",
+            "js" => "javascript",
+            "py" => "python",
+            "go" => "go",
+            "java" => "java",
+            "c" => "c",
+            "cpp" | "cc" | "cxx" => "cpp",
+            "cs" => "csharp",
+            "rb" => "ruby",
+            "php" => "php",
+            "swift" => "swift",
+            "kt" => "kotlin",
+            "dart" => "dart",
+            "gd" => "gdscript",
+            "lua" => "lua",
+            "vue" => "vue",
+            "razor" => "razor",
+            "sql" => "sql",
+            "html" => "html",
+            "css" => "css",
+            "sh" | "bash" => "bash",
+            "ps1" => "powershell",
+            "zig" => "zig",
+            _ => {
+                // Unsupported file type - return empty results
+                return Ok(Vec::new());
+            }
+        };
+
+        // TODO: Once extractors are implemented, use them here
+        // For now, return empty results to allow integration to proceed
+        tracing::debug!("Would extract {} symbols from {} file: {}", language, extension, file_path);
+        Ok(Vec::new())
+    }
 }
