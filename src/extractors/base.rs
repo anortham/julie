@@ -200,6 +200,7 @@ pub enum RelationshipKind {
     Overrides,
     Contains,
     Joins,
+    Composition,
 }
 
 impl std::fmt::Display for RelationshipKind {
@@ -218,6 +219,7 @@ impl std::fmt::Display for RelationshipKind {
             RelationshipKind::Overrides => write!(f, "overrides"),
             RelationshipKind::Contains => write!(f, "contains"),
             RelationshipKind::Joins => write!(f, "joins"),
+            RelationshipKind::Composition => write!(f, "composition"),
         }
     }
 }
@@ -259,6 +261,7 @@ impl RelationshipKind {
             RelationshipKind::Overrides => "overrides",
             RelationshipKind::Contains => "contains",
             RelationshipKind::Joins => "joins",
+            RelationshipKind::Composition => "composition",
         }.to_string()
     }
 }

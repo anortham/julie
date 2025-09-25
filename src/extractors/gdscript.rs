@@ -7,6 +7,7 @@ pub struct GDScriptExtractor {
     base: BaseExtractor,
     pending_inheritance: HashMap<String, String>, // className -> baseClassName
     processed_positions: HashSet<String>, // Track processed node positions
+    current_class_context: Option<String>, // Current class ID for scope tracking
 }
 
 impl GDScriptExtractor {
@@ -15,6 +16,7 @@ impl GDScriptExtractor {
             base: BaseExtractor::new(language, file_path, content),
             pending_inheritance: HashMap::new(),
             processed_positions: HashSet::new(),
+            current_class_context: None,
         }
     }
 
@@ -22,6 +24,7 @@ impl GDScriptExtractor {
         let mut symbols = Vec::new();
         self.pending_inheritance.clear();
         self.processed_positions.clear();
+        self.current_class_context = None;
 
         let root_node = tree.root_node();
         // First pass: collect inheritance information
@@ -133,16 +136,22 @@ impl GDScriptExtractor {
         match node.kind() {
             "class_name_statement" => {
                 if let Some(symbol) = self.extract_class_name_statement(node, parent_id) {
+                    // Set current class context for class_name classes
+                    self.current_class_context = Some(symbol.id.clone());
                     extracted_symbol = Some(symbol);
                 }
             }
             "class" => {
                 if let Some(symbol) = self.extract_class_definition(node, parent_id) {
+                    // Set current class context for inner classes
+                    self.current_class_context = Some(symbol.id.clone());
                     extracted_symbol = Some(symbol);
                 }
             }
             "function_definition" => {
-                if let Some(symbol) = self.extract_function_definition(node, parent_id, symbols) {
+                // Check if we should use the current class context as parent
+                let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
+                if let Some(symbol) = self.extract_function_definition(node, effective_parent_id.as_ref(), symbols) {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -150,14 +159,16 @@ impl GDScriptExtractor {
                 // Skip if this func node is part of a function_definition
                 if let Some(parent) = node.parent() {
                     if parent.kind() != "function_definition" {
-                        if let Some(symbol) = self.extract_function_definition(node, parent_id, symbols) {
+                        let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
+                        if let Some(symbol) = self.extract_function_definition(node, effective_parent_id.as_ref(), symbols) {
                             extracted_symbol = Some(symbol);
                         }
                     }
                 }
             }
             "constructor_definition" => {
-                if let Some(symbol) = self.extract_constructor_definition(node, parent_id) {
+                let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
+                if let Some(symbol) = self.extract_constructor_definition(node, effective_parent_id.as_ref()) {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -183,6 +194,12 @@ impl GDScriptExtractor {
             }
             "enum_definition" => {
                 if let Some(symbol) = self.extract_enum_definition(node, parent_id) {
+                    extracted_symbol = Some(symbol);
+                }
+            }
+            "identifier" => {
+                // Check if this identifier is an enum member
+                if let Some(symbol) = self.extract_enum_member(node, parent_id, symbols) {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -366,15 +383,19 @@ impl GDScriptExtractor {
             if let Some(parent_symbol) = symbols.iter().find(|s| &s.id == parent_id) {
                 if parent_symbol.kind == SymbolKind::Class {
                     let is_implicit_class = parent_symbol.signature.as_ref()
-                        .map(|s| s.contains("extends") && !s.contains("class_name"))
+                        .map(|s| s.contains("extends") && !s.contains("class_name") && !s.contains("class "))
                         .unwrap_or(false);
 
                     let is_explicit_class = parent_symbol.signature.as_ref()
                         .map(|s| s.contains("class_name"))
                         .unwrap_or(false);
 
+                    let is_inner_class = parent_symbol.signature.as_ref()
+                        .map(|s| s.contains("class ") && !s.contains("class_name"))
+                        .unwrap_or(false);
+
                     if is_implicit_class {
-                        // In implicit classes, lifecycle callbacks are methods, custom functions remain functions
+                        // In implicit classes, only lifecycle callbacks and setget functions are methods
                         let lifecycle_prefixes = ["_ready", "_enter_tree", "_exit_tree", "_process", "_physics_process",
                                                 "_input", "_unhandled_input", "_unhandled_key_input", "_notification",
                                                 "_draw", "_on_", "_handle_"];
@@ -382,13 +403,16 @@ impl GDScriptExtractor {
                         let is_lifecycle_callback = name.starts_with('_') &&
                             lifecycle_prefixes.iter().any(|prefix| name.starts_with(prefix));
 
-                        if is_lifecycle_callback {
+                        // Check if this function is associated with a property (setget)
+                        let is_setget_function = self.is_setget_function(&name, symbols);
+
+                        if is_lifecycle_callback || is_setget_function {
                             SymbolKind::Method
                         } else {
                             SymbolKind::Function
                         }
-                    } else if is_explicit_class {
-                        // In explicit classes, all functions are methods
+                    } else if is_explicit_class || is_inner_class {
+                        // In explicit classes and inner classes, all functions are methods
                         SymbolKind::Method
                     } else {
                         SymbolKind::Method
@@ -596,6 +620,50 @@ impl GDScriptExtractor {
         Some(enum_symbol)
     }
 
+    fn extract_enum_member(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
+        // Check if this identifier is inside an enum by checking the parent chain
+        let enum_parent = self.find_enum_parent(node, symbols)?;
+
+        let name = self.base.get_node_text(&node);
+
+        // Skip if this is a type annotation or other non-member identifier
+        if name.is_empty() || name.chars().next()?.is_lowercase() {
+            return None;
+        }
+
+        Some(self.base.create_symbol(
+            &node,
+            name,
+            SymbolKind::EnumMember,
+            SymbolOptions {
+                signature: Some(self.base.get_node_text(&node)),
+                visibility: Some(Visibility::Public),
+                parent_id: Some(enum_parent.id.clone()),
+                metadata: None,
+                doc_comment: None,
+            },
+        ))
+    }
+
+    fn find_enum_parent<'a>(&self, node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+        // Walk up the AST to find if we're inside an enum definition
+        let mut current = node.parent()?;
+
+        while let Some(parent) = current.parent() {
+            if current.kind() == "enum_definition" {
+                // Find the corresponding enum symbol
+                let enum_position = current.start_position();
+                return symbols.iter().find(|s| {
+                    s.kind == SymbolKind::Enum &&
+                    s.start_line == (enum_position.row + 1) as u32 &&
+                    s.start_column == enum_position.column as u32
+                });
+            }
+            current = parent;
+        }
+        None
+    }
+
     fn extract_variable_from_statement(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
         // For variable_statement nodes, find the var child and extract from there
         let var_node = self.find_child_by_type(node, "var")?;
@@ -800,6 +868,42 @@ impl GDScriptExtractor {
         }
     }
 
+    fn determine_effective_parent_id(&self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<String> {
+        // If we have a current class context, check if this function should belong to it
+        if let Some(class_id) = &self.current_class_context {
+            // Find the class symbol to get its context
+            if let Some(class_symbol) = symbols.iter().find(|s| &s.id == class_id) {
+                let class_start_col = class_symbol.start_column;
+                let func_start_col = node.start_position().column as u32;
+
+                // For class_name classes, functions at the same level or slightly indented belong to the class
+                let is_class_name_class = class_symbol.signature.as_ref()
+                    .map(|s| s.contains("class_name"))
+                    .unwrap_or(false);
+
+                // For inner classes, functions must be indented more than the class
+                let is_inner_class = class_symbol.signature.as_ref()
+                    .map(|s| s.contains("class ") && !s.contains("class_name"))
+                    .unwrap_or(false);
+
+                if is_class_name_class {
+                    // For class_name classes, functions at same level or indented belong to the class
+                    if func_start_col >= class_start_col {
+                        return Some(class_id.clone());
+                    }
+                } else if is_inner_class {
+                    // For inner classes, functions must be indented more than the class
+                    if func_start_col > class_start_col {
+                        return Some(class_id.clone());
+                    }
+                }
+            }
+        }
+
+        // Otherwise, use the provided parent_id
+        parent_id.cloned()
+    }
+
     fn find_child_by_type<'a>(&self, node: Node<'a>, child_type: &str) -> Option<Node<'a>> {
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -809,5 +913,19 @@ impl GDScriptExtractor {
             }
         }
         None
+    }
+
+    fn is_setget_function(&self, function_name: &str, symbols: &[Symbol]) -> bool {
+        // Check if this function name appears in any setget property signature
+        symbols.iter().any(|s| {
+            s.kind == SymbolKind::Field &&
+            s.signature.as_ref().map_or(false, |sig| {
+                sig.contains("setget") && (
+                    sig.contains(&format!("setget {}", function_name)) ||
+                    sig.contains(&format!(", {}", function_name)) ||
+                    sig.contains(&format!("{}, ", function_name))
+                )
+            })
+        })
     }
 }

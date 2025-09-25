@@ -4,13 +4,13 @@ use crate::tests::test_utils::{init_parser};
 
 // Test helper function
 fn extract_symbols(code: &str) -> Vec<Symbol> {
-    let tree = init_parser("gdscript", code);
+    let tree = init_parser(code, "gdscript");
     let mut extractor = GDScriptExtractor::new("gdscript".to_string(), "test.gd".to_string(), code.to_string());
     extractor.extract_symbols(&tree)
 }
 
 fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
-    let tree = init_parser("gdscript", code);
+    let tree = init_parser(code, "gdscript");
     let mut extractor = GDScriptExtractor::new("gdscript".to_string(), "test.gd".to_string(), code.to_string());
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
@@ -143,10 +143,11 @@ var experience: float:
         // Inner class
         let health_component = symbols.iter().find(|s| s.name == "HealthComponent");
         assert!(health_component.is_some());
-        assert_eq!(health_component.unwrap().kind, SymbolKind::Class);
+        let health_component = health_component.unwrap();
+        assert_eq!(health_component.kind, SymbolKind::Class);
 
         // Inner class methods
-        let take_damage = symbols.iter().find(|s| s.name == "take_damage" && s.parent_id == health_component.unwrap().parent_id);
+        let take_damage = symbols.iter().find(|s| s.name == "take_damage" && s.parent_id == Some(health_component.id.clone()));
         assert!(take_damage.is_some());
         assert_eq!(take_damage.unwrap().kind, SymbolKind::Method);
         assert!(take_damage.unwrap().signature.as_ref().unwrap().contains("func take_damage(amount: int) -> bool"));
@@ -207,7 +208,7 @@ var experience: float:
         assert!(direction_enum.is_some());
 
         // Enum values
-        let idle = symbols.iter().find(|s| s.name == "IDLE" && s.parent_id == state_enum.unwrap().parent_id);
+        let idle = symbols.iter().find(|s| s.name == "IDLE" && s.parent_id == Some(state_enum.unwrap().id.clone()));
         assert!(idle.is_some());
         assert_eq!(idle.unwrap().kind, SymbolKind::EnumMember);
 
@@ -533,7 +534,7 @@ func outer_function(data: Array):
         assert!(outer_function.is_some());
 
         // Inner function should be detected
-        let inner_processor = symbols.iter().find(|s| s.name == "inner_processor" && s.parent_id == outer_function.unwrap().parent_id);
+        let inner_processor = symbols.iter().find(|s| s.name == "inner_processor" && s.parent_id == Some(outer_function.unwrap().id.clone()));
         assert!(inner_processor.is_some());
         assert_eq!(inner_processor.unwrap().kind, SymbolKind::Function);
     }
@@ -1333,13 +1334,13 @@ func _cleanup_resources():
         assert_eq!(number_range.unwrap().kind, SymbolKind::Class);
 
         // Iterator methods
-        let iter_init = symbols.iter().find(|s| s.name == "_iter_init" && s.parent_id == number_range.unwrap().parent_id);
+        let iter_init = symbols.iter().find(|s| s.name == "_iter_init" && s.parent_id == Some(number_range.unwrap().id.clone()));
         assert!(iter_init.is_some());
 
-        let iter_next = symbols.iter().find(|s| s.name == "_iter_next" && s.parent_id == number_range.unwrap().parent_id);
+        let iter_next = symbols.iter().find(|s| s.name == "_iter_next" && s.parent_id == Some(number_range.unwrap().id.clone()));
         assert!(iter_next.is_some());
 
-        let iter_get = symbols.iter().find(|s| s.name == "_iter_get" && s.parent_id == number_range.unwrap().parent_id);
+        let iter_get = symbols.iter().find(|s| s.name == "_iter_get" && s.parent_id == Some(number_range.unwrap().id.clone()));
         assert!(iter_get.is_some());
 
         // Iterator usage
@@ -1682,13 +1683,13 @@ func load_from_file(path: String = "user://settings.cfg"):
         assert_eq!(levels.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("Array[LevelData]"));
 
         // Serialization methods
-        let serialize = symbols.iter().find(|s| s.name == "serialize" && s.parent_id == game_data.parent_id);
+        let serialize = symbols.iter().find(|s| s.name == "serialize" && s.parent_id == Some(game_data.id.clone()));
         assert!(serialize.is_some());
         let serialize = serialize.unwrap();
         assert_eq!(serialize.kind, SymbolKind::Method);
         assert!(serialize.signature.as_ref().unwrap().contains("-> Dictionary"));
 
-        let deserialize = symbols.iter().find(|s| s.name == "deserialize" && s.parent_id == game_data.parent_id);
+        let deserialize = symbols.iter().find(|s| s.name == "deserialize" && s.parent_id == Some(game_data.id.clone()));
         assert!(deserialize.is_some());
 
         // PlayerData class
@@ -1697,15 +1698,15 @@ func load_from_file(path: String = "user://settings.cfg"):
         assert_eq!(player_data_class.unwrap().kind, SymbolKind::Class);
 
         // PlayerData properties
-        let name = symbols.iter().find(|s| s.name == "name" && s.parent_id == player_data_class.unwrap().parent_id);
+        let name = symbols.iter().find(|s| s.name == "name" && s.parent_id == Some(player_data_class.unwrap().id.clone()));
         assert!(name.is_some());
         assert_eq!(name.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("String"));
 
-        let level = symbols.iter().find(|s| s.name == "level" && s.parent_id == player_data_class.unwrap().parent_id);
+        let level = symbols.iter().find(|s| s.name == "level" && s.parent_id == Some(player_data_class.unwrap().id.clone()));
         assert!(level.is_some());
         assert_eq!(level.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("int"));
 
-        let position = symbols.iter().find(|s| s.name == "position" && s.parent_id == player_data_class.unwrap().parent_id);
+        let position = symbols.iter().find(|s| s.name == "position" && s.parent_id == Some(player_data_class.unwrap().id.clone()));
         assert!(position.is_some());
         assert_eq!(position.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("Vector3"));
 
@@ -1753,11 +1754,11 @@ func load_from_file(path: String = "user://settings.cfg"):
         assert_eq!(game_config.unwrap().kind, SymbolKind::Class);
 
         // Graphics settings
-        let resolution = symbols.iter().find(|s| s.name == "resolution" && s.parent_id == game_config.unwrap().parent_id);
+        let resolution = symbols.iter().find(|s| s.name == "resolution" && s.parent_id == Some(game_config.unwrap().id.clone()));
         assert!(resolution.is_some());
         assert_eq!(resolution.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("Vector2i"));
 
-        let fullscreen = symbols.iter().find(|s| s.name == "fullscreen" && s.parent_id == game_config.unwrap().parent_id);
+        let fullscreen = symbols.iter().find(|s| s.name == "fullscreen" && s.parent_id == Some(game_config.unwrap().id.clone()));
         assert!(fullscreen.is_some());
         assert_eq!(fullscreen.unwrap().metadata.as_ref().and_then(|m| m.get("dataType").map(|v| v.as_str().unwrap())), Some("bool"));
 

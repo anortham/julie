@@ -8,6 +8,21 @@ use tree_sitter::Tree;
 mod cpp_extractor_tests {
     use super::*;
 
+    fn debug_tree_node(node: tree_sitter::Node, depth: usize) {
+        let indent = "  ".repeat(depth);
+        println!("{}Node: {} [{}..{}]",
+            indent,
+            node.kind(),
+            node.start_position().row,
+            node.end_position().row
+        );
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            debug_tree_node(child, depth + 1);
+        }
+    }
+
     // Helper function to create a CppExtractor and parse C++ code
     fn create_extractor_and_parse(code: &str) -> (crate::extractors::cpp::CppExtractor, Tree) {
         let mut parser = tree_sitter::Parser::new();
@@ -16,6 +31,7 @@ mod cpp_extractor_tests {
         let extractor = crate::extractors::cpp::CppExtractor::new("test.cpp".to_string(), code.to_string());
         (extractor, tree)
     }
+
 
     #[test]
     fn test_extract_namespace_declarations_and_include_statements() {
@@ -55,6 +71,7 @@ namespace MyProject = MyCompany::Utils;  // Namespace alias
         assert!(alias.is_some());
         assert!(alias.unwrap().signature.as_ref().unwrap().contains("MyCompany::Utils"));
     }
+
 
     #[test]
     fn test_extract_class_declarations_with_inheritance_and_access_specifiers() {
@@ -211,6 +228,7 @@ private:
         let vector_bool = symbols.iter().find(|s| s.name == "Vector" && s.signature.as_ref().unwrap().contains("<bool>"));
         assert!(vector_bool.is_some());
     }
+
 
     #[test]
     fn test_extract_functions_and_operator_overloads() {
@@ -641,6 +659,7 @@ private:
 
         let get_value = symbols.iter().find(|s| s.name == "getValue");
         assert!(get_value.is_some());
+
         assert!(get_value.unwrap().signature.as_ref().unwrap().contains("-> int"));
 
         let process_func = symbols.iter().find(|s| s.name == "process");

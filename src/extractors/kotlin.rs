@@ -1065,7 +1065,7 @@ impl KotlinExtractor {
     fn visit_node_for_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
         match node.kind() {
             "class_declaration" | "enum_declaration" | "object_declaration" | "interface_declaration" => {
-                println!("DEBUG: Processing {} node for relationships", node.kind());
+                // Process inheritance relationships for this class/interface/enum
                 self.extract_inheritance_relationships(&node, symbols, relationships);
             }
             _ => {}
@@ -1085,24 +1085,24 @@ impl KotlinExtractor {
     ) {
         let class_symbol = self.find_class_symbol(node, symbols);
         if class_symbol.is_none() {
-            println!("DEBUG: Could not find class symbol for {} node", node.kind());
+            // Could not find class symbol, skipping relationship extraction
             return;
         }
         let class_symbol = class_symbol.unwrap();
-        println!("DEBUG: Found class symbol: {}", class_symbol.name);
+        // Found class symbol, extracting relationships
 
         // Look for delegation_specifiers container first (wrapped case)
         let delegation_container = node.children(&mut node.walk())
             .find(|n| n.kind() == "delegation_specifiers");
         let mut base_type_names = Vec::new();
 
-        println!("DEBUG: Looking for delegation_specifiers in {}", class_symbol.name);
+        // Look for delegation_specifiers to find inheritance/interface implementation
         if let Some(delegation_container) = delegation_container {
-            println!("DEBUG: Found delegation_specifiers container");
+            // Found delegation_specifiers container
             for child in delegation_container.children(&mut delegation_container.walk()) {
-                println!("DEBUG: Processing delegation child: {}", child.kind());
+                // Process delegation child node
                 if child.kind() == "delegation_specifier" {
-                    println!("DEBUG: Found delegation_specifier, extracting base type");
+                    // Found delegation_specifier, extracting base type
                     let type_node = child.children(&mut child.walk())
                         .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier" | "constructor_invocation"));
                     if let Some(type_node) = type_node {
@@ -1120,10 +1120,10 @@ impl KotlinExtractor {
                         } else {
                             self.base.get_node_text(&type_node)
                         };
-                        println!("DEBUG: Extracted base type: {}", base_type);
+                        // Extracted base type successfully
                         base_type_names.push(base_type);
                     } else {
-                        println!("DEBUG: No type node found in delegation_specifier");
+                        // No type node found in delegation_specifier
                     }
                 } else if child.kind() == "delegated_super_type" {
                     let type_node = child.children(&mut child.walk())
@@ -1137,11 +1137,11 @@ impl KotlinExtractor {
             }
         } else {
             // Look for individual delegation_specifier nodes (multiple at same level)
-            println!("DEBUG: No delegation_specifiers container, looking for individual delegation_specifier nodes");
+            // No delegation_specifiers container, looking for individual delegation_specifier nodes
             let delegation_specifiers: Vec<Node> = node.children(&mut node.walk())
                 .filter(|n| n.kind() == "delegation_specifier")
                 .collect();
-            println!("DEBUG: Found {} delegation_specifier nodes", delegation_specifiers.len());
+            // Found individual delegation_specifier nodes
             for delegation in delegation_specifiers {
                 // Extract just the type name from the delegation (remove "by delegate" part)
                 let explicit_delegation = delegation.children(&mut delegation.walk())
@@ -1171,7 +1171,7 @@ impl KotlinExtractor {
             }
         }
 
-        println!("DEBUG: Extracted {} base types for {}: {:?}", base_type_names.len(), class_symbol.name, base_type_names);
+        // Extracted base types, creating relationships
 
         // Create relationships for each base type
         for base_type_name in base_type_names {

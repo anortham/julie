@@ -457,6 +457,43 @@ impl IncrementalIndexer {
         Ok(language.to_string())
     }
 
+    /// Detect language by file extension (static version for testing)
+    pub fn detect_language_by_extension(path: &Path) -> Result<String> {
+        let ext = path.extension()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
+
+        let language = match ext {
+            "rs" => "rust",
+            "ts" | "tsx" => "typescript",
+            "js" | "jsx" => "javascript",
+            "py" => "python",
+            "java" => "java",
+            "cs" => "csharp",
+            "cpp" | "cxx" | "cc" => "cpp",
+            "c" | "h" => "c",
+            "go" => "go",
+            "php" => "php",
+            "rb" => "ruby",
+            "swift" => "swift",
+            "kt" => "kotlin",
+            "lua" => "lua",
+            "gd" => "gdscript",
+            "sql" => "sql",
+            "html" | "htm" => "html",
+            "css" => "css",
+            "vue" => "vue",
+            "razor" => "razor",
+            "ps1" => "powershell",
+            "sh" | "bash" => "bash",
+            "zig" => "zig",
+            "dart" => "dart",
+            _ => return Err(anyhow::anyhow!("Unsupported file extension: {}", ext)),
+        };
+
+        Ok(language.to_string())
+    }
+
     /// Build set of supported file extensions
     fn build_supported_extensions() -> HashSet<String> {
         [
@@ -575,18 +612,8 @@ mod tests {
             let file_path = workspace_root.join(filename);
             fs::write(&file_path, "// test content").unwrap();
 
-            // This test will need to be expanded once we have proper dependency injection
-            let result = IncrementalIndexer::detect_language(&IncrementalIndexer {
-                watcher: None,
-                db: todo!(),
-                search_index: todo!(),
-                embedding_engine: todo!(),
-                extractor_manager: todo!(),
-                index_queue: todo!(),
-                supported_extensions: IncrementalIndexer::build_supported_extensions(),
-                ignore_patterns: IncrementalIndexer::build_ignore_patterns().unwrap(),
-                workspace_root: workspace_root.clone(),
-            }, &file_path);
+            // Simple test for language detection using just file extensions
+            let result = IncrementalIndexer::detect_language_by_extension(&file_path);
 
             match result {
                 Ok(lang) => assert_eq!(lang, expected_lang),

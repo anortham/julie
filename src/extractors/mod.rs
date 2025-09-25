@@ -16,7 +16,7 @@ pub mod rust;                // Rust extractor - RUST AGENT WORKING - DO NOT DIS
 pub mod go;               // Go extractor - FIXING compilation issues
 
 // Phase 2 - Extended Languages:
-pub mod c;          // C extractor - FIXING compilation errors
+pub mod c;          // C extractor
 pub mod cpp;                 // C++ extractor - FIXING lifetime annotation errors
 pub mod java;                // Java extractor - FIXING API compatibility errors - MY ASSIGNED TASK
 pub mod csharp;              // C# extractor - Testing if it works

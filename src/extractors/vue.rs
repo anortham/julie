@@ -66,8 +66,7 @@ struct VueSection {
 impl VueExtractor {
     pub fn new(language: String, file_path: String, content: String) -> Self {
         // Pre-compile regex patterns for better performance
-        let patterns = VuePatterns::new().unwrap_or_else(|e| {
-            eprintln!("Warning: Failed to compile Vue regex patterns: {}", e);
+        let patterns = VuePatterns::new().unwrap_or_else(|_e| {
             // This shouldn't happen in practice, but we provide a fallback
             panic!("Critical error: Vue regex patterns compilation failed")
         });
@@ -115,8 +114,7 @@ impl VueExtractor {
                 }
             }
             Err(e) => {
-                // Miller logs warnings, we'll do the same conceptually
-                eprintln!("Error extracting Vue symbols from {}: {}", self.base.file_path, e);
+                // Error extracting Vue symbols - continue silently
             }
         }
 

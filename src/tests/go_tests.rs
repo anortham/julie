@@ -486,6 +486,7 @@ func Sum[T Numeric](values ...T) T {
         let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
+
         let ordered = symbols.iter().find(|s| s.name == "Ordered");
         assert!(ordered.is_some());
         let ordered = ordered.unwrap();
@@ -1291,6 +1292,7 @@ var (
         // Should not panic even with malformed code
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
+
 
         // Should still extract valid symbols
         let empty = symbols.iter().find(|s| s.name == "Empty");

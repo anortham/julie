@@ -959,10 +959,10 @@ impl ZigExtractor {
                             if referenced_symbol.id != target_symbol.id {
                                 // Create composition relationship
                                 relationships.push(Relationship {
-                                    id: format!("{}_{}_{:?}_{}", target_symbol.id, referenced_symbol.id, RelationshipKind::Contains, field_node.start_position().row),
+                                    id: format!("{}_{}_{:?}_{}", target_symbol.id, referenced_symbol.id, RelationshipKind::Composition, field_node.start_position().row),
                                     from_symbol_id: target_symbol.id.clone(),
                                     to_symbol_id: referenced_symbol.id.clone(),
-                                    kind: RelationshipKind::Contains,
+                                    kind: RelationshipKind::Composition,
                                     file_path: self.base.file_path.clone(),
                                     line_number: (field_node.start_position().row + 1) as u32,
                                     confidence: 0.8,

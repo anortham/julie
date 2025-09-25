@@ -164,6 +164,7 @@ impl GoExtractor {
 
     /// Extract symbol from node (port from Miller's extractSymbol method)
     fn extract_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+
         match node.kind() {
             "package_clause" => self.extract_package(node, parent_id),
             "type_declaration" => self.extract_type_declaration(node, parent_id),
@@ -296,11 +297,13 @@ impl GoExtractor {
     }
 
     fn extract_type_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // Find type_spec node which contains the actual type definition
+        // Find type_spec or type_alias node which contains the actual type definition
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "type_spec" {
                 return self.extract_type_spec(child, parent_id);
+            } else if child.kind() == "type_alias" {
+                return self.extract_type_alias(child, parent_id);
             }
         }
         None
@@ -311,20 +314,28 @@ impl GoExtractor {
         let mut type_identifier = None;
         let mut type_parameters = None;
         let mut type_def = None;
-        let _is_type_alias = node.kind() == "type_alias";
+        let mut has_equals_sign = false;
+        let mut second_type_identifier = None;
+
 
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "type_identifier" if type_identifier.is_none() => type_identifier = Some(child),
+                "type_identifier" if type_identifier.is_some() && second_type_identifier.is_none() => {
+                    // Second type_identifier indicates type alias (type Alias = Target)
+                    second_type_identifier = Some(child);
+                    type_def = Some(("alias", child));
+                },
                 "type_parameter_list" => type_parameters = Some(child),
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
-                // Handle basic type definitions (type UserID int64)
-                "primitive_type" | "type_identifier" if type_identifier.is_some() && type_def.is_none() => {
-                    type_def = Some(("alias", child));
+                "=" => has_equals_sign = true,  // Detect type alias syntax (backup detection)
+                // Handle basic type definitions (type UserID int64) and aliases (type UserID = int64)
+                "primitive_type" if type_identifier.is_some() && type_def.is_none() => {
+                    type_def = Some(("definition", child));
                 },
                 "pointer_type" | "slice_type" | "map_type" | "array_type" | "channel_type" | "function_type" | "qualified_type" | "generic_type" if type_identifier.is_some() && type_def.is_none() => {
-                    type_def = Some(("alias", child));
+                    type_def = Some(("definition", child));
                 },
                 _ => {}
             }
@@ -380,6 +391,23 @@ impl GoExtractor {
                 },
                 "alias" => {
                     // For type alias, extract the aliased type
+                    let aliased_type = self.extract_type_from_node(type_node);
+                    let signature = format!("type {}{} = {}", name, type_params, aliased_type);
+                    Some(self.base.create_symbol(
+                        &type_id,
+                        name,
+                        SymbolKind::Type,
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility,
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment: None,
+                        },
+                    ))
+                },
+                "definition" => {
+                    // For type definition (no equals sign) - Miller formats these like aliases
                     let aliased_type = self.extract_type_from_node(type_node);
                     let signature = format!("type {}{} = {}", name, type_params, aliased_type);
                     Some(self.base.create_symbol(
@@ -519,8 +547,9 @@ impl GoExtractor {
         let mut func_name = None;
         let mut type_parameters = None;
         let mut parameters = Vec::new();
-        let mut return_type = None;
+        let mut return_types = Vec::new();
         let mut param_lists_found = 0;
+
 
         for child in node.children(&mut cursor) {
             match child.kind() {
@@ -532,9 +561,12 @@ impl GoExtractor {
                         if !receiver_params.is_empty() {
                             receiver = Some(receiver_params[0].clone());
                         }
-                    } else {
+                    } else if param_lists_found == 2 {
                         // Second parameter list is the actual parameters
                         parameters = self.extract_parameter_list(child);
+                    } else if param_lists_found == 3 {
+                        // Third parameter list is the return types (Go methods can have 3 parameter lists)
+                        return_types = self.extract_parameter_list(child);
                     }
                 },
                 "field_identifier" => func_name = Some(self.get_node_text(child)), // Miller uses field_identifier for method names
@@ -542,7 +574,7 @@ impl GoExtractor {
                 "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "channel_type" | "interface_type" | "function_type" | "map_type" | "array_type" | "qualified_type" | "generic_type" => {
                     // Only treat as return type if we've seen parameters already
                     if param_lists_found >= 2 {
-                        return_type = Some(self.extract_type_from_node(child));
+                        return_types.push(self.extract_type_from_node(child));
                     }
                 },
                 _ => {}
@@ -557,10 +589,11 @@ impl GoExtractor {
         };
 
         let type_params = type_parameters.unwrap_or_default();
+
         let signature = if let Some(recv) = receiver {
-            format!("func ({}) {}{}", recv, name, self.build_method_signature(&type_params, &parameters, return_type.as_deref()))
+            format!("func ({}) {}{}", recv, name, self.build_method_signature_with_return_types(&type_params, &parameters, &return_types))
         } else {
-            self.build_function_signature("func", &name, &parameters, return_type.as_deref())
+            self.build_function_signature_with_return_types("func", &name, &parameters, &return_types)
         };
 
         self.base.create_symbol(
@@ -675,6 +708,42 @@ impl GoExtractor {
 
         let return_part = return_type.map_or(String::new(), |t| format!(" {}", t));
         format!("{}{}{}", type_params, params, return_part)
+    }
+
+    fn build_method_signature_with_return_types(&self, type_params: &str, parameters: &[String], return_types: &[String]) -> String {
+        let params = if parameters.is_empty() {
+            "()".to_string()
+        } else {
+            format!("({})", parameters.join(", "))
+        };
+
+        let return_part = match return_types.len() {
+            0 => String::new(),
+            1 => format!(" {}", return_types[0]),
+            _ => format!(" ({})", return_types.join(", ")),
+        };
+
+        format!("{}{}{}", type_params, params, return_part)
+    }
+
+    fn build_function_signature_with_return_types(&self, func_keyword: &str, name: &str, parameters: &[String], return_types: &[String]) -> String {
+        let params = if parameters.is_empty() {
+            "()".to_string()
+        } else {
+            format!("({})", parameters.join(", "))
+        };
+
+        let return_part = match return_types.len() {
+            0 => String::new(),
+            1 => format!(" {}", return_types[0]),
+            _ => format!(" ({})", return_types.join(", ")),
+        };
+
+        if func_keyword.is_empty() {
+            format!("{}{}{}", name, params, return_part)
+        } else {
+            format!("{} {}{}{}", func_keyword, name, params, return_part)
+        }
     }
 
     fn extract_interface_body(&self, interface_node: Node) -> String {
@@ -1009,6 +1078,48 @@ impl GoExtractor {
                 }
             }
         }
+        None
+    }
+
+    fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // Parse type_alias node: "TypeAlias = string"
+        let mut cursor = node.walk();
+        let mut alias_name = None;
+        let mut target_type = None;
+
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "type_identifier" if alias_name.is_none() => alias_name = Some(child),
+                "type_identifier" | "primitive_type" | "pointer_type" | "slice_type" | "map_type" | "array_type" | "channel_type" | "function_type" | "qualified_type" | "generic_type" if alias_name.is_some() => {
+                    target_type = Some(child);
+                },
+                _ => {}
+            }
+        }
+
+        if let (Some(alias_node), Some(target_node)) = (alias_name, target_type) {
+            let name = self.get_node_text(alias_node);
+            let target_type_text = self.extract_type_from_node(target_node);
+            let signature = format!("type {} = {}", name, target_type_text);
+
+            let mut metadata = std::collections::HashMap::new();
+            metadata.insert("alias_target".to_string(), serde_json::Value::String(target_type_text));
+
+            return Some(self.base.create_symbol(
+                &node,
+                name,
+                SymbolKind::Type,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some(metadata),
+                    doc_comment: None,
+                },
+            ));
+        }
+
         None
     }
 }

@@ -1119,6 +1119,8 @@ void debug_function(void) {
 
         let atomic_counter = symbols.iter().find(|s| s.name == "AtomicCounter");
         assert!(atomic_counter.is_some());
+
+
         assert!(atomic_counter.unwrap().signature.as_ref().unwrap().contains("ALIGN(CACHE_LINE_SIZE)"));
 
         // Inline assembly functions - Miller tests inline assembly

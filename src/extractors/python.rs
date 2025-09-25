@@ -66,11 +66,9 @@ impl PythonExtractor {
             if identifier_node.kind() == "identifier" {
                 self.base.get_node_text(&identifier_node)
             } else {
-                println!("DEBUG: Second child is not identifier, it's: {}", identifier_node.kind());
                 "Anonymous".to_string()
             }
         } else {
-            println!("DEBUG: No second child found for class node");
             "Anonymous".to_string()
         };
 
