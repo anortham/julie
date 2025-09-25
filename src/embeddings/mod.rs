@@ -93,6 +93,34 @@ impl EmbeddingEngine {
         &self.model_name
     }
 
+    /// Generate embeddings for a batch of symbols (for file watcher integration)
+    pub fn embed_symbols_batch(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
+        let mut results = Vec::new();
+
+        for symbol in symbols {
+            let context = CodeContext::from_symbol(symbol);
+            match self.embed_symbol(symbol, &context) {
+                Ok(embedding) => {
+                    results.push((symbol.id.clone(), embedding));
+                }
+                Err(e) => {
+                    // Log the error but continue with other symbols
+                    tracing::warn!("Failed to embed symbol {}: {}", symbol.id, e);
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Remove embeddings for symbols from a specific file (for file watcher integration)
+    pub fn remove_embeddings_for_file(&mut self, _file_path: &str) -> Result<()> {
+        // TODO: Implement embedding removal based on file path
+        // This would require tracking which embeddings belong to which files
+        tracing::debug!("Embedding removal for file not yet implemented: {}", _file_path);
+        Ok(())
+    }
+
     pub fn build_embedding_text(&self, symbol: &Symbol, context: &CodeContext) -> String {
         // Combine multiple sources of information for richer embeddings
         let mut parts = vec![

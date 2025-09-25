@@ -333,9 +333,7 @@ impl IncrementalIndexer {
 
         // Update file hash (store as hex string)
         let new_hash_str = hex::encode(new_hash.as_bytes());
-        // TODO: Add update_file_hash method to database or use store_file_info
-        // For now, we'll just log that we need this method
-        debug!("TODO: Update file hash for {} to {}", path_str, new_hash_str);
+        db.update_file_hash(&path_str, &new_hash_str)?;
 
         db.commit_transaction()?;
         drop(db);
@@ -347,10 +345,11 @@ impl IncrementalIndexer {
         search.commit().await?;
         drop(search);
 
-        // 6. Update embeddings (async, non-blocking)
-        // TODO: Implement proper embedding update integration
-        // For now, we'll just log that embeddings would be updated
-        debug!("TODO: Update embeddings for {} symbols from {}", symbols.len(), path_str);
+        // 6. Update embeddings
+        // Note: EmbeddingEngine requires &mut self, but we have Arc<EmbeddingEngine>
+        // For now, we'll skip embedding updates to avoid thread safety issues
+        // TODO: Restructure EmbeddingEngine to support concurrent access
+        debug!("Skipping embedding updates for {} symbols from {} (requires architectural changes)", symbols.len(), path_str);
 
         info!("Successfully updated all indexes for {}", path.display());
         Ok(())
@@ -365,8 +364,7 @@ impl IncrementalIndexer {
         // Remove from SQLite database
         let mut db = self.db.lock().await;
         db.delete_symbols_for_file(&path_str).await?;
-        // TODO: Add delete_file_record method to database if needed
-        debug!("TODO: Delete file record for {}", path_str);
+        db.delete_file_record(&path_str)?;
         drop(db);
 
         // Remove from Tantivy search index
@@ -375,9 +373,10 @@ impl IncrementalIndexer {
         search.commit().await?;
         drop(search);
 
-        // Remove from embeddings (async)
-        // TODO: Implement proper embedding removal
-        debug!("TODO: Remove embeddings for {}", path_str);
+        // Remove from embeddings
+        // Note: Same issue as with updates - EmbeddingEngine requires &mut self
+        // TODO: Restructure EmbeddingEngine to support concurrent access
+        debug!("Skipping embedding removal for {} (requires architectural changes)", path_str);
 
         info!("Successfully removed all indexes for {}", path.display());
         Ok(())
