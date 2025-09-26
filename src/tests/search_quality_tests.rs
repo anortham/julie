@@ -182,4 +182,80 @@ mod search_quality_tests {
         assert_eq!(docs_score, 0.2, "docs should have score 0.2");
         assert_eq!(deps_score, 0.1, "node_modules should have score 0.1");
     }
+
+    #[test]
+    fn test_combined_path_relevance_and_exact_match_scoring() {
+        // Test: Combined PathRelevanceScorer + ExactMatchBoost should provide optimal ranking
+        // Expected: Exact matches in production code rank highest, followed by partial matches in production, etc.
+
+        use crate::utils::exact_match_boost::ExactMatchBoost;
+
+        let query = "getUserData";
+        let path_scorer = PathRelevanceScorer::new(query);
+        let exact_match_booster = ExactMatchBoost::new(query);
+
+        // Test different scenarios with realistic symbol names and file paths
+        let test_cases = vec![
+            // (symbol_name, file_path, description)
+            ("getUserData", "src/services/user.ts", "Exact match in production code - should rank highest"),
+            ("getUserDataAsync", "src/services/user.ts", "Prefix match in production code - should rank high"),
+            ("getUserData", "src/services/user.test.ts", "Exact match in test file - should rank lower than production"),
+            ("findUserData", "src/utils/data.ts", "Substring match in production code"),
+            ("getUserData", "tests/integration/user.test.ts", "Exact match in test directory - lowest production ranking"),
+            ("createUser", "src/services/user.ts", "No match in production code - base production score only"),
+        ];
+
+        let mut scores = Vec::new();
+        for (symbol_name, file_path, description) in &test_cases {
+            let path_score = path_scorer.calculate_score(file_path);
+            let exact_boost = exact_match_booster.calculate_boost(symbol_name);
+            let combined_score = path_score * exact_boost;
+            scores.push((combined_score, symbol_name.to_string(), file_path.to_string(), description.to_string()));
+
+            println!("  {} in {} -> path={:.2} × exact={:.2} = {:.2} ({})",
+                     symbol_name, file_path, path_score, exact_boost, combined_score, description);
+        }
+
+        // Sort by combined score (descending) to verify ranking
+        scores.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Verify the expected ranking hierarchy
+        assert_eq!(scores[0].1, "getUserData"); // Exact match in production should be #1
+        assert_eq!(scores[0].2, "src/services/user.ts");
+
+        // Second should be exact match in test file (exact match boost is very significant)
+        assert_eq!(scores[1].1, "getUserData");
+        assert_eq!(scores[1].2, "src/services/user.test.ts");
+
+        // Combined scoring should provide better results than either system alone
+        let exact_match_prod_score = scores[0].0;
+        let exact_match_test_score_in_src = scores[1].0; // This is getUserData in user.test.ts
+        // Find the exact match in the dedicated test directory (tests/)
+        let exact_match_test_dir_score = scores.iter()
+            .find(|(_, name, path, _)| name == "getUserData" && path.starts_with("tests/"))
+            .unwrap().0;
+
+        // Find the prefix match in production
+        let prefix_match_prod_score = scores.iter()
+            .find(|(_, name, path, _)| name == "getUserDataAsync" && path.contains("src/"))
+            .unwrap().0;
+
+        // Exact match in production should significantly outrank exact match in test directories
+        assert!(exact_match_prod_score > exact_match_test_dir_score * 2.0,
+                "Exact match in production ({:.2}) should significantly outrank exact match in test directories ({:.2})",
+                exact_match_prod_score, exact_match_test_dir_score);
+
+        // Exact match in production should outrank exact match in test files in src/
+        assert!(exact_match_prod_score > exact_match_test_score_in_src,
+                "Exact match in production ({:.2}) should outrank exact match in test files ({:.2})",
+                exact_match_prod_score, exact_match_test_score_in_src);
+
+        // Prefix match in production should outrank exact match in test directories
+        assert!(prefix_match_prod_score > exact_match_test_dir_score,
+                "Prefix match in production ({:.2}) should outrank exact match in test directories ({:.2})",
+                prefix_match_prod_score, exact_match_test_dir_score);
+
+        println!("\n🎯 Combined scoring successfully integrates PathRelevanceScorer + ExactMatchBoost!");
+        println!("   Top result: {} in {} (score: {:.2})", scores[0].1, scores[0].2, scores[0].0);
+    }
 }

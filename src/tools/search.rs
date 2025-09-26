@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind};
-use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer};
+use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer, exact_match_boost::ExactMatchBoost};
 use super::shared::OptimizedResponse;
 
 //******************//
@@ -124,16 +124,24 @@ impl FastSearchTool {
                     matched_symbols.push(search_result.symbol);
                 }
 
-                // Apply PathRelevanceScorer to rank results by quality (production code > test files)
+                // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
                 let path_scorer = PathRelevanceScorer::new(&self.query);
+                let exact_match_booster = ExactMatchBoost::new(&self.query);
                 matched_symbols.sort_by(|a, b| {
-                    let score_a = path_scorer.calculate_score(&a.file_path);
-                    let score_b = path_scorer.calculate_score(&b.file_path);
-                    // Sort in descending order (higher scores first)
-                    score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    // Combine path relevance (production vs test) with exact match boost
+                    let path_score_a = path_scorer.calculate_score(&a.file_path);
+                    let exact_boost_a = exact_match_booster.calculate_boost(&a.name);
+                    let combined_score_a = path_score_a * exact_boost_a;
+
+                    let path_score_b = path_scorer.calculate_score(&b.file_path);
+                    let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
+                    let combined_score_b = path_score_b * exact_boost_b;
+
+                    // Sort in descending order (higher combined scores first)
+                    combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                debug!("🚀 Indexed search returned {} results (ranked by PathRelevanceScorer)", matched_symbols.len());
+                debug!("🚀 Indexed search returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", matched_symbols.len());
                 Ok(matched_symbols)
             }
             Err(_) => {
@@ -153,16 +161,24 @@ impl FastSearchTool {
                     .cloned()
                     .collect();
 
-                // Apply PathRelevanceScorer to rank results by quality (production code > test files)
+                // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
                 let path_scorer = PathRelevanceScorer::new(&self.query);
+                let exact_match_booster = ExactMatchBoost::new(&self.query);
                 results.sort_by(|a, b| {
-                    let score_a = path_scorer.calculate_score(&a.file_path);
-                    let score_b = path_scorer.calculate_score(&b.file_path);
-                    // Sort in descending order (higher scores first)
-                    score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    // Combine path relevance (production vs test) with exact match boost
+                    let path_score_a = path_scorer.calculate_score(&a.file_path);
+                    let exact_boost_a = exact_match_booster.calculate_boost(&a.name);
+                    let combined_score_a = path_score_a * exact_boost_a;
+
+                    let path_score_b = path_scorer.calculate_score(&b.file_path);
+                    let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
+                    let combined_score_b = path_score_b * exact_boost_b;
+
+                    // Sort in descending order (higher combined scores first)
+                    combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                debug!("📝 Linear search fallback returned {} results (ranked by PathRelevanceScorer)", results.len());
+                debug!("📝 Linear search fallback returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", results.len());
                 Ok(results)
             }
         }
