@@ -2241,6 +2241,7 @@ public class ParameterTypes {
         // Should not throw even with malformed code
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
+        let _ = relationships; // Acknowledge we're not using the relationships yet
 
         // Should still extract valid symbols
         let empty_class = symbols.iter().find(|s| s.name == "EmptyClass");

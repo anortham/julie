@@ -23,10 +23,12 @@ use std::collections::HashMap;
 /// - Generics and type parameters
 /// - Flutter widgets and StatefulWidget patterns
 /// - Imports and library dependencies
+#[allow(dead_code)]  // TODO: Implement Dart/Flutter extraction
 pub struct DartExtractor {
     base: BaseExtractor,
 }
 
+#[allow(dead_code)]  // TODO: Implement Dart extraction methods
 impl DartExtractor {
     pub fn new(language: String, file_path: String, content: String) -> Self {
         Self {

@@ -42,10 +42,12 @@ pub mod zig;                    // Zig extractor - FIXING metadata access patter
 pub use base::{Symbol, SymbolKind, Relationship, RelationshipKind};
 
 /// Manager for all language extractors
+#[allow(dead_code)]  // TODO: Implement centralized extractor management
 pub struct ExtractorManager {
     // TODO: Store language parsers and extractors
 }
 
+#[allow(dead_code)]  // TODO: Implement extractor management methods
 impl ExtractorManager {
     pub fn new() -> Self {
         Self {

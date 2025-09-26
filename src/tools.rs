@@ -1096,7 +1096,7 @@ impl FastGotoTool {
         debug!("🔍 Searching for '{}' across {} symbols", self.symbol, symbols.len());
 
         // Strategy 1: Exact name matches with cross-language resolution
-        let mut definitions: Vec<Symbol> = Vec::new();
+        let _definitions: Vec<Symbol> = Vec::new();  // TODO: Implement definitions lookup
 
         // Find all symbols with matching names
         let mut exact_matches: Vec<Symbol> = symbols.iter()
@@ -1580,6 +1580,7 @@ impl FastRefsTool {
     meta = r#"{"category": "ai_search", "requires": "embeddings"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement semantic search integration
 pub struct SemanticSearchTool {
     /// Natural language description of what you're looking for
     pub query: String,
@@ -1591,8 +1592,10 @@ pub struct SemanticSearchTool {
     pub limit: u32,
 }
 
+#[allow(dead_code)]  // TODO: Default value for semantic search mode
 fn default_hybrid() -> String { "hybrid".to_string() }
 
+#[allow(dead_code)]  // TODO: Implement semantic search methods
 impl SemanticSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🧠 Semantic search for: {}", self.query);
@@ -2068,6 +2071,7 @@ impl FastExploreTool {
     meta = r#"{"category": "navigation", "precision": "surgical"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement navigation tool integration
 pub struct NavigateTool {
     /// Navigation mode: definition, references, implementations, callers, callees
     pub mode: String,
@@ -2078,6 +2082,7 @@ pub struct NavigateTool {
     pub context: Option<String>,
 }
 
+#[allow(dead_code)]  // TODO: Implement navigation methods
 impl NavigateTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🚀 Navigating: mode={}, target={}", self.mode, self.target);
@@ -2316,6 +2321,7 @@ impl NavigateTool {
     meta = r#"{"category": "intelligence", "priority": "critical"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement codebase exploration tool
 pub struct ExploreOverviewTool {
     /// Focus area: "critical_files", "architecture", "entry_points", "data_flows"
     #[serde(default = "default_critical_files")]
@@ -2331,6 +2337,7 @@ pub struct ExploreOverviewTool {
     pub filter_noise: bool,
 }
 
+#[allow(dead_code)]  // TODO: Default analysis mode for exploration
 fn default_critical_files() -> String { "critical_files".to_string() }
 
 /// Trace execution flow across the entire polyglot stack
@@ -2345,6 +2352,7 @@ fn default_critical_files() -> String { "critical_files".to_string() }
     meta = r#"{"category": "intelligence", "feature": "revolutionary"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement execution tracing tool
 pub struct TraceExecutionTool {
     /// Starting symbol/function name to trace from
     pub start_point: String,
@@ -2359,7 +2367,9 @@ pub struct TraceExecutionTool {
     pub min_confidence: f32,
 }
 
+#[allow(dead_code)]  // TODO: Default trace depth
 fn default_trace_depth() -> u32 { 10 }
+#[allow(dead_code)]  // TODO: Default confidence threshold
 fn default_confidence() -> f32 { 0.6 }
 
 /// Get exactly the context needed for AI - no more, no less
@@ -2374,6 +2384,7 @@ fn default_confidence() -> f32 { 0.6 }
     meta = r#"{"category": "intelligence", "purpose": "ai_optimization"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement minimal context extraction
 pub struct GetMinimalContextTool {
     /// Target symbol/function to get context for
     pub target: String,
@@ -2388,7 +2399,9 @@ pub struct GetMinimalContextTool {
     pub include_examples: bool,
 }
 
+#[allow(dead_code)]  // TODO: Default context token limit
 fn default_context_tokens() -> u32 { 4000 }
+#[allow(dead_code)]  // TODO: Default boolean for minimal context
 fn default_false() -> bool { false }
 
 /// Find business logic, filter out framework/boilerplate noise
@@ -2431,6 +2444,7 @@ fn default_business_confidence() -> f32 { 0.7 }
     meta = r#"{"category": "intelligence", "metric": "criticality"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[allow(dead_code)]  // TODO: Implement criticality scoring
 pub struct ScoreCriticalityTool {
     /// Target to score: symbol name, file path, or "all" for overview
     pub target: String,
@@ -2442,12 +2456,14 @@ pub struct ScoreCriticalityTool {
     pub score_type: String,
 }
 
+#[allow(dead_code)]  // TODO: Default scoring target
 fn default_symbol() -> String { "symbol".to_string() }
 
 //******************//
 // Phase 6.1 Intelligence Tool Implementations //
 //******************//
 
+#[allow(dead_code)]  // TODO: Implement exploration methods
 impl ExploreOverviewTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🧭 Exploring codebase overview: focus={}", self.focus);
@@ -2844,6 +2860,7 @@ impl ExploreOverviewTool {
     }
 }
 
+#[allow(dead_code)]  // TODO: Implement execution tracing methods
 impl TraceExecutionTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔍 Tracing execution flow from: {}", self.start_point);
@@ -2880,6 +2897,7 @@ impl TraceExecutionTool {
     }
 }
 
+#[allow(dead_code)]  // TODO: Implement minimal context methods
 impl GetMinimalContextTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🎯 Getting minimal context for: {}", self.target);
@@ -2952,6 +2970,7 @@ impl FindLogicTool {
     }
 }
 
+#[allow(dead_code)]  // TODO: Implement criticality scoring methods
 impl ScoreCriticalityTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("📊 Scoring criticality for: {}", self.target);

@@ -509,7 +509,7 @@ $ValidVariable = "This should work"
 
             // Should not panic or throw errors
             let symbols = extractor.extract_symbols(&tree);
-            let relationships = extractor.extract_relationships(&tree, &symbols);
+            let _relationships = extractor.extract_relationships(&tree, &symbols);
 
             // Should still extract valid symbols
             let valid_function = symbols.iter().find(|s| s.name == "Working-Function");

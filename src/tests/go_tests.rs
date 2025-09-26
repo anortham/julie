@@ -1190,7 +1190,7 @@ func main() {{
         let tree = init_parser(&code, "go");
         let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
-        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
 
         // Should extract many symbols
         assert!(symbols.len() > 100);
@@ -1291,7 +1291,7 @@ var (
 
         // Should not panic even with malformed code
         let symbols = extractor.extract_symbols(&tree);
-        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
 
 
         // Should still extract valid symbols

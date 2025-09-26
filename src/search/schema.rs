@@ -447,28 +447,29 @@ mod tests {
         let schema = code_schema.schema();
         let fields = code_schema.fields();
 
-        // Verify all text fields are created and have valid field IDs
-        assert!(fields.symbol_id.field_id() >= 0);
-        assert!(fields.symbol_name.field_id() >= 0);
-        assert!(fields.symbol_name_exact.field_id() >= 0);
-        assert!(fields.symbol_kind.field_id() >= 0);
-        assert!(fields.language.field_id() >= 0);
-        assert!(fields.file_path.field_id() >= 0);
-        assert!(fields.file_path_exact.field_id() >= 0);
-        assert!(fields.signature.field_id() >= 0);
-        assert!(fields.signature_exact.field_id() >= 0);
-        assert!(fields.doc_comment.field_id() >= 0);
-        assert!(fields.code_context.field_id() >= 0);
-        assert!(fields.metadata.field_id() >= 0);
-        assert!(fields.semantic_group.field_id() >= 0);
-        assert!(fields.all_text.field_id() >= 0);
-        assert!(fields.exact_matches.field_id() >= 0);
+        // Verify all text fields are properly registered (field_id() always valid)
+        assert!(fields.symbol_id.field_id() < u32::MAX);
+        assert!(fields.symbol_name.field_id() < u32::MAX);
+        assert!(fields.symbol_name_exact.field_id() < u32::MAX);
+        assert!(fields.symbol_kind.field_id() < u32::MAX);
+        assert!(fields.language.field_id() < u32::MAX);
+        assert!(fields.file_path.field_id() < u32::MAX);
+        assert!(fields.file_path_exact.field_id() < u32::MAX);
+        assert!(fields.signature.field_id() < u32::MAX);
+        assert!(fields.signature_exact.field_id() < u32::MAX);
+        assert!(fields.doc_comment.field_id() < u32::MAX);
+        assert!(fields.code_context.field_id() < u32::MAX);
+        assert!(fields.metadata.field_id() < u32::MAX);
+        assert!(fields.semantic_group.field_id() < u32::MAX);
+        assert!(fields.all_text.field_id() < u32::MAX);
+        assert!(fields.exact_matches.field_id() < u32::MAX);
 
         // Verify numeric fields are created
-        assert!(fields.start_line.field_id() >= 0);
-        assert!(fields.end_line.field_id() >= 0);
-        assert!(fields.confidence.field_id() >= 0);
-        assert!(fields.language_boost.field_id() >= 0);
+        // Verify numeric fields are registered (field_id() always valid)
+        assert!(fields.start_line.field_id() < u32::MAX);
+        assert!(fields.end_line.field_id() < u32::MAX);
+        assert!(fields.confidence.field_id() < u32::MAX);
+        assert!(fields.language_boost.field_id() < u32::MAX);
 
         // Verify fields exist in the schema by name
         let field_names: Vec<_> = schema.fields().map(|(_, field_entry)| field_entry.name()).collect();

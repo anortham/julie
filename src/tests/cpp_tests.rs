@@ -1197,7 +1197,7 @@ TEST(CustomMatchers, MultipleTest) {
         let symbols = extractor.extract_symbols(&tree);
 
         // Google Test macros create functions
-        let math_test_addition = symbols.iter().find(|s| s.name.contains("MathTest") || s.name.contains("Addition"));
+        let _math_test_addition = symbols.iter().find(|s| s.name.contains("MathTest") || s.name.contains("Addition"));
         // Note: TEST macro expansion may not be fully parsed by tree-sitter
 
         let database_test = symbols.iter().find(|s| s.name == "DatabaseTest");

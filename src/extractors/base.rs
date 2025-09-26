@@ -115,6 +115,7 @@ pub enum SymbolKind {
 
 impl SymbolKind {
     /// Convert from string representation (for database deserialization)
+    #[allow(dead_code)]  // TODO: Used for database deserialization
     pub fn from_string(s: &str) -> Self {
         match s {
             "class" => SymbolKind::Class,
@@ -145,6 +146,7 @@ impl SymbolKind {
     }
 
     /// Convert to string representation (for database serialization)
+    #[allow(dead_code)]  // TODO: Used for database serialization
     pub fn to_string(&self) -> String {
         match self {
             SymbolKind::Class => "class",
@@ -251,6 +253,7 @@ impl std::fmt::Display for RelationshipKind {
 
 impl RelationshipKind {
     /// Convert from string representation (for database deserialization)
+    #[allow(dead_code)]  // TODO: Used for database deserialization
     pub fn from_string(s: &str) -> Self {
         match s {
             "calls" => RelationshipKind::Calls,
@@ -271,6 +274,7 @@ impl RelationshipKind {
     }
 
     /// Convert to string representation (for database serialization)
+    #[allow(dead_code)]  // TODO: Used for database serialization
     pub fn to_string(&self) -> String {
         match self {
             RelationshipKind::Calls => "calls",
@@ -803,6 +807,7 @@ pub struct SymbolOptions {
 
 /// Extraction results - matches Miller's getResults return type
 #[derive(Debug, Clone)]
+#[allow(dead_code)]  // TODO: Return type for extraction operations
 pub struct ExtractionResults {
     pub symbols: Vec<Symbol>,
     pub relationships: Vec<Relationship>,
@@ -861,7 +866,7 @@ mod tests {
     /// Test context extraction configuration options
     #[test]
     fn test_context_configuration() {
-        let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8\nline 9";
+        let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 7\nline 8\nline 9\nline 10";
         let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
 
         // Test custom context config (1 line before, 2 lines after)
@@ -884,10 +889,10 @@ mod tests {
         assert!(context_str.contains("    7: line 7"));
         assert!(context_str.contains("    8: line 8"));
 
-        // Should NOT contain lines 1, 2, or 9
+        // Should NOT contain lines 1, 2, or 10
         assert!(!context_str.contains("line 1"));
         assert!(!context_str.contains("line 2"));
-        assert!(!context_str.contains("line 9"));
+        assert!(!context_str.contains("line 10"));
     }
 
     /// Test line length truncation

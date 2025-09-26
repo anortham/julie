@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::Result;
 use crate::tools::FastEditTool;
-use crate::handler::JulieServerHandler;
+// use crate::handler::JulieServerHandler;  // Currently unused
 
 /// Test case structure for comprehensive editing verification
 #[derive(Debug)]
@@ -107,7 +107,7 @@ fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &
 #[cfg(test)]
 mod comprehensive_editing_tests {
     use super::*;
-    use tokio_test;
+    // use tokio_test;  // Currently unused
 
     /// Test that FastEditTool performs exact edits without file corruption
     #[tokio::test]
@@ -117,7 +117,7 @@ mod comprehensive_editing_tests {
 
         let temp_dir = setup_test_environment()?;
         let mut passed_tests = 0;
-        let mut failed_tests = 0;
+        let failed_tests = 0;  // TODO: Implement proper error counting
 
         for test_case in EDITING_TEST_CASES {
             println!("\n🎯 Testing: {} - {}", test_case.name, test_case.description);
@@ -129,7 +129,7 @@ mod comprehensive_editing_tests {
                 }
                 Err(e) => {
                     println!("❌ FAILED: {} - {}", test_case.name, e);
-                    failed_tests += 1;
+                    // failed_tests += 1;  // TODO: Implement proper error reporting
 
                     // For file editing, we should fail hard on ANY corruption
                     return Err(anyhow::anyhow!(
@@ -289,7 +289,7 @@ fn main() {
         fs::write(&test_file, rust_content)?;
 
         // Test that removing a brace would be caught by validation
-        let corrupting_edit = FastEditTool {
+        let _corrupting_edit = FastEditTool {
             file_path: test_file.to_string_lossy().to_string(),
             find_text: "}".to_string(),
             replace_text: "".to_string(), // This would create unbalanced braces
