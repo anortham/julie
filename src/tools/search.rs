@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind};
-use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer};
+use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer};
 use super::shared::OptimizedResponse;
 
 //******************//
@@ -124,7 +124,16 @@ impl FastSearchTool {
                     matched_symbols.push(search_result.symbol);
                 }
 
-                debug!("🚀 Indexed search returned {} results", matched_symbols.len());
+                // Apply PathRelevanceScorer to rank results by quality (production code > test files)
+                let path_scorer = PathRelevanceScorer::new(&self.query);
+                matched_symbols.sort_by(|a, b| {
+                    let score_a = path_scorer.calculate_score(&a.file_path);
+                    let score_b = path_scorer.calculate_score(&b.file_path);
+                    // Sort in descending order (higher scores first)
+                    score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                debug!("🚀 Indexed search returned {} results (ranked by PathRelevanceScorer)", matched_symbols.len());
                 Ok(matched_symbols)
             }
             Err(_) => {
@@ -133,7 +142,7 @@ impl FastSearchTool {
                 let symbols = handler.symbols.read().await;
                 let query_lower = self.query.to_lowercase();
 
-                let results: Vec<Symbol> = symbols.iter()
+                let mut results: Vec<Symbol> = symbols.iter()
                     .filter(|symbol| {
                         let name_match = symbol.name.to_lowercase().contains(&query_lower);
                         let language_match = self.language.as_ref()
@@ -144,7 +153,16 @@ impl FastSearchTool {
                     .cloned()
                     .collect();
 
-                debug!("📝 Linear search fallback returned {} results", results.len());
+                // Apply PathRelevanceScorer to rank results by quality (production code > test files)
+                let path_scorer = PathRelevanceScorer::new(&self.query);
+                results.sort_by(|a, b| {
+                    let score_a = path_scorer.calculate_score(&a.file_path);
+                    let score_b = path_scorer.calculate_score(&b.file_path);
+                    // Sort in descending order (higher scores first)
+                    score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                debug!("📝 Linear search fallback returned {} results (ranked by PathRelevanceScorer)", results.len());
                 Ok(results)
             }
         }

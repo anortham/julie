@@ -162,3 +162,4 @@ pub mod exploration_tools_tests; // Tests for exploration tool token optimizatio
 pub mod find_logic_tests; // Tests for FindLogicTool token optimization
 pub mod path_relevance_tests; // Tests for path relevance scoring system
 pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
+pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
