@@ -16,7 +16,7 @@ pub use indexing::IndexWorkspaceTool;
 pub use search::FastSearchTool;
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use exploration::{FastExploreTool, FindLogicTool};
-pub use editing::FastEditTool;
+pub use editing::{FastEditTool, LineEditTool};
 
 // Re-export shared types
 pub use shared::{OptimizedResponse, BLACKLISTED_EXTENSIONS, BLACKLISTED_DIRECTORIES, KNOWN_CODE_EXTENSIONS};
@@ -33,5 +33,7 @@ tool_box!(JulieTools, [
     FastRefsTool,
     FastExploreTool,
     FindLogicTool,
+    // Editing tools
     FastEditTool,
+    LineEditTool,
 ]);

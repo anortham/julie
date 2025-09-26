@@ -4,6 +4,8 @@
 // search functionality, editing tools, and other Julie components.
 
 pub mod editing_tests;
+pub mod line_edit_tests;
+pub mod fast_edit_search_replace_tests;
 
 #[cfg(test)]
 pub mod test_helpers {

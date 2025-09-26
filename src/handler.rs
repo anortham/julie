@@ -155,6 +155,10 @@ impl ServerHandler for JulieServerHandler {
                 debug!("⚡ Fast edit: {:?}", tool);
                 tool.call_tool(self).await
             },
+            JulieTools::LineEditTool(tool) => {
+                debug!("📝 Line edit: {:?}", tool);
+                tool.call_tool(self).await
+            },
         };
 
         match result {

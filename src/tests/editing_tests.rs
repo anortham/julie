@@ -168,6 +168,10 @@ mod comprehensive_editing_tests {
             file_path: test_file_path.to_string_lossy().to_string(),
             find_text: test_case.find_text.to_string(),
             replace_text: test_case.replace_text.to_string(),
+            mode: None,  // Single file mode (original behavior)
+            language: None,
+            file_pattern: None,
+            limit: None,
             validate: true,
             backup: true,
             dry_run: false, // Actually perform the edit
@@ -213,6 +217,10 @@ mod comprehensive_editing_tests {
             file_path: empty_file.to_string_lossy().to_string(),
             find_text: "nonexistent".to_string(),
             replace_text: "replacement".to_string(),
+            mode: None,
+            language: None,
+            file_pattern: None,
+            limit: None,
             validate: true,
             backup: true,
             dry_run: false,
@@ -293,6 +301,10 @@ fn main() {
             file_path: test_file.to_string_lossy().to_string(),
             find_text: "}".to_string(),
             replace_text: "".to_string(), // This would create unbalanced braces
+            mode: None,
+            language: None,
+            file_pattern: None,
+            limit: None,
             validate: true,
             backup: true,
             dry_run: false,

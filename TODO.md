@@ -16,4 +16,4 @@
 * codesearch tools for investigation: delete_lines, search_and_replace, recent_files, text_search, find_references, get_symbols_overview, insert_at_line, symbol_search, line_search, file_search, batch_operations, trace_call_path, directory_search, goto_definition, similar_files, find_patterns, replace_lines. Not saying we need all of these, but we need to evaluate them and learn what we can from them and if possible have functional parity built into our tool designs
 * we should be able to specify searching for text, file, directory, we also need to think about context in the results
 * I see that FindLogicTool is currently a placeholder with "coming soon" functionality.
-* 
+* maybe we need some semantic editing tools too, like cut method? cut type? something to think about for refactoring refactor_tool? extract method, interface, type? thoughts?
