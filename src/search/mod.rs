@@ -12,9 +12,41 @@ use tantivy::collector::TopDocs;
 use tantivy::query::{Query, QueryParser, TermQuery};
 use tantivy::schema::{Field, Value};
 use std::path::Path;
+use tracing::debug;
 
 use crate::extractors::Symbol;
 use self::schema::{CodeSearchSchema, SearchDocument, QueryProcessor, QueryIntent, LanguageBoosting};
+
+/// Helper function to capitalize first letter
+fn capitalize_first_letter(s: &str) -> String {
+    let mut chars: Vec<char> = s.chars().collect();
+    if !chars.is_empty() {
+        chars[0] = chars[0].to_uppercase().next().unwrap_or(chars[0]);
+    }
+    chars.into_iter().collect()
+}
+
+/// Helper function to convert to PascalCase
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| capitalize_first_letter(word))
+        .collect::<Vec<String>>()
+        .join("")
+}
+
+/// Helper function to convert to camelCase
+fn to_camel_case(s: &str) -> String {
+    let words: Vec<&str> = s.split('_').collect();
+    if words.is_empty() {
+        return s.to_string();
+    }
+
+    let mut result = words[0].to_lowercase();
+    for word in &words[1..] {
+        result.push_str(&capitalize_first_letter(word));
+    }
+    result
+}
 
 /// Main search engine implementing the Search Accelerator pillar
 pub struct SearchEngine {
@@ -98,6 +130,12 @@ impl SearchEngine {
                 code_context: symbol.code_context.clone(),
                 start_line: symbol.start_line,
                 end_line: symbol.end_line,
+                start_column: symbol.start_column,
+                end_column: symbol.end_column,
+                start_byte: symbol.start_byte,
+                end_byte: symbol.end_byte,
+                visibility: symbol.visibility.map(|v| v.to_string()),
+                parent_id: symbol.parent_id.clone(),
                 metadata: symbol.metadata.as_ref()
                     .map(|m| serde_json::to_string(m).unwrap_or_default()),
                 semantic_group: symbol.semantic_group.clone(),
@@ -146,6 +184,18 @@ impl SearchEngine {
 
         tantivy_doc.add_u64(fields.start_line, doc.start_line as u64);
         tantivy_doc.add_u64(fields.end_line, doc.end_line as u64);
+        tantivy_doc.add_u64(fields.start_column, doc.start_column as u64);
+        tantivy_doc.add_u64(fields.end_column, doc.end_column as u64);
+        tantivy_doc.add_u64(fields.start_byte, doc.start_byte as u64);
+        tantivy_doc.add_u64(fields.end_byte, doc.end_byte as u64);
+
+        if let Some(visibility) = &doc.visibility {
+            tantivy_doc.add_text(fields.visibility, visibility);
+        }
+
+        if let Some(parent_id) = &doc.parent_id {
+            tantivy_doc.add_text(fields.parent_id, parent_id);
+        }
 
         if let Some(metadata) = &doc.metadata {
             tantivy_doc.add_text(fields.metadata, metadata);
@@ -209,7 +259,7 @@ impl SearchEngine {
                 info!("✅ Search completed: query='{}', results={}, time={:.2}ms",
                       query, search_results.len(), elapsed.as_secs_f64() * 1000.0);
                 if search_results.len() > 0 {
-                    debug!("📋 Top result: {} in {}", search_results[0].symbol_name, search_results[0].file_path);
+                    debug!("📋 Top result: {} in {}", search_results[0].symbol.name, search_results[0].symbol.file_path);
                 }
             }
             Err(e) => {
@@ -221,7 +271,7 @@ impl SearchEngine {
         results
     }
 
-    /// Exact symbol name search
+    /// Exact symbol name search with case-insensitive fallback
     async fn exact_symbol_search(&self, query: &str) -> Result<Vec<SearchResult>> {
         // Remove quotes from processed query for term search
         let clean_query = query.trim_matches('"');
@@ -229,10 +279,67 @@ impl SearchEngine {
         let searcher = self.reader.searcher();
         let fields = self.schema.fields();
 
+        // Try exact case first
         let term = Term::from_field_text(fields.symbol_name_exact, clean_query);
         let term_query = TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
 
-        let top_docs = searcher.search(&term_query, &TopDocs::with_limit(50))?;
+        let mut top_docs = searcher.search(&term_query, &TopDocs::with_limit(50))?;
+
+        // If no results with exact case, try different case variations
+        if top_docs.is_empty() {
+            let variations = vec![
+                clean_query.to_lowercase(),
+                clean_query.to_uppercase(),
+                capitalize_first_letter(clean_query),
+                to_pascal_case(clean_query),
+                to_camel_case(clean_query),
+            ];
+
+            for variation in variations {
+                if variation != clean_query {
+                    let term = Term::from_field_text(fields.symbol_name_exact, &variation);
+                    let term_query = TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
+                    let variation_docs = searcher.search(&term_query, &TopDocs::with_limit(50))?;
+
+                    if !variation_docs.is_empty() {
+                        top_docs = variation_docs;
+                        break; // Use first successful variation
+                    }
+                }
+            }
+        }
+
+        // TOKENIZATION FIX: If still no exact matches, search tokenized symbol_name field for partial matches
+        if top_docs.is_empty() {
+            debug!("🔍 Exact match failed, trying tokenized search for partial matches in compound names");
+
+            let query_parser = QueryParser::for_index(&self.index, vec![fields.symbol_name]);
+
+            // Try different query formulations for partial matching
+            let tokenized_queries = vec![
+                clean_query.to_string(),                    // Direct query
+                format!("*{}*", clean_query),              // Wildcard search
+                clean_query.to_lowercase(),                // Lowercase variant
+                capitalize_first_letter(clean_query),     // Capitalized variant
+            ];
+
+            for query_variant in tokenized_queries {
+                match query_parser.parse_query(&query_variant) {
+                    Ok(parsed_query) => {
+                        let tokenized_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
+                        if !tokenized_docs.is_empty() {
+                            debug!("🎯 Tokenized search found {} results with query: '{}'", tokenized_docs.len(), query_variant);
+                            top_docs = tokenized_docs;
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Failed to parse tokenized query '{}': {}", query_variant, e);
+                        continue;
+                    }
+                }
+            }
+        }
 
         let mut results = Vec::new();
         for (_score, doc_address) in top_docs {
@@ -277,7 +384,7 @@ impl SearchEngine {
             let mut result = self.document_to_search_result(&doc)?;
 
             // Boost exact generic matches
-            if result.snippet.contains(query) || result.symbol_name.contains(query) {
+            if result.snippet.contains(query) || result.symbol.name.contains(query) {
                 result.score = score * 1.5;
             } else {
                 result.score = score;
@@ -462,7 +569,7 @@ impl SearchEngine {
         let mut unique_results: std::collections::HashMap<String, SearchResult> = std::collections::HashMap::new();
 
         for result in all_results {
-            let key = format!("{}:{}", result.symbol_id, result.file_path);
+            let key = format!("{}:{}", result.symbol.id, result.symbol.file_path);
             match unique_results.get_mut(&key) {
                 Some(existing) => {
                     // Merge scores by taking the maximum
@@ -480,7 +587,7 @@ impl SearchEngine {
         Ok(final_results)
     }
 
-    /// Convert Tantivy document to search result
+    /// Convert Tantivy document to search result with full Symbol data
     fn document_to_search_result(&self, doc: &tantivy::TantivyDocument) -> Result<SearchResult> {
         let fields = self.schema.fields();
 
@@ -492,23 +599,106 @@ impl SearchEngine {
                 .to_string()
         };
 
+        let extract_optional_text = |field: Field| -> Option<String> {
+            let text = extract_text(field);
+            if text.is_empty() { None } else { Some(text) }
+        };
+
         let extract_u64 = |field: Field| -> u32 {
             doc.get_first(field)
                 .and_then(|value| value.as_u64())
                 .unwrap_or(0) as u32
         };
 
+        let extract_f64 = |field: Field| -> Option<f32> {
+            doc.get_first(field)
+                .and_then(|value| value.as_f64())
+                .map(|v| v as f32)
+        };
+
+        // Extract all Symbol fields from Tantivy document
         let symbol_id = extract_text(fields.symbol_id);
         let symbol_name = extract_text(fields.symbol_name);
+        let symbol_kind_str = extract_text(fields.symbol_kind);
+        let language = extract_text(fields.language);
         let file_path = extract_text(fields.file_path);
-        let line_number = extract_u64(fields.start_line);
-        let snippet = extract_text(fields.signature);
+        let signature = extract_optional_text(fields.signature);
+        let doc_comment = extract_optional_text(fields.doc_comment);
+        let code_context = extract_optional_text(fields.code_context);
+        let semantic_group = extract_optional_text(fields.semantic_group);
+        let confidence = extract_f64(fields.confidence);
+
+        // Location fields
+        let start_line = extract_u64(fields.start_line);
+        let end_line = extract_u64(fields.end_line);
+        let start_column = extract_u64(fields.start_column);
+        let end_column = extract_u64(fields.end_column);
+        let start_byte = extract_u64(fields.start_byte);
+        let end_byte = extract_u64(fields.end_byte);
+
+        // Relationship fields
+        let visibility_str = extract_optional_text(fields.visibility);
+        let parent_id = extract_optional_text(fields.parent_id);
+
+        // Parse SymbolKind from string
+        let symbol_kind = match symbol_kind_str.as_str() {
+            "Class" => crate::extractors::base::SymbolKind::Class,
+            "Interface" => crate::extractors::base::SymbolKind::Interface,
+            "Function" => crate::extractors::base::SymbolKind::Function,
+            "Method" => crate::extractors::base::SymbolKind::Method,
+            "Variable" => crate::extractors::base::SymbolKind::Variable,
+            "Field" => crate::extractors::base::SymbolKind::Field,
+            "Property" => crate::extractors::base::SymbolKind::Property,
+            "Type" => crate::extractors::base::SymbolKind::Type,
+            "Enum" => crate::extractors::base::SymbolKind::Enum,
+            "Constant" => crate::extractors::base::SymbolKind::Constant,
+            "Namespace" => crate::extractors::base::SymbolKind::Namespace,
+            "Import" => crate::extractors::base::SymbolKind::Import,
+            _ => crate::extractors::base::SymbolKind::Function, // Default fallback
+        };
+
+        // Parse Visibility from string
+        let visibility = visibility_str.and_then(|v| match v.as_str() {
+            "Public" => Some(crate::extractors::base::Visibility::Public),
+            "Private" => Some(crate::extractors::base::Visibility::Private),
+            "Protected" => Some(crate::extractors::base::Visibility::Protected),
+            _ => None,
+        });
+
+        // Parse metadata if available
+        let metadata = if let Some(meta_str) = extract_optional_text(fields.metadata) {
+            serde_json::from_str(&meta_str).ok()
+        } else {
+            None
+        };
+
+        let snippet = signature.clone().unwrap_or_else(|| "".to_string());
+
+        // Reconstruct full Symbol from complete Tantivy data
+        let symbol = crate::extractors::base::Symbol {
+            id: symbol_id,
+            name: symbol_name,
+            kind: symbol_kind,
+            language,
+            file_path,
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+            start_byte,
+            end_byte,
+            signature,
+            doc_comment,
+            visibility,
+            parent_id,
+            metadata,
+            semantic_group,
+            confidence,
+            code_context,
+        };
 
         Ok(SearchResult {
-            symbol_id,
-            symbol_name,
-            file_path,
-            line_number,
+            symbol,
             score: 0.0, // Will be set by caller
             snippet,
         })
@@ -523,14 +713,14 @@ impl SearchEngine {
     }
 }
 
-/// Enhanced search result with more metadata
+/// Enhanced search result with full symbol data
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    pub symbol_id: String,
-    pub symbol_name: String,
-    pub file_path: String,
-    pub line_number: u32,
+    /// Full Symbol object reconstructed from search index
+    pub symbol: crate::extractors::base::Symbol,
+    /// Search relevance score
     pub score: f32,
+    /// Text snippet from the search match
     pub snippet: String,
 }
 
@@ -578,9 +768,9 @@ mod tests {
         assert_eq!(results.len(), 1);
 
         let result = &results[0];
-        assert_eq!(result.symbol_name, "getUserById");
-        assert_eq!(result.file_path, "src/user.ts");
-        assert_eq!(result.line_number, 10);
+        assert_eq!(result.symbol.name, "getUserById");
+        assert_eq!(result.symbol.file_path, "src/user.ts");
+        assert_eq!(result.symbol.start_line, 10);
         assert!(result.snippet.contains("getUserById"));
     }
 
@@ -618,8 +808,8 @@ mod tests {
         // Verify the symbol was actually indexed by searching for it
         let search_results = engine.search("getUserById").await.unwrap();
         assert_eq!(search_results.len(), 1);
-        assert_eq!(search_results[0].symbol_name, "getUserById");
-        assert_eq!(search_results[0].file_path, "src/user.ts");
+        assert_eq!(search_results[0].symbol.name, "getUserById");
+        assert_eq!(search_results[0].symbol.file_path, "src/user.ts");
     }
 
     #[tokio::test]
@@ -684,9 +874,9 @@ mod tests {
 
         // Should find exactly one result
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].symbol_name, "getUserById");
-        assert_eq!(results[0].file_path, "src/user.ts");
-        assert_eq!(results[0].line_number, 10);
+        assert_eq!(results[0].symbol.name, "getUserById");
+        assert_eq!(results[0].symbol.file_path, "src/user.ts");
+        assert_eq!(results[0].symbol.start_line, 10);
     }
 
     #[tokio::test]
@@ -776,10 +966,10 @@ mod tests {
         // Should include the exact List<User> match
         let exact_match = results.iter().find(|r| r.snippet.contains("List<User>"));
         assert!(exact_match.is_some(), "Should find function with List<User> signature");
-        assert_eq!(exact_match.unwrap().symbol_name, "getAllUsers");
+        assert_eq!(exact_match.unwrap().symbol.name, "getAllUsers");
 
         // Test that search returned the correct exact match
-        assert!(results.iter().any(|r| r.symbol_name == "getAllUsers"));
+        assert!(results.iter().any(|r| r.symbol.name == "getAllUsers"));
         assert!(results.iter().any(|r| r.snippet.contains("List<User>") || r.snippet.contains("List<Product>")));
     }
 
@@ -863,19 +1053,19 @@ mod tests {
         // Test that we can search for and find functions by exact name
         let validate_results = engine.search("validateUser").await.unwrap();
         assert_eq!(validate_results.len(), 1, "Should find exactly one validateUser function");
-        assert_eq!(validate_results[0].symbol_name, "validateUser");
+        assert_eq!(validate_results[0].symbol.name, "validateUser");
         assert!(validate_results[0].snippet.contains("&&"), "validateUser signature should contain && operator");
 
         // Test arrow function search
         let process_results = engine.search("processItems").await.unwrap();
         assert_eq!(process_results.len(), 1, "Should find exactly one processItems function");
-        assert_eq!(process_results[0].symbol_name, "processItems");
+        assert_eq!(process_results[0].symbol.name, "processItems");
         assert!(process_results[0].snippet.contains("=>"), "processItems signature should contain => operator");
 
         // Test that we indexed all 3 functions by searching for a function that should exist
         let username_results = engine.search("getUserName").await.unwrap();
         assert_eq!(username_results.len(), 1, "Should find exactly one getUserName function");
-        assert_eq!(username_results[0].symbol_name, "getUserName");
+        assert_eq!(username_results[0].symbol.name, "getUserName");
     }
 
     #[tokio::test]
@@ -981,19 +1171,19 @@ mod tests {
         assert_eq!(user_file_results.len(), 2, "Should find both functions from src/user.ts");
 
         // Verify both functions from user.ts are found
-        let user_ids: Vec<&str> = user_file_results.iter().map(|r| r.symbol_name.as_str()).collect();
+        let user_ids: Vec<&str> = user_file_results.iter().map(|r| r.symbol.name.as_str()).collect();
         assert!(user_ids.contains(&"getUserById"));
         assert!(user_ids.contains(&"createUser"));
 
         // Test more specific file path search
         let product_file_results = engine.search("src/product").await.unwrap();
         assert_eq!(product_file_results.len(), 1, "Should find one function from src/product.ts");
-        assert_eq!(product_file_results[0].symbol_name, "getProductById");
+        assert_eq!(product_file_results[0].symbol.name, "getProductById");
 
         // Test nested path search
         let auth_file_results = engine.search("src/auth").await.unwrap();
         assert_eq!(auth_file_results.len(), 1, "Should find one function from src/auth/ directory");
-        assert_eq!(auth_file_results[0].symbol_name, "authenticateUser");
+        assert_eq!(auth_file_results[0].symbol.name, "authenticateUser");
     }
 
     #[tokio::test]
@@ -1097,7 +1287,7 @@ mod tests {
         // Test semantic search by finding related functions through exact name search
         let auth_results = engine.search("authenticateUser").await.unwrap();
         assert!(!auth_results.is_empty(), "Should find authenticateUser function");
-        assert_eq!(auth_results[0].symbol_name, "authenticateUser");
+        assert_eq!(auth_results[0].symbol.name, "authenticateUser");
 
         // Verify the function has authentication-related content in its signature and docs
         assert!(auth_results[0].snippet.contains("authenticate") ||
@@ -1107,24 +1297,24 @@ mod tests {
         // Test user login search
         let user_results = engine.search("userLogin").await.unwrap();
         assert!(!user_results.is_empty(), "Should find user login function");
-        assert_eq!(user_results[0].symbol_name, "userLogin");
+        assert_eq!(user_results[0].symbol.name, "userLogin");
 
         // Test user account management search
         let account_results = engine.search("createUserAccount").await.unwrap();
         assert!(!account_results.is_empty(), "Should find account creation function");
-        assert_eq!(account_results[0].symbol_name, "createUserAccount");
+        assert_eq!(account_results[0].symbol.name, "createUserAccount");
 
         // Test that we can differentiate - tax function should not appear in user searches
         let tax_results = engine.search("calculateTax").await.unwrap();
         assert_eq!(tax_results.len(), 1, "Should find only the tax function");
-        assert_eq!(tax_results[0].symbol_name, "calculateTax");
+        assert_eq!(tax_results[0].symbol.name, "calculateTax");
 
         // Verify we indexed all 4 functions correctly
         let all_functions = vec!["userLogin", "authenticateUser", "createUserAccount", "calculateTax"];
         for func_name in all_functions {
             let results = engine.search(func_name).await.unwrap();
             assert_eq!(results.len(), 1, "Should find exactly one result for {}", func_name);
-            assert_eq!(results[0].symbol_name, func_name);
+            assert_eq!(results[0].symbol.name, func_name);
         }
     }
 
@@ -1303,11 +1493,11 @@ mod tests {
 
         let new_results = engine.search("newFunction").await.unwrap();
         assert_eq!(new_results.len(), 1, "Should find new function after update");
-        assert_eq!(new_results[0].symbol_name, "newFunction");
+        assert_eq!(new_results[0].symbol.name, "newFunction");
 
         // Verify unchanged file is still intact
         let unchanged_results_after = engine.search("unchangedFunction").await.unwrap();
         assert_eq!(unchanged_results_after.len(), 1, "Should still find unchanged function");
-        assert_eq!(unchanged_results_after[0].symbol_name, "unchangedFunction");
+        assert_eq!(unchanged_results_after[0].symbol.name, "unchangedFunction");
     }
 }

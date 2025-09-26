@@ -11,6 +11,7 @@ use anyhow::Result;
 use crate::tools::JulieTools;
 use crate::extractors::{Symbol, Relationship};
 use crate::search::SearchEngine;
+use crate::embeddings::EmbeddingEngine;
 use tokio::sync::RwLock;
 
 /// Julie's custom handler for MCP messages
@@ -29,6 +30,8 @@ pub struct JulieServerHandler {
     pub search_engine: Arc<RwLock<SearchEngine>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
+    /// Cached embedding engine for semantic search (expensive to initialize)
+    pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
 }
 
 impl JulieServerHandler {
@@ -49,12 +52,37 @@ impl JulieServerHandler {
             relationships: Arc::new(RwLock::new(Vec::new())),
             search_engine: Arc::new(RwLock::new(search_engine)),
             is_indexed: Arc::new(RwLock::new(false)),
+            embedding_engine: Arc::new(RwLock::new(None)),
         })
     }
 
     /// Get the current working directory for workspace operations
     fn get_workspace_path(&self) -> std::path::PathBuf {
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    }
+
+    /// Get or initialize the cached embedding engine for semantic operations
+    /// This avoids expensive repeated initialization of the ONNX model
+    pub async fn ensure_embedding_engine(&self) -> Result<()> {
+        let mut embedding_guard = self.embedding_engine.write().await;
+
+        if embedding_guard.is_none() {
+            debug!("🧠 Initializing cached embedding engine");
+            // Create model cache directory
+            let cache_dir = std::env::temp_dir().join("julie_cache").join("embeddings");
+            std::fs::create_dir_all(&cache_dir).map_err(|e| {
+                anyhow::anyhow!("Failed to create embedding cache directory: {}", e)
+            })?;
+
+            let engine = EmbeddingEngine::new("bge-small", cache_dir).map_err(|e| {
+                anyhow::anyhow!("Failed to initialize embedding engine: {}", e)
+            })?;
+
+            *embedding_guard = Some(engine);
+            info!("✅ Cached embedding engine initialized successfully");
+        }
+
+        Ok(())
     }
 }
 

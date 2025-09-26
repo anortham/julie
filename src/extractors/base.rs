@@ -185,6 +185,16 @@ pub enum Visibility {
     Protected,
 }
 
+impl std::fmt::Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Visibility::Public => write!(f, "Public"),
+            Visibility::Private => write!(f, "Private"),
+            Visibility::Protected => write!(f, "Protected"),
+        }
+    }
+}
+
 /// Relationship between two symbols - direct port from Miller
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Relationship {

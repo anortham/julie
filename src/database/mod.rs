@@ -741,8 +741,8 @@ mod tests {
         assert!(insert_result.is_ok());
     }
 
-    #[test]
-    fn test_debug_foreign_key_constraint() {
+    #[tokio::test]
+    async fn test_debug_foreign_key_constraint() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("debug.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
@@ -783,7 +783,7 @@ mod tests {
         };
 
         // This should work without foreign key constraint error
-        let result = tokio::runtime::Runtime::new().unwrap().block_on(db.store_symbols(&[symbol]));
+        let result = db.store_symbols(&[symbol]).await;
         assert!(result.is_ok(), "Foreign key constraint failed: {:?}", result);
     }
 

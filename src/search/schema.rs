@@ -40,6 +40,14 @@ pub struct SearchFields {
     // Location fields
     pub start_line: Field,
     pub end_line: Field,
+    pub start_column: Field,
+    pub end_column: Field,
+    pub start_byte: Field,
+    pub end_byte: Field,
+
+    // Symbol relationship fields
+    pub visibility: Field,
+    pub parent_id: Field,
 
     // Metadata fields
     pub metadata: Field,
@@ -89,6 +97,14 @@ impl CodeSearchSchema {
         // Location information (numeric fields use different options)
         let start_line = schema_builder.add_u64_field("start_line", tantivy::schema::INDEXED | tantivy::schema::STORED);
         let end_line = schema_builder.add_u64_field("end_line", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let start_column = schema_builder.add_u64_field("start_column", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let end_column = schema_builder.add_u64_field("end_column", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let start_byte = schema_builder.add_u64_field("start_byte", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let end_byte = schema_builder.add_u64_field("end_byte", tantivy::schema::INDEXED | tantivy::schema::STORED);
+
+        // Symbol relationship fields
+        let visibility = schema_builder.add_text_field("visibility", text_options.clone());
+        let parent_id = schema_builder.add_text_field("parent_id", stored_only.clone());
 
         // Metadata and semantic information
         let metadata = schema_builder.add_text_field("metadata", text_options.clone());
@@ -118,6 +134,12 @@ impl CodeSearchSchema {
             code_context,
             start_line,
             end_line,
+            start_column,
+            end_column,
+            start_byte,
+            end_byte,
+            visibility,
+            parent_id,
             metadata,
             semantic_group,
             confidence,
@@ -159,6 +181,12 @@ pub struct SearchDocument {
     pub code_context: Option<String>,
     pub start_line: u32,
     pub end_line: u32,
+    pub start_column: u32,
+    pub end_column: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub visibility: Option<String>,
+    pub parent_id: Option<String>,
     pub metadata: Option<String>, // JSON string
     pub semantic_group: Option<String>,
     pub confidence: Option<f64>,
@@ -504,7 +532,7 @@ mod tests {
         assert!(field_names.contains(&"language_boost"));
 
         // Total field count should match expected number
-        assert_eq!(field_names.len(), 19, "Expected 19 fields in schema, found: {:?}", field_names);
+        assert_eq!(field_names.len(), 25, "Expected 25 fields in schema, found: {:?}", field_names);
     }
 
     #[test]
@@ -521,6 +549,12 @@ mod tests {
             code_context: None,
             start_line: 10,
             end_line: 15,
+            start_column: 0,
+            end_column: 20,
+            start_byte: 200,
+            end_byte: 300,
+            visibility: Some("public".to_string()),
+            parent_id: None,
             metadata: None,
             semantic_group: Some("user-data".to_string()),
             confidence: Some(0.95),
@@ -549,6 +583,12 @@ mod tests {
             code_context: None,
             start_line: 10,
             end_line: 15,
+            start_column: 0,
+            end_column: 20,
+            start_byte: 200,
+            end_byte: 300,
+            visibility: None,
+            parent_id: None,
             metadata: None,
             semantic_group: None,
             confidence: None,
@@ -577,6 +617,12 @@ mod tests {
             code_context: None,
             start_line: 20,
             end_line: 30,
+            start_column: 0,
+            end_column: 15,
+            start_byte: 400,
+            end_byte: 500,
+            visibility: None,
+            parent_id: None,
             metadata: None,
             semantic_group: None,
             confidence: None,
@@ -602,6 +648,12 @@ mod tests {
             code_context: None,
             start_line: 1,
             end_line: 5,
+            start_column: 0,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 100,
+            visibility: None,
+            parent_id: None,
             metadata: None,
             semantic_group: None,
             confidence: None,
@@ -618,6 +670,12 @@ mod tests {
             code_context: None,
             start_line: 1,
             end_line: 5,
+            start_column: 0,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 100,
+            visibility: None,
+            parent_id: None,
             metadata: None,
             semantic_group: None,
             confidence: None,
@@ -634,6 +692,12 @@ mod tests {
             code_context: None,
             start_line: 1,
             end_line: 5,
+            start_column: 0,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 100,
+            visibility: None,
+            parent_id: None,
             metadata: None,
             semantic_group: None,
             confidence: None,

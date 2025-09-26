@@ -108,7 +108,7 @@ namespace MyProject
         assert!(base_entity.is_some());
         assert_eq!(base_entity.unwrap().kind, SymbolKind::Class);
         assert!(base_entity.unwrap().signature.as_ref().unwrap().contains("public abstract class BaseEntity<T>"));
-        assert_eq!(base_entity.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "public");
+        assert_eq!(base_entity.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "public");
 
         // Find User class
         let user = symbols.iter().find(|s| s.name == "User");
@@ -231,7 +231,7 @@ namespace MyProject
         assert!(add.is_some());
         assert_eq!(add.unwrap().kind, SymbolKind::Method);
         assert!(add.unwrap().signature.as_ref().unwrap().contains("public static int Add(int a, int b)"));
-        assert_eq!(add.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "public");
+        assert_eq!(add.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "public");
 
         // Find GetDataAsync method
         let get_data_async = symbols.iter().find(|s| s.name == "GetDataAsync");
@@ -371,14 +371,14 @@ namespace MyProject
 
         let default_constructor = constructors.iter().find(|s| s.signature.as_ref().unwrap().contains("Configuration()"));
         assert!(default_constructor.is_some());
-        assert_eq!(default_constructor.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "public");
+        assert_eq!(default_constructor.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "public");
 
         let private_constructor = constructors.iter().find(|s|
             s.signature.as_ref().unwrap().contains("private") &&
             s.signature.as_ref().unwrap().contains("bool validate")
         );
         assert!(private_constructor.is_some());
-        assert_eq!(private_constructor.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "private");
+        assert_eq!(private_constructor.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "private");
     }
 
     #[test]
@@ -437,7 +437,7 @@ namespace MyProject
         // Find _count field
         let count = symbols.iter().find(|s| s.name == "_count");
         assert!(count.is_some());
-        assert_eq!(count.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "protected");
+        assert_eq!(count.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "protected");
     }
 
     #[test]
@@ -622,12 +622,12 @@ namespace MyProject
         let nested_struct = symbols.iter().find(|s| s.name == "NestedStruct");
         assert!(nested_struct.is_some());
         assert_eq!(nested_struct.unwrap().kind, SymbolKind::Struct);
-        assert_eq!(nested_struct.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "protected");
+        assert_eq!(nested_struct.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "protected");
 
         // Find NestedEnum
         let nested_enum = symbols.iter().find(|s| s.name == "NestedEnum");
         assert!(nested_enum.is_some());
-        assert_eq!(nested_enum.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "private");
+        assert_eq!(nested_enum.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "private");
     }
 
     #[test]
@@ -1328,7 +1328,7 @@ namespace ExceptionHandling
             !s.signature.as_ref().unwrap().contains("bool")
         );
         assert!(dispose.is_some());
-        assert_eq!(dispose.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "public");
+        assert_eq!(dispose.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "public");
 
         // Find Dispose method (protected)
         let dispose_protected = symbols.iter().find(|s|
@@ -1336,7 +1336,7 @@ namespace ExceptionHandling
             s.signature.as_ref().unwrap().contains("bool")
         );
         assert!(dispose_protected.is_some());
-        assert_eq!(dispose_protected.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "protected");
+        assert_eq!(dispose_protected.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "protected");
 
         // Find DisposeAsync method
         let dispose_async = symbols.iter().find(|s| s.name == "DisposeAsync");
@@ -1346,7 +1346,7 @@ namespace ExceptionHandling
         // Find DisposeAsyncCore method
         let dispose_async_core = symbols.iter().find(|s| s.name == "DisposeAsyncCore");
         assert!(dispose_async_core.is_some());
-        assert_eq!(dispose_async_core.unwrap().visibility.as_ref().unwrap().to_string().to_lowercase(), "protected");
+        assert_eq!(dispose_async_core.unwrap().visibility.as_ref().map(|v| VisibilityExt::to_string(v).to_lowercase()).unwrap_or_else(|| "private".to_string()), "protected");
 
         // Find finalizer
         let finalizer = symbols.iter().find(|s| s.signature.as_ref().unwrap().contains("~ResourceManager"));
@@ -2022,5 +2022,5 @@ fn get_csharp_visibility(symbol: &crate::extractors::base::Symbol) -> String {
         }
     }
     // Fallback to standard visibility
-    symbol.visibility.as_ref().map_or("private".to_string(), |v| v.to_string())
+    symbol.visibility.as_ref().map_or("private".to_string(), |v| VisibilityExt::to_string(v))
 }

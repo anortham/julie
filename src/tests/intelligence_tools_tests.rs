@@ -1,6 +1,6 @@
 use crate::tools::{
     ExploreOverviewTool, TraceExecutionTool, GetMinimalContextTool,
-    FindBusinessLogicTool, ScoreCriticalityTool
+    FindBusinessLogicTool, ScoreCriticalityTool, FastSearchTool
 };
 use crate::handler::JulieServerHandler;
 use rust_mcp_sdk::schema::CallToolResult;
@@ -8,6 +8,207 @@ use anyhow::Result;
 
 /// Test module for Phase 6.1 Intelligence Tools
 /// Following TDD methodology: tests define contracts before implementation
+
+//******************//
+// FastSearchTool Tests //
+//******************//
+
+#[cfg(test)]
+mod fast_search_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_search_case_insensitive_matching() {
+        // BUG REPRODUCTION: Case sensitivity breaks user expectations
+        // User searches for "extractor" but only "RustExtractor" (exact case) works
+        // This test captures the expected behavior: case-insensitive search
+
+        // Setup: Create handler with basic indexing (mock or simple setup)
+        let handler = JulieServerHandler::new().await.unwrap();
+
+        // Test 1: Lowercase "extractor" should find RustExtractor, TypeScriptExtractor, etc.
+        let lowercase_tool = FastSearchTool {
+            query: "extractor".to_string(),
+            mode: "text".to_string(),
+            limit: 10,
+            language: None,
+            file_pattern: None,
+        };
+
+        let lowercase_result = lowercase_tool.call_tool(&handler).await.unwrap();
+
+        // Test 2: Exact case "RustExtractor" should also work
+        let exactcase_tool = FastSearchTool {
+            query: "RustExtractor".to_string(),
+            mode: "text".to_string(),
+            limit: 10,
+            language: None,
+            file_pattern: None,
+        };
+
+        let exactcase_result = exactcase_tool.call_tool(&handler).await.unwrap();
+
+        // ASSERTION: Both searches should return similar results
+        // This will FAIL with current implementation, proving the bug
+        assert!(
+            !lowercase_result.to_string().contains("No results found"),
+            "BUG: Lowercase 'extractor' should find extractor classes but returns no results"
+        );
+
+        assert!(
+            !exactcase_result.to_string().contains("No results found"),
+            "Sanity check: Exact case 'RustExtractor' should work"
+        );
+
+        // Both should find extractor-related symbols
+        assert!(
+            lowercase_result.to_string().contains("Extractor") ||
+            lowercase_result.to_string().contains("extractor"),
+            "Case insensitive search should find extractor symbols"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_partial_case_insensitive_matching() {
+        // Test: "rust" vs "Rust" should both find Rust-related symbols
+        let handler = JulieServerHandler::new().await.unwrap();
+
+        let lowercase_tool = FastSearchTool {
+            query: "rust".to_string(),
+            mode: "text".to_string(),
+            limit: 5,
+            language: None,
+            file_pattern: None,
+        };
+
+        let capitalized_tool = FastSearchTool {
+            query: "Rust".to_string(),
+            mode: "text".to_string(),
+            limit: 5,
+            language: None,
+            file_pattern: None,
+        };
+
+        let lowercase_result = lowercase_tool.call_tool(&handler).await.unwrap();
+        let capitalized_result = capitalized_tool.call_tool(&handler).await.unwrap();
+
+        // Both should find Rust-related symbols
+        assert!(
+            !lowercase_result.to_string().contains("No results found"),
+            "Lowercase 'rust' should find Rust symbols"
+        );
+
+        assert!(
+            !capitalized_result.to_string().contains("No results found"),
+            "BUG: Capitalized 'Rust' should find rust symbols but may not due to case sensitivity"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_tokenization_compound_words() {
+        // CRITICAL TOKENIZATION BUG REPRODUCTION
+        // User expectations: "extractor" should find "RustExtractor", "TypeScriptExtractor", etc.
+        // Current behavior: Only exact matches work, partial words fail
+        // This test defines the expected tokenization behavior
+
+        let handler = JulieServerHandler::new().await.unwrap();
+
+        // Test 1: "extractor" should find all *Extractor classes
+        let partial_tool = FastSearchTool {
+            query: "extractor".to_string(),
+            mode: "text".to_string(),
+            limit: 10,
+            language: None,
+            file_pattern: None,
+        };
+
+        let partial_result = partial_tool.call_tool(&handler).await.unwrap();
+
+        // Test 2: Exact "RustExtractor" should work (sanity check)
+        let exact_tool = FastSearchTool {
+            query: "RustExtractor".to_string(),
+            mode: "text".to_string(),
+            limit: 10,
+            language: None,
+            file_pattern: None,
+        };
+
+        let exact_result = exact_tool.call_tool(&handler).await.unwrap();
+
+        // Test 3: "Script" should find "TypeScriptExtractor"
+        let script_tool = FastSearchTool {
+            query: "Script".to_string(),
+            mode: "text".to_string(),
+            limit: 10,
+            language: None,
+            file_pattern: None,
+        };
+
+        let script_result = script_tool.call_tool(&handler).await.unwrap();
+
+        // ASSERTIONS - These will FAIL with current implementation
+
+        // Exact match should work (sanity check)
+        assert!(
+            !exact_result.to_string().contains("No results found"),
+            "Sanity check: Exact 'RustExtractor' should work"
+        );
+
+        // FAILING ASSERTION: Partial word should find compound names
+        assert!(
+            !partial_result.to_string().contains("No results found"),
+            "TOKENIZATION BUG: 'extractor' should find RustExtractor, TypeScriptExtractor, etc."
+        );
+
+        assert!(
+            partial_result.to_string().contains("Extractor"),
+            "Tokenization should find compound words containing 'extractor'"
+        );
+
+        // FAILING ASSERTION: "Script" should find "TypeScriptExtractor"
+        assert!(
+            !script_result.to_string().contains("No results found"),
+            "TOKENIZATION BUG: 'Script' should find TypeScriptExtractor"
+        );
+
+        assert!(
+            script_result.to_string().contains("TypeScript"),
+            "Tokenization should find 'TypeScript' when searching 'Script'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_tokenization_patterns() {
+        // Test different compound word patterns that should be tokenized
+        let handler = JulieServerHandler::new().await.unwrap();
+
+        let test_cases = vec![
+            ("extract", "should find extract_symbols, BaseExtractor, etc."),
+            ("symbol", "should find Symbol struct, extract_symbols, etc."),
+            ("base", "should find BaseExtractor, base module"),
+            ("type", "should find TypeScriptExtractor, TypeInfo, etc."),
+        ];
+
+        for (query, description) in test_cases {
+            let tool = FastSearchTool {
+                query: query.to_string(),
+                mode: "text".to_string(),
+                limit: 10,
+                language: None,
+                file_pattern: None,
+            };
+
+            let result = tool.call_tool(&handler).await.unwrap();
+
+            // This assertion will likely FAIL for most cases
+            assert!(
+                !result.to_string().contains("No results found"),
+                "TOKENIZATION BUG: '{}' {}. Current result: {}",
+                query, description, result.to_string()
+            );
+        }
+    }
+}
 
 //******************//
 // ExploreOverviewTool Tests //
