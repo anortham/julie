@@ -7,6 +7,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind, Relationship};
+use crate::utils::{token_estimation::TokenEstimator, progressive_reduction::ProgressiveReducer};
 
 //*********************//
 // Navigation Tools    //
@@ -357,59 +358,8 @@ impl FastRefsTool {
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
-        // Format results
-        let total_results = if self.include_definition { definitions.len() + references.len() } else { references.len() };
-        let mut message = format!(
-            "🔗 Found {} reference(s) for: '{}'\n\n",
-            total_results,
-            self.symbol
-        );
-
-        let mut count = 0;
-
-        // Include definitions if requested
-        if self.include_definition && !definitions.is_empty() {
-            message.push_str("🎯 Definitions:\n");
-            for symbol in &definitions {
-                if count >= self.limit as usize { break; }
-                message.push_str(&format!(
-                    "  {} [{}] - {}:{}:{}\n",
-                    symbol.name,
-                    format!("{:?}", symbol.kind).to_lowercase(),
-                    symbol.file_path,
-                    symbol.start_line,
-                    symbol.start_column
-                ));
-                count += 1;
-            }
-            message.push('\n');
-        }
-
-        // Include references
-        if !references.is_empty() {
-            message.push_str("🔗 References:\n");
-            for relationship in references.iter().take((self.limit as usize).saturating_sub(count)) {
-                message.push_str(&format!(
-                    "  {} - {}:{} ({})",
-                    format!("{:?}", relationship.kind),
-                    relationship.file_path,
-                    relationship.line_number,
-                    relationship.kind
-                ));
-
-                // Add confidence if not 1.0
-                if relationship.confidence < 1.0 {
-                    message.push_str(&format!(" [confidence: {:.1}]", relationship.confidence));
-                }
-                message.push('\n');
-                count += 1;
-            }
-        }
-
-        if total_results > self.limit as usize {
-            message.push_str(&format!("\n... and {} more references\n", total_results - self.limit as usize));
-        }
-
+        // Use token-optimized formatting
+        let message = self.format_optimized_results(&definitions, &references);
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
@@ -559,5 +509,95 @@ impl FastRefsTool {
             None => String::new(),
             Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         }
+    }
+
+    /// Format optimized results with token optimization for FastRefsTool
+    pub fn format_optimized_results(&self, symbols: &[Symbol], relationships: &[Relationship]) -> String {
+        let mut lines = vec![
+            format!("🔗 References for: '{}'", self.symbol),
+        ];
+
+        // Token optimization: apply progressive reduction first, then early termination if needed
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
+        let progressive_reducer = ProgressiveReducer::new();
+
+        // Calculate initial header tokens
+        let header_text = lines.join("\n");
+        let header_tokens = token_estimator.estimate_string(&header_text);
+        let available_tokens = token_limit.saturating_sub(header_tokens);
+
+        // Combine all items (symbols + relationships) for unified processing
+        let mut all_items = Vec::new();
+
+        // Add definitions if included
+        if self.include_definition && !symbols.is_empty() {
+            for symbol in symbols {
+                all_items.push(format!("📍 Definition: {} [{}] - {}:{}:{}",
+                    symbol.name,
+                    format!("{:?}", symbol.kind).to_lowercase(),
+                    symbol.file_path,
+                    symbol.start_line,
+                    symbol.start_column
+                ));
+            }
+        }
+
+        // Add references
+        for relationship in relationships {
+            all_items.push(format!("🔗 Reference: {} - {}:{} (confidence: {:.2})",
+                self.symbol,
+                relationship.file_path,
+                relationship.line_number,
+                relationship.confidence
+            ));
+        }
+
+        // Define token estimator function for items
+        let estimate_items_tokens = |items: &[&String]| -> usize {
+            let mut total_tokens = 0;
+            for item in items {
+                total_tokens += token_estimator.estimate_string(item);
+            }
+            total_tokens
+        };
+
+        // Try progressive reduction first
+        let item_refs: Vec<&String> = all_items.iter().collect();
+        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+
+        let (items_to_show, reduction_message) = if reduced_item_refs.len() < all_items.len() {
+            // Progressive reduction was applied
+            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
+            let total_items = symbols.len() + relationships.len();
+            let message = format!("📊 Showing {} of {} results - Applied progressive reduction {} → {}",
+                    items.len(), total_items, all_items.len(), items.len());
+            (items, message)
+        } else {
+            // No reduction needed
+            let total_items = symbols.len() + relationships.len();
+            let message = format!("📊 Showing {} of {} results",
+                    all_items.len(), total_items);
+            (all_items, message)
+        };
+
+        lines.push(reduction_message);
+        lines.push(String::new());
+
+        // Add the items we decided to show
+        for item in &items_to_show {
+            lines.push(item.clone());
+        }
+
+        // Add next actions if we have results
+        if !items_to_show.is_empty() {
+            lines.push(String::new());
+            lines.push("🎯 Suggested next actions:".to_string());
+            lines.push("   • Use fast_goto to see full definitions".to_string());
+            lines.push("   • Edit files to refactor symbol usage".to_string());
+            lines.push("   • Search for related symbols".to_string());
+        }
+
+        lines.join("\n")
     }
 }

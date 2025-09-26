@@ -29,6 +29,21 @@ pub mod file_utils {
     }
 }
 
+/// Token estimation utilities
+pub mod token_estimation;
+
+/// Context truncation utilities
+pub mod context_truncation;
+
+/// Progressive reduction utilities
+pub mod progressive_reduction;
+
+/// Path relevance scoring utilities
+pub mod path_relevance;
+
+/// Exact match boost utilities
+pub mod exact_match_boost;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;

@@ -154,3 +154,10 @@ pub mod real_world_validation; // Tests all extractors against real-world code f
 
 // Phase 6.1 Intelligence Tools Tests (Heart of Codebase)
 // pub mod intelligence_tools_tests; // Tests for AI-native code intelligence tools - TEMP DISABLED
+
+// Token Optimization Tests (CRITICAL - Fixes 149K token explosion)
+pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
+pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
+pub mod exploration_tools_tests; // Tests for exploration tool token optimization (FastExploreTool, FindLogicTool)
+pub mod path_relevance_tests; // Tests for path relevance scoring system
+pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
