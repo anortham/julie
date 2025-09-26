@@ -1,7 +1,9 @@
 // Julie's Test Infrastructure
 //
 // This module contains test utilities and infrastructure for testing extractors,
-// search functionality, and other Julie components.
+// search functionality, editing tools, and other Julie components.
+
+pub mod editing_tests;
 
 #[cfg(test)]
 pub mod test_helpers {

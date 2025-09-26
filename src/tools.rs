@@ -130,7 +130,7 @@ const KNOWN_CODE_EXTENSIONS: &[&str] = &[
 //******************//
 #[mcp_tool(
     name = "index_workspace",
-    description = "Index the current workspace for fast code intelligence. Must be run first to enable semantic search.",
+    description = "🚀 UNLOCK JULIE'S POWER - Index workspace to enable lightning-fast search and navigation (ESSENTIAL FIRST STEP)",
     title = "Index Workspace for Code Intelligence",
     idempotent_hint = true,
     destructive_hint = false,
@@ -140,10 +140,14 @@ const KNOWN_CODE_EXTENSIONS: &[&str] = &[
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct IndexWorkspaceTool {
-    /// Optional workspace path (defaults to current directory)
+    /// Path to workspace root directory (defaults to current directory).
+    /// Examples: ".", "/Users/me/project", "~/Source/myapp", "../other-project"
+    /// Julie auto-detects workspace markers (.git, Cargo.toml, package.json, pyproject.toml)
     #[serde(default)]
     pub workspace_path: Option<String>,
-    /// Force re-indexing even if index exists
+    /// Force complete re-indexing even if cache exists (default: false).
+    /// Use when: files changed outside Julie, git branch switched, or index seems stale
+    /// Warning: Full re-index may take several minutes for large codebases
     #[serde(default)]
     pub force_reindex: Option<bool>,
 }
@@ -712,18 +716,28 @@ impl IndexWorkspaceTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastSearchTool {
-    /// Search query (symbol name, function name, etc.)
+    /// Search query supporting multiple patterns and code constructs.
+    /// Examples: "getUserData", "handle*", "class UserService", "import React", "TODO", "async function"
+    /// Supports: exact match, wildcards (*), camelCase tokenization, partial matching
     pub query: String,
-    /// Search mode: text (classic code search), semantic (AI understanding), hybrid (both)
+    /// Search algorithm: "text" (exact/pattern match, <10ms), "semantic" (AI similarity, <100ms), "hybrid" (both, balanced)
+    /// Default: "text" for speed. Use "semantic" when text search fails to find conceptually similar code.
+    /// Use "hybrid" for comprehensive results when you need maximum coverage.
     #[serde(default = "default_text")]
     pub mode: String,
-    /// Optional language filter
+    /// Programming language filter (optional).
+    /// Valid: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
+    /// Example: "typescript" to search only .ts/.tsx files
     #[serde(default)]
     pub language: Option<String>,
-    /// Optional file path pattern filter
+    /// File path pattern using glob syntax (optional).
+    /// Examples: "src/", "*.test.ts", "**/components/**", "tests/", "!node_modules/"
+    /// Supports: directories, extensions, nested paths, exclusions with !
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum number of results
+    /// Maximum results to return (default: 50, range: 1-500).
+    /// Lower = faster response, Higher = more comprehensive
+    /// Tip: Start with default, increase if you need more results
     #[serde(default = "default_limit")]
     pub limit: u32,
 }
@@ -966,6 +980,16 @@ impl FastSearchTool {
             if let Some(signature) = &symbol.signature {
                 lines.push(format!("   📝 {}", signature));
             }
+
+            // Add code context if available
+            if let Some(context) = &symbol.code_context {
+                lines.push("   📄 Context:".to_string());
+                // Split context into lines and indent each one
+                for context_line in context.lines() {
+                    lines.push(format!("   {}", context_line));
+                }
+            }
+
             lines.push(String::new());
         }
 
@@ -996,12 +1020,18 @@ impl FastSearchTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastGotoTool {
-    /// Symbol name to find definition for
+    /// Symbol name to navigate to. Supports simple and qualified names.
+    /// Examples: "UserService", "MyClass::method", "std::vector", "React.Component", "getUserData"
+    /// Julie intelligently resolves across languages (Python imports, Rust use statements, TypeScript imports)
     pub symbol: String,
-    /// Optional context file path for better resolution
+    /// Current file path for context (helps resolve ambiguous symbols).
+    /// Example: "src/services/user.ts" when multiple "UserService" classes exist
+    /// Format: Relative path from workspace root
     #[serde(default)]
     pub context_file: Option<String>,
-    /// Optional line number for context
+    /// Line number in context file where symbol is referenced.
+    /// Helps disambiguate when symbol appears multiple times in the same file.
+    /// Example: 142 (line where "UserService" is imported or used)
     #[serde(default)]
     pub line_number: Option<u32>,
 }
@@ -1256,12 +1286,18 @@ impl FastGotoTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
-    /// Symbol name to find references for
+    /// Symbol name to find all references/usages for.
+    /// Examples: "UserService", "handleRequest", "myFunction", "CONSTANT_NAME"
+    /// Same format as fast_goto - Julie will find every place this symbol is used
     pub symbol: String,
-    /// Include definition in results
+    /// Include the symbol definition in results (default: true).
+    /// Set false to see only usages, true to see definition + all usages
+    /// Useful for refactoring - see complete impact before changes
     #[serde(default = "default_true")]
     pub include_definition: bool,
-    /// Maximum number of results
+    /// Maximum references to return (default: 50, range: 1-500).
+    /// Large symbols may have hundreds of references - use limit to control response size
+    /// Tip: Start with default, increase if you need comprehensive coverage
     #[serde(default = "default_limit")]
     pub limit: u32,
 }
@@ -1535,7 +1571,7 @@ impl FastRefsTool {
 //******************//
 #[mcp_tool(
     name = "semantic_search",
-    description = "Search code by meaning and intent using AI embeddings for conceptual matches.",
+    description = "🧠 THINK LIKE THE CODE - Find patterns by meaning, not just text (AI understands what you're looking for)",
     title = "Semantic Code Search",
     idempotent_hint = true,
     destructive_hint = false,
@@ -2023,7 +2059,7 @@ impl FastExploreTool {
 //******************//
 #[mcp_tool(
     name = "navigate",
-    description = "Navigate through code with surgical precision using various navigation modes.",
+    description = "⚡ NAVIGATE WITH PRECISION - Jump anywhere in your codebase with surgical accuracy (never get lost again)",
     title = "Precise Code Navigation",
     idempotent_hint = true,
     destructive_hint = false,
@@ -2329,7 +2365,7 @@ fn default_confidence() -> f32 { 0.6 }
 /// Get exactly the context needed for AI - no more, no less
 #[mcp_tool(
     name = "get_minimal_context",
-    description = "Smart AI context optimization - get exactly the code context needed within token limits.",
+    description = "🎯 GET PERFECT CONTEXT - AI-optimized code snippets that fit perfectly within token limits (no waste, maximum insight)",
     title = "AI Context Optimizer",
     idempotent_hint = true,
     destructive_hint = false,
@@ -2966,19 +3002,30 @@ impl ScoreCriticalityTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastEditTool {
-    /// Path to the file to edit
+    /// File path to edit (relative from workspace root).
+    /// Examples: "src/main.rs", "components/Button.tsx", "tests/user.test.js"
+    /// Must be an indexed file - run fast_search first to verify file exists
     pub file_path: String,
-    /// The exact text to find and replace
+    /// Exact text to find and replace. Must match precisely including whitespace.
+    /// TIP: Copy directly from fast_search or fast_goto results to ensure exact match
+    /// Julie preserves indentation context automatically
     pub find_text: String,
-    /// The replacement text
+    /// Replacement text. Empty string deletes the matched text.
+    /// Julie preserves surrounding indentation and formatting automatically
+    /// Multi-line replacements supported - use \n for line breaks
     pub replace_text: String,
-    /// Validate changes before applying (default: true)
+    /// Validate syntax after edit (default: true). Only set false for non-code files.
+    /// Prevents broken syntax - edit will be rejected if validation fails
     #[serde(default = "default_true")]
     pub validate: bool,
-    /// Create backup before editing (default: true)
+    /// Create timestamped backup before editing (default: true).
+    /// Backup location: .julie/backups/[timestamp]/[filename]
+    /// Provides safety net for recovery if edit goes wrong
     #[serde(default = "default_true")]
     pub backup: bool,
-    /// Dry run mode - show what would be changed without applying (default: false)
+    /// Preview changes without applying (default: false).
+    /// Returns diff showing exactly what would change - safe to test edits
+    /// Use true to verify changes before committing
     #[serde(default)]
     pub dry_run: bool,
 }

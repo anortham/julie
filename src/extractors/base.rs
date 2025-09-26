@@ -12,6 +12,30 @@ use tree_sitter::Node;
 use tracing::{warn, debug};
 use md5;
 
+/// Configuration for code context extraction
+#[derive(Debug, Clone)]
+pub struct ContextConfig {
+    /// Number of lines to show before the symbol
+    pub lines_before: usize,
+    /// Number of lines to show after the symbol
+    pub lines_after: usize,
+    /// Maximum line length to display (longer lines get truncated)
+    pub max_line_length: usize,
+    /// Whether to show line numbers in context
+    pub show_line_numbers: bool,
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            lines_before: 3,
+            lines_after: 3,
+            max_line_length: 120,
+            show_line_numbers: true,
+        }
+    }
+}
+
 /// A code symbol (function, class, variable, etc.) extracted from source code
 ///
 /// Direct port of Miller's Symbol interface - exact field mapping maintained
@@ -53,6 +77,8 @@ pub struct Symbol {
     pub semantic_group: Option<String>,
     /// Confidence score for symbol extraction (0.0 to 1.0)
     pub confidence: Option<f32>,
+    /// Code context lines around the symbol (3 lines before + match + 3 lines after)
+    pub code_context: Option<String>,
 }
 
 /// Symbol kinds - direct port of Miller's SymbolKind enum
@@ -298,6 +324,7 @@ pub struct BaseExtractor {
     pub symbol_map: HashMap<String, Symbol>,
     pub relationships: Vec<Relationship>,
     pub type_info: HashMap<String, TypeInfo>,
+    pub context_config: ContextConfig,
 }
 
 impl BaseExtractor {
@@ -310,6 +337,7 @@ impl BaseExtractor {
             symbol_map: HashMap::new(),
             relationships: Vec::new(),
             type_info: HashMap::new(),
+            context_config: ContextConfig::default(),
         }
     }
 
@@ -363,6 +391,70 @@ impl BaseExtractor {
         format!("{:x}", digest)
     }
 
+    /// Extract code context around a symbol using configurable parameters
+    /// Inspired by codesearch's LineAwareSearchService context extraction
+    fn extract_code_context(&self, start_row: usize, end_row: usize) -> Option<String> {
+        if self.content.is_empty() {
+            return None;
+        }
+
+        let lines: Vec<&str> = self.content.lines().collect();
+
+        if lines.is_empty() || start_row >= lines.len() {
+            return None;
+        }
+
+        // Calculate context bounds using configuration
+        let context_start = if start_row >= self.context_config.lines_before {
+            start_row - self.context_config.lines_before
+        } else {
+            0
+        };
+        let context_end = std::cmp::min(lines.len() - 1, end_row + self.context_config.lines_after);
+
+        // Build context with optional line numbers
+        let mut context_lines = Vec::new();
+        for i in context_start..=context_end {
+            let line_num = i + 1; // 1-based line numbers
+            let mut line_content = lines.get(i).unwrap_or(&"").to_string();
+
+            // Truncate long lines if configured
+            if line_content.len() > self.context_config.max_line_length {
+                line_content.truncate(self.context_config.max_line_length - 3);
+                line_content.push_str("...");
+            }
+
+            // Format line with optional line numbers
+            let formatted_line = if self.context_config.show_line_numbers {
+                if i >= start_row && i <= end_row {
+                    format!("  ➤ {:3}: {}", line_num, line_content)
+                } else {
+                    format!("    {:3}: {}", line_num, line_content)
+                }
+            } else {
+                if i >= start_row && i <= end_row {
+                    format!("  ➤ {}", line_content)
+                } else {
+                    format!("    {}", line_content)
+                }
+            };
+
+            context_lines.push(formatted_line);
+        }
+
+        Some(context_lines.join("\n"))
+    }
+
+    /// Update the context configuration
+    pub fn set_context_config(&mut self, config: ContextConfig) {
+        self.context_config = config;
+    }
+
+    /// Get a reference to the current context configuration
+    pub fn get_context_config(&self) -> &ContextConfig {
+        &self.context_config
+    }
+
     /// Create a symbol - exact port of Miller's createSymbol method
     pub fn create_symbol(
         &mut self,
@@ -375,6 +467,9 @@ impl BaseExtractor {
         let end_pos = node.end_position();
 
         let id = self.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+
+        // Extract code context around the symbol
+        let code_context = self.extract_code_context(start_pos.row, end_pos.row);
 
         let symbol = Symbol {
             id: id.clone(),
@@ -395,6 +490,7 @@ impl BaseExtractor {
             metadata: Some(options.metadata.unwrap_or_default()),
             semantic_group: None, // Will be populated during cross-language analysis
             confidence: None, // Will be calculated based on parsing context
+            code_context,
         };
 
         self.symbol_map.insert(id, symbol.clone());
@@ -716,6 +812,138 @@ pub struct ExtractionResults {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test context extraction with various edge cases
+    #[test]
+    fn test_context_extraction_edge_cases() {
+        // Test case 1: Symbol at the beginning of file (not enough lines before)
+        let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8";
+        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+
+        let context = extractor.extract_code_context(2, 4); // function on line 3-5 (0-indexed: 2-4)
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+
+        // Should show lines 1-7 (with function highlighted on 3-5)
+        assert!(context_str.contains("    1: line 1"));
+        assert!(context_str.contains("    2: line 2"));
+        assert!(context_str.contains("  ➤   3: function test() {"));
+        assert!(context_str.contains("  ➤   4: return 42;"));
+        assert!(context_str.contains("  ➤   5: }"));
+        assert!(context_str.contains("    6: line 6"));
+
+        // Test case 2: Symbol at the end of file (not enough lines after)
+        let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}";
+        extractor.content = content.to_string();
+
+        let context = extractor.extract_code_context(3, 5); // function on lines 4-6 (0-indexed: 3-5)
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+
+        // Should show lines 1-6 (all available lines)
+        assert!(context_str.contains("    1: line 1"));
+        assert!(context_str.contains("  ➤   4: function test() {"));
+        assert!(context_str.contains("  ➤   6: }"));
+
+        // Test case 3: Empty file
+        extractor.content = "".to_string();
+        let context = extractor.extract_code_context(0, 0);
+        assert!(context.is_none());
+
+        // Test case 4: Single line file
+        extractor.content = "single line".to_string();
+        let context = extractor.extract_code_context(0, 0);
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+        assert!(context_str.contains("  ➤   1: single line"));
+    }
+
+    /// Test context extraction configuration options
+    #[test]
+    fn test_context_configuration() {
+        let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8\nline 9";
+        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+
+        // Test custom context config (1 line before, 2 lines after)
+        let custom_config = ContextConfig {
+            lines_before: 1,
+            lines_after: 2,
+            max_line_length: 120,
+            show_line_numbers: true,
+        };
+        extractor.set_context_config(custom_config);
+
+        let context = extractor.extract_code_context(3, 5); // function on lines 4-6 (0-indexed: 3-5)
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+
+        // Should show lines 3-8 (1 before + symbol + 2 after)
+        assert!(context_str.contains("    3: line 3"));
+        assert!(context_str.contains("  ➤   4: function test() {"));
+        assert!(context_str.contains("  ➤   6: }"));
+        assert!(context_str.contains("    7: line 7"));
+        assert!(context_str.contains("    8: line 8"));
+
+        // Should NOT contain lines 1, 2, or 9
+        assert!(!context_str.contains("line 1"));
+        assert!(!context_str.contains("line 2"));
+        assert!(!context_str.contains("line 9"));
+    }
+
+    /// Test line length truncation
+    #[test]
+    fn test_line_truncation() {
+        let very_long_line = "a".repeat(150); // 150 character line
+        let content = format!("line 1\nline 2\n{}\nline 4", very_long_line);
+        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+
+        // Set config with short max line length
+        let config = ContextConfig {
+            lines_before: 3,
+            lines_after: 3,
+            max_line_length: 10,
+            show_line_numbers: true,
+        };
+        extractor.set_context_config(config);
+
+        let context = extractor.extract_code_context(2, 2); // long line (0-indexed: 2)
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+
+        // Long line should be truncated with "..."
+        assert!(context_str.contains("aaaaaaa..."));
+        assert!(!context_str.contains(&very_long_line)); // Full line should not appear
+    }
+
+    /// Test context without line numbers
+    #[test]
+    fn test_context_without_line_numbers() {
+        let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6";
+        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+
+        // Disable line numbers
+        let config = ContextConfig {
+            lines_before: 2,
+            lines_after: 1,
+            max_line_length: 120,
+            show_line_numbers: false,
+        };
+        extractor.set_context_config(config);
+
+        let context = extractor.extract_code_context(2, 4); // function on lines 3-5 (0-indexed: 2-4)
+        assert!(context.is_some());
+        let context_str = context.unwrap();
+
+        // Should show content without line numbers
+        assert!(context_str.contains("    line 1"));
+        assert!(context_str.contains("  ➤ function test() {"));
+        assert!(context_str.contains("  ➤ }"));
+
+        // Should NOT contain line numbers
+        assert!(!context_str.contains("1:"));
+        assert!(!context_str.contains("3:"));
+        assert!(!context_str.contains("5:"));
+    }
 
     #[test]
     fn test_symbol_creation() {

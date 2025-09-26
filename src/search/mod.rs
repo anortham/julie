@@ -95,7 +95,7 @@ impl SearchEngine {
                 file_path: symbol.file_path.clone(),
                 signature: symbol.signature.clone(),
                 doc_comment: symbol.doc_comment.clone(),
-                code_context: None, // TODO: Extract from source
+                code_context: symbol.code_context.clone(),
                 start_line: symbol.start_line,
                 end_line: symbol.end_line,
                 metadata: symbol.metadata.as_ref()

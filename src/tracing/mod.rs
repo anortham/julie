@@ -310,6 +310,7 @@ impl CrossLanguageTracer {
             metadata: Some(HashMap::new()),
             semantic_group: None,
             confidence: Some(0.9),
+            code_context: None,
         })
     }
 
@@ -336,6 +337,7 @@ impl CrossLanguageTracer {
             metadata: Some(HashMap::new()),
             semantic_group: None,
             confidence: Some(0.95),
+            code_context: None,
         })
     }
 
@@ -456,6 +458,7 @@ impl CrossLanguageTracer {
             metadata: Some(HashMap::new()),
             semantic_group: None,
             confidence: Some(1.0),
+            code_context: None,
         })
     }
 }

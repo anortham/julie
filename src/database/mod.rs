@@ -596,6 +596,7 @@ impl SymbolDatabase {
             metadata,
             semantic_group: row.get("semantic_group")?,
             confidence: row.get("confidence")?,
+            code_context: None, // TODO: Add code_context to database schema
         })
     }
 

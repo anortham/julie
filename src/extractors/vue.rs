@@ -265,6 +265,7 @@ impl VueExtractor {
             metadata: Some(options.metadata.unwrap_or_default()),
             semantic_group: None, // Vue components don't have cross-language groups yet
             confidence: None, // Will be set during validation
+            code_context: None, // Will be populated during context extraction
         }
     }
 

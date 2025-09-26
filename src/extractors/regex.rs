@@ -509,6 +509,7 @@ impl RegexExtractor {
                     metadata: Some(metadata),
                     semantic_group: None, // Regex patterns don't have cross-language groups
                     confidence: None, // Will be set during validation
+                    code_context: None, // Will be populated during context extraction
                 };
                 symbols.push(symbol);
             }
