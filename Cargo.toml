@@ -58,7 +58,7 @@ tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-pow
 
 # Missing languages from Miller
 harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER 0.25.6+ ⚠️
-tree-sitter-sql = { path = "../tree-sitter-sql", package = "tree-sitter-sequel" }
+tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
 # Search engine

@@ -515,6 +515,7 @@ mod tests {
             semantic_group: Some("ui-events".to_string()),
             confidence: Some(0.95),
             metadata: Some(HashMap::new()),
+            code_context: None,
         }
     }
 

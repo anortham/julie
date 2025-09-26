@@ -224,6 +224,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         let context = CodeContext::from_symbol(&symbol);
@@ -323,6 +324,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         let context = CodeContext::from_symbol(&symbol);
@@ -355,6 +357,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         let mut context = CodeContext::from_symbol(&symbol);

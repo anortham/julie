@@ -94,7 +94,7 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
                 .expect("Error loading GDScript grammar");
         }
         "sql" => {
-            parser.set_language(&tree_sitter_sql::LANGUAGE.into())
+            parser.set_language(&tree_sitter_sequel::LANGUAGE.into())
                 .expect("Error loading SQL grammar");
         }
         "vue" => {

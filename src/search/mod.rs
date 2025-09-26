@@ -565,6 +565,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         // Index the symbol
@@ -608,6 +609,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         let result = engine.index_symbols(vec![symbol]).await;
@@ -649,6 +651,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "test-function-2".to_string(),
@@ -669,6 +672,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -713,6 +717,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "promise-user".to_string(),
@@ -733,6 +738,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "list-products".to_string(),
@@ -753,6 +759,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -804,6 +811,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "arrow-function".to_string(),
@@ -824,6 +832,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "regular-function".to_string(),
@@ -844,6 +853,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -896,6 +906,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "user-function-2".to_string(),
@@ -916,6 +927,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "product-function".to_string(),
@@ -936,6 +948,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "auth-function".to_string(),
@@ -956,6 +969,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -1010,6 +1024,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "auth-function".to_string(),
@@ -1030,6 +1045,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "user-management".to_string(),
@@ -1050,6 +1066,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "unrelated-function".to_string(),
@@ -1070,6 +1087,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -1140,6 +1158,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             });
         }
 
@@ -1212,6 +1231,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
             Symbol {
                 id: "unchanged-function".to_string(),
@@ -1232,6 +1252,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 
@@ -1270,6 +1291,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
+                code_context: None,
             },
         ];
 

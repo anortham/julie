@@ -38,7 +38,7 @@ mod real_world_tests {
             "html" => tree_sitter_html::LANGUAGE,
             "powershell" => tree_sitter_powershell::LANGUAGE,
             "regex" => tree_sitter_regex::LANGUAGE,
-            "sql" => tree_sitter_sql::LANGUAGE,
+            "sql" => tree_sitter_sequel::LANGUAGE,
             "zig" => tree_sitter_zig::LANGUAGE,
             "c" => tree_sitter_c::LANGUAGE,
             "cpp" => tree_sitter_cpp::LANGUAGE,

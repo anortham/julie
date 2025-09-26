@@ -7,7 +7,7 @@ mod sql_extractor_tests {
 
     fn init_parser() -> tree_sitter::Parser {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_sql::LANGUAGE.into()).expect("Error loading SQL grammar");
+        parser.set_language(&tree_sitter_sequel::LANGUAGE.into()).expect("Error loading SQL grammar");
         parser
     }
 

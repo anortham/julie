@@ -779,6 +779,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         // This should work without foreign key constraint error
@@ -859,6 +860,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         // Following foreign key contract: store file record first
@@ -917,6 +919,7 @@ mod tests {
             metadata: Some(metadata.clone()),
             semantic_group: Some("user-data-access".to_string()),
             confidence: Some(0.95),
+            code_context: None,
         };
 
         // First, store the file record (required due to foreign key constraint)
@@ -978,6 +981,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         let called_symbol = Symbol {
@@ -999,6 +1003,7 @@ mod tests {
             metadata: None,
             semantic_group: None,
             confidence: None,
+            code_context: None,
         };
 
         db.store_symbols(&[caller_symbol, called_symbol]).await.unwrap();
@@ -1055,6 +1060,7 @@ mod tests {
             metadata: None,
             semantic_group: Some("user-entity".to_string()),
             confidence: Some(1.0),
+            code_context: None,
         };
 
         let rust_struct = Symbol {
@@ -1076,6 +1082,7 @@ mod tests {
             metadata: None,
             semantic_group: Some("user-entity".to_string()),
             confidence: Some(0.98),
+            code_context: None,
         };
 
         // Following foreign key contract: store file records first
@@ -1159,6 +1166,7 @@ mod tests {
             metadata: Some(metadata),
             semantic_group: None, // Will be populated during cross-language analysis
             confidence: None, // Will be calculated based on parsing context
+            code_context: None,
         };
 
         // Following foreign key contract: store file record first
