@@ -231,4 +231,65 @@ mod exploration_tools_tests {
         // Should include first symbols but may exclude later ones due to token limits
         assert!(result.contains("complex_dependency_symbol_with_extensive_interconnections_and_detailed_naming_1"));
     }
+
+    #[test]
+    fn test_fast_explore_ignores_code_context_bug() {
+        let explore_tool = FastExploreTool {
+            mode: "overview".to_string(),
+            depth: "deep".to_string(),
+            focus: None,
+        };
+
+        // BUG REPRODUCTION: Create symbols with LARGE code_context that should trigger token optimization
+        // This test should FAIL because FastExploreTool ignores code_context (unlike other tools)
+        let massive_code_context = (1..=100).map(|line| {
+            format!("    // Massive context line {} with extremely detailed content that includes comprehensive documentation, implementation details, usage examples, error handling patterns, performance considerations, security protocols, validation logic, business rules, integration patterns, and extensive technical specifications that should definitely trigger token optimization when properly included in output formatting", line)
+        }).collect::<Vec<_>>().join("\n");
+
+        let mut symbols = Vec::new();
+
+        // Create just 5 symbols but with MASSIVE code_context (should trigger token limits)
+        for i in 1..=5 {
+            let symbol = Symbol {
+                id: i.to_string(),
+                name: format!("TestSymbol{}", i),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: format!("file_{}.rs", i),
+                start_line: 10,
+                start_column: 0,
+                end_line: 50,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 500,
+                signature: Some(format!("fn test_symbol_{}()", i)),
+                doc_comment: Some(format!("Test symbol {}", i)),
+                visibility: Some(Visibility::Public),
+                parent_id: None,
+                metadata: Some(HashMap::new()),
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: Some(massive_code_context.clone()), // THIS IS THE KEY - MASSIVE CONTENT
+            };
+            symbols.push(symbol);
+        }
+
+        let relationships = vec![]; // Empty for focused testing
+
+        let result = explore_tool.format_optimized_results(&symbols, &relationships);
+
+        // BUG: This assertion should FAIL because FastExploreTool ignores code_context
+        // Even with massive code_context, progressive reduction won't trigger because
+        // FastExploreTool doesn't include code_context in its output like other tools do
+        assert!(
+            result.contains("Applied progressive reduction") ||
+            result.contains("Response truncated to stay within token limits"),
+            "FastExploreTool should trigger progressive reduction with massive code_context, but it ignores code_context unlike other tools"
+        );
+
+        // This test documents the exact bug:
+        // - Other tools (FastGotoTool, FindLogicTool) include code_context → trigger progressive reduction
+        // - FastExploreTool ignores code_context → never triggers progressive reduction
+        // - Expected: FastExploreTool should include code_context like other tools
+    }
 }
