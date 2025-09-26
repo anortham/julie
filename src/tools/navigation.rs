@@ -302,6 +302,138 @@ impl FastGotoTool {
             _ => 10,
         }
     }
+
+    /// Format optimized results with token optimization for FastGotoTool
+    pub fn format_optimized_results(&self, symbols: &[Symbol]) -> String {
+        use crate::utils::token_estimation::TokenEstimator;
+        use crate::utils::progressive_reduction::ProgressiveReducer;
+
+        let mut lines = vec![
+            format!("🎯 Go to Definition: {}", self.symbol),
+        ];
+
+        // Add context information if provided
+        if let Some(context_file) = &self.context_file {
+            if let Some(line_number) = self.line_number {
+                lines.push(format!("📍 Context: {}:{}", context_file, line_number));
+            } else {
+                lines.push(format!("📍 Context: {}", context_file));
+            }
+        }
+
+        let count_line_index = lines.len(); // Remember where the count line will be
+        lines.push(format!("📊 Showing {} of {} definitions", symbols.len(), symbols.len()));
+        lines.push(String::new());
+
+        // Token optimization: apply progressive reduction first, then early termination if needed
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
+        let progressive_reducer = ProgressiveReducer::new();
+
+        // Calculate initial header tokens
+        let header_text = lines.join("\n");
+        let header_tokens = token_estimator.estimate_string(&header_text);
+        let available_tokens = token_limit.saturating_sub(header_tokens);
+
+        // Create formatted symbol items
+        let mut all_items = Vec::new();
+        for symbol in symbols {
+            let mut item_lines = vec![
+                format!("📍 {} [{}]", symbol.name, format!("{:?}", symbol.kind).to_lowercase()),
+                format!("   📄 File: {}", symbol.file_path),
+                format!("   📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+            ];
+
+            if let Some(signature) = &symbol.signature {
+                item_lines.push(format!("   🔧 Signature: {}", signature));
+            }
+
+            if let Some(doc_comment) = &symbol.doc_comment {
+                item_lines.push(format!("   📝 Documentation: {}", doc_comment));
+            }
+
+            if let Some(visibility) = &symbol.visibility {
+                item_lines.push(format!("   👁️  Visibility: {:?}", visibility));
+            }
+
+            if let Some(semantic_group) = &symbol.semantic_group {
+                item_lines.push(format!("   🏷️  Group: {}", semantic_group));
+            }
+
+            if let Some(confidence) = symbol.confidence {
+                item_lines.push(format!("   🎯 Confidence: {:.2}", confidence));
+            }
+
+            // Include code_context if available (this is what triggers token optimization)
+            if let Some(context) = &symbol.code_context {
+                use crate::utils::context_truncation::ContextTruncator;
+                item_lines.push("   📄 Context:".to_string());
+                let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                let truncator = ContextTruncator::new();
+                let max_lines = 10; // Max 10 lines per symbol for token control
+                let final_lines = if context_lines.len() > max_lines {
+                    truncator.truncate_lines(&context_lines, max_lines)
+                } else {
+                    context_lines
+                };
+                for context_line in &final_lines {
+                    item_lines.push(format!("   {}", context_line));
+                }
+            }
+
+            item_lines.push(String::new());
+            all_items.push(item_lines.join("\n"));
+        }
+
+        // Define token estimator function for items
+        let estimate_items_tokens = |items: &[&String]| -> usize {
+            let mut total_tokens = 0;
+            for item in items {
+                total_tokens += token_estimator.estimate_string(item);
+            }
+            total_tokens
+        };
+
+        // Try progressive reduction first
+        let item_refs: Vec<&String> = all_items.iter().collect();
+        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+
+        let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
+            // Progressive reduction was applied - update the count line using the correct index
+            lines[count_line_index] = format!("📊 Showing {} of {} definitions - Applied progressive reduction",
+                reduced_item_refs.len(), symbols.len());
+            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
+            (items, true)
+        } else {
+            // No reduction needed
+            (all_items, false)
+        };
+
+        // Add the items we decided to show
+        for item in &items_to_show {
+            lines.push(item.clone());
+        }
+
+        // Add next actions if we have results
+        if !items_to_show.is_empty() {
+            lines.push("🎯 Suggested next actions:".to_string());
+            lines.push("   • Jump to definition and start editing".to_string());
+            lines.push("   • Use fast_refs to see all usages".to_string());
+            lines.push("   • Search for related symbols".to_string());
+        } else {
+            lines.push("❌ No definitions found".to_string());
+            lines.push("🎯 Try searching with fast_search for broader results".to_string());
+        }
+
+        // Add reduction warning if truncated significantly
+        if reduction_applied {
+            lines.push(String::new());
+            lines.push("⚠️  Response truncated to stay within token limits".to_string());
+            lines.push("💡 Use more specific search terms for focused results".to_string());
+        }
+
+        lines.join("\n")
+    }
 }
 
 #[mcp_tool(

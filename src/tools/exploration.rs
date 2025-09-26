@@ -490,4 +490,214 @@ impl FindLogicTool {
 
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
+
+    /// Format optimized results with token optimization for FindLogicTool
+    pub fn format_optimized_results(&self, symbols: &[Symbol], relationships: &[Relationship]) -> String {
+        use crate::utils::token_estimation::TokenEstimator;
+        use crate::utils::progressive_reduction::ProgressiveReducer;
+        use crate::utils::context_truncation::ContextTruncator;
+
+        let mut lines = vec![
+            format!("🏢 Business Logic Discovery"),
+            format!("Domain: {}", self.domain),
+            format!("Business Score ≥ {:.1}", self.min_business_score),
+        ];
+
+        // Add configuration info
+        lines.push(format!("📊 Max results: {}", self.max_results));
+        if self.group_by_layer {
+            lines.push("📊 Grouped by Layer".to_string());
+        }
+
+        let count_line_index = lines.len(); // Remember where the count line will be
+        lines.push(format!("📊 {} business components found", symbols.len()));
+        lines.push(String::new());
+
+        // Token optimization: apply progressive reduction first, then early termination if needed
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
+        let progressive_reducer = ProgressiveReducer::new();
+
+        // Calculate initial header tokens
+        let header_text = lines.join("\n");
+        let header_tokens = token_estimator.estimate_string(&header_text);
+        let available_tokens = token_limit.saturating_sub(header_tokens);
+
+        // Create formatted business logic items
+        let mut all_items = Vec::new();
+
+        if self.group_by_layer {
+            // Group symbols by semantic_group (layer)
+            use std::collections::HashMap;
+            let mut grouped_symbols: HashMap<String, Vec<&Symbol>> = HashMap::new();
+            for symbol in symbols {
+                let layer = symbol.semantic_group.as_ref()
+                    .unwrap_or(&"unknown".to_string()).clone();
+                grouped_symbols.entry(layer).or_insert_with(Vec::new).push(symbol);
+            }
+
+            // Format grouped results
+            for (layer, layer_symbols) in grouped_symbols {
+                all_items.push(format!("🏛️ {} Layer ({} components):", layer, layer_symbols.len()));
+
+                for symbol in layer_symbols {
+                    let mut item_lines = vec![
+                        format!("  📍 {} [{}] (score: {:.2})",
+                            symbol.name,
+                            format!("{:?}", symbol.kind).to_lowercase(),
+                            symbol.confidence.unwrap_or(0.0)
+                        ),
+                        format!("     📄 File: {}", symbol.file_path),
+                        format!("     📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+                    ];
+
+                    if let Some(signature) = &symbol.signature {
+                        item_lines.push(format!("     🔧 Signature: {}", signature));
+                    }
+
+                    if let Some(doc_comment) = &symbol.doc_comment {
+                        item_lines.push(format!("     📝 Business Logic: {}", doc_comment));
+                    }
+
+                    // Include business context if available (this triggers token optimization)
+                    if let Some(context) = &symbol.code_context {
+                        let truncator = ContextTruncator::new();
+                        item_lines.push("     💼 Business Context:".to_string());
+                        let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                        let max_lines = 8; // Max 8 lines per business component for token control
+                        let final_lines = if context_lines.len() > max_lines {
+                            truncator.truncate_lines(&context_lines, max_lines)
+                        } else {
+                            context_lines
+                        };
+                        for context_line in &final_lines {
+                            item_lines.push(format!("     {}", context_line));
+                        }
+                    }
+
+                    item_lines.push(String::new());
+                    all_items.push(item_lines.join("\n"));
+                }
+                all_items.push(String::new()); // Empty line between layers
+            }
+        } else {
+            // Flat format - sort by business score (confidence)
+            let mut sorted_symbols: Vec<&Symbol> = symbols.iter().collect();
+            sorted_symbols.sort_by(|a, b| {
+                let score_a = a.confidence.unwrap_or(0.0);
+                let score_b = b.confidence.unwrap_or(0.0);
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            for symbol in sorted_symbols {
+                let mut item_lines = vec![
+                    format!("📍 {} [{}] (business score: {:.2})",
+                        symbol.name,
+                        format!("{:?}", symbol.kind).to_lowercase(),
+                        symbol.confidence.unwrap_or(0.0)
+                    ),
+                    format!("   📄 File: {}", symbol.file_path),
+                    format!("   📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+                ];
+
+                if let Some(signature) = &symbol.signature {
+                    item_lines.push(format!("   🔧 Signature: {}", signature));
+                }
+
+                if let Some(doc_comment) = &symbol.doc_comment {
+                    item_lines.push(format!("   📝 Business Logic: {}", doc_comment));
+                }
+
+                if let Some(semantic_group) = &symbol.semantic_group {
+                    item_lines.push(format!("   🏛️ Layer: {}", semantic_group));
+                }
+
+                // Include business context if available (this triggers token optimization)
+                if let Some(context) = &symbol.code_context {
+                    let truncator = ContextTruncator::new();
+                    item_lines.push("   💼 Business Context:".to_string());
+                    let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                    let max_lines = 8; // Max 8 lines per business component for token control
+                    let final_lines = if context_lines.len() > max_lines {
+                        truncator.truncate_lines(&context_lines, max_lines)
+                    } else {
+                        context_lines
+                    };
+                    for context_line in &final_lines {
+                        item_lines.push(format!("   {}", context_line));
+                    }
+                }
+
+                item_lines.push(String::new());
+                all_items.push(item_lines.join("\n"));
+            }
+        }
+
+        // Define token estimator function for items
+        let estimate_items_tokens = |items: &[&String]| -> usize {
+            let mut total_tokens = 0;
+            for item in items {
+                total_tokens += token_estimator.estimate_string(item);
+            }
+            total_tokens
+        };
+
+        // Try progressive reduction first
+        let item_refs: Vec<&String> = all_items.iter().collect();
+        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+
+        let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
+            // Progressive reduction was applied - update the count line using the correct index
+            lines[count_line_index] = format!("📊 {} business components found - Applied progressive reduction",
+                reduced_item_refs.len());
+            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
+            (items, true)
+        } else {
+            // No reduction needed
+            (all_items, false)
+        };
+
+        // Add the items we decided to show
+        for item in &items_to_show {
+            lines.push(item.clone());
+        }
+
+        // Add business relationships summary if available
+        if !relationships.is_empty() {
+            lines.push("🔗 Business Process Relationships:".to_string());
+            let relationship_count = relationships.len().min(5); // Show max 5 relationships
+            for (i, relationship) in relationships.iter().take(relationship_count).enumerate() {
+                lines.push(format!("   {}. {} ↔ {} (confidence: {:.2})",
+                    i + 1,
+                    relationship.from_symbol_id,
+                    relationship.to_symbol_id,
+                    relationship.confidence
+                ));
+            }
+            if relationships.len() > 5 {
+                lines.push(format!("   ... and {} more relationships", relationships.len() - 5));
+            }
+            lines.push(String::new());
+        }
+
+        // Add next actions if we have results
+        if !items_to_show.is_empty() {
+            lines.push("🎯 Business Logic Actions:".to_string());
+            lines.push("   • Jump to core business components".to_string());
+            lines.push("   • Trace business process flows".to_string());
+            lines.push("   • Focus on high-scoring logic".to_string());
+        } else {
+            lines.push("❌ No business logic found for this domain".to_string());
+            lines.push("💡 Try lowering min_business_score or different domain terms".to_string());
+        }
+
+        // Add reduction warning if truncated significantly
+        if reduction_applied {
+            lines.push(String::new());
+            lines.push("⚠️  Response truncated to stay within token limits".to_string());
+            lines.push("💡 Use more specific domain terms for focused results".to_string());
+        }
+
+        lines.join("\n")
+    }
 }

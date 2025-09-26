@@ -159,5 +159,6 @@ pub mod real_world_validation; // Tests all extractors against real-world code f
 pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
 pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
 pub mod exploration_tools_tests; // Tests for exploration tool token optimization (FastExploreTool, FindLogicTool)
+pub mod find_logic_tests; // Tests for FindLogicTool token optimization
 pub mod path_relevance_tests; // Tests for path relevance scoring system
 pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
