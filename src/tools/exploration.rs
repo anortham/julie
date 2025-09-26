@@ -60,6 +60,7 @@ impl FastExploreTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
+    #[allow(dead_code)]
     async fn generate_overview(&self, handler: &JulieServerHandler) -> Result<String> {
         let relationships = handler.relationships.read().await;
 
@@ -122,6 +123,7 @@ impl FastExploreTool {
         Ok(message)
     }
 
+    #[allow(dead_code)]
     async fn analyze_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
         let relationships = handler.relationships.read().await;
 
@@ -172,6 +174,7 @@ impl FastExploreTool {
         Ok(message)
     }
 
+    #[allow(dead_code)]
     async fn find_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
         let relationships = handler.relationships.read().await;
 
@@ -221,6 +224,7 @@ impl FastExploreTool {
         Ok(message)
     }
 
+    #[allow(dead_code)]
     async fn trace_relationships(&self, handler: &JulieServerHandler) -> Result<String> {
         let relationships = handler.relationships.read().await;
 

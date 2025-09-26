@@ -127,7 +127,7 @@ pub mod rust_tests;              // Rust extractor tests
 pub mod cpp_tests;               // C++ extractor tests
 pub mod kotlin_tests;            // Kotlin extractor tests
 pub mod dart_tests;              // Dart extractor tests
-pub mod java_tests;              // Java extractor tests
+pub mod java;                    // Java extractor tests (split into modules)
 pub mod csharp_tests;            // C# extractor tests
 pub mod ruby_tests;              // Ruby extractor tests
 pub mod swift_tests;             // Swift extractor tests
