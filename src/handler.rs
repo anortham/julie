@@ -10,7 +10,8 @@ use anyhow::Result;
 
 use crate::tools::JulieTools;
 use crate::extractors::{Symbol, Relationship};
-use std::sync::RwLock;
+use crate::search::SearchEngine;
+use tokio::sync::RwLock;
 
 /// Julie's custom handler for MCP messages
 ///
@@ -24,6 +25,8 @@ pub struct JulieServerHandler {
     pub symbols: Arc<RwLock<Vec<Symbol>>>,
     /// In-memory storage for symbol relationships
     pub relationships: Arc<RwLock<Vec<Relationship>>>,
+    /// Tantivy-based search engine for fast indexed search
+    pub search_engine: Arc<RwLock<SearchEngine>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
 }
@@ -33,17 +36,18 @@ impl JulieServerHandler {
     pub async fn new() -> Result<Self> {
         info!("🔧 Initializing Julie server handler");
 
-        // TODO: Initialize core components:
-        // let symbol_database = SymbolDatabase::new().await?;
-        // let search_engine = SearchEngine::new().await?;
-        // let embedding_service = EmbeddingService::new().await?;
-        // let extractor_manager = ExtractorManager::new().await?;
+        // Initialize SearchEngine with in-memory index for MCP server use
+        info!("🔍 Initializing Tantivy search engine");
+        let search_engine = SearchEngine::in_memory().map_err(|e| {
+            anyhow::anyhow!("Failed to initialize search engine: {}", e)
+        })?;
 
         debug!("✓ Julie handler components initialized");
 
         Ok(Self {
             symbols: Arc::new(RwLock::new(Vec::new())),
             relationships: Arc::new(RwLock::new(Vec::new())),
+            search_engine: Arc::new(RwLock::new(search_engine)),
             is_indexed: Arc::new(RwLock::new(false)),
         })
     }

@@ -166,9 +166,9 @@ impl IndexWorkspaceTool {
 
         // Check if already indexed and not forcing reindex
         if !force_reindex {
-            let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
-                let symbol_count = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?.len();
+                let symbol_count = handler.symbols.read().await.len();
                 let message = format!(
                     "✅ Workspace already indexed!\n\
                     📊 Found {} symbols\n\
@@ -183,7 +183,7 @@ impl IndexWorkspaceTool {
         match self.index_workspace_files(handler, &workspace_path).await {
             Ok((symbol_count, file_count, relationship_count)) => {
                 // Mark as indexed
-                *handler.is_indexed.write().map_err(|e| anyhow::anyhow!("Lock error: {}", e))? = true;
+                *handler.is_indexed.write().await = true;
 
                 let message = format!(
                     "🎉 Workspace indexing complete!\n\
@@ -285,8 +285,8 @@ impl IndexWorkspaceTool {
 
         // Clear existing data if force reindex
         if self.force_reindex.unwrap_or(false) {
-            handler.symbols.write().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?.clear();
-            handler.relationships.write().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?.clear();
+            handler.symbols.write().await.clear();
+            handler.relationships.write().await.clear();
         }
 
         let mut total_files = 0;
@@ -311,8 +311,32 @@ impl IndexWorkspaceTool {
         }
 
         // Get final counts
-        let total_symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?.len();
-        let total_relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?.len();
+        let total_symbols = handler.symbols.read().await.len();
+        let total_relationships = handler.relationships.read().await.len();
+
+        // CRITICAL FIX: Feed symbols to SearchEngine for fast indexed search
+        if total_symbols > 0 {
+            info!("⚡ Populating SearchEngine with {} symbols...", total_symbols);
+            let symbols = handler.symbols.read().await;
+            let symbol_vec: Vec<Symbol> = symbols.clone();
+            drop(symbols); // Release the read lock
+
+            let mut search_engine = handler.search_engine.write().await;
+
+            // Index all symbols in SearchEngine
+            search_engine.index_symbols(symbol_vec).await.map_err(|e| {
+                error!("Failed to populate SearchEngine: {}", e);
+                anyhow::anyhow!("SearchEngine indexing failed: {}", e)
+            })?;
+
+            // Commit to make symbols searchable
+            search_engine.commit().await.map_err(|e| {
+                error!("Failed to commit SearchEngine: {}", e);
+                anyhow::anyhow!("SearchEngine commit failed: {}", e)
+            })?;
+
+            info!("🚀 SearchEngine populated and committed - searches will now be fast!");
+        }
 
         info!("✅ Indexing complete: {} files, {} symbols, {} relationships",
               total_files, total_symbols, total_relationships);
@@ -559,14 +583,12 @@ impl IndexWorkspaceTool {
 
         // Store results in handler
         {
-            let mut symbol_storage = handler.symbols.write()
-                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let mut symbol_storage = handler.symbols.write().await;
             symbol_storage.extend(symbols);
         }
 
         {
-            let mut relationship_storage = handler.relationships.write()
-                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let mut relationship_storage = handler.relationships.write().await;
             relationship_storage.extend(relationships);
         }
 
@@ -750,7 +772,7 @@ impl FastSearchTool {
         debug!("🔍 Fast search: {} (mode: {})", self.query, self.mode);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable fast search.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -760,7 +782,7 @@ impl FastSearchTool {
         let symbols = match self.mode.as_str() {
             "semantic" => self.semantic_search(handler).await?,
             "hybrid" => self.hybrid_search(handler).await?,
-            "text" | _ => self.text_search(handler)?,
+            "text" | _ => self.text_search(handler).await?,
         };
 
         // Create optimized response with confidence scoring
@@ -793,48 +815,53 @@ impl FastSearchTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let query_lower = self.query.to_lowercase();
+    async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        // Use SearchEngine for FAST indexed search instead of O(n) linear scan!
+        let search_engine = handler.search_engine.read().await;
 
-        let mut results: Vec<Symbol> = symbols.iter()
-            .filter(|symbol| {
-                // Name matching (case insensitive)
-                let name_match = symbol.name.to_lowercase().contains(&query_lower);
-
-                // Language filter
-                let language_match = self.language.as_ref()
-                    .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
-                    .unwrap_or(true);
-
-                // File pattern filter (basic implementation)
-                let file_match = self.file_pattern.as_ref()
-                    .map(|pattern| symbol.file_path.contains(pattern))
-                    .unwrap_or(true);
-
-                name_match && language_match && file_match
-            })
-            .cloned()
-            .collect();
-
-        // Sort by relevance (exact matches first, then by symbol kind)
-        results.sort_by(|a, b| {
-            let a_exact = a.name.eq_ignore_ascii_case(&self.query);
-            let b_exact = b.name.eq_ignore_ascii_case(&self.query);
-
-            match (a_exact, b_exact) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    // Sort by symbol kind priority
-                    let a_priority = self.symbol_priority(&a.kind);
-                    let b_priority = self.symbol_priority(&b.kind);
-                    a_priority.cmp(&b_priority)
-                }
-            }
+        // Perform indexed search using Tantivy - this should be <10ms!
+        let search_results = search_engine.search(&self.query).await.map_err(|e| {
+            debug!("Search engine failed, falling back to linear search: {}", e);
+            anyhow::anyhow!("Search failed: {}", e)
         });
 
-        Ok(results)
+        match search_results {
+            Ok(results) => {
+                // Convert SearchResult to Symbol by looking up from in-memory cache
+                let symbols = handler.symbols.read().await;
+                let mut matched_symbols = Vec::new();
+
+                for search_result in results {
+                    // Find the symbol by ID
+                    if let Some(symbol) = symbols.iter().find(|s| s.id == search_result.symbol_id) {
+                        matched_symbols.push(symbol.clone());
+                    }
+                }
+
+                debug!("🚀 Indexed search returned {} results", matched_symbols.len());
+                Ok(matched_symbols)
+            }
+            Err(_) => {
+                // Fallback to linear search if index fails
+                warn!("⚠️  Search engine failed, using linear search fallback");
+                let symbols = handler.symbols.read().await;
+                let query_lower = self.query.to_lowercase();
+
+                let results: Vec<Symbol> = symbols.iter()
+                    .filter(|symbol| {
+                        let name_match = symbol.name.to_lowercase().contains(&query_lower);
+                        let language_match = self.language.as_ref()
+                            .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
+                            .unwrap_or(true);
+                        name_match && language_match
+                    })
+                    .cloned()
+                    .collect();
+
+                debug!("📝 Linear search fallback returned {} results", results.len());
+                Ok(results)
+            }
+        }
     }
 
     fn symbol_priority(&self, kind: &SymbolKind) -> u8 {
@@ -852,13 +879,13 @@ impl FastSearchTool {
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         // For now, delegate to text search - full semantic implementation coming soon
         debug!("🧠 Semantic search mode (using text fallback)");
-        self.text_search(handler)
+        self.text_search(handler).await
     }
 
     async fn hybrid_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         // For now, delegate to text search - full hybrid implementation coming soon
         debug!("🔄 Hybrid search mode (using text fallback)");
-        self.text_search(handler)
+        self.text_search(handler).await
     }
 
     /// Calculate confidence score based on search quality and result relevance
@@ -1041,14 +1068,14 @@ impl FastGotoTool {
         debug!("🎯 Finding definition for: {}", self.symbol);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable navigation.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
         // Find symbol definitions
-        let definitions = self.find_definitions(handler)?;
+        let definitions = self.find_definitions(handler).await?;
 
         if definitions.is_empty() {
             let message = format!(
@@ -1089,23 +1116,44 @@ impl FastGotoTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        debug!("🔍 Finding definitions for: {}", self.symbol);
 
-        debug!("🔍 Searching for '{}' across {} symbols", self.symbol, symbols.len());
+        // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
+        let search_engine = handler.search_engine.read().await;
+        let mut exact_matches = Vec::new();
 
-        // Strategy 1: Exact name matches with cross-language resolution
-        let _definitions: Vec<Symbol> = Vec::new();  // TODO: Implement definitions lookup
+        // Use indexed search for exact matches - MUCH faster than linear scan!
+        match search_engine.search(&self.symbol).await {
+            Ok(search_results) => {
+                // Convert SearchResult to Symbol by looking up from in-memory cache
+                let symbols = handler.symbols.read().await;
+                for search_result in search_results {
+                    if let Some(symbol) = symbols.iter().find(|s| s.id == search_result.symbol_id) {
+                        // Only include exact name matches for definitions
+                        if symbol.name == self.symbol {
+                            exact_matches.push(symbol.clone());
+                        }
+                    }
+                }
+                debug!("⚡ Indexed search found {} exact matches", exact_matches.len());
+            }
+            Err(e) => {
+                debug!("Search engine failed, falling back to linear search: {}", e);
+                // Fallback to linear search only if indexed search fails
+                let symbols = handler.symbols.read().await;
+                exact_matches = symbols.iter()
+                    .filter(|symbol| symbol.name == self.symbol)
+                    .cloned()
+                    .collect();
+            }
+        }
 
-        // Find all symbols with matching names
-        let mut exact_matches: Vec<Symbol> = symbols.iter()
-            .filter(|symbol| symbol.name == self.symbol)
-            .cloned()
-            .collect();
+        let relationships = handler.relationships.read().await;
 
         // Strategy 2: Use relationships to find actual definitions
         // Look for symbols that are referenced/imported with this name
+        let symbols = handler.symbols.read().await; // Get symbols for relationship lookup
         for relationship in relationships.iter() {
             if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
                 // Check if this relationship represents a definition or import
@@ -1134,36 +1182,49 @@ impl FastGotoTool {
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
         exact_matches.dedup_by(|a, b| a.id == b.id);
 
-        // Strategy 3: Cross-language resolution - look for symbols with similar signatures
+        // Strategy 3: Cross-language resolution using additional indexed searches
         if exact_matches.is_empty() {
             debug!("🌍 Attempting cross-language resolution for '{}'", self.symbol);
 
-            // Look for similar names across languages (handle different naming conventions)
-            let symbol_lower = self.symbol.to_lowercase();
-            let snake_case_version = self.to_snake_case(&self.symbol);
-            let camel_case_version = self.to_camel_case(&self.symbol);
-            let pascal_case_version = self.to_pascal_case(&self.symbol);
+            // Use indexed search for naming convention variants instead of O(n) linear scan
+            let variants = vec![
+                self.to_snake_case(&self.symbol),
+                self.to_camel_case(&self.symbol),
+                self.to_pascal_case(&self.symbol)
+            ];
 
-            for symbol in symbols.iter() {
-                let name_lower = symbol.name.to_lowercase();
-                if name_lower == symbol_lower ||
-                   symbol.name == snake_case_version ||
-                   symbol.name == camel_case_version ||
-                   symbol.name == pascal_case_version {
-                    exact_matches.push(symbol.clone());
+            for variant in variants {
+                if variant != self.symbol {  // Avoid duplicate searches
+                    match search_engine.search(&variant).await {
+                        Ok(search_results) => {
+                            let symbols = handler.symbols.read().await;
+                            for search_result in search_results {
+                                if let Some(symbol) = symbols.iter().find(|s| s.id == search_result.symbol_id) {
+                                    if symbol.name == variant {
+                                        exact_matches.push(symbol.clone());
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // Skip failed variant searches - not critical
+                            debug!("Variant search failed for: {}", variant);
+                        }
+                    }
                 }
             }
         }
 
         // Strategy 4: Semantic matching if still no results
-        if exact_matches.is_empty() {
-            debug!("🧠 Using semantic matching for '{}'", self.symbol);
-
-            // Initialize embedding engine for semantic search
+        // TODO: DISABLED - This AI embedding computation on all 2458 symbols was causing UI hangs
+        // The expensive O(n) AI processing needs to be optimized or made optional
+        if false && exact_matches.is_empty() { // Disabled for performance
+            debug!("🧠 Semantic matching temporarily disabled for performance");
             if let Ok(cache_dir) = std::env::temp_dir().canonicalize() {
                 let model_cache = cache_dir.join("julie_models");
                 if let Ok(mut embedding_engine) = crate::embeddings::EmbeddingEngine::new("bge-small", model_cache) {
                     if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+                        let symbols = handler.symbols.read().await;
                         for symbol in symbols.iter() {
                             let symbol_text = format!("{} {:?}", symbol.name, symbol.kind);
                             if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text) {
@@ -1309,14 +1370,14 @@ impl FastRefsTool {
         debug!("🔗 Finding references for: {}", self.symbol);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable navigation.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
         // Find references
-        let (definitions, references) = self.find_references_and_definitions(handler)?;
+        let (definitions, references) = self.find_references_and_definitions(handler).await?;
 
         if definitions.is_empty() && references.is_empty() {
             let message = format!(
@@ -1383,32 +1444,68 @@ impl FastRefsTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn find_references_and_definitions(&self, handler: &JulieServerHandler) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn find_references_and_definitions(&self, handler: &JulieServerHandler) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
+        debug!("🔍 Searching for references to '{}' using indexed search", self.symbol);
 
-        debug!("🔍 Searching for references to '{}' across {} symbols", self.symbol, symbols.len());
+        // Get required data from handler
+        let relationships = handler.relationships.read().await;
 
-        // Strategy 1: Find symbol definitions (exact matches and cross-language variants)
+        // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
+        let search_engine = handler.search_engine.read().await;
         let mut definitions = Vec::new();
 
-        // Find exact name matches
-        for symbol in symbols.iter() {
-            if symbol.name == self.symbol {
-                definitions.push(symbol.clone());
+        // Use indexed search for exact matches - MUCH faster than linear scan!
+        match search_engine.search(&self.symbol).await {
+            Ok(search_results) => {
+                // Convert SearchResult to Symbol by looking up from in-memory cache
+                let symbols = handler.symbols.read().await;
+                for search_result in search_results {
+                    if let Some(symbol) = symbols.iter().find(|s| s.id == search_result.symbol_id) {
+                        // Only include exact name matches for definitions
+                        if symbol.name == self.symbol {
+                            definitions.push(symbol.clone());
+                        }
+                    }
+                }
+                debug!("⚡ Indexed search found {} exact matches", definitions.len());
+            }
+            Err(e) => {
+                debug!("Search engine failed, falling back to linear search: {}", e);
+                // Fallback to linear search only if indexed search fails
+                let symbols = handler.symbols.read().await;
+                for symbol in symbols.iter() {
+                    if symbol.name == self.symbol {
+                        definitions.push(symbol.clone());
+                    }
+                }
             }
         }
 
-        // Cross-language naming convention matching
-        let snake_case_version = self.to_snake_case(&self.symbol);
-        let camel_case_version = self.to_camel_case(&self.symbol);
-        let pascal_case_version = self.to_pascal_case(&self.symbol);
+        // Cross-language naming convention matching using additional searches
+        let variants = vec![
+            self.to_snake_case(&self.symbol),
+            self.to_camel_case(&self.symbol),
+            self.to_pascal_case(&self.symbol)
+        ];
 
-        for symbol in symbols.iter() {
-            if symbol.name == snake_case_version ||
-               symbol.name == camel_case_version ||
-               symbol.name == pascal_case_version {
-                definitions.push(symbol.clone());
+        for variant in variants {
+            if variant != self.symbol {  // Avoid duplicate searches
+                match search_engine.search(&variant).await {
+                    Ok(search_results) => {
+                        let symbols = handler.symbols.read().await;
+                        for search_result in search_results {
+                            if let Some(symbol) = symbols.iter().find(|s| s.id == search_result.symbol_id) {
+                                if symbol.name == variant {
+                                    definitions.push(symbol.clone());
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Skip failed variant searches - not critical
+                        debug!("Variant search failed for: {}", variant);
+                    }
+                }
             }
         }
 
@@ -1427,6 +1524,9 @@ impl FastRefsTool {
 
         // Strategy 3: Semantic similarity matching for cross-language references
         debug!("🧠 Performing semantic similarity analysis for references");
+
+        // Get symbols for semantic analysis
+        let symbols = handler.symbols.read().await;
 
         // Initialize embedding engine for semantic analysis
         if let Ok(cache_dir) = std::env::temp_dir().canonicalize() {
@@ -1601,7 +1701,7 @@ impl SemanticSearchTool {
         debug!("🧠 Semantic search for: {}", self.query);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable semantic search.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -1623,7 +1723,7 @@ impl SemanticSearchTool {
         debug!("🔄 Performing hybrid semantic + text search");
 
         // Get symbols from handler (basic implementation)
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let symbols = handler.symbols.read().await;
 
         if symbols.is_empty() {
             let message = "🔍 No symbols found in workspace\n💡 The workspace may need to be re-indexed";
@@ -1725,7 +1825,7 @@ symbol.end_line
         debug!("📝 Performing text-only search");
 
         // Get symbols from handler
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let symbols = handler.symbols.read().await;
 
         if symbols.is_empty() {
             let message = "🔍 No symbols found in workspace\n💡 The workspace may need to be re-indexed";
@@ -1844,7 +1944,7 @@ impl FastExploreTool {
         debug!("🧭 Exploring codebase: mode={}, focus={:?}", self.mode, self.focus);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable exploration.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -1852,10 +1952,10 @@ impl FastExploreTool {
 
         // Perform exploration based on mode
         let message = match self.mode.as_str() {
-            "overview" => self.generate_overview(handler)?,
-            "dependencies" => self.analyze_dependencies(handler)?,
-            "hotspots" => self.find_hotspots(handler)?,
-            "trace" => self.trace_relationships(handler)?,
+            "overview" => self.generate_overview(handler).await?,
+            "dependencies" => self.analyze_dependencies(handler).await?,
+            "hotspots" => self.find_hotspots(handler).await?,
+            "trace" => self.trace_relationships(handler).await?,
             _ => format!(
                 "❌ Unknown exploration mode: '{}'\n\
                 💡 Supported modes: overview, dependencies, hotspots, trace",
@@ -1866,9 +1966,9 @@ impl FastExploreTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn generate_overview(&self, handler: &JulieServerHandler) -> Result<String> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn generate_overview(&self, handler: &JulieServerHandler) -> Result<String> {
+        let symbols = handler.symbols.read().await;
+        let relationships = handler.relationships.read().await;
 
         // Count by symbol type
         let mut counts = std::collections::HashMap::new();
@@ -1925,9 +2025,9 @@ impl FastExploreTool {
         Ok(message)
     }
 
-    fn analyze_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn analyze_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
+        let relationships = handler.relationships.read().await;
+        let symbols = handler.symbols.read().await;
 
         let mut relationship_counts = std::collections::HashMap::new();
         let mut symbol_references = std::collections::HashMap::new();
@@ -1968,9 +2068,9 @@ impl FastExploreTool {
         Ok(message)
     }
 
-    fn find_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn find_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
+        let symbols = handler.symbols.read().await;
+        let relationships = handler.relationships.read().await;
 
         // Find files with most symbols (complexity hotspots)
         let mut file_symbol_counts = std::collections::HashMap::new();
@@ -2011,9 +2111,9 @@ impl FastExploreTool {
         Ok(message)
     }
 
-    fn trace_relationships(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn trace_relationships(&self, handler: &JulieServerHandler) -> Result<String> {
+        let relationships = handler.relationships.read().await;
+        let symbols = handler.symbols.read().await;
 
         let mut message = "🔍 Relationship Tracing\n=====================\n".to_string();
 
@@ -2088,7 +2188,7 @@ impl NavigateTool {
         debug!("🚀 Navigating: mode={}, target={}", self.mode, self.target);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable navigation.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -2096,11 +2196,11 @@ impl NavigateTool {
 
         // Perform navigation based on mode
         let message = match self.mode.as_str() {
-            "definition" => self.navigate_to_definition(handler)?,
-            "references" => self.navigate_to_references(handler)?,
-            "implementations" => self.navigate_to_implementations(handler)?,
-            "callers" => self.navigate_to_callers(handler)?,
-            "callees" => self.navigate_to_callees(handler)?,
+            "definition" => self.navigate_to_definition(handler).await?,
+            "references" => self.navigate_to_references(handler).await?,
+            "implementations" => self.navigate_to_implementations(handler).await?,
+            "callers" => self.navigate_to_callers(handler).await?,
+            "callees" => self.navigate_to_callees(handler).await?,
             _ => format!(
                 "❌ Unknown navigation mode: '{}'\n\
                 💡 Supported modes: definition, references, implementations, callers, callees",
@@ -2111,8 +2211,8 @@ impl NavigateTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
     }
 
-    fn navigate_to_definition(&self, handler: &JulieServerHandler) -> Result<String> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn navigate_to_definition(&self, handler: &JulieServerHandler) -> Result<String> {
+        let symbols = handler.symbols.read().await;
 
         let definitions: Vec<_> = symbols.iter()
             .filter(|s| s.name == self.target)
@@ -2140,9 +2240,9 @@ impl NavigateTool {
         Ok(message)
     }
 
-    fn navigate_to_references(&self, handler: &JulieServerHandler) -> Result<String> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn navigate_to_references(&self, handler: &JulieServerHandler) -> Result<String> {
+        let symbols = handler.symbols.read().await;
+        let relationships = handler.relationships.read().await;
 
         // Find the target symbol
         let target_symbols: Vec<_> = symbols.iter()
@@ -2180,9 +2280,9 @@ impl NavigateTool {
         Ok(message)
     }
 
-    fn navigate_to_implementations(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn navigate_to_implementations(&self, handler: &JulieServerHandler) -> Result<String> {
+        let relationships = handler.relationships.read().await;
+        let symbols = handler.symbols.read().await;
 
         // Find symbols that implement the target (interfaces/abstract classes)
         let target_symbols: Vec<_> = symbols.iter()
@@ -2222,9 +2322,9 @@ impl NavigateTool {
         Ok(message)
     }
 
-    fn navigate_to_callers(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn navigate_to_callers(&self, handler: &JulieServerHandler) -> Result<String> {
+        let relationships = handler.relationships.read().await;
+        let symbols = handler.symbols.read().await;
 
         // Find the target function
         let target_symbols: Vec<_> = symbols.iter()
@@ -2263,9 +2363,9 @@ impl NavigateTool {
         Ok(message)
     }
 
-    fn navigate_to_callees(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+    async fn navigate_to_callees(&self, handler: &JulieServerHandler) -> Result<String> {
+        let relationships = handler.relationships.read().await;
+        let symbols = handler.symbols.read().await;
 
         // Find the target function
         let target_symbols: Vec<_> = symbols.iter()
@@ -2469,7 +2569,7 @@ impl ExploreOverviewTool {
         debug!("🧭 Exploring codebase overview: focus={}", self.focus);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable intelligent overview.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -2493,8 +2593,8 @@ impl ExploreOverviewTool {
 
     /// Find the most critical files in the codebase - the "heart" files
     async fn find_critical_files(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let symbols = handler.symbols.read().await;
+        let relationships = handler.relationships.read().await;
 
         // Calculate criticality scores for each file
         let mut file_scores = std::collections::HashMap::new();
@@ -2569,8 +2669,8 @@ impl ExploreOverviewTool {
 
     /// Detect architectural patterns in the codebase
     async fn detect_architecture(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-        let relationships = handler.relationships.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let symbols = handler.symbols.read().await;
+        let relationships = handler.relationships.read().await;
 
         let mut message = "🏗️ **Architecture Analysis**\n========================\n\n".to_string();
 
@@ -2619,7 +2719,7 @@ impl ExploreOverviewTool {
 
     /// Find main entry points (main functions, controllers, etc.)
     async fn find_entry_points(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let symbols = handler.symbols.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let symbols = handler.symbols.read().await;
 
         let mut entry_points = Vec::new();
 
@@ -2866,7 +2966,7 @@ impl TraceExecutionTool {
         debug!("🔍 Tracing execution flow from: {}", self.start_point);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable execution tracing.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -2903,7 +3003,7 @@ impl GetMinimalContextTool {
         debug!("🎯 Getting minimal context for: {}", self.target);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable context optimization.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -2939,7 +3039,7 @@ impl FindLogicTool {
         debug!("🏢 Finding business logic for domain: {}", self.domain);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable business logic detection.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
@@ -2976,7 +3076,7 @@ impl ScoreCriticalityTool {
         debug!("📊 Scoring criticality for: {}", self.target);
 
         // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable criticality scoring.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
