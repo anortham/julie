@@ -210,9 +210,8 @@ impl FastEditTool {
 
         let search_result = search_tool.call_tool(handler).await?;
 
-        // Parse search results to extract file paths
-        let search_response = format!("{:?}", search_result);
-        let mut file_paths = self.extract_file_paths_from_search_result(&search_response);
+        // Parse search results to extract file paths from the actual response content
+        let mut file_paths = self.extract_file_paths_from_call_tool_result(&search_result)?;
 
         // Fallback: if no files found via search, try filesystem search (for testing/unindexed scenarios)
         if file_paths.is_empty() {
@@ -271,7 +270,51 @@ impl FastEditTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(combined_result)]))
     }
 
-    /// Extract file paths from fast_search result (proper parsing of FastSearchTool output)
+    /// Extract file paths from CallToolResult (proper parsing instead of Debug format)
+    fn extract_file_paths_from_call_tool_result(&self, search_result: &CallToolResult) -> Result<Vec<String>> {
+        let mut paths = Vec::new();
+
+        // The content field contains ContentBlock objects. Based on the pattern used elsewhere,
+        // these should be text content blocks that we can extract strings from.
+        for content_block in &search_result.content {
+            // Since we know CallToolResult::text_content(vec![TextContent::from(message)]) is used,
+            // we need to extract the text from the TextContent objects.
+            // Based on the MCP schema, this should be straightforward text extraction.
+
+            // Try to serialize the content to understand its structure
+            let content_json = serde_json::to_value(content_block)?;
+
+            let search_text = if let Some(text_value) = content_json.get("text") {
+                text_value.as_str().unwrap_or("").to_string()
+            } else {
+                // Log the structure we got to understand what's happening
+                debug!("Unexpected content structure: {}", content_json);
+                continue;
+            };
+
+            // FastSearchTool returns lines like: "   📁 path/to/file.rs:10-20"
+            for line in search_text.lines() {
+                // Look for the file path emoji pattern
+                if line.contains("📁") {
+                    // Extract text after 📁 and before the colon (line numbers)
+                    if let Some(emoji_pos) = line.find("📁") {
+                        let after_emoji = &line[emoji_pos + "📁".len()..].trim();
+                        if let Some(colon_pos) = after_emoji.find(':') {
+                            let file_path = after_emoji[..colon_pos].trim();
+                            if !file_path.is_empty() && !paths.contains(&file_path.to_string()) {
+                                paths.push(file_path.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!("Extracted {} file paths from search result", paths.len());
+        Ok(paths)
+    }
+
+    /// Extract file paths from fast_search result (DEPRECATED - use extract_file_paths_from_call_tool_result)
     fn extract_file_paths_from_search_result(&self, search_response: &str) -> Vec<String> {
         let mut paths = Vec::new();
 
@@ -317,13 +360,13 @@ impl FastEditTool {
             vec!["ts", "tsx", "js", "jsx", "py", "rs", "java", "cs"] // Common extensions
         };
 
-        // Search in multiple directories: current directory and temp directories
+        // Search only within the current workspace directory to prevent unbounded searches
         let search_roots = vec![
-            std::env::current_dir()?,
-            std::env::temp_dir(), // System temp directory
-            std::path::PathBuf::from("/tmp"), // Unix temp
-            std::path::PathBuf::from("/var/folders"), // macOS temp
+            std::env::current_dir()?, // Only search within current workspace
         ];
+
+        warn!("🔍 Using filesystem fallback search - this indicates the index may be incomplete");
+        debug!("Search limited to current directory to prevent unbounded scans");
 
         for root in search_roots {
             if root.exists() {

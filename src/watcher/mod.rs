@@ -323,11 +323,23 @@ impl IncrementalIndexer {
 
         info!("Extracted {} symbols from {}", symbols.len(), path.display());
 
-        // 4. Update SQLite database (transactionally)
+        // 4. Update SQLite database (transactionally) with safeguard against symbol erasure
         let mut db = self.db.lock().await;
+
+        // SAFEGUARD: Check if we're about to erase symbols from a file that previously had them
+        if symbols.is_empty() {
+            let existing_symbols = db.get_symbols_for_file(&path_str)?;
+            if !existing_symbols.is_empty() {
+                warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {} - extraction returned zero symbols (possible parser error)",
+                      existing_symbols.len(), path_str);
+                warn!("⚠️  File content may be corrupted or parser failed. Keeping existing symbols to prevent data loss.");
+                return Ok(()); // Skip update to preserve existing data
+            }
+        }
+
         db.begin_transaction()?;
 
-        // Remove old symbols for this file
+        // Remove old symbols for this file (now safe - either we have new symbols or file never had symbols)
         db.delete_symbols_for_file(&path_str)?;
 
         // Insert new symbols (file watcher only operates on primary workspace)

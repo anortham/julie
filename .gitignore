@@ -11,6 +11,9 @@ Cargo.lock
 *.swo
 *~
 
+# Claude settings
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db

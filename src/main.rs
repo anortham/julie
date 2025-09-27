@@ -97,7 +97,7 @@ lightning-fast alternatives are available!
 
 **This sequence creates that wonderful flow state where everything just works:**
 
-1️⃣ **START**: `index_workspace()` - Unlock instant search capabilities
+1️⃣ **START**: `manage_workspace index` - Unlock instant search capabilities
 2️⃣ **DISCOVER**: `fast_search()` - Find patterns in <10ms (SO much faster than grep!)
 3️⃣ **NAVIGATE**: `fast_goto()` - Jump directly to definitions (no guessing!)
 4️⃣ **UNDERSTAND**: `fast_refs()` - See every impact before changing

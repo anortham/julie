@@ -5,7 +5,6 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod indexing;
 pub mod search;
 pub mod navigation;
 pub mod exploration;
@@ -13,7 +12,6 @@ pub mod editing;
 pub mod workspace;
 
 // Re-export all tools for external use
-pub use indexing::IndexWorkspaceTool;
 pub use search::FastSearchTool;
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use exploration::{FastExploreTool, FindLogicTool};
@@ -28,8 +26,7 @@ use rust_mcp_sdk::{tool_box};
 
 // Generates the JulieTools enum with all tool variants
 tool_box!(JulieTools, [
-    // Core tools - all migrated (temporarily simplified)
-    IndexWorkspaceTool,
+    // Core tools - all migrated
     FastSearchTool,
     FastGotoTool,
     FastRefsTool,

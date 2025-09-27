@@ -37,7 +37,7 @@ impl FastExploreTool {
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable exploration.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable exploration.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
@@ -595,7 +595,7 @@ impl FindLogicTool {
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable business logic detection.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable business logic detection.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 

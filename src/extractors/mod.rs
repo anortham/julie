@@ -63,9 +63,10 @@ impl ExtractorManager {
         ]
     }
 
-    /// Extract symbols from file content
-    pub async fn extract_symbols(&self, file_path: &str, _content: &str) -> Result<Vec<Symbol>, anyhow::Error> {
+    /// Extract symbols from file content using the appropriate language extractor
+    pub async fn extract_symbols(&self, file_path: &str, content: &str) -> Result<Vec<Symbol>, anyhow::Error> {
         use std::path::Path;
+        use tree_sitter::Parser;
 
         // Determine language from file extension
         let path = Path::new(file_path);
@@ -98,15 +99,201 @@ impl ExtractorManager {
             "sh" | "bash" => "bash",
             "ps1" => "powershell",
             "zig" => "zig",
+            "regex" => "regex",
             _ => {
                 // Unsupported file type - return empty results
                 return Ok(Vec::new());
             }
         };
 
-        // TODO: Once extractors are implemented, use them here
-        // For now, return empty results to allow integration to proceed
-        tracing::debug!("Would extract {} symbols from {} file: {}", language, extension, file_path);
-        Ok(Vec::new())
+        // Create parser for the language
+        let mut parser = Parser::new();
+        let tree_sitter_language = self.get_tree_sitter_language(language)?;
+
+        parser.set_language(&tree_sitter_language)
+            .map_err(|e| anyhow::anyhow!("Failed to set parser language for {}: {}", language, e))?;
+
+        // Parse the file
+        let tree = parser.parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
+
+        // Extract symbols using the appropriate extractor
+        let symbols = self.extract_symbols_for_language(file_path, content, language, &tree).await?;
+
+        tracing::debug!("Extracted {} symbols from {} file: {}", symbols.len(), language, file_path);
+        Ok(symbols)
+    }
+
+    /// Get tree-sitter language for given language name
+    fn get_tree_sitter_language(&self, language: &str) -> Result<tree_sitter::Language, anyhow::Error> {
+        match language {
+            "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
+            "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
+            "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
+            "python" => Ok(tree_sitter_python::LANGUAGE.into()),
+            "go" => Ok(tree_sitter_go::LANGUAGE.into()),
+            "java" => Ok(tree_sitter_java::LANGUAGE.into()),
+            "c" => Ok(tree_sitter_c::LANGUAGE.into()),
+            "cpp" => Ok(tree_sitter_cpp::LANGUAGE.into()),
+            "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
+            "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
+            "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
+            "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
+            "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
+            "dart" => Ok(harper_tree_sitter_dart::LANGUAGE.into()),
+            "gdscript" => Ok(tree_sitter_gdscript::LANGUAGE.into()),
+            "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
+            "vue" => Ok(tree_sitter_html::LANGUAGE.into()), // Vue SFCs use HTML structure
+            "razor" => Ok(tree_sitter_razor::LANGUAGE.into()),
+            "sql" => Ok(tree_sitter_sequel::LANGUAGE.into()),
+            "html" => Ok(tree_sitter_html::LANGUAGE.into()),
+            "css" => Ok(tree_sitter_css::LANGUAGE.into()),
+            "bash" => Ok(tree_sitter_bash::LANGUAGE.into()),
+            "powershell" => Ok(tree_sitter_powershell::LANGUAGE.into()),
+            "zig" => Ok(tree_sitter_zig::LANGUAGE.into()),
+            "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
+            _ => Err(anyhow::anyhow!("Unsupported language: {}", language))
+        }
+    }
+
+    /// Extract symbols using the appropriate extractor for the detected language
+    async fn extract_symbols_for_language(
+        &self,
+        file_path: &str,
+        content: &str,
+        language: &str,
+        tree: &tree_sitter::Tree
+    ) -> Result<Vec<Symbol>, anyhow::Error> {
+        match language {
+            "rust" => {
+                let mut extractor = crate::extractors::rust::RustExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "typescript" => {
+                let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "javascript" => {
+                let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "python" => {
+                let mut extractor = crate::extractors::python::PythonExtractor::new(
+                    file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "go" => {
+                let mut extractor = crate::extractors::go::GoExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "java" => {
+                let mut extractor = crate::extractors::java::JavaExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "c" => {
+                let mut extractor = crate::extractors::c::CExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "cpp" => {
+                let mut extractor = crate::extractors::cpp::CppExtractor::new(
+                    file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "csharp" => {
+                let mut extractor = crate::extractors::csharp::CSharpExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "ruby" => {
+                let mut extractor = crate::extractors::ruby::RubyExtractor::new(
+                    file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "php" => {
+                let mut extractor = crate::extractors::php::PhpExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "swift" => {
+                let mut extractor = crate::extractors::swift::SwiftExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "kotlin" => {
+                let mut extractor = crate::extractors::kotlin::KotlinExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "dart" => {
+                let mut extractor = crate::extractors::dart::DartExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "gdscript" => {
+                let mut extractor = crate::extractors::gdscript::GDScriptExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "lua" => {
+                let mut extractor = crate::extractors::lua::LuaExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "vue" => {
+                let mut extractor = crate::extractors::vue::VueExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(Some(tree)))
+            },
+            "razor" => {
+                let mut extractor = crate::extractors::razor::RazorExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "sql" => {
+                let mut extractor = crate::extractors::sql::SqlExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "html" => {
+                let mut extractor = crate::extractors::html::HTMLExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "css" => {
+                let mut extractor = crate::extractors::css::CSSExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "bash" => {
+                let mut extractor = crate::extractors::bash::BashExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "powershell" => {
+                let mut extractor = crate::extractors::powershell::PowerShellExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "zig" => {
+                let mut extractor = crate::extractors::zig::ZigExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            "regex" => {
+                let mut extractor = crate::extractors::regex::RegexExtractor::new(
+                    language.to_string(), file_path.to_string(), content.to_string());
+                Ok(extractor.extract_symbols(tree))
+            },
+            _ => {
+                tracing::debug!("No extractor available for language: {} (file: {})", language, file_path);
+                Ok(Vec::new())
+            }
+        }
     }
 }

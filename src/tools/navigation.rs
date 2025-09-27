@@ -56,7 +56,7 @@ impl FastGotoTool {
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable navigation.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
@@ -577,7 +577,7 @@ impl FastRefsTool {
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable navigation.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 

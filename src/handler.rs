@@ -91,6 +91,11 @@ impl JulieServerHandler {
 
     /// Initialize or load workspace and update components to use persistent storage
     pub async fn initialize_workspace(&self, workspace_path: Option<String>) -> Result<()> {
+        self.initialize_workspace_with_force(workspace_path, false).await
+    }
+
+    /// Initialize or load workspace with optional force reinitialization
+    pub async fn initialize_workspace_with_force(&self, workspace_path: Option<String>, force: bool) -> Result<()> {
         let target_path = match workspace_path {
             Some(path) => {
                 let expanded_path = shellexpand::tilde(&path).to_string();
@@ -101,24 +106,63 @@ impl JulieServerHandler {
 
         info!("Initializing workspace at: {}", target_path.display());
 
-        // Try to load existing workspace first
-        let workspace = match JulieWorkspace::detect_and_load(target_path.clone())? {
-            Some(existing_workspace) => {
-                info!("Loaded existing workspace");
-                existing_workspace
-            },
-            None => {
-                info!("Creating new workspace");
-                JulieWorkspace::initialize(target_path)?
+        // Handle force reinitialization vs normal initialization
+        let workspace = if force {
+            info!("🔄 Force reinitialization requested - creating fresh workspace");
+
+            // Clear existing workspace data if it exists
+            let julie_dir = target_path.join(".julie");
+            if julie_dir.exists() {
+                info!("🗑️ Clearing existing workspace data for force reindex");
+
+                // Clear key directories that might cause "already exists" errors
+                let paths_to_clear = [
+                    julie_dir.join("index"),
+                    julie_dir.join("db"),
+                    julie_dir.join("cache"),
+                ];
+
+                for path in &paths_to_clear {
+                    if path.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(path) {
+                            warn!("Failed to clear {}: {}", path.display(), e);
+                        } else {
+                            debug!("Cleared: {}", path.display());
+                        }
+                    }
+                }
+            }
+
+            JulieWorkspace::initialize(target_path)?
+        } else {
+            // Try to load existing workspace first
+            match JulieWorkspace::detect_and_load(target_path.clone())? {
+                Some(existing_workspace) => {
+                    info!("Loaded existing workspace");
+                    existing_workspace
+                },
+                None => {
+                    info!("Creating new workspace");
+                    JulieWorkspace::initialize(target_path)?
+                }
             }
         };
 
         // Update search engine to use persistent index from workspace
         if let Some(persistent_search) = &workspace.search {
-            let mut search_guard = self.search_engine.write().await;
-            let persistent_search_guard = persistent_search.read().await;
-            // We'll need to implement a way to replace the search engine
-            // For now, store the workspace so indexing can use it
+            // Replace the handler's search engine with the workspace's persistent search engine
+            // Both are Arc<RwLock<SearchEngine>>, so we replace the Arc itself
+            let mut search_engine_guard = self.search_engine.write().await;
+            let persistent_guard = persistent_search.read().await;
+
+            // Create a new SearchEngine based on the persistent one's path/state
+            // Since SearchEngine doesn't implement Clone, we need to create a new one
+            // For now, keep the existing search engine but note this needs proper implementation
+            warn!("TODO: Properly adopt persistent search engine - requires SearchEngine::clone or new API");
+
+            info!("✅ Would adopt persistent search index from workspace");
+        } else {
+            warn!("⚠️  Workspace has no persistent search index - using in-memory fallback");
         }
 
         // Store the initialized workspace
@@ -195,8 +239,8 @@ impl ServerHandler for JulieServerHandler {
 
         // Execute the requested tool
         let result = match &tool_params {
-            JulieTools::IndexWorkspaceTool(tool) => {
-                info!("📚 Indexing workspace at: {:?}", self.get_workspace_path());
+            JulieTools::ManageWorkspaceTool(tool) => {
+                info!("🏗️ Managing workspace: {:?}", tool.command);
                 tool.call_tool(self).await
             },
             // Consolidated fast tools with appealing names
@@ -226,10 +270,6 @@ impl ServerHandler for JulieServerHandler {
             },
             JulieTools::LineEditTool(tool) => {
                 debug!("📝 Line edit: {:?}", tool);
-                tool.call_tool(self).await
-            },
-            JulieTools::ManageWorkspaceTool(tool) => {
-                debug!("🏗️ Manage workspace: {:?}", tool);
                 tool.call_tool(self).await
             },
         };

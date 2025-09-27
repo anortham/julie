@@ -10,6 +10,7 @@ use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer, exact_match_boost::ExactMatchBoost};
 use crate::workspace::registry_service::WorkspaceRegistryService;
+use crate::embeddings::cosine_similarity;
 use super::shared::OptimizedResponse;
 
 //******************//
@@ -70,7 +71,7 @@ impl FastSearchTool {
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run index_workspace first to enable fast search.";
+            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
             return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
         }
 
@@ -219,9 +220,104 @@ impl FastSearchTool {
     }
 
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-        // For now, delegate to text search - full semantic implementation coming soon
-        debug!("🧠 Semantic search mode (using text fallback)");
-        self.text_search(handler).await
+        debug!("🧠 Semantic search mode (using embeddings)");
+
+        // First get text search results as candidates
+        let text_candidates = self.text_search(handler).await?;
+
+        // Ensure embedding engine is initialized
+        handler.ensure_embedding_engine().await?;
+
+        // Get mutable access to embedding engine for embedding generation
+        let mut embedding_guard = handler.embedding_engine.write().await;
+        let embedding_engine = match embedding_guard.as_mut() {
+            Some(engine) => engine,
+            None => {
+                debug!("No embedding engine available, falling back to text search");
+                return Ok(text_candidates);
+            }
+        };
+
+        // Generate embedding for the query
+        let query_embedding = {
+            // Create a temporary symbol from the query for embedding
+            let query_symbol = Symbol {
+                id: "query".to_string(),
+                name: self.query.clone(),
+                kind: crate::extractors::base::SymbolKind::Function, // Arbitrary kind for query
+                language: "query".to_string(),
+                file_path: "query".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: self.query.len() as u32,
+                start_byte: 0,
+                end_byte: self.query.len() as u32,
+                signature: None,
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                code_context: None,
+            };
+
+            let context = crate::embeddings::CodeContext {
+                parent_symbol: None,
+                surrounding_code: None,
+                file_context: Some("".to_string()),
+            };
+
+            embedding_engine.embed_symbol(&query_symbol, &context)?
+        };
+
+        // Calculate similarity with text candidates and rank them
+        let mut scored_symbols = Vec::new();
+
+        for symbol in text_candidates {
+            // Calculate real embedding similarity
+            let symbol_embedding = {
+                let context = crate::embeddings::CodeContext {
+                    parent_symbol: None,
+                    surrounding_code: symbol.code_context.clone(),
+                    file_context: Some(symbol.signature.clone().unwrap_or_default()),
+                };
+
+                match embedding_engine.embed_symbol(&symbol, &context) {
+                    Ok(embedding) => embedding,
+                    Err(e) => {
+                        debug!("Failed to embed symbol {}: {}", symbol.name, e);
+                        // Fall back to text similarity if embedding fails
+                        let text_similarity = if symbol.name.to_lowercase().contains(&self.query.to_lowercase()) {
+                            0.8
+                        } else if symbol.name.to_lowercase() == self.query.to_lowercase() {
+                            1.0
+                        } else {
+                            0.3
+                        };
+                        scored_symbols.push((symbol, text_similarity));
+                        continue;
+                    }
+                }
+            };
+
+            // Calculate cosine similarity between query and symbol embeddings
+            let similarity = cosine_similarity(&query_embedding, &symbol_embedding);
+            scored_symbols.push((symbol, similarity));
+        }
+
+        // Sort by similarity score (descending)
+        scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return top results
+        let results: Vec<Symbol> = scored_symbols.into_iter()
+            .take(self.limit as usize)
+            .map(|(symbol, _score)| symbol)
+            .collect();
+
+        debug!("Semantic search returned {} results", results.len());
+        Ok(results)
     }
 
     async fn hybrid_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
