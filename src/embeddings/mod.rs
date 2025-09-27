@@ -3,10 +3,11 @@
 // This module provides semantic search capabilities using FastEmbed for easy model integration.
 // It enables cross-language understanding by generating meaning-based vector representations.
 
-use anyhow::Result;
-use fastembed::{TextEmbedding, EmbeddingModel, TextInitOptions};
-use std::path::PathBuf;
 use crate::extractors::base::Symbol;
+use anyhow::Result;
+use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 pub mod cross_language;
 pub mod vector_store;
@@ -42,6 +43,8 @@ pub struct EmbeddingEngine {
     model: TextEmbedding,
     model_name: String,
     dimensions: usize,
+    embeddings: HashMap<String, Vec<f32>>,
+    file_index: HashMap<String, HashSet<String>>,
 }
 
 impl EmbeddingEngine {
@@ -49,14 +52,14 @@ impl EmbeddingEngine {
     pub fn new(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
         let (model, dimensions) = match model_name {
             "bge-small" => {
-                let options = TextInitOptions::new(EmbeddingModel::BGESmallENV15)
-                    .with_cache_dir(cache_dir);
+                let options =
+                    TextInitOptions::new(EmbeddingModel::BGESmallENV15).with_cache_dir(cache_dir);
                 (TextEmbedding::try_new(options)?, 384)
             }
             _ => {
                 // Default to BGE Small for now
-                let options = TextInitOptions::new(EmbeddingModel::BGESmallENV15)
-                    .with_cache_dir(cache_dir);
+                let options =
+                    TextInitOptions::new(EmbeddingModel::BGESmallENV15).with_cache_dir(cache_dir);
                 (TextEmbedding::try_new(options)?, 384)
             }
         };
@@ -65,6 +68,8 @@ impl EmbeddingEngine {
             model,
             model_name: model_name.to_string(),
             dimensions,
+            embeddings: HashMap::new(),
+            file_index: HashMap::new(),
         })
     }
 
@@ -113,20 +118,61 @@ impl EmbeddingEngine {
         Ok(results)
     }
 
-    /// Remove embeddings for symbols from a specific file (for file watcher integration)
-    pub fn remove_embeddings_for_file(&mut self, _file_path: &str) -> Result<()> {
-        // TODO: Implement embedding removal based on file path
-        // This would require tracking which embeddings belong to which files
-        tracing::debug!("Embedding removal for file not yet implemented: {}", _file_path);
+    /// Update cached embeddings for all symbols in a file. Existing entries for the file are replaced.
+    pub fn upsert_file_embeddings(&mut self, file_path: &str, symbols: &[Symbol]) -> Result<()> {
+        // Remove any previously cached embeddings for this file
+        if let Some(existing_ids) = self.file_index.remove(file_path) {
+            for symbol_id in existing_ids {
+                self.embeddings.remove(&symbol_id);
+            }
+        }
+
+        let mut new_ids = HashSet::new();
+
+        for symbol in symbols {
+            let context = CodeContext::from_symbol(symbol);
+            match self.embed_symbol(symbol, &context) {
+                Ok(embedding) => {
+                    new_ids.insert(symbol.id.clone());
+                    self.embeddings.insert(symbol.id.clone(), embedding);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to embed symbol {} in {}: {}",
+                        symbol.id,
+                        file_path,
+                        e
+                    );
+                }
+            }
+        }
+
+        if !new_ids.is_empty() {
+            self.file_index.insert(file_path.to_string(), new_ids);
+        }
+
         Ok(())
+    }
+
+    /// Remove cached embeddings associated with a file path
+    pub fn remove_embeddings_for_file(&mut self, file_path: &str) -> Result<()> {
+        if let Some(symbol_ids) = self.file_index.remove(file_path) {
+            for symbol_id in symbol_ids {
+                self.embeddings.remove(&symbol_id);
+            }
+            tracing::debug!("Removed cached embeddings for {}", file_path);
+        }
+        Ok(())
+    }
+
+    /// Retrieve a cached embedding vector if it exists
+    pub fn get_embedding(&self, symbol_id: &str) -> Option<&Vec<f32>> {
+        self.embeddings.get(symbol_id)
     }
 
     pub fn build_embedding_text(&self, symbol: &Symbol, context: &CodeContext) -> String {
         // Combine multiple sources of information for richer embeddings
-        let mut parts = vec![
-            symbol.name.clone(),
-            symbol.kind.to_string(),
-        ];
+        let mut parts = vec![symbol.name.clone(), symbol.kind.to_string()];
 
         // Add signature if available
         if let Some(sig) = &symbol.signature {
@@ -267,17 +313,31 @@ mod tests {
         let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
 
         // Test similar concepts in different languages
-        let ts_embedding = engine.embed_text("interface User { id: string; name: string; }").unwrap();
-        let cs_embedding = engine.embed_text("class User { public string Id; public string Name; }").unwrap();
-        let sql_embedding = engine.embed_text("CREATE TABLE users (id VARCHAR, name VARCHAR)").unwrap();
+        let ts_embedding = engine
+            .embed_text("interface User { id: string; name: string; }")
+            .unwrap();
+        let cs_embedding = engine
+            .embed_text("class User { public string Id; public string Name; }")
+            .unwrap();
+        let sql_embedding = engine
+            .embed_text("CREATE TABLE users (id VARCHAR, name VARCHAR)")
+            .unwrap();
 
         // Should have high similarity for same concept
         let ts_cs_similarity = cosine_similarity(&ts_embedding, &cs_embedding);
         let ts_sql_similarity = cosine_similarity(&ts_embedding, &sql_embedding);
 
         // Should be reasonably similar (>0.5) for same concept across languages
-        assert!(ts_cs_similarity > 0.5, "TypeScript and C# similarity: {}", ts_cs_similarity);
-        assert!(ts_sql_similarity > 0.3, "TypeScript and SQL similarity: {}", ts_sql_similarity);
+        assert!(
+            ts_cs_similarity > 0.5,
+            "TypeScript and C# similarity: {}",
+            ts_cs_similarity
+        );
+        assert!(
+            ts_sql_similarity > 0.3,
+            "TypeScript and SQL similarity: {}",
+            ts_sql_similarity
+        );
     }
 
     #[test]
@@ -367,7 +427,7 @@ mod tests {
 
         // Should include all the important information
         assert!(embedding_text.contains("getUserData"));
-        assert!(embedding_text.contains("function"));  // SymbolKind::Function.to_string() returns "function" lowercase
+        assert!(embedding_text.contains("function")); // SymbolKind::Function.to_string() returns "function" lowercase
         assert!(embedding_text.contains("function getUserData(): Promise<User>"));
         assert!(embedding_text.contains("user.ts"));
         assert!(embedding_text.contains("Fetch user data from API"));

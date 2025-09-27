@@ -1,5 +1,7 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
+use tree_sitter::{Node, Tree};
 
 /// Ruby extractor for extracting symbols and relationships from Ruby source code
 /// Port of Miller's comprehensive Ruby extractor with metaprogramming support
@@ -45,7 +47,12 @@ impl RubyExtractor {
         self.traverse_tree_with_parent(node, symbols, None);
     }
 
-    fn traverse_tree_with_parent(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+    fn traverse_tree_with_parent(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) {
         let mut symbol_opt: Option<Symbol> = None;
 
         match node.kind() {
@@ -79,7 +86,7 @@ impl RubyExtractor {
                 // Only create symbol if not part of an assignment (which handles it)
                 // TODO: Implement is_part_of_assignment method
                 // if !self.is_part_of_assignment(&node) {
-                    symbol_opt = Some(self.extract_variable(node));
+                symbol_opt = Some(self.extract_variable(node));
                 // }
             }
             "constant" => {
@@ -137,7 +144,8 @@ impl RubyExtractor {
 
     fn extract_module(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         // Try different field names that Ruby tree-sitter uses
-        let name = self.extract_name_from_node(node, "name")
+        let name = self
+            .extract_name_from_node(node, "name")
             .or_else(|| self.extract_name_from_node(node, "constant"))
             .or_else(|| {
                 // Fallback: find first constant child
@@ -169,7 +177,8 @@ impl RubyExtractor {
 
     fn extract_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         // Try different field names that Ruby tree-sitter uses
-        let name = self.extract_name_from_node(node, "name")
+        let name = self
+            .extract_name_from_node(node, "name")
             .or_else(|| self.extract_name_from_node(node, "constant"))
             .or_else(|| {
                 // Fallback: find first constant child
@@ -201,8 +210,12 @@ impl RubyExtractor {
 
     fn extract_singleton_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         // Find the target of the singleton class (self, identifier, etc.)
-        let target_node = node.children(&mut node.walk()).find(|c| matches!(c.kind(), "self" | "identifier"));
-        let target = target_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "self".to_string());
+        let target_node = node
+            .children(&mut node.walk())
+            .find(|c| matches!(c.kind(), "self" | "identifier"));
+        let target = target_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "self".to_string());
         let signature = format!("class << {}", target);
 
         self.base.create_symbol(
@@ -220,7 +233,8 @@ impl RubyExtractor {
     }
 
     fn extract_method(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let name = self.extract_name_from_node(node, "name")
+        let name = self
+            .extract_name_from_node(node, "name")
             .or_else(|| self.extract_name_from_node(node, "identifier"))
             .or_else(|| self.extract_name_from_node(node, "operator"))
             .or_else(|| {
@@ -239,7 +253,11 @@ impl RubyExtractor {
             .unwrap_or_else(|| "unknownMethod".to_string());
 
         let signature = self.build_method_signature(&node, &name);
-        let kind = if name == "initialize" { SymbolKind::Constructor } else { SymbolKind::Method };
+        let kind = if name == "initialize" {
+            SymbolKind::Constructor
+        } else {
+            SymbolKind::Method
+        };
 
         let visibility = self.current_visibility.clone();
 
@@ -282,8 +300,12 @@ impl RubyExtractor {
 
         match method_name.as_str() {
             "require" | "require_relative" => self.extract_require(node),
-            "attr_reader" | "attr_writer" | "attr_accessor" => self.extract_attr_accessor(node, &method_name),
-            "define_method" | "define_singleton_method" => self.extract_define_method(node, &method_name),
+            "attr_reader" | "attr_writer" | "attr_accessor" => {
+                self.extract_attr_accessor(node, &method_name)
+            }
+            "define_method" | "define_singleton_method" => {
+                self.extract_define_method(node, &method_name)
+            }
             "def_delegator" => self.extract_def_delegator(node),
             _ => None,
         }
@@ -291,25 +313,33 @@ impl RubyExtractor {
 
     fn extract_assignment(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         // Handle various assignment patterns including parallel assignment
-        let left_side = node.child_by_field_name("left").or_else(|| node.children(&mut node.walk()).next())?;
+        let left_side = node
+            .child_by_field_name("left")
+            .or_else(|| node.children(&mut node.walk()).next())?;
 
         // Handle parallel assignments (a, b, c = 1, 2, 3)
         if left_side.kind() == "left_assignment_list" {
             // For parallel assignments, we need to extract each variable separately
             // Return the first variable as the primary symbol, and store others in additionalSymbols
-            let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
-            let _right_value = right_side.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+            let right_side = node
+                .child_by_field_name("right")
+                .or_else(|| node.children(&mut node.walk()).last());
+            let _right_value = right_side
+                .map(|n| self.base.get_node_text(&n))
+                .unwrap_or_default();
             let full_assignment = self.base.get_node_text(&node);
 
             // Extract identifiers from left_assignment_list
             let mut cursor = left_side.walk();
-            let identifiers: Vec<_> = left_side.children(&mut cursor)
+            let identifiers: Vec<_> = left_side
+                .children(&mut cursor)
                 .filter(|child| child.kind() == "identifier")
                 .collect();
 
             // Extract rest assignments (splat expressions like *rest)
             let mut cursor = left_side.walk();
-            let rest_assignments: Vec<_> = left_side.children(&mut cursor)
+            let rest_assignments: Vec<_> = left_side
+                .children(&mut cursor)
                 .filter(|child| child.kind() == "rest_assignment")
                 .collect();
 
@@ -335,7 +365,10 @@ impl RubyExtractor {
 
             // Handle rest assignments
             for rest_node in &rest_assignments {
-                if let Some(rest_identifier) = rest_node.children(&mut rest_node.walk()).find(|c| c.kind() == "identifier") {
+                if let Some(rest_identifier) = rest_node
+                    .children(&mut rest_node.walk())
+                    .find(|c| c.kind() == "identifier")
+                {
                     let rest_name = self.base.get_node_text(&rest_identifier);
                     let rest_symbol = self.base.create_symbol(
                         &node,
@@ -356,7 +389,9 @@ impl RubyExtractor {
             // Store additional symbols in the base extractor's symbol_map
             // Since this method only returns one symbol, we add the rest to the symbol_map
             for symbol in created_symbols.iter().skip(1) {
-                self.base.symbol_map.insert(symbol.id.clone(), symbol.clone());
+                self.base
+                    .symbol_map
+                    .insert(symbol.id.clone(), symbol.clone());
             }
 
             // Return the first symbol (if any were created)
@@ -364,7 +399,9 @@ impl RubyExtractor {
         }
 
         // Handle regular assignments
-        let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
+        let right_side = node
+            .child_by_field_name("right")
+            .or_else(|| node.children(&mut node.walk()).last());
         let name = self.base.get_node_text(&left_side);
         let signature = if let Some(right) = right_side {
             format!("{} = {}", name, self.base.get_node_text(&right))
@@ -389,8 +426,15 @@ impl RubyExtractor {
     }
 
     #[allow(dead_code)]
-    fn extract_assignment_symbols(&mut self, node: Node, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
-        let left_side = node.child_by_field_name("left").or_else(|| node.children(&mut node.walk()).next());
+    fn extract_assignment_symbols(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+        symbols: &mut Vec<Symbol>,
+    ) {
+        let left_side = node
+            .child_by_field_name("left")
+            .or_else(|| node.children(&mut node.walk()).next());
 
         if let Some(left) = left_side {
             // Handle parallel assignments (a, b, c = 1, 2, 3)
@@ -417,7 +461,10 @@ impl RubyExtractor {
                         symbols.push(symbol);
                     } else if child.kind() == "rest_assignment" {
                         // Handle rest assignments (splat expressions like *rest)
-                        if let Some(rest_identifier) = child.children(&mut child.walk()).find(|c| c.kind() == "identifier") {
+                        if let Some(rest_identifier) = child
+                            .children(&mut child.walk())
+                            .find(|c| c.kind() == "identifier")
+                        {
                             let rest_name = self.base.get_node_text(&rest_identifier);
                             let symbol = self.base.create_symbol(
                                 &node,
@@ -435,7 +482,10 @@ impl RubyExtractor {
                         }
                     } else if child.kind() == "splat_argument" || child.kind().contains("splat") {
                         // Try alternative splat node names
-                        if let Some(rest_identifier) = child.children(&mut child.walk()).find(|c| c.kind() == "identifier") {
+                        if let Some(rest_identifier) = child
+                            .children(&mut child.walk())
+                            .find(|c| c.kind() == "identifier")
+                        {
                             let rest_name = self.base.get_node_text(&rest_identifier);
                             let symbol = self.base.create_symbol(
                                 &node,
@@ -457,15 +507,24 @@ impl RubyExtractor {
             } else {
                 // Check if this might be a parallel assignment with different structure
                 let assignment_text = self.base.get_node_text(&node);
-                if assignment_text.contains(",") && (assignment_text.contains("*") || assignment_text.contains("=")) {
+                if assignment_text.contains(",")
+                    && (assignment_text.contains("*") || assignment_text.contains("="))
+                {
                     // Try to extract variables from a manual parse of the assignment
-                    self.extract_parallel_assignment_fallback(&node, &assignment_text, parent_id.clone(), symbols);
+                    self.extract_parallel_assignment_fallback(
+                        &node,
+                        &assignment_text,
+                        parent_id.clone(),
+                        symbols,
+                    );
                     return;
                 }
             }
 
             // Handle regular assignments
-            let right_side = node.child_by_field_name("right").or_else(|| node.children(&mut node.walk()).last());
+            let right_side = node
+                .child_by_field_name("right")
+                .or_else(|| node.children(&mut node.walk()).last());
             let name = self.base.get_node_text(&left);
             let signature = if let Some(right) = right_side {
                 format!("{} = {}", name, self.base.get_node_text(&right))
@@ -492,7 +551,13 @@ impl RubyExtractor {
     }
 
     #[allow(dead_code)]
-    fn extract_parallel_assignment_fallback(&mut self, node: &Node, assignment_text: &str, parent_id: Option<String>, symbols: &mut Vec<Symbol>) {
+    fn extract_parallel_assignment_fallback(
+        &mut self,
+        node: &Node,
+        assignment_text: &str,
+        parent_id: Option<String>,
+        symbols: &mut Vec<Symbol>,
+    ) {
         // Fallback method to extract variables from parallel assignments when tree structure is unexpected
         // Split by '=' to get left and right sides
         if let Some(eq_pos) = assignment_text.find('=') {
@@ -503,7 +568,9 @@ impl RubyExtractor {
 
             for var in variables {
                 let clean_var = var.trim_start_matches('*'); // Remove splat operator
-                if !clean_var.is_empty() && clean_var.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                if !clean_var.is_empty()
+                    && clean_var.chars().all(|c| c.is_alphanumeric() || c == '_')
+                {
                     let symbol = self.base.create_symbol(
                         node,
                         clean_var.to_string(),
@@ -586,7 +653,8 @@ impl RubyExtractor {
         while let Some(parent) = current.parent() {
             if matches!(parent.kind(), "module" | "class") {
                 // Extract the name of the parent module/class
-                if let Some(parent_name) = self.extract_name_from_node(parent, "name")
+                if let Some(parent_name) = self
+                    .extract_name_from_node(parent, "name")
                     .or_else(|| self.extract_name_from_node(parent, "constant"))
                     .or_else(|| {
                         // Fallback: find first constant child
@@ -597,7 +665,8 @@ impl RubyExtractor {
                             }
                         }
                         None
-                    }) {
+                    })
+                {
                     namespace_parts.push(parent_name);
                 }
             }
@@ -641,7 +710,12 @@ impl RubyExtractor {
 
         // Check for inheritance
         if let Some(superclass) = node.child_by_field_name("superclass") {
-            let superclass_name = self.base.get_node_text(&superclass).replace('<', "").trim().to_string();
+            let superclass_name = self
+                .base
+                .get_node_text(&superclass)
+                .replace('<', "")
+                .trim()
+                .to_string();
             signature.push_str(&format!(" < {}", superclass_name));
         }
 
@@ -666,7 +740,10 @@ impl RubyExtractor {
             // Fallback: look for parameter list node
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if matches!(child.kind(), "parameters" | "method_parameters" | "parameter_list") {
+                if matches!(
+                    child.kind(),
+                    "parameters" | "method_parameters" | "parameter_list"
+                ) {
                     signature.push_str(&self.base.get_node_text(&child));
                     return signature;
                 }
@@ -723,7 +800,9 @@ impl RubyExtractor {
         // Ruby singleton method structure: def target.method_name
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "identifier" && child.prev_sibling().map_or(false, |s| s.kind() == ".") {
+            if child.kind() == "identifier"
+                && child.prev_sibling().map_or(false, |s| s.kind() == ".")
+            {
                 return self.base.get_node_text(&child);
             }
         }
@@ -755,10 +834,19 @@ impl RubyExtractor {
 
     fn extract_require(&mut self, node: Node) -> Option<Symbol> {
         let arg_node = node.child_by_field_name("arguments")?;
-        let string_node = arg_node.children(&mut arg_node.walk()).find(|c| c.kind() == "string")?;
+        let string_node = arg_node
+            .children(&mut arg_node.walk())
+            .find(|c| c.kind() == "string")?;
 
-        let require_path = self.base.get_node_text(&string_node).replace(['\'', '"'], "");
-        let module_name = require_path.split('/').last().unwrap_or(&require_path).to_string();
+        let require_path = self
+            .base
+            .get_node_text(&string_node)
+            .replace(['\'', '"'], "");
+        let module_name = require_path
+            .split('/')
+            .last()
+            .unwrap_or(&require_path)
+            .to_string();
         let method_name = self.extract_method_name_from_call(node)?;
 
         Some(self.base.create_symbol(
@@ -766,7 +854,11 @@ impl RubyExtractor {
             module_name,
             SymbolKind::Import,
             SymbolOptions {
-                signature: Some(format!("{} {}", method_name, self.base.get_node_text(&string_node))),
+                signature: Some(format!(
+                    "{} {}",
+                    method_name,
+                    self.base.get_node_text(&string_node)
+                )),
                 visibility: Some(Visibility::Public),
                 parent_id: None,
                 metadata: None,
@@ -777,7 +869,8 @@ impl RubyExtractor {
 
     fn extract_attr_accessor(&mut self, node: Node, method_name: &str) -> Option<Symbol> {
         let arg_node = node.child_by_field_name("arguments")?;
-        let symbol_nodes: Vec<_> = arg_node.children(&mut arg_node.walk())
+        let symbol_nodes: Vec<_> = arg_node
+            .children(&mut arg_node.walk())
             .filter(|c| matches!(c.kind(), "simple_symbol" | "symbol"))
             .collect();
 
@@ -803,10 +896,13 @@ impl RubyExtractor {
 
     fn extract_define_method(&mut self, node: Node, method_name: &str) -> Option<Symbol> {
         let arg_node = node.child_by_field_name("arguments")?;
-        let name_node = arg_node.children(&mut arg_node.walk())
+        let name_node = arg_node
+            .children(&mut arg_node.walk())
             .find(|c| matches!(c.kind(), "simple_symbol" | "symbol" | "string"))?;
 
-        let dynamic_method_name = self.base.get_node_text(&name_node)
+        let dynamic_method_name = self
+            .base
+            .get_node_text(&name_node)
             .trim_start_matches(':')
             .trim_matches('"')
             .to_string();
@@ -816,7 +912,11 @@ impl RubyExtractor {
             dynamic_method_name,
             SymbolKind::Method,
             SymbolOptions {
-                signature: Some(format!("{} {}", method_name, self.base.get_node_text(&name_node))),
+                signature: Some(format!(
+                    "{} {}",
+                    method_name,
+                    self.base.get_node_text(&name_node)
+                )),
                 visibility: Some(Visibility::Public),
                 parent_id: None,
                 metadata: None,
@@ -842,7 +942,10 @@ impl RubyExtractor {
                 delegated_method_name,
                 SymbolKind::Method,
                 SymbolOptions {
-                    signature: Some(format!("def_delegator {}", self.base.get_node_text(&arg_node))),
+                    signature: Some(format!(
+                        "def_delegator {}",
+                        self.base.get_node_text(&arg_node)
+                    )),
                     visibility: Some(Visibility::Public),
                     parent_id: None,
                     metadata: None,
@@ -878,7 +981,10 @@ impl RubyExtractor {
         // Check if this node itself is a call node for include/extend/prepend
         if node.kind() == "call" {
             if let Some(method_name) = self.extract_method_name_from_call(node) {
-                if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
+                if matches!(
+                    method_name.as_str(),
+                    "include" | "extend" | "prepend" | "using"
+                ) {
                     includes.push(self.base.get_node_text(&node));
                 }
             }
@@ -906,7 +1012,12 @@ impl RubyExtractor {
         }
     }
 
-    fn extract_relationships_from_node(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_relationships_from_node(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "class" => {
                 self.extract_inheritance_relationship(node, symbols, relationships);
@@ -925,9 +1036,15 @@ impl RubyExtractor {
         }
     }
 
-    fn extract_inheritance_relationship(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_inheritance_relationship(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         if let Some(superclass_node) = node.child_by_field_name("superclass") {
-            let class_name = self.extract_name_from_node(node, "name")
+            let class_name = self
+                .extract_name_from_node(node, "name")
                 .or_else(|| self.extract_name_from_node(node, "constant"))
                 .or_else(|| {
                     // Fallback: find first constant child
@@ -941,14 +1058,25 @@ impl RubyExtractor {
                 })
                 .unwrap_or_else(|| "UnknownClass".to_string());
 
-            let superclass_name = self.base.get_node_text(&superclass_node).replace('<', "").trim().to_string();
+            let superclass_name = self
+                .base
+                .get_node_text(&superclass_node)
+                .replace('<', "")
+                .trim()
+                .to_string();
 
             if let (Some(from_symbol), Some(to_symbol)) = (
                 symbols.iter().find(|s| s.name == class_name),
                 symbols.iter().find(|s| s.name == superclass_name),
             ) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", from_symbol.id, to_symbol.id, RelationshipKind::Extends, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        from_symbol.id,
+                        to_symbol.id,
+                        RelationshipKind::Extends,
+                        node.start_position().row
+                    ),
                     from_symbol_id: from_symbol.id.clone(),
                     to_symbol_id: to_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -961,8 +1089,14 @@ impl RubyExtractor {
         }
     }
 
-    fn extract_module_inclusion_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        let class_or_module_name = self.extract_name_from_node(node, "name")
+    fn extract_module_inclusion_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
+        let class_or_module_name = self
+            .extract_name_from_node(node, "name")
             .or_else(|| self.extract_name_from_node(node, "constant"))
             .or_else(|| {
                 // Fallback: find first constant child
@@ -976,27 +1110,45 @@ impl RubyExtractor {
             })
             .unwrap_or_else(|| "Unknown".to_string());
 
-
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "call" {
                 // Direct call node
-                self.process_include_extend_call(child, &class_or_module_name, symbols, relationships);
+                self.process_include_extend_call(
+                    child,
+                    &class_or_module_name,
+                    symbols,
+                    relationships,
+                );
             } else if child.kind() == "body_statement" {
                 // Call might be inside a body_statement
                 let mut body_cursor = child.walk();
                 for body_child in child.children(&mut body_cursor) {
                     if body_child.kind() == "call" {
-                        self.process_include_extend_call(body_child, &class_or_module_name, symbols, relationships);
+                        self.process_include_extend_call(
+                            body_child,
+                            &class_or_module_name,
+                            symbols,
+                            relationships,
+                        );
                     }
                 }
             }
         }
     }
 
-    fn process_include_extend_call(&self, child: tree_sitter::Node, class_or_module_name: &str, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn process_include_extend_call(
+        &self,
+        child: tree_sitter::Node,
+        class_or_module_name: &str,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         if let Some(method_name) = self.extract_method_name_from_call(child) {
-            if matches!(method_name.as_str(), "include" | "extend" | "prepend" | "using") {
+            if matches!(
+                method_name.as_str(),
+                "include" | "extend" | "prepend" | "using"
+            ) {
                 if let Some(arg_node) = child.child_by_field_name("arguments") {
                     if let Some(module_node) = arg_node.children(&mut arg_node.walk()).next() {
                         let module_name = self.base.get_node_text(&module_node);
@@ -1006,7 +1158,13 @@ impl RubyExtractor {
 
                         if let (Some(from_symbol), Some(to_symbol)) = (from_symbol, to_symbol) {
                             relationships.push(Relationship {
-                                id: format!("{}_{}_{:?}_{}", from_symbol.id, to_symbol.id, RelationshipKind::Implements, child.start_position().row),
+                                id: format!(
+                                    "{}_{}_{:?}_{}",
+                                    from_symbol.id,
+                                    to_symbol.id,
+                                    RelationshipKind::Implements,
+                                    child.start_position().row
+                                ),
                                 from_symbol_id: from_symbol.id.clone(),
                                 to_symbol_id: to_symbol.id.clone(),
                                 kind: RelationshipKind::Implements,

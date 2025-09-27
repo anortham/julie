@@ -12,14 +12,12 @@
 //! - Orphan detection and cleanup
 //! - Memory caching for performance
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, info, warn};
-use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Central registry for all workspace metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +63,7 @@ pub struct RegistryConfig {
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
-            default_ttl_seconds: 7 * 24 * 60 * 60, // 7 days
+            default_ttl_seconds: 7 * 24 * 60 * 60,   // 7 days
             max_total_size_bytes: 500 * 1024 * 1024, // 500MB
             auto_cleanup_enabled: true,
             cleanup_interval_seconds: 60 * 60, // 1 hour
@@ -244,12 +242,10 @@ impl WorkspaceEntry {
 
         let expires_at = match workspace_type {
             WorkspaceType::Primary => None, // Never expires
-            WorkspaceType::Reference => {
-                Some(current_timestamp() + config.default_ttl_seconds)
-            },
+            WorkspaceType::Reference => Some(current_timestamp() + config.default_ttl_seconds),
             WorkspaceType::Session => {
                 Some(current_timestamp() + 24 * 60 * 60) // 24 hours
-            },
+            }
         };
 
         Ok(Self {
@@ -320,7 +316,8 @@ pub fn generate_workspace_id(workspace_path: &str) -> Result<String> {
 /// Normalize a path for consistent hashing
 fn normalize_path(path: &str) -> Result<String> {
     let path_buf = PathBuf::from(path);
-    let canonical = path_buf.canonicalize()
+    let canonical = path_buf
+        .canonicalize()
         .or_else(|_| {
             // If canonicalize fails, try to get absolute path
             std::env::current_dir()
@@ -407,11 +404,9 @@ mod tests {
         let config = RegistryConfig::default();
 
         // Primary workspace should never expire
-        let primary = WorkspaceEntry::new(
-            "/test/primary".to_string(),
-            WorkspaceType::Primary,
-            &config,
-        ).unwrap();
+        let primary =
+            WorkspaceEntry::new("/test/primary".to_string(), WorkspaceType::Primary, &config)
+                .unwrap();
         assert!(!primary.is_expired());
         assert!(primary.expires_at.is_none());
 
@@ -420,7 +415,8 @@ mod tests {
             "/test/reference".to_string(),
             WorkspaceType::Reference,
             &config,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(!reference.is_expired()); // Should not be expired immediately
         assert!(reference.expires_at.is_some());
     }

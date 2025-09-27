@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod go_extractor_tests {
-    use crate::extractors::go::GoExtractor;
     use crate::extractors::base::{SymbolKind, Visibility};
+    use crate::extractors::go::GoExtractor;
     use crate::tests::test_utils::init_parser;
 
     #[test]
@@ -12,7 +12,8 @@ package main
 package utils
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let main_package = symbols.iter().find(|s| s.name == "main");
@@ -39,7 +40,8 @@ type Point struct {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let user_struct = symbols.iter().find(|s| s.name == "User");
@@ -71,14 +73,18 @@ type Reader interface {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let user_service = symbols.iter().find(|s| s.name == "UserService");
         assert!(user_service.is_some());
         let user_service = user_service.unwrap();
         assert_eq!(user_service.kind, SymbolKind::Interface);
-        assert_eq!(user_service.signature.as_ref().unwrap(), "type UserService interface");
+        assert_eq!(
+            user_service.signature.as_ref().unwrap(),
+            "type UserService interface"
+        );
         assert_eq!(user_service.visibility, Some(Visibility::Public));
 
         let reader = symbols.iter().find(|s| s.name == "Reader");
@@ -97,19 +103,28 @@ type Username string
 type Config map[string]interface{}
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let user_id = symbols.iter().find(|s| s.name == "UserID");
         assert!(user_id.is_some());
         let user_id = user_id.unwrap();
         assert_eq!(user_id.kind, SymbolKind::Type);
-        assert!(user_id.signature.as_ref().unwrap().contains("type UserID = int64"));
+        assert!(user_id
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type UserID = int64"));
 
         let config = symbols.iter().find(|s| s.name == "Config");
         assert!(config.is_some());
         let config = config.unwrap();
-        assert!(config.signature.as_ref().unwrap().contains("type Config = map[string]interface{}"));
+        assert!(config
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Config = map[string]interface{}"));
     }
 
     #[test]
@@ -135,23 +150,38 @@ func privateHelper() {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let add_func = symbols.iter().find(|s| s.name == "Add");
         assert!(add_func.is_some());
         let add_func = add_func.unwrap();
         assert_eq!(add_func.kind, SymbolKind::Function);
-        assert!(add_func.signature.as_ref().unwrap().contains("func Add(a, b int) int"));
+        assert!(add_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Add(a, b int) int"));
         assert_eq!(add_func.visibility, Some(Visibility::Public));
 
         let process_func = symbols.iter().find(|s| s.name == "ProcessUsers");
         assert!(process_func.is_some());
         let process_func = process_func.unwrap();
-        assert!(process_func.signature.as_ref().unwrap().contains("func ProcessUsers"));
-        assert!(process_func.signature.as_ref().unwrap().contains("<-chan User"));
+        assert!(process_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ProcessUsers"));
+        assert!(process_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<-chan User"));
 
-        let main_func = symbols.iter().find(|s| s.name == "main" && s.kind == SymbolKind::Function);
+        let main_func = symbols
+            .iter()
+            .find(|s| s.name == "main" && s.kind == SymbolKind::Function);
         assert!(main_func.is_some());
         let main_func = main_func.unwrap();
         assert_eq!(main_func.visibility, Some(Visibility::Private));
@@ -185,25 +215,38 @@ func (u *User) SetName(name string) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let get_name = symbols.iter().find(|s| s.name == "GetName");
         assert!(get_name.is_some());
         let get_name = get_name.unwrap();
         assert_eq!(get_name.kind, SymbolKind::Method);
-        assert!(get_name.signature.as_ref().unwrap().contains("func (u *User) GetName() string"));
+        assert!(get_name
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (u *User) GetName() string"));
         assert_eq!(get_name.visibility, Some(Visibility::Public));
 
         let is_adult = symbols.iter().find(|s| s.name == "IsAdult");
         assert!(is_adult.is_some());
         let is_adult = is_adult.unwrap();
-        assert!(is_adult.signature.as_ref().unwrap().contains("func (u User) IsAdult() bool"));
+        assert!(is_adult
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (u User) IsAdult() bool"));
 
         let set_name = symbols.iter().find(|s| s.name == "SetName");
         assert!(set_name.is_some());
         let set_name = set_name.unwrap();
-        assert!(set_name.signature.as_ref().unwrap().contains("func (u *User) SetName(name string)"));
+        assert!(set_name
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (u *User) SetName(name string)"));
     }
 
     #[test]
@@ -222,24 +265,37 @@ import (
 )
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let fmt_import = symbols.iter().find(|s| s.name == "fmt");
         assert!(fmt_import.is_some());
         let fmt_import = fmt_import.unwrap();
         assert_eq!(fmt_import.kind, SymbolKind::Import);
-        assert!(fmt_import.signature.as_ref().unwrap().contains("import \"fmt\""));
+        assert!(fmt_import
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("import \"fmt\""));
 
         let http_import = symbols.iter().find(|s| s.name == "http");
         assert!(http_import.is_some());
         let http_import = http_import.unwrap();
-        assert!(http_import.signature.as_ref().unwrap().contains("import \"net/http\""));
+        assert!(http_import
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("import \"net/http\""));
 
         let log_import = symbols.iter().find(|s| s.name == "log");
         assert!(log_import.is_some());
         let log_import = log_import.unwrap();
-        assert!(log_import.signature.as_ref().unwrap().contains("import log \"github.com/sirupsen/logrus\""));
+        assert!(log_import
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("import log \"github.com/sirupsen/logrus\""));
     }
 
     #[test]
@@ -257,20 +313,29 @@ const (
 )
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let max_users = symbols.iter().find(|s| s.name == "MaxUsers");
         assert!(max_users.is_some());
         let max_users = max_users.unwrap();
         assert_eq!(max_users.kind, SymbolKind::Constant);
-        assert!(max_users.signature.as_ref().unwrap().contains("const MaxUsers = 1000"));
+        assert!(max_users
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const MaxUsers = 1000"));
         assert_eq!(max_users.visibility, Some(Visibility::Public));
 
         let status_active = symbols.iter().find(|s| s.name == "StatusActive");
         assert!(status_active.is_some());
         let status_active = status_active.unwrap();
-        assert!(status_active.signature.as_ref().unwrap().contains("const StatusActive = \"active\""));
+        assert!(status_active
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const StatusActive = \"active\""));
     }
 
     #[test]
@@ -288,20 +353,29 @@ var (
 )
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let global_config = symbols.iter().find(|s| s.name == "GlobalConfig");
         assert!(global_config.is_some());
         let global_config = global_config.unwrap();
         assert_eq!(global_config.kind, SymbolKind::Variable);
-        assert!(global_config.signature.as_ref().unwrap().contains("var GlobalConfig *Config"));
+        assert!(global_config
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("var GlobalConfig *Config"));
         assert_eq!(global_config.visibility, Some(Visibility::Public));
 
         let version = symbols.iter().find(|s| s.name == "Version");
         assert!(version.is_some());
         let version = version.unwrap();
-        assert!(version.signature.as_ref().unwrap().contains("var Version = \"1.0.0\""));
+        assert!(version
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("var Version = \"1.0.0\""));
 
         let debug_mode = symbols.iter().find(|s| s.name == "debugMode");
         assert!(debug_mode.is_some());
@@ -333,19 +407,32 @@ func SendData(ch chan<- string, data string) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let process_data = symbols.iter().find(|s| s.name == "ProcessData");
         assert!(process_data.is_some());
         let process_data = process_data.unwrap();
-        assert!(process_data.signature.as_ref().unwrap().contains("<-chan string"));
-        assert!(process_data.signature.as_ref().unwrap().contains("chan string"));
+        assert!(process_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<-chan string"));
+        assert!(process_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("chan string"));
 
         let send_data = symbols.iter().find(|s| s.name == "SendData");
         assert!(send_data.is_some());
         let send_data = send_data.unwrap();
-        assert!(send_data.signature.as_ref().unwrap().contains("chan<- string"));
+        assert!(send_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("chan<- string"));
     }
 
     #[test]
@@ -365,7 +452,8 @@ var Count int = 42
 var Message string = "hello"
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
         let types = extractor.infer_types(&symbols);
 
@@ -403,7 +491,8 @@ func (u *User) SetName(name string) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -483,56 +572,92 @@ func Sum[T Numeric](values ...T) T {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
-
 
         let ordered = symbols.iter().find(|s| s.name == "Ordered");
         assert!(ordered.is_some());
         let ordered = ordered.unwrap();
         assert_eq!(ordered.kind, SymbolKind::Interface);
-        assert!(ordered.signature.as_ref().unwrap().contains("type Ordered interface"));
+        assert!(ordered
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Ordered interface"));
 
         let stack = symbols.iter().find(|s| s.name == "Stack");
         assert!(stack.is_some());
         let stack = stack.unwrap();
         assert_eq!(stack.kind, SymbolKind::Class);
-        assert!(stack.signature.as_ref().unwrap().contains("type Stack[T any] struct"));
+        assert!(stack
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Stack[T any] struct"));
 
         let push_method = symbols.iter().find(|s| s.name == "Push");
         assert!(push_method.is_some());
         let push_method = push_method.unwrap();
-        assert!(push_method.signature.as_ref().unwrap().contains("func (s *Stack[T]) Push(item T)"));
+        assert!(push_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (s *Stack[T]) Push(item T)"));
 
         let pop_method = symbols.iter().find(|s| s.name == "Pop");
         assert!(pop_method.is_some());
         let pop_method = pop_method.unwrap();
-        assert!(pop_method.signature.as_ref().unwrap().contains("func (s *Stack[T]) Pop() (T, bool)"));
+        assert!(pop_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (s *Stack[T]) Pop() (T, bool)"));
 
         let max_func = symbols.iter().find(|s| s.name == "Max");
         assert!(max_func.is_some());
         let max_func = max_func.unwrap();
-        assert!(max_func.signature.as_ref().unwrap().contains("func Max[T Ordered](a, b T) T"));
+        assert!(max_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Max[T Ordered](a, b T) T"));
 
         let comparable = symbols.iter().find(|s| s.name == "Comparable");
         assert!(comparable.is_some());
         let comparable = comparable.unwrap();
-        assert!(comparable.signature.as_ref().unwrap().contains("type Comparable[T any] interface"));
+        assert!(comparable
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Comparable[T any] interface"));
 
         let map_func = symbols.iter().find(|s| s.name == "Map");
         assert!(map_func.is_some());
         let map_func = map_func.unwrap();
-        assert!(map_func.signature.as_ref().unwrap().contains("func Map[T, U any]"));
+        assert!(map_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Map[T, U any]"));
 
         let numeric = symbols.iter().find(|s| s.name == "Numeric");
         assert!(numeric.is_some());
         let numeric = numeric.unwrap();
-        assert!(numeric.signature.as_ref().unwrap().contains("int | int32 | int64 | float32 | float64"));
+        assert!(numeric
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("int | int32 | int64 | float32 | float64"));
 
         let sum_func = symbols.iter().find(|s| s.name == "Sum");
         assert!(sum_func.is_some());
         let sum_func = sum_func.unwrap();
-        assert!(sum_func.signature.as_ref().unwrap().contains("func Sum[T Numeric](values ...T) T"));
+        assert!(sum_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Sum[T Numeric](values ...T) T"));
     }
 
     #[test]
@@ -612,14 +737,19 @@ func (wp *WorkerPool) worker(id int) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let worker_pool = symbols.iter().find(|s| s.name == "WorkerPool");
         assert!(worker_pool.is_some());
         let worker_pool = worker_pool.unwrap();
         assert_eq!(worker_pool.kind, SymbolKind::Class);
-        assert!(worker_pool.signature.as_ref().unwrap().contains("type WorkerPool struct"));
+        assert!(worker_pool
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type WorkerPool struct"));
 
         let job = symbols.iter().find(|s| s.name == "Job");
         assert!(job.is_some());
@@ -634,17 +764,29 @@ func (wp *WorkerPool) worker(id int) {
         let new_worker_pool = symbols.iter().find(|s| s.name == "NewWorkerPool");
         assert!(new_worker_pool.is_some());
         let new_worker_pool = new_worker_pool.unwrap();
-        assert!(new_worker_pool.signature.as_ref().unwrap().contains("func NewWorkerPool(workers int, bufferSize int) *WorkerPool"));
+        assert!(new_worker_pool
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func NewWorkerPool(workers int, bufferSize int) *WorkerPool"));
 
         let start_method = symbols.iter().find(|s| s.name == "Start");
         assert!(start_method.is_some());
         let start_method = start_method.unwrap();
-        assert!(start_method.signature.as_ref().unwrap().contains("func (wp *WorkerPool) Start()"));
+        assert!(start_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (wp *WorkerPool) Start()"));
 
         let worker_method = symbols.iter().find(|s| s.name == "worker");
         assert!(worker_method.is_some());
         let worker_method = worker_method.unwrap();
-        assert!(worker_method.signature.as_ref().unwrap().contains("func (wp *WorkerPool) worker(id int)"));
+        assert!(worker_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (wp *WorkerPool) worker(id int)"));
     }
 
     #[test]
@@ -716,24 +858,37 @@ func Err[T any](err error) Result[T] {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
         assert!(validation_error.is_some());
         let validation_error = validation_error.unwrap();
         assert_eq!(validation_error.kind, SymbolKind::Class);
-        assert!(validation_error.signature.as_ref().unwrap().contains("type ValidationError struct"));
+        assert!(validation_error
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type ValidationError struct"));
 
         let error_method = symbols.iter().find(|s| s.name == "Error");
         assert!(error_method.is_some());
         let error_method = error_method.unwrap();
-        assert!(error_method.signature.as_ref().unwrap().contains("func (e ValidationError) Error() string"));
+        assert!(error_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (e ValidationError) Error() string"));
 
         let unwrap_method = symbols.iter().find(|s| s.name == "Unwrap");
         assert!(unwrap_method.is_some());
         let unwrap_method = unwrap_method.unwrap();
-        assert!(unwrap_method.signature.as_ref().unwrap().contains("func (e ValidationError) Unwrap() error"));
+        assert!(unwrap_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (e ValidationError) Unwrap() error"));
 
         let database_error = symbols.iter().find(|s| s.name == "DatabaseError");
         assert!(database_error.is_some());
@@ -743,22 +898,38 @@ func Err[T any](err error) Result[T] {
         let result_type = symbols.iter().find(|s| s.name == "Result");
         assert!(result_type.is_some());
         let result_type = result_type.unwrap();
-        assert!(result_type.signature.as_ref().unwrap().contains("type Result[T any] struct"));
+        assert!(result_type
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Result[T any] struct"));
 
         let is_ok_method = symbols.iter().find(|s| s.name == "IsOk");
         assert!(is_ok_method.is_some());
         let is_ok_method = is_ok_method.unwrap();
-        assert!(is_ok_method.signature.as_ref().unwrap().contains("func (r Result[T]) IsOk() bool"));
+        assert!(is_ok_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (r Result[T]) IsOk() bool"));
 
         let ok_func = symbols.iter().find(|s| s.name == "Ok");
         assert!(ok_func.is_some());
         let ok_func = ok_func.unwrap();
-        assert!(ok_func.signature.as_ref().unwrap().contains("func Ok[T any](value T) Result[T]"));
+        assert!(ok_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Ok[T any](value T) Result[T]"));
 
         let err_func = symbols.iter().find(|s| s.name == "Err");
         assert!(err_func.is_some());
         let err_func = err_func.unwrap();
-        assert!(err_func.signature.as_ref().unwrap().contains("func Err[T any](err error) Result[T]"));
+        assert!(err_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Err[T any](err error) Result[T]"));
     }
 
     #[test]
@@ -837,14 +1008,19 @@ func ProcessValue(value interface{}) string {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let reader = symbols.iter().find(|s| s.name == "Reader");
         assert!(reader.is_some());
         let reader = reader.unwrap();
         assert_eq!(reader.kind, SymbolKind::Interface);
-        assert!(reader.signature.as_ref().unwrap().contains("type Reader interface"));
+        assert!(reader
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Reader interface"));
 
         let writer = symbols.iter().find(|s| s.name == "Writer");
         assert!(writer.is_some());
@@ -860,18 +1036,30 @@ func ProcessValue(value interface{}) string {
         assert!(read_write_closer.is_some());
         let read_write_closer = read_write_closer.unwrap();
         assert_eq!(read_write_closer.kind, SymbolKind::Interface);
-        assert!(read_write_closer.signature.as_ref().unwrap().contains("type ReadWriteCloser interface"));
+        assert!(read_write_closer
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type ReadWriteCloser interface"));
 
         let container = symbols.iter().find(|s| s.name == "Container");
         assert!(container.is_some());
         let container = container.unwrap();
         assert_eq!(container.kind, SymbolKind::Class);
-        assert!(container.signature.as_ref().unwrap().contains("type Container struct"));
+        assert!(container
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Container struct"));
 
         let process_value = symbols.iter().find(|s| s.name == "ProcessValue");
         assert!(process_value.is_some());
         let process_value = process_value.unwrap();
-        assert!(process_value.signature.as_ref().unwrap().contains("func ProcessValue(value interface{}) string"));
+        assert!(process_value
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ProcessValue(value interface{}) string"));
     }
 
     #[test]
@@ -960,34 +1148,57 @@ func FuzzUserValidation(f *testing.F) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         let test_user_service = symbols.iter().find(|s| s.name == "TestUserService");
         assert!(test_user_service.is_some());
         let test_user_service = test_user_service.unwrap();
         assert_eq!(test_user_service.kind, SymbolKind::Function);
-        assert!(test_user_service.signature.as_ref().unwrap().contains("func TestUserService(t *testing.T)"));
+        assert!(test_user_service
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func TestUserService(t *testing.T)"));
 
         let test_validation = symbols.iter().find(|s| s.name == "TestValidation");
         assert!(test_validation.is_some());
         let test_validation = test_validation.unwrap();
-        assert!(test_validation.signature.as_ref().unwrap().contains("func TestValidation(t *testing.T)"));
+        assert!(test_validation
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func TestValidation(t *testing.T)"));
 
         let benchmark_user_creation = symbols.iter().find(|s| s.name == "BenchmarkUserCreation");
         assert!(benchmark_user_creation.is_some());
         let benchmark_user_creation = benchmark_user_creation.unwrap();
-        assert!(benchmark_user_creation.signature.as_ref().unwrap().contains("func BenchmarkUserCreation(b *testing.B)"));
+        assert!(benchmark_user_creation
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func BenchmarkUserCreation(b *testing.B)"));
 
-        let example_func = symbols.iter().find(|s| s.name == "ExampleUserService_CreateUser");
+        let example_func = symbols
+            .iter()
+            .find(|s| s.name == "ExampleUserService_CreateUser");
         assert!(example_func.is_some());
         let example_func = example_func.unwrap();
-        assert!(example_func.signature.as_ref().unwrap().contains("func ExampleUserService_CreateUser()"));
+        assert!(example_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ExampleUserService_CreateUser()"));
 
         let fuzz_func = symbols.iter().find(|s| s.name == "FuzzUserValidation");
         assert!(fuzz_func.is_some());
         let fuzz_func = fuzz_func.unwrap();
-        assert!(fuzz_func.signature.as_ref().unwrap().contains("func FuzzUserValidation(f *testing.F)"));
+        assert!(fuzz_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func FuzzUserValidation(f *testing.F)"));
     }
 
     #[test]
@@ -1066,7 +1277,8 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
 
         // Check we extracted all major symbols
@@ -1093,11 +1305,21 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
         let get_user = symbols.iter().find(|s| s.name == "GetUser");
         assert!(get_user.is_some());
         assert_eq!(get_user.unwrap().kind, SymbolKind::Method);
-        assert!(get_user.unwrap().signature.as_ref().unwrap().contains("func (r *UserRepository) GetUser"));
+        assert!(get_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (r *UserRepository) GetUser"));
 
         let process_users = symbols.iter().find(|s| s.name == "ProcessUsers");
         assert!(process_users.is_some());
-        assert!(process_users.unwrap().signature.as_ref().unwrap().contains("<-chan User"));
+        assert!(process_users
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<-chan User"));
     }
 
     #[test]
@@ -1105,7 +1327,8 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
         // Generate a large Go file with many types and functions
         let mut types = String::new();
         for i in 0..20 {
-            types.push_str(&format!(r#"
+            types.push_str(&format!(
+                r#"
 // Service{i} represents service {i}
 type Service{i} struct {{
     ID     int64
@@ -1139,10 +1362,13 @@ func NewService{i}(name string) *Service{i} {{
         Active: false,
     }}
 }}
-"#, i = i));
+"#,
+                i = i
+            ));
         }
 
-        let code = format!(r#"
+        let code = format!(
+            r#"
 package main
 
 import (
@@ -1185,10 +1411,13 @@ type Result struct {{
 func main() {{
     fmt.Println("Application started")
 }}
-"#, types = types);
+"#,
+            types = types
+        );
 
         let tree = init_parser(&code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
         let _relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -1287,12 +1516,12 @@ var (
 )
 "#;
         let tree = init_parser(code, "go");
-        let mut extractor = GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+        let mut extractor =
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
 
         // Should not panic even with malformed code
         let symbols = extractor.extract_symbols(&tree);
         let _relationships = extractor.extract_relationships(&tree, &symbols);
-
 
         // Should still extract valid symbols
         let empty = symbols.iter().find(|s| s.name == "Empty");
@@ -1309,15 +1538,30 @@ var (
 
         let complex_function = symbols.iter().find(|s| s.name == "ComplexFunction");
         assert!(complex_function.is_some());
-        assert!(complex_function.unwrap().signature.as_ref().unwrap().contains("func ComplexFunction"));
+        assert!(complex_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ComplexFunction"));
 
         let named_returns = symbols.iter().find(|s| s.name == "NamedReturns");
         assert!(named_returns.is_some());
-        assert!(named_returns.unwrap().signature.as_ref().unwrap().contains("(sum, product int)"));
+        assert!(named_returns
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("(sum, product int)"));
 
         let variadic_func = symbols.iter().find(|s| s.name == "VariadicFunction");
         assert!(variadic_func.is_some());
-        assert!(variadic_func.unwrap().signature.as_ref().unwrap().contains("args ...interface{}"));
+        assert!(variadic_func
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("args ...interface{}"));
 
         let handler_func = symbols.iter().find(|s| s.name == "HandlerFunc");
         assert!(handler_func.is_some());

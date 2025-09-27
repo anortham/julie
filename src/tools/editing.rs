@@ -1,14 +1,16 @@
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use rust_mcp_sdk::{macros::mcp_tool};
-use rust_mcp_sdk::macros::JsonSchema;
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
-use tracing::{debug, warn};
+use rust_mcp_sdk::macros::mcp_tool;
+use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use serde::{Deserialize, Serialize};
 use std::fs;
+use tracing::{debug, warn};
 
 use crate::handler::JulieServerHandler;
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 //******************//
 //  Existing Tool   //
@@ -52,39 +54,55 @@ impl FastEditTool {
         // Determine operation mode
         match self.mode.as_deref() {
             Some("search_and_replace") => {
-                debug!("⚡ Search and replace mode: '{}' -> '{}'", self.find_text, self.replace_text);
+                debug!(
+                    "⚡ Search and replace mode: '{}' -> '{}'",
+                    self.find_text, self.replace_text
+                );
                 self.search_and_replace_mode(handler).await
             }
             None => {
-                debug!("⚡ Single file edit: {} -> replace '{}' with '{}'",
-                       self.file_path, self.find_text, self.replace_text);
+                debug!(
+                    "⚡ Single file edit: {} -> replace '{}' with '{}'",
+                    self.file_path, self.find_text, self.replace_text
+                );
                 self.single_file_mode().await
             }
             Some(unknown_mode) => {
                 let message = format!("❌ Unknown mode: '{}'\n💡 Use 'search_and_replace' or omit for single file mode", unknown_mode);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
 
     /// Original single-file editing functionality (backward compatible)
     async fn single_file_mode(&self) -> Result<CallToolResult> {
-
         // Validate inputs
         if self.find_text.is_empty() {
-            let message = "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message =
+                "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if self.find_text == self.replace_text {
             let message = "❌ find_text and replace_text are identical\n💡 No changes needed";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Check if file exists
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Read current file content
@@ -92,7 +110,9 @@ impl FastEditTool {
             Ok(content) => content,
             Err(e) => {
                 let message = format!("❌ Failed to read file: {}\n💡 Check file permissions", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -103,7 +123,9 @@ impl FastEditTool {
                 💡 Check the exact text to find (case sensitive)",
                 self.find_text
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Perform the replacement
@@ -119,7 +141,9 @@ impl FastEditTool {
                 💡 Set dry_run=false to apply changes",
                 self.file_path, patch
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Create backup if requested
@@ -145,14 +169,20 @@ impl FastEditTool {
                     💡 Changes would break the code structure",
                     validation_error
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         }
 
         // Apply changes
         match fs::write(&self.file_path, &modified_content) {
             Ok(_) => {
-                let changes_count = self.find_text.lines().count().max(self.replace_text.lines().count());
+                let changes_count = self
+                    .find_text
+                    .lines()
+                    .count()
+                    .max(self.replace_text.lines().count());
                 let backup_info = if let Some(backup) = backup_path {
                     format!("\n💾 Backup created: {}", backup)
                 } else {
@@ -171,37 +201,51 @@ impl FastEditTool {
                     • Use fast_search to find related code",
                     replacements, self.file_path, changes_count, patch, backup_info
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
             Err(e) => {
                 let message = format!("❌ Failed to write file: {}\n💡 Check file permissions", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
 
     /// Search and replace across multiple files (delegates to fast_search + fast_edit logic)
-    async fn search_and_replace_mode(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn search_and_replace_mode(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         // Validate search_and_replace mode inputs
         if !self.file_path.is_empty() {
             let message = "❌ file_path must be empty for search_and_replace mode\n💡 Use file_pattern and language filters instead";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if self.find_text.is_empty() {
-            let message = "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message =
+                "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if self.find_text == self.replace_text {
             let message = "❌ find_text and replace_text are identical\n💡 No changes needed";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Step 1: Delegate to fast_search to find matching files
         let search_tool = crate::tools::search::FastSearchTool {
             query: self.find_text.clone(),
-            mode: "text".to_string(),  // Use text mode for exact matches
+            mode: "text".to_string(), // Use text mode for exact matches
             language: self.language.clone(),
             file_pattern: self.file_pattern.clone(),
             limit: self.limit.unwrap_or(50),
@@ -228,7 +272,9 @@ impl FastEditTool {
                  💡 Try broader search criteria",
                 self.find_text, self.language, self.file_pattern
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Step 2: Apply fast_edit logic to each file
@@ -267,11 +313,16 @@ impl FastEditTool {
         };
 
         let combined_result = format!("{}\n\n📋 File Details:\n{}", summary, results.join("\n"));
-        Ok(CallToolResult::text_content(vec![TextContent::from(combined_result)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            combined_result,
+        )]))
     }
 
     /// Extract file paths from CallToolResult (proper parsing instead of Debug format)
-    fn extract_file_paths_from_call_tool_result(&self, search_result: &CallToolResult) -> Result<Vec<String>> {
+    fn extract_file_paths_from_call_tool_result(
+        &self,
+        search_result: &CallToolResult,
+    ) -> Result<Vec<String>> {
         let mut paths = Vec::new();
 
         // The content field contains ContentBlock objects. Based on the pattern used elsewhere,
@@ -314,33 +365,8 @@ impl FastEditTool {
         Ok(paths)
     }
 
-    /// Extract file paths from fast_search result (DEPRECATED - use extract_file_paths_from_call_tool_result)
-    fn extract_file_paths_from_search_result(&self, search_response: &str) -> Vec<String> {
-        let mut paths = Vec::new();
-
-        // FastSearchTool returns lines like: "   📁 path/to/file.rs:10-20"
-        for line in search_response.lines() {
-            // Look for the file path emoji pattern
-            if line.contains("📁") {
-                // Extract text after 📁 and before the colon (line numbers)
-                if let Some(emoji_pos) = line.find("📁") {
-                    let after_emoji = &line[emoji_pos + "📁".len()..].trim();
-                    if let Some(colon_pos) = after_emoji.find(':') {
-                        let file_path = after_emoji[..colon_pos].trim();
-                        if !file_path.is_empty() && !paths.contains(&file_path.to_string()) {
-                            paths.push(file_path.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        paths
-    }
-
     /// Fallback filesystem search when indexed search fails (for testing/unindexed scenarios)
     async fn fallback_filesystem_search(&self) -> Result<Vec<String>> {
-        use std::path::Path;
         use std::fs;
 
         let mut matching_files = Vec::new();
@@ -466,7 +492,10 @@ impl FastEditTool {
 
         if self.dry_run {
             let replacements = original_content.matches(&self.find_text).count();
-            return Ok(Some(format!("📄 {} - would replace {} occurrence(s)", file_path, replacements)));
+            return Ok(Some(format!(
+                "📄 {} - would replace {} occurrence(s)",
+                file_path, replacements
+            )));
         }
 
         // Create backup if requested
@@ -478,7 +507,10 @@ impl FastEditTool {
         // Basic validation
         if self.validate {
             if let Err(_) = self.validate_changes(&modified_content) {
-                return Ok(Some(format!("⚠️ {} - skipped (validation failed)", file_path)));
+                return Ok(Some(format!(
+                    "⚠️ {} - skipped (validation failed)",
+                    file_path
+                )));
             }
         }
 
@@ -486,8 +518,11 @@ impl FastEditTool {
         match fs::write(file_path, &modified_content) {
             Ok(_) => {
                 let replacements = original_content.matches(&self.find_text).count();
-                Ok(Some(format!("✅ {} - replaced {} occurrence(s)", file_path, replacements)))
-            },
+                Ok(Some(format!(
+                    "✅ {} - replaced {} occurrence(s)",
+                    file_path, replacements
+                )))
+            }
             Err(_) => Ok(Some(format!("❌ {} - write failed", file_path))),
         }
     }
@@ -537,10 +572,10 @@ impl FastEditTool {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct LineEditTool {
     pub file_path: String,
-    pub operation: String,  // "count", "read", "insert", "delete", "replace"
+    pub operation: String, // "count", "read", "insert", "delete", "replace"
     pub start_line: Option<u32>,
     pub end_line: Option<u32>,
-    pub line_number: Option<u32>,  // for insert operation
+    pub line_number: Option<u32>, // for insert operation
     pub content: Option<String>,
     #[serde(default = "default_true")]
     pub preserve_indentation: bool,
@@ -552,7 +587,10 @@ pub struct LineEditTool {
 
 impl LineEditTool {
     pub async fn call_tool(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("📝 Line edit: {} operation on {}", self.operation, self.file_path);
+        debug!(
+            "📝 Line edit: {} operation on {}",
+            self.operation, self.file_path
+        );
 
         match self.operation.as_str() {
             "count" => self.count_lines().await,
@@ -562,15 +600,22 @@ impl LineEditTool {
             "replace" => self.replace_lines().await,
             _ => {
                 let message = format!("❌ Invalid operation: '{}'\n💡 Valid operations: count, read, insert, delete, replace", self.operation);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
 
     async fn count_lines(&self) -> Result<CallToolResult> {
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let content = fs::read_to_string(&self.file_path)?;
@@ -581,27 +626,43 @@ impl LineEditTool {
         };
 
         let message = format!("📏 Line count for {}: {} lines", self.file_path, line_count);
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     async fn read_lines(&self) -> Result<CallToolResult> {
-        let start_line = self.start_line.ok_or_else(|| anyhow::anyhow!("start_line required for read operation"))?;
-        let end_line = self.end_line.ok_or_else(|| anyhow::anyhow!("end_line required for read operation"))?;
+        let start_line = self
+            .start_line
+            .ok_or_else(|| anyhow::anyhow!("start_line required for read operation"))?;
+        let end_line = self
+            .end_line
+            .ok_or_else(|| anyhow::anyhow!("end_line required for read operation"))?;
 
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
-            let message = "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message =
+                "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let content = fs::read_to_string(&self.file_path)?;
@@ -610,9 +671,12 @@ impl LineEditTool {
         if (start_line as usize) > lines.len() {
             let message = format!(
                 "❌ start_line {} exceeds file length {} lines\n💡 Use get_line_count first",
-                start_line, lines.len()
+                start_line,
+                lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Extract requested lines (convert to 0-based indexing)
@@ -622,40 +686,60 @@ impl LineEditTool {
 
         let mut result = format!(
             "📖 Lines {}-{} from {} ({} lines):\n\n",
-            start_line, end_idx, self.file_path, selected_lines.len()
+            start_line,
+            end_idx,
+            self.file_path,
+            selected_lines.len()
         );
 
         for (i, line) in selected_lines.iter().enumerate() {
             result.push_str(&format!("{:4}: {}\n", start_idx + i + 1, line));
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(result)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            result,
+        )]))
     }
 
     async fn insert_at_line(&self) -> Result<CallToolResult> {
-        let line_number = self.line_number.ok_or_else(|| anyhow::anyhow!("line_number required for insert operation"))?;
-        let content = self.content.as_ref().ok_or_else(|| anyhow::anyhow!("content required for insert operation"))?;
+        let line_number = self
+            .line_number
+            .ok_or_else(|| anyhow::anyhow!("line_number required for insert operation"))?;
+        let content = self
+            .content
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("content required for insert operation"))?;
 
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Validate line number (1-based)
         if line_number == 0 {
             let message = "❌ Line number must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
         let mut lines: Vec<String> = original_content.lines().map(|s| s.to_string()).collect();
 
         if (line_number as usize) > lines.len() + 1 {
-            let message = format!(
+            let message =
+                format!(
                 "❌ line_number {} exceeds file length {} + 1\n💡 Use line number between 1 and {}",
                 line_number, lines.len(), lines.len() + 1
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Handle indentation preservation
@@ -664,7 +748,8 @@ impl LineEditTool {
             let indent = self.detect_indentation(&lines, line_number);
             if !indent.is_empty() {
                 let content_lines: Vec<&str> = content_to_insert.lines().collect();
-                let indented_lines: Vec<String> = content_lines.iter()
+                let indented_lines: Vec<String> = content_lines
+                    .iter()
                     .map(|line| {
                         if line.trim().is_empty() {
                             line.to_string()
@@ -688,30 +773,54 @@ impl LineEditTool {
         let modified_content = lines.join("\n");
         if original_content.ends_with('\n') && !modified_content.ends_with('\n') {
             let modified_content = format!("{}\n", modified_content);
-            self.apply_changes(&original_content, &modified_content, &format!("insert at line {}", line_number)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("insert at line {}", line_number),
+            )
+            .await
         } else {
-            self.apply_changes(&original_content, &modified_content, &format!("insert at line {}", line_number)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("insert at line {}", line_number),
+            )
+            .await
         }
     }
 
     async fn delete_lines(&self) -> Result<CallToolResult> {
-        let start_line = self.start_line.ok_or_else(|| anyhow::anyhow!("start_line required for delete operation"))?;
-        let end_line = self.end_line.ok_or_else(|| anyhow::anyhow!("end_line required for delete operation"))?;
+        let start_line = self
+            .start_line
+            .ok_or_else(|| anyhow::anyhow!("start_line required for delete operation"))?;
+        let end_line = self
+            .end_line
+            .ok_or_else(|| anyhow::anyhow!("end_line required for delete operation"))?;
 
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
-            let message = "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message =
+                "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
@@ -720,9 +829,12 @@ impl LineEditTool {
         if (start_line as usize) > lines.len() {
             let message = format!(
                 "❌ start_line {} exceeds file length {} lines\n💡 Use get_line_count first",
-                start_line, lines.len()
+                start_line,
+                lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Calculate actual range to delete (convert to 0-based indexing)
@@ -733,33 +845,63 @@ impl LineEditTool {
         lines.drain(start_idx..end_idx);
 
         let modified_content = lines.join("\n");
-        if original_content.ends_with('\n') && !modified_content.ends_with('\n') && !modified_content.is_empty() {
+        if original_content.ends_with('\n')
+            && !modified_content.ends_with('\n')
+            && !modified_content.is_empty()
+        {
             let modified_content = format!("{}\n", modified_content);
-            self.apply_changes(&original_content, &modified_content, &format!("delete lines {}-{}", start_line, end_idx)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("delete lines {}-{}", start_line, end_idx),
+            )
+            .await
         } else {
-            self.apply_changes(&original_content, &modified_content, &format!("delete lines {}-{}", start_line, end_idx)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("delete lines {}-{}", start_line, end_idx),
+            )
+            .await
         }
     }
 
     async fn replace_lines(&self) -> Result<CallToolResult> {
-        let start_line = self.start_line.ok_or_else(|| anyhow::anyhow!("start_line required for replace operation"))?;
-        let end_line = self.end_line.ok_or_else(|| anyhow::anyhow!("end_line required for replace operation"))?;
-        let content = self.content.as_ref().ok_or_else(|| anyhow::anyhow!("content required for replace operation"))?;
+        let start_line = self
+            .start_line
+            .ok_or_else(|| anyhow::anyhow!("start_line required for replace operation"))?;
+        let end_line = self
+            .end_line
+            .ok_or_else(|| anyhow::anyhow!("end_line required for replace operation"))?;
+        let content = self
+            .content
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("content required for replace operation"))?;
 
         if !std::path::Path::new(&self.file_path).exists() {
-            let message = format!("❌ File not found: {}\n💡 Check the file path", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
-            let message = "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            let message =
+                "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
@@ -768,9 +910,12 @@ impl LineEditTool {
         if (start_line as usize) > lines.len() {
             let message = format!(
                 "❌ start_line {} exceeds file length {} lines\n💡 Use get_line_count first",
-                start_line, lines.len()
+                start_line,
+                lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Calculate actual range to replace (convert to 0-based indexing)
@@ -783,7 +928,8 @@ impl LineEditTool {
             let indent = self.detect_indentation(&lines, start_line);
             if !indent.is_empty() {
                 let content_lines: Vec<&str> = content_to_replace.lines().collect();
-                let indented_lines: Vec<String> = content_lines.iter()
+                let indented_lines: Vec<String> = content_lines
+                    .iter()
                     .map(|line| {
                         if line.trim().is_empty() {
                             line.to_string()
@@ -797,7 +943,8 @@ impl LineEditTool {
         }
 
         // Replace the lines
-        let replacement_lines: Vec<String> = content_to_replace.lines().map(|s| s.to_string()).collect();
+        let replacement_lines: Vec<String> =
+            content_to_replace.lines().map(|s| s.to_string()).collect();
 
         // Remove old lines
         lines.drain(start_idx..end_idx);
@@ -810,9 +957,19 @@ impl LineEditTool {
         let modified_content = lines.join("\n");
         if original_content.ends_with('\n') && !modified_content.ends_with('\n') {
             let modified_content = format!("{}\n", modified_content);
-            self.apply_changes(&original_content, &modified_content, &format!("replace lines {}-{}", start_line, end_idx)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("replace lines {}-{}", start_line, end_idx),
+            )
+            .await
         } else {
-            self.apply_changes(&original_content, &modified_content, &format!("replace lines {}-{}", start_line, end_idx)).await
+            self.apply_changes(
+                &original_content,
+                &modified_content,
+                &format!("replace lines {}-{}", start_line, end_idx),
+            )
+            .await
         }
     }
 
@@ -835,10 +992,17 @@ impl LineEditTool {
     }
 
     /// Helper to apply changes with diff, backup, and dry-run support
-    async fn apply_changes(&self, original_content: &str, modified_content: &str, operation: &str) -> Result<CallToolResult> {
+    async fn apply_changes(
+        &self,
+        original_content: &str,
+        modified_content: &str,
+        operation: &str,
+    ) -> Result<CallToolResult> {
         if original_content == modified_content {
             let message = "ℹ️ No changes needed - content would be identical";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Calculate diff
@@ -851,7 +1015,9 @@ impl LineEditTool {
                 💡 Set dry_run=false to apply changes",
                 operation, self.file_path, patch
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Create backup if requested
@@ -887,11 +1053,15 @@ impl LineEditTool {
                     • Use fast_refs to check for any impacts",
                     self.file_path, operation, patch, backup_info
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
             Err(e) => {
                 let message = format!("❌ Failed to write file: {}\n💡 Check file permissions", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }

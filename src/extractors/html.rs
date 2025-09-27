@@ -3,10 +3,12 @@
 // Port of Miller's HTML extractor to idiomatic Rust
 // Original: /Users/murphy/Source/miller/src/extractors/html-extractor.ts
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use regex::Regex;
+use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 pub struct HTMLExtractor {
     base: BaseExtractor,
@@ -32,9 +34,14 @@ impl HTMLExtractor {
         }
 
         // If we only extracted error symbols, try basic structure fallback
-        let has_only_errors = symbols.len() > 0 && symbols.iter().all(|s|
-            s.metadata.as_ref().and_then(|m| m.get("isError")).and_then(|v| v.as_bool()).unwrap_or(false)
-        );
+        let has_only_errors = symbols.len() > 0
+            && symbols.iter().all(|s| {
+                s.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("isError"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            });
 
         if has_only_errors || symbols.is_empty() {
             self.extract_basic_structure(tree)
@@ -77,23 +84,42 @@ impl HTMLExtractor {
         let tag_name = self.extract_tag_name(node);
         let attributes = self.extract_attributes(node);
         let text_content = self.extract_element_text_content(node);
-        let signature = self.build_element_signature(&tag_name, &attributes, text_content.as_deref());
+        let signature =
+            self.build_element_signature(&tag_name, &attributes, text_content.as_deref());
 
         // Determine symbol kind based on element type
         let symbol_kind = self.get_symbol_kind_for_element(&tag_name, &attributes);
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("html-element".to_string()));
-        metadata.insert("tagName".to_string(), serde_json::Value::String(tag_name.clone()));
-        metadata.insert("isVoid".to_string(), serde_json::Value::Bool(self.is_void_element(&tag_name)));
-        metadata.insert("isSemantic".to_string(), serde_json::Value::Bool(self.is_semantic_element(&tag_name)));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("html-element".to_string()),
+        );
+        metadata.insert(
+            "tagName".to_string(),
+            serde_json::Value::String(tag_name.clone()),
+        );
+        metadata.insert(
+            "isVoid".to_string(),
+            serde_json::Value::Bool(self.is_void_element(&tag_name)),
+        );
+        metadata.insert(
+            "isSemantic".to_string(),
+            serde_json::Value::Bool(self.is_semantic_element(&tag_name)),
+        );
 
         if !attributes.is_empty() {
-            metadata.insert("attributes".to_string(), serde_json::to_value(&attributes).unwrap_or_default());
+            metadata.insert(
+                "attributes".to_string(),
+                serde_json::to_value(&attributes).unwrap_or_default(),
+            );
         }
 
         if let Some(content) = text_content {
-            metadata.insert("textContent".to_string(), serde_json::Value::String(content));
+            metadata.insert(
+                "textContent".to_string(),
+                serde_json::Value::String(content),
+            );
         }
 
         self.base.create_symbol(
@@ -123,15 +149,30 @@ impl HTMLExtractor {
         };
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("script-element".to_string()));
-        metadata.insert("isInline".to_string(), serde_json::Value::Bool(!attributes.contains_key("src")));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("script-element".to_string()),
+        );
+        metadata.insert(
+            "isInline".to_string(),
+            serde_json::Value::Bool(!attributes.contains_key("src")),
+        );
 
         if !attributes.is_empty() {
-            metadata.insert("attributes".to_string(), serde_json::to_value(&attributes).unwrap_or_default());
+            metadata.insert(
+                "attributes".to_string(),
+                serde_json::to_value(&attributes).unwrap_or_default(),
+            );
         }
 
-        let script_type = attributes.get("type").cloned().unwrap_or_else(|| "text/javascript".to_string());
-        metadata.insert("scriptType".to_string(), serde_json::Value::String(script_type));
+        let script_type = attributes
+            .get("type")
+            .cloned()
+            .unwrap_or_else(|| "text/javascript".to_string());
+        metadata.insert(
+            "scriptType".to_string(),
+            serde_json::Value::String(script_type),
+        );
 
         if let Some(content) = content {
             let truncated_content = if content.len() > 100 {
@@ -139,7 +180,10 @@ impl HTMLExtractor {
             } else {
                 content
             };
-            metadata.insert("content".to_string(), serde_json::Value::String(truncated_content));
+            metadata.insert(
+                "content".to_string(),
+                serde_json::Value::String(truncated_content),
+            );
         }
 
         self.base.create_symbol(
@@ -162,11 +206,17 @@ impl HTMLExtractor {
         let signature = self.build_element_signature("style", &attributes, content.as_deref());
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("style-element".to_string()));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("style-element".to_string()),
+        );
         metadata.insert("isInline".to_string(), serde_json::Value::Bool(true));
 
         if !attributes.is_empty() {
-            metadata.insert("attributes".to_string(), serde_json::to_value(&attributes).unwrap_or_default());
+            metadata.insert(
+                "attributes".to_string(),
+                serde_json::to_value(&attributes).unwrap_or_default(),
+            );
         }
 
         if let Some(content) = content {
@@ -175,7 +225,10 @@ impl HTMLExtractor {
             } else {
                 content
             };
-            metadata.insert("content".to_string(), serde_json::Value::String(truncated_content));
+            metadata.insert(
+                "content".to_string(),
+                serde_json::Value::String(truncated_content),
+            );
         }
 
         self.base.create_symbol(
@@ -196,8 +249,14 @@ impl HTMLExtractor {
         let doctype_text = self.base.get_node_text(&node);
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("doctype".to_string()));
-        metadata.insert("declaration".to_string(), serde_json::Value::String(doctype_text.clone()));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("doctype".to_string()),
+        );
+        metadata.insert(
+            "declaration".to_string(),
+            serde_json::Value::String(doctype_text.clone()),
+        );
 
         self.base.create_symbol(
             &node,
@@ -215,7 +274,11 @@ impl HTMLExtractor {
 
     fn extract_comment(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let comment_text = self.base.get_node_text(&node);
-        let clean_comment = comment_text.replace("<!--", "").replace("-->", "").trim().to_string();
+        let clean_comment = comment_text
+            .replace("<!--", "")
+            .replace("-->", "")
+            .trim()
+            .to_string();
 
         // Only extract meaningful comments (not empty or very short)
         if clean_comment.len() < 3 {
@@ -223,8 +286,14 @@ impl HTMLExtractor {
         }
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("comment".to_string()));
-        metadata.insert("content".to_string(), serde_json::Value::String(clean_comment.clone()));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("comment".to_string()),
+        );
+        metadata.insert(
+            "content".to_string(),
+            serde_json::Value::String(clean_comment.clone()),
+        );
 
         Some(self.base.create_symbol(
             &node,
@@ -270,7 +339,8 @@ impl HTMLExtractor {
 
         // Find the tag container (start_tag or self_closing_tag)
         let mut cursor = node.walk();
-        let tag_container = node.children(&mut cursor)
+        let tag_container = node
+            .children(&mut cursor)
             .find(|c| matches!(c.kind(), "start_tag" | "self_closing_tag"))
             .unwrap_or(node);
 
@@ -336,7 +406,7 @@ impl HTMLExtractor {
         &self,
         tag_name: &str,
         attributes: &HashMap<String, String>,
-        text_content: Option<&str>
+        text_content: Option<&str>,
     ) -> String {
         let mut signature = format!("<{}", tag_name);
 
@@ -368,7 +438,11 @@ impl HTMLExtractor {
         signature
     }
 
-    fn get_important_attributes(&self, tag_name: &str, attributes: &HashMap<String, String>) -> Vec<(String, String)> {
+    fn get_important_attributes(
+        &self,
+        tag_name: &str,
+        attributes: &HashMap<String, String>,
+    ) -> Vec<(String, String)> {
         let mut important = Vec::new();
         let priority_attrs = self.get_priority_attributes_for_tag(tag_name);
 
@@ -382,7 +456,10 @@ impl HTMLExtractor {
         // Add other interesting attributes with limit
         let max_attrs = if tag_name == "img" { 12 } else { 8 };
         for (name, value) in attributes {
-            if !priority_attrs.contains(name) && self.is_interesting_attribute(name) && important.len() < max_attrs {
+            if !priority_attrs.contains(name)
+                && self.is_interesting_attribute(name)
+                && important.len() < max_attrs
+            {
                 important.push((name.clone(), value.clone()));
             }
         }
@@ -398,16 +475,48 @@ impl HTMLExtractor {
             "meta" => vec!["name", "property", "content", "charset"],
             "link" => vec!["rel", "href", "type", "as"],
             "script" => vec!["src", "type", "async", "defer"],
-            "img" => vec!["src", "alt", "width", "height", "loading", "decoding", "sizes", "srcset"],
+            "img" => vec![
+                "src", "alt", "width", "height", "loading", "decoding", "sizes", "srcset",
+            ],
             "a" => vec!["href", "target", "rel"],
             "form" => vec!["action", "method", "enctype", "novalidate"],
-            "input" => vec!["type", "name", "value", "placeholder", "required", "disabled", "autocomplete", "pattern", "min", "max", "step", "accept"],
+            "input" => vec![
+                "type",
+                "name",
+                "value",
+                "placeholder",
+                "required",
+                "disabled",
+                "autocomplete",
+                "pattern",
+                "min",
+                "max",
+                "step",
+                "accept",
+            ],
             "select" => vec!["name", "id", "multiple", "required", "disabled"],
-            "textarea" => vec!["name", "placeholder", "required", "disabled", "maxlength", "minlength", "rows", "cols"],
+            "textarea" => vec![
+                "name",
+                "placeholder",
+                "required",
+                "disabled",
+                "maxlength",
+                "minlength",
+                "rows",
+                "cols",
+            ],
             "time" => vec!["datetime"],
             "details" => vec!["open"],
             "button" => vec!["type", "data-action", "disabled"],
-            "iframe" => vec!["src", "title", "width", "height", "allowfullscreen", "allow", "loading"],
+            "iframe" => vec![
+                "src",
+                "title",
+                "width",
+                "height",
+                "allowfullscreen",
+                "allow",
+                "loading",
+            ],
             "video" => vec!["src", "controls", "autoplay", "preload", "poster"],
             "audio" => vec!["src", "controls", "preload"],
             "source" => vec!["src", "type", "media", "srcset"],
@@ -431,30 +540,72 @@ impl HTMLExtractor {
     }
 
     fn is_interesting_attribute(&self, name: &str) -> bool {
-        name.starts_with("data-") ||
-        name.starts_with("aria-") ||
-        name.starts_with("on") ||
-        matches!(name,
-            "title" | "alt" | "placeholder" | "value" | "href" | "src" | "target" | "rel" |
-            "multiple" | "required" | "disabled" | "readonly" | "checked" | "selected" |
-            "autocomplete" | "datetime" | "pattern" | "maxlength" | "minlength" | "rows" |
-            "cols" | "accept" | "open" | "class" | "role" | "novalidate" | "slot" | "controls"
-        )
+        name.starts_with("data-")
+            || name.starts_with("aria-")
+            || name.starts_with("on")
+            || matches!(
+                name,
+                "title"
+                    | "alt"
+                    | "placeholder"
+                    | "value"
+                    | "href"
+                    | "src"
+                    | "target"
+                    | "rel"
+                    | "multiple"
+                    | "required"
+                    | "disabled"
+                    | "readonly"
+                    | "checked"
+                    | "selected"
+                    | "autocomplete"
+                    | "datetime"
+                    | "pattern"
+                    | "maxlength"
+                    | "minlength"
+                    | "rows"
+                    | "cols"
+                    | "accept"
+                    | "open"
+                    | "class"
+                    | "role"
+                    | "novalidate"
+                    | "slot"
+                    | "controls"
+            )
     }
 
-    fn get_symbol_kind_for_element(&self, tag_name: &str, attributes: &HashMap<String, String>) -> SymbolKind {
+    fn get_symbol_kind_for_element(
+        &self,
+        tag_name: &str,
+        attributes: &HashMap<String, String>,
+    ) -> SymbolKind {
         match tag_name {
             // Meta elements are properties
             "meta" => SymbolKind::Property,
 
             // Link elements with stylesheet are imports
-            "link" if attributes.get("rel").map(|v| v == "stylesheet").unwrap_or(false) => SymbolKind::Import,
+            "link"
+                if attributes
+                    .get("rel")
+                    .map(|v| v == "stylesheet")
+                    .unwrap_or(false) =>
+            {
+                SymbolKind::Import
+            }
 
             // Form input elements are fields
             _ if self.is_form_field(tag_name) => SymbolKind::Field,
 
             // Media elements are variables
-            _ if matches!(tag_name, "img" | "video" | "audio" | "picture" | "source" | "track") => SymbolKind::Variable,
+            _ if matches!(
+                tag_name,
+                "img" | "video" | "audio" | "picture" | "source" | "track"
+            ) =>
+            {
+                SymbolKind::Variable
+            }
 
             // All other HTML elements are classes
             _ => SymbolKind::Class,
@@ -462,29 +613,74 @@ impl HTMLExtractor {
     }
 
     fn is_form_field(&self, tag_name: &str) -> bool {
-        matches!(tag_name, "input" | "textarea" | "select" | "button" | "fieldset" | "legend" | "label")
+        matches!(
+            tag_name,
+            "input" | "textarea" | "select" | "button" | "fieldset" | "legend" | "label"
+        )
     }
 
     fn is_void_element(&self, tag_name: &str) -> bool {
-        matches!(tag_name,
-            "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" |
-            "link" | "meta" | "param" | "source" | "track" | "wbr"
+        matches!(
+            tag_name,
+            "area"
+                | "base"
+                | "br"
+                | "col"
+                | "embed"
+                | "hr"
+                | "img"
+                | "input"
+                | "link"
+                | "meta"
+                | "param"
+                | "source"
+                | "track"
+                | "wbr"
         )
     }
 
     fn is_semantic_element(&self, tag_name: &str) -> bool {
-        matches!(tag_name,
-            "article" | "aside" | "details" | "figcaption" | "figure" | "footer" |
-            "header" | "main" | "nav" | "section" | "summary" | "time"
+        matches!(
+            tag_name,
+            "article"
+                | "aside"
+                | "details"
+                | "figcaption"
+                | "figure"
+                | "footer"
+                | "header"
+                | "main"
+                | "nav"
+                | "section"
+                | "summary"
+                | "time"
         )
     }
 
     fn should_include_text_content(&self, tag_name: &str) -> bool {
-        matches!(tag_name,
-            "title" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" |
-            "p" | "span" | "a" | "button" | "label" | "option" |
-            "th" | "td" | "dt" | "dd" | "figcaption" | "summary" |
-            "script" | "style"
+        matches!(
+            tag_name,
+            "title"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "p"
+                | "span"
+                | "a"
+                | "button"
+                | "label"
+                | "option"
+                | "th"
+                | "td"
+                | "dt"
+                | "dd"
+                | "figcaption"
+                | "summary"
+                | "script"
+                | "style"
         )
     }
 
@@ -502,7 +698,7 @@ impl HTMLExtractor {
         &self,
         node: Node,
         symbols: &[Symbol],
-        relationships: &mut Vec<Relationship>
+        relationships: &mut Vec<Relationship>,
     ) {
         match node.kind() {
             "element" => {
@@ -524,7 +720,7 @@ impl HTMLExtractor {
         &self,
         node: Node,
         symbols: &[Symbol],
-        relationships: &mut Vec<Relationship>
+        relationships: &mut Vec<Relationship>,
     ) {
         let attributes = self.extract_attributes(node);
 
@@ -532,7 +728,13 @@ impl HTMLExtractor {
         if let Some(href) = attributes.get("href") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", element.id, format!("url:{}", href), RelationshipKind::References, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        element.id,
+                        format!("url:{}", href),
+                        RelationshipKind::References,
+                        node.start_position().row
+                    ),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("url:{}", href),
                     kind: RelationshipKind::References,
@@ -552,7 +754,13 @@ impl HTMLExtractor {
         if let Some(src) = attributes.get("src") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", element.id, format!("resource:{}", src), RelationshipKind::Uses, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        element.id,
+                        format!("resource:{}", src),
+                        RelationshipKind::Uses,
+                        node.start_position().row
+                    ),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("resource:{}", src),
                     kind: RelationshipKind::Uses,
@@ -572,7 +780,13 @@ impl HTMLExtractor {
         if let Some(action) = attributes.get("action") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", element.id, format!("endpoint:{}", action), RelationshipKind::Calls, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        element.id,
+                        format!("endpoint:{}", action),
+                        RelationshipKind::Calls,
+                        node.start_position().row
+                    ),
                     from_symbol_id: element.id.clone(),
                     to_symbol_id: format!("endpoint:{}", action),
                     kind: RelationshipKind::Calls,
@@ -581,10 +795,19 @@ impl HTMLExtractor {
                     confidence: 1.0,
                     metadata: Some({
                         let mut meta = HashMap::new();
-                        meta.insert("action".to_string(), serde_json::Value::String(action.clone()));
-                        meta.insert("method".to_string(), serde_json::Value::String(
-                            attributes.get("method").cloned().unwrap_or_else(|| "GET".to_string())
-                        ));
+                        meta.insert(
+                            "action".to_string(),
+                            serde_json::Value::String(action.clone()),
+                        );
+                        meta.insert(
+                            "method".to_string(),
+                            serde_json::Value::String(
+                                attributes
+                                    .get("method")
+                                    .cloned()
+                                    .unwrap_or_else(|| "GET".to_string()),
+                            ),
+                        );
                         meta
                     }),
                 });
@@ -596,19 +819,27 @@ impl HTMLExtractor {
         &self,
         node: Node,
         symbols: &[Symbol],
-        relationships: &mut Vec<Relationship>
+        relationships: &mut Vec<Relationship>,
     ) {
         let attributes = self.extract_attributes(node);
 
         if let Some(src) = attributes.get("src") {
-            if let Some(script_symbol) = symbols.iter().find(|s|
-                s.metadata.as_ref().and_then(|m| m.get("type"))
+            if let Some(script_symbol) = symbols.iter().find(|s| {
+                s.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("type"))
                     .and_then(|v| v.as_str())
                     .map(|t| t == "script-element")
                     .unwrap_or(false)
-            ) {
+            }) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", script_symbol.id, format!("script:{}", src), RelationshipKind::Imports, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        script_symbol.id,
+                        format!("script:{}", src),
+                        RelationshipKind::Imports,
+                        node.start_position().row
+                    ),
                     from_symbol_id: script_symbol.id.clone(),
                     to_symbol_id: format!("script:{}", src),
                     kind: RelationshipKind::Imports,
@@ -619,7 +850,10 @@ impl HTMLExtractor {
                         let mut meta = HashMap::new();
                         meta.insert("src".to_string(), serde_json::Value::String(src.clone()));
                         if let Some(script_type) = attributes.get("type") {
-                            meta.insert("type".to_string(), serde_json::Value::String(script_type.clone()));
+                            meta.insert(
+                                "type".to_string(),
+                                serde_json::Value::String(script_type.clone()),
+                            );
                         }
                         meta
                     }),
@@ -632,11 +866,11 @@ impl HTMLExtractor {
         let tag_name = self.extract_tag_name(node);
         let target_line = (node.start_position().row + 1) as u32;
 
-        symbols.iter().find(|s|
-            s.name == tag_name &&
-            s.file_path == self.base.file_path &&
-            s.start_line.abs_diff(target_line) < 2
-        )
+        symbols.iter().find(|s| {
+            s.name == tag_name
+                && s.file_path == self.base.file_path
+                && s.start_line.abs_diff(target_line) < 2
+        })
     }
 
     fn extract_basic_structure(&mut self, tree: &Tree) -> Vec<Symbol> {
@@ -647,8 +881,14 @@ impl HTMLExtractor {
         // Extract DOCTYPE if present
         if let Some(doctype_match) = self.find_doctype(&content) {
             let mut metadata = HashMap::new();
-            metadata.insert("type".to_string(), serde_json::Value::String("doctype".to_string()));
-            metadata.insert("declaration".to_string(), serde_json::Value::String(doctype_match.clone()));
+            metadata.insert(
+                "type".to_string(),
+                serde_json::Value::String("doctype".to_string()),
+            );
+            metadata.insert(
+                "declaration".to_string(),
+                serde_json::Value::String(doctype_match.clone()),
+            );
 
             let symbol = self.base.create_symbol(
                 &tree.root_node(),
@@ -685,7 +925,8 @@ impl HTMLExtractor {
         let mut symbols = Vec::new();
 
         // Enhanced regex for HTML elements - handles both self-closing and container elements
-        let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</\1>|>)"#).unwrap();
+        let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</\1>|>)"#)
+            .unwrap();
 
         for (_index, captures) in re.captures_iter(content).enumerate() {
             if let Some(tag_name_match) = captures.get(1) {
@@ -704,17 +945,29 @@ impl HTMLExtractor {
 
                 // Create metadata
                 let mut metadata = HashMap::new();
-                metadata.insert("type".to_string(), serde_json::Value::String("html-element-fallback".to_string()));
-                metadata.insert("tagName".to_string(), serde_json::Value::String(tag_name.clone()));
+                metadata.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("html-element-fallback".to_string()),
+                );
+                metadata.insert(
+                    "tagName".to_string(),
+                    serde_json::Value::String(tag_name.clone()),
+                );
                 metadata.insert("isFallback".to_string(), serde_json::Value::Bool(true));
 
                 if !attributes.is_empty() {
-                    metadata.insert("attributes".to_string(), serde_json::to_value(&attributes).unwrap_or_default());
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::to_value(&attributes).unwrap_or_default(),
+                    );
                 }
 
                 if let Some(content) = text_content {
                     if !content.trim().is_empty() {
-                        metadata.insert("textContent".to_string(), serde_json::Value::String(content.trim().to_string()));
+                        metadata.insert(
+                            "textContent".to_string(),
+                            serde_json::Value::String(content.trim().to_string()),
+                        );
                     }
                 }
 
@@ -747,12 +1000,14 @@ impl HTMLExtractor {
         }
 
         // Enhanced attribute parsing
-        let re = Regex::new(r#"(\w+(?:-\w+)*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?"#).unwrap();
+        let re =
+            Regex::new(r#"(\w+(?:-\w+)*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?"#).unwrap();
 
         for captures in re.captures_iter(clean_text) {
             if let Some(name_match) = captures.get(1) {
                 let name = name_match.as_str().to_string();
-                let value = captures.get(2)
+                let value = captures
+                    .get(2)
                     .or_else(|| captures.get(3))
                     .or_else(|| captures.get(4))
                     .map(|m| m.as_str().to_string())
@@ -770,9 +1025,17 @@ impl HTMLExtractor {
 
         for symbol in symbols {
             let metadata = &symbol.metadata;
-            if let Some(symbol_type) = metadata.as_ref().and_then(|m| m.get("type")).and_then(|v| v.as_str()) {
+            if let Some(symbol_type) = metadata
+                .as_ref()
+                .and_then(|m| m.get("type"))
+                .and_then(|v| v.as_str())
+            {
                 types.insert(symbol.id.clone(), symbol_type.to_string());
-            } else if let Some(tag_name) = metadata.as_ref().and_then(|m| m.get("tagName")).and_then(|v| v.as_str()) {
+            } else if let Some(tag_name) = metadata
+                .as_ref()
+                .and_then(|m| m.get("tagName"))
+                .and_then(|v| v.as_str())
+            {
                 types.insert(symbol.id.clone(), format!("html:{}", tag_name));
             }
         }

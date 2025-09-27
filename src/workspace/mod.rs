@@ -13,12 +13,12 @@ pub mod registry;
 pub mod registry_service;
 
 use anyhow::{anyhow, Result};
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tracing::{info, debug, warn};
-use serde::{Serialize, Deserialize};
+use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
 
@@ -44,7 +44,7 @@ pub struct JulieWorkspace {
     pub search: Option<Arc<RwLock<TantivyIndex>>>,
 
     /// Embedding store (semantic bridge)
-    pub embeddings: Option<Arc<EmbeddingStore>>,
+    pub embeddings: Option<Arc<Mutex<EmbeddingStore>>>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
@@ -152,7 +152,8 @@ impl JulieWorkspace {
 
         match julie_dir {
             Some(julie_path) => {
-                let root = julie_path.parent()
+                let root = julie_path
+                    .parent()
                     .ok_or_else(|| anyhow!("Invalid workspace structure"))?
                     .to_path_buf();
 
@@ -190,7 +191,10 @@ impl JulieWorkspace {
     ///
     /// Creates all necessary subdirectories for the three-pillar architecture
     fn create_folder_structure(julie_dir: &Path) -> Result<()> {
-        debug!("Creating .julie folder structure at: {}", julie_dir.display());
+        debug!(
+            "Creating .julie folder structure at: {}",
+            julie_dir.display()
+        );
 
         let folders = [
             julie_dir.join("db"),                    // SQLite database
@@ -199,8 +203,8 @@ impl JulieWorkspace {
             julie_dir.join("models"),                // Cached FastEmbed models
             julie_dir.join("cache"),                 // File hashes and parse cache
             julie_dir.join("cache").join("parse_cache"),
-            julie_dir.join("logs"),                  // Julie logs
-            julie_dir.join("config"),                // Configuration files
+            julie_dir.join("logs"),   // Julie logs
+            julie_dir.join("config"), // Configuration files
         ];
 
         for folder in &folders {
@@ -308,7 +312,9 @@ impl JulieWorkspace {
             Ok(_) => health.structure_valid = true,
             Err(e) => {
                 health.structure_valid = false;
-                health.errors.push(format!("Structure validation failed: {}", e));
+                health
+                    .errors
+                    .push(format!("Structure validation failed: {}", e));
             }
         }
 
@@ -325,7 +331,10 @@ impl JulieWorkspace {
         if health.errors.is_empty() {
             info!("Workspace health check passed");
         } else {
-            warn!("Workspace health check found {} issues", health.errors.len());
+            warn!(
+                "Workspace health check found {} issues",
+                health.errors.len()
+            );
         }
 
         Ok(health)
@@ -378,8 +387,18 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
+        if std::env::var("JULIE_SKIP_SEARCH_INDEX").is_ok() {
+            info!("Initializing in-memory search index due to JULIE_SKIP_SEARCH_INDEX");
+            let search_engine = TantivyIndex::in_memory()?;
+            self.search = Some(Arc::new(RwLock::new(search_engine)));
+            return Ok(());
+        }
+
         let index_path = self.index_path();
-        info!("Initializing Tantivy search index at: {}", index_path.display());
+        info!(
+            "Initializing Tantivy search index at: {}",
+            index_path.display()
+        );
 
         let search_engine = TantivyIndex::new(&index_path)?;
         self.search = Some(Arc::new(RwLock::new(search_engine)));
@@ -394,11 +413,20 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
+        if std::env::var("JULIE_SKIP_EMBEDDINGS").is_ok() {
+            info!("Skipping embedding engine initialization due to JULIE_SKIP_EMBEDDINGS");
+            self.embeddings = None;
+            return Ok(());
+        }
+
         let models_path = self.models_path();
-        info!("Initializing embedding engine with cache at: {}", models_path.display());
+        info!(
+            "Initializing embedding engine with cache at: {}",
+            models_path.display()
+        );
 
         let embedding_engine = EmbeddingStore::new("bge-small", models_path)?;
-        self.embeddings = Some(Arc::new(embedding_engine));
+        self.embeddings = Some(Arc::new(Mutex::new(embedding_engine)));
 
         info!("Embedding engine initialized successfully");
         Ok(())
@@ -410,9 +438,16 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
+        if std::env::var("JULIE_SKIP_EMBEDDINGS").is_ok() {
+            info!("Skipping file watcher initialization due to JULIE_SKIP_EMBEDDINGS");
+            return Ok(());
+        }
+
         // Ensure all required components are initialized
         if self.db.is_none() || self.search.is_none() || self.embeddings.is_none() {
-            return Err(anyhow::anyhow!("Required components not initialized before file watcher"));
+            return Err(anyhow::anyhow!(
+                "Required components not initialized before file watcher"
+            ));
         }
 
         info!("Initializing file watcher for: {}", self.root.display());
@@ -489,11 +524,13 @@ impl WorkspaceHealth {
             Ok(_) => {
                 self.disk_space_mb = 1000; // Placeholder - assume we have space
                 if self.disk_space_mb < 100 {
-                    self.warnings.push("Low disk space (< 100MB available)".to_string());
+                    self.warnings
+                        .push("Low disk space (< 100MB available)".to_string());
                 }
             }
             Err(e) => {
-                self.errors.push(format!("Could not check disk space: {}", e));
+                self.errors
+                    .push(format!("Could not check disk space: {}", e));
             }
         }
         Ok(())
@@ -521,58 +558,4 @@ impl WorkspaceHealth {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_workspace_initialization() {
-        let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf()).unwrap();
-
-        // Check that .julie directory was created
-        assert!(workspace.julie_dir.exists());
-
-        // Check that all required subdirectories exist
-        assert!(workspace.julie_dir.join("db").exists());
-        assert!(workspace.julie_dir.join("index/tantivy").exists());
-        assert!(workspace.julie_dir.join("vectors").exists());
-        assert!(workspace.julie_dir.join("models").exists());
-        assert!(workspace.julie_dir.join("cache").exists());
-        assert!(workspace.julie_dir.join("logs").exists());
-        assert!(workspace.julie_dir.join("config").exists());
-
-        // Check that config file was created
-        assert!(workspace.julie_dir.join("config/julie.toml").exists());
-    }
-
-    #[test]
-    fn test_workspace_detection() {
-        let temp_dir = TempDir::new().unwrap();
-
-        // Initialize workspace
-        let _workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf()).unwrap();
-
-        // Test detection from same directory
-        let detected = JulieWorkspace::detect_and_load(temp_dir.path().to_path_buf()).unwrap();
-        assert!(detected.is_some());
-
-        // Test detection from subdirectory
-        let subdir = temp_dir.path().join("subdir");
-        fs::create_dir(&subdir).unwrap();
-        let detected = JulieWorkspace::detect_and_load(subdir).unwrap();
-        assert!(detected.is_some());
-    }
-
-    #[test]
-    fn test_health_check() {
-        let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf()).unwrap();
-
-        let health = workspace.health_check().unwrap();
-        assert!(health.is_healthy());
-        assert!(health.structure_valid);
-        assert!(health.has_write_permissions);
-    }
-}
+// Tests moved to `src/tests/workspace_mod_tests.rs`

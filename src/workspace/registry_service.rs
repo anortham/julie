@@ -5,16 +5,15 @@
 //! Provides centralized workspace metadata management with atomic operations,
 //! automatic cleanup, and intelligent workspace lifecycle management.
 
-use super::registry::{*, current_timestamp};
+use super::registry::{current_timestamp, *};
 use anyhow::{anyhow, Result};
 use serde_json;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex as AsyncMutex;
 use tokio::fs;
-use tracing::{debug, info, warn, error};
+use tokio::sync::Mutex as AsyncMutex;
+use tracing::{debug, error, info, warn};
 
 /// High-performance workspace registry service with caching and atomic operations
 pub struct WorkspaceRegistryService {
@@ -44,7 +43,9 @@ impl WorkspaceRegistryService {
 
     /// Get the path to the registry file
     fn registry_path(&self) -> PathBuf {
-        self.workspace_path.join(".julie").join("workspace_registry.json")
+        self.workspace_path
+            .join(".julie")
+            .join("workspace_registry.json")
     }
 
     /// Get the path to the backup registry file
@@ -87,8 +88,14 @@ impl WorkspaceRegistryService {
             *cache = Some((registry.clone(), Instant::now()));
         }
 
-        debug!("Registry loaded from disk and cached. Workspaces: {}, Orphans: {}",
-            registry.reference_workspaces.len() + if registry.primary_workspace.is_some() { 1 } else { 0 },
+        debug!(
+            "Registry loaded from disk and cached. Workspaces: {}, Orphans: {}",
+            registry.reference_workspaces.len()
+                + if registry.primary_workspace.is_some() {
+                    1
+                } else {
+                    0
+                },
             registry.orphaned_indexes.len()
         );
 
@@ -114,11 +121,13 @@ impl WorkspaceRegistryService {
         let json = serde_json::to_string_pretty(&registry)
             .map_err(|e| anyhow!("Failed to serialize registry: {}", e))?;
 
-        fs::write(&temp_path, json).await
+        fs::write(&temp_path, json)
+            .await
             .map_err(|e| anyhow!("Failed to write temp registry file: {}", e))?;
 
         // Atomic rename
-        fs::rename(&temp_path, &registry_path).await
+        fs::rename(&temp_path, &registry_path)
+            .await
             .map_err(|e| anyhow!("Failed to rename temp registry file: {}", e))?;
 
         // Create backup
@@ -162,14 +171,21 @@ impl WorkspaceRegistryService {
                             self.save_registry(registry.clone()).await?;
                             info!("Registry restored from backup successfully");
                             Ok(registry)
-                        },
+                        }
                         Err(backup_err) => {
                             error!("Both main and backup registry files are corrupted");
-                            Err(anyhow!("Registry corrupted: main ({}), backup ({})", e, backup_err))
+                            Err(anyhow!(
+                                "Registry corrupted: main ({}), backup ({})",
+                                e,
+                                backup_err
+                            ))
                         }
                     }
                 } else {
-                    Err(anyhow!("Registry file corrupted and no backup available: {}", e))
+                    Err(anyhow!(
+                        "Registry file corrupted and no backup available: {}",
+                        e
+                    ))
                 }
             }
         }
@@ -177,7 +193,8 @@ impl WorkspaceRegistryService {
 
     /// Try to load a specific registry file
     async fn try_load_registry_file(&self, path: &Path) -> Result<WorkspaceRegistry> {
-        let content = fs::read_to_string(path).await
+        let content = fs::read_to_string(path)
+            .await
             .map_err(|e| anyhow!("Failed to read registry file: {}", e))?;
 
         let registry: WorkspaceRegistry = serde_json::from_str(&content)
@@ -208,7 +225,8 @@ impl WorkspaceRegistryService {
         let mut registry = self.load_registry().await?;
 
         // Create new workspace entry
-        let workspace = WorkspaceEntry::new(workspace_path, workspace_type.clone(), &registry.config)?;
+        let workspace =
+            WorkspaceEntry::new(workspace_path, workspace_type.clone(), &registry.config)?;
 
         // Check if already registered
         match &workspace_type {
@@ -217,19 +235,23 @@ impl WorkspaceRegistryService {
                     return Err(anyhow!("Primary workspace already registered"));
                 }
                 registry.primary_workspace = Some(workspace.clone());
-            },
+            }
             WorkspaceType::Reference | WorkspaceType::Session => {
                 if registry.reference_workspaces.contains_key(&workspace.id) {
                     return Err(anyhow!("Workspace already registered: {}", workspace.id));
                 }
-                registry.reference_workspaces.insert(workspace.id.clone(), workspace.clone());
-            },
+                registry
+                    .reference_workspaces
+                    .insert(workspace.id.clone(), workspace.clone());
+            }
         }
 
         self.save_registry(registry).await?;
 
-        info!("Registered new workspace: {} (type: {:?}, id: {})",
-            workspace.original_path, workspace_type, workspace.id);
+        info!(
+            "Registered new workspace: {} (type: {:?}, id: {})",
+            workspace.original_path, workspace_type, workspace.id
+        );
 
         Ok(workspace)
     }
@@ -357,7 +379,8 @@ impl WorkspaceRegistryService {
     pub async fn get_expired_workspaces(&self) -> Result<Vec<WorkspaceEntry>> {
         let registry = self.load_registry().await?;
 
-        Ok(registry.reference_workspaces
+        Ok(registry
+            .reference_workspaces
             .values()
             .filter(|w| w.is_expired())
             .cloned()
@@ -420,7 +443,10 @@ impl WorkspaceRegistryService {
     }
 
     /// Comprehensive cleanup with database and search index data removal
-    pub async fn cleanup_expired_workspaces_with_data(&self, database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>) -> Result<WorkspaceCleanupReport> {
+    pub async fn cleanup_expired_workspaces_with_data(
+        &self,
+        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    ) -> Result<WorkspaceCleanupReport> {
         let expired = self.get_expired_workspaces().await?;
         let mut report = WorkspaceCleanupReport {
             workspaces_removed: Vec::new(),
@@ -440,9 +466,12 @@ impl WorkspaceRegistryService {
                         report.total_files_deleted += stats.files_deleted;
                         report.total_relationships_deleted += stats.relationships_deleted;
                         report.database_stats.push((workspace.id.clone(), stats));
-                    },
+                    }
                     Err(e) => {
-                        warn!("Failed to clean database data for workspace {}: {}", workspace.id, e);
+                        warn!(
+                            "Failed to clean database data for workspace {}: {}",
+                            workspace.id, e
+                        );
                     }
                 }
             }
@@ -454,32 +483,49 @@ impl WorkspaceRegistryService {
         }
 
         if !report.workspaces_removed.is_empty() {
-            info!("Comprehensive cleanup completed: {} workspaces, {} symbols, {} files",
-                  report.workspaces_removed.len(), report.total_symbols_deleted, report.total_files_deleted);
+            info!(
+                "Comprehensive cleanup completed: {} workspaces, {} symbols, {} files",
+                report.workspaces_removed.len(),
+                report.total_symbols_deleted,
+                report.total_files_deleted
+            );
         }
 
         Ok(report)
     }
 
     /// Enforce storage size limits using LRU eviction
-    pub async fn enforce_size_limits(&self, database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>) -> Result<WorkspaceCleanupReport> {
+    pub async fn enforce_size_limits(
+        &self,
+        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    ) -> Result<WorkspaceCleanupReport> {
         let registry = self.load_registry().await?;
         let max_size = registry.config.max_total_size_bytes;
         let current_size = registry.statistics.total_index_size_bytes;
 
         if current_size <= max_size {
-            debug!("Storage within limits: {} / {} bytes", current_size, max_size);
+            debug!(
+                "Storage within limits: {} / {} bytes",
+                current_size, max_size
+            );
             return Ok(WorkspaceCleanupReport::empty());
         }
 
-        info!("Storage limit exceeded: {} / {} bytes. Starting LRU eviction.", current_size, max_size);
+        info!(
+            "Storage limit exceeded: {} / {} bytes. Starting LRU eviction.",
+            current_size, max_size
+        );
 
         let mut report = WorkspaceCleanupReport::empty();
         let mut remaining_size = current_size;
 
         // Get reference workspaces sorted by last accessed (LRU)
-        let mut registry = self.load_registry().await?;
-        let mut lru_workspaces: Vec<_> = registry.reference_workspaces.values().cloned().collect();
+        let registry_snapshot = self.load_registry().await?;
+        let mut lru_workspaces: Vec<_> = registry_snapshot
+            .reference_workspaces
+            .values()
+            .cloned()
+            .collect();
         lru_workspaces.sort_by_key(|w| w.last_accessed);
 
         // Evict least recently used workspaces until under limit
@@ -497,9 +543,12 @@ impl WorkspaceRegistryService {
                         report.total_files_deleted += stats.files_deleted;
                         report.total_relationships_deleted += stats.relationships_deleted;
                         report.database_stats.push((workspace.id.clone(), stats));
-                    },
+                    }
                     Err(e) => {
-                        warn!("Failed to clean database data for workspace {}: {}", workspace.id, e);
+                        warn!(
+                            "Failed to clean database data for workspace {}: {}",
+                            workspace.id, e
+                        );
                     }
                 }
             }
@@ -508,7 +557,10 @@ impl WorkspaceRegistryService {
             remaining_size = remaining_size.saturating_sub(workspace.index_size_bytes);
             if self.unregister_workspace(&workspace.id).await? {
                 report.workspaces_removed.push(workspace.id.clone());
-                info!("Evicted workspace {} (LRU), saved {} bytes", workspace.id, workspace.index_size_bytes);
+                info!(
+                    "Evicted workspace {} (LRU), saved {} bytes",
+                    workspace.id, workspace.index_size_bytes
+                );
             }
         }
 
@@ -521,7 +573,12 @@ impl WorkspaceRegistryService {
         let mut orphans = Vec::new();
 
         // Get all index directories
-        let indexes_dir = self.workspace_path.join(".julie").join("index").join("tantivy").join("references");
+        let indexes_dir = self
+            .workspace_path
+            .join(".julie")
+            .join("index")
+            .join("tantivy")
+            .join("references");
         if !indexes_dir.exists() {
             return Ok(orphans);
         }
@@ -544,7 +601,8 @@ impl WorkspaceRegistryService {
             // Calculate directory size
             let size = calculate_directory_size(entry.path())?;
             let metadata = entry.metadata()?;
-            let last_modified = metadata.modified()?
+            let last_modified = metadata
+                .modified()?
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs();
 
@@ -581,7 +639,9 @@ impl WorkspaceRegistryService {
                 attempted_path: None,
             };
 
-            registry.orphaned_indexes.insert(orphan.directory_name, orphaned_index);
+            registry
+                .orphaned_indexes
+                .insert(orphan.directory_name, orphaned_index);
         }
 
         self.save_registry(registry).await?;
@@ -594,22 +654,33 @@ impl WorkspaceRegistryService {
         let current_time = crate::workspace::registry::current_timestamp();
         let mut cleaned = Vec::new();
 
-        let orphaned_to_remove: Vec<_> = registry.orphaned_indexes.iter()
+        let orphaned_to_remove: Vec<_> = registry
+            .orphaned_indexes
+            .iter()
             .filter(|(_, orphan)| orphan.scheduled_for_deletion <= current_time)
             .map(|(name, _)| name.clone())
             .collect();
 
         for orphan_name in orphaned_to_remove {
             // Remove the physical directory
-            let orphan_path = self.workspace_path.join(".julie").join("index").join("tantivy").join("references").join(&orphan_name);
+            let orphan_path = self
+                .workspace_path
+                .join(".julie")
+                .join("index")
+                .join("tantivy")
+                .join("references")
+                .join(&orphan_name);
             if orphan_path.exists() {
                 match std::fs::remove_dir_all(&orphan_path) {
                     Ok(()) => {
                         info!("Deleted orphaned index directory: {}", orphan_name);
                         cleaned.push(orphan_name.clone());
-                    },
+                    }
                     Err(e) => {
-                        warn!("Failed to delete orphaned index directory {}: {}", orphan_name, e);
+                        warn!(
+                            "Failed to delete orphaned index directory {}: {}",
+                            orphan_name, e
+                        );
                     }
                 }
             }
@@ -626,7 +697,10 @@ impl WorkspaceRegistryService {
     }
 
     /// Comprehensive cleanup: TTL + Size Limits + Orphans
-    pub async fn comprehensive_cleanup(&self, database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>) -> Result<ComprehensiveCleanupReport> {
+    pub async fn comprehensive_cleanup(
+        &self,
+        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    ) -> Result<ComprehensiveCleanupReport> {
         let mut report = ComprehensiveCleanupReport::default();
 
         // Step 1: TTL-based cleanup
@@ -648,11 +722,15 @@ impl WorkspaceRegistryService {
         let cleaned_orphans = self.cleanup_orphaned_indexes().await?;
         report.orphaned_cleaned = cleaned_orphans;
 
-        let total_workspaces = report.ttl_cleanup.workspaces_removed.len() + report.size_cleanup.workspaces_removed.len();
+        let total_workspaces = report.ttl_cleanup.workspaces_removed.len()
+            + report.size_cleanup.workspaces_removed.len();
         let total_orphans = report.orphaned_cleaned.len();
 
         if total_workspaces > 0 || total_orphans > 0 {
-            info!("Comprehensive cleanup completed: {} workspaces, {} orphans", total_workspaces, total_orphans);
+            info!(
+                "Comprehensive cleanup completed: {} workspaces, {} orphans",
+                total_workspaces, total_orphans
+            );
         } else {
             debug!("No cleanup needed");
         }
@@ -742,20 +820,27 @@ mod tests {
         let service = WorkspaceRegistryService::new(temp_dir.path().to_path_buf());
 
         // Register primary workspace
-        let primary = service.register_workspace(
-            temp_dir.path().to_string_lossy().to_string(),
-            WorkspaceType::Primary,
-        ).await.unwrap();
+        let primary = service
+            .register_workspace(
+                temp_dir.path().to_string_lossy().to_string(),
+                WorkspaceType::Primary,
+            )
+            .await
+            .unwrap();
 
         assert_eq!(primary.workspace_type, WorkspaceType::Primary);
         assert!(primary.expires_at.is_none()); // Primary never expires
 
         // Register reference workspace
-        let ref_path = temp_dir.path().join("reference").to_string_lossy().to_string();
-        let reference = service.register_workspace(
-            ref_path,
-            WorkspaceType::Reference,
-        ).await.unwrap();
+        let ref_path = temp_dir
+            .path()
+            .join("reference")
+            .to_string_lossy()
+            .to_string();
+        let reference = service
+            .register_workspace(ref_path, WorkspaceType::Reference)
+            .await
+            .unwrap();
 
         assert_eq!(reference.workspace_type, WorkspaceType::Reference);
         assert!(reference.expires_at.is_some()); // Reference expires
@@ -773,10 +858,13 @@ mod tests {
         // Create and populate registry
         {
             let service = WorkspaceRegistryService::new(workspace_path.clone());
-            service.register_workspace(
-                temp_dir.path().to_string_lossy().to_string(),
-                WorkspaceType::Primary,
-            ).await.unwrap();
+            service
+                .register_workspace(
+                    temp_dir.path().to_string_lossy().to_string(),
+                    WorkspaceType::Primary,
+                )
+                .await
+                .unwrap();
         }
 
         // Create new service instance and verify persistence

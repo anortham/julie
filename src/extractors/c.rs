@@ -3,10 +3,12 @@
 // Port of Miller's C extractor using proven extraction logic with idiomatic Rust
 // Original: /Users/murphy/Source/miller/src/extractors/c-extractor.ts
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use tree_sitter::Tree;
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use serde_json::Value;
+use std::collections::HashMap;
+use tree_sitter::Tree;
 
 pub struct CExtractor {
     base: BaseExtractor,
@@ -36,7 +38,12 @@ impl CExtractor {
         relationships
     }
 
-    fn visit_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+    fn visit_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) {
         if !node.is_named() {
             return;
         }
@@ -105,7 +112,10 @@ impl CExtractor {
         let metadata = self.create_metadata_map(HashMap::from([
             ("type".to_string(), "include".to_string()),
             ("path".to_string(), include_path.clone()),
-            ("isSystemHeader".to_string(), self.is_system_header(&signature).to_string()),
+            (
+                "isSystemHeader".to_string(),
+                self.is_system_header(&signature).to_string(),
+            ),
         ]));
 
         self.base.create_symbol(
@@ -130,7 +140,10 @@ impl CExtractor {
         let metadata = self.create_metadata_map(HashMap::from([
             ("type".to_string(), "macro".to_string()),
             ("name".to_string(), macro_name.clone()),
-            ("isFunctionLike".to_string(), (node.kind() == "preproc_function_def").to_string()),
+            (
+                "isFunctionLike".to_string(),
+                (node.kind() == "preproc_function_def").to_string(),
+            ),
             ("definition".to_string(), signature.clone()),
         ]));
 
@@ -149,7 +162,11 @@ impl CExtractor {
     }
 
     // Declaration extraction - Miller's extractDeclaration
-    fn extract_declaration(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Vec<Symbol> {
+    fn extract_declaration(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Vec<Symbol> {
         let mut symbols = Vec::new();
 
         // Check if this is a typedef declaration
@@ -171,7 +188,9 @@ impl CExtractor {
         // Extract variable declarations
         let declarators = self.find_variable_declarators(node);
         for declarator in declarators {
-            if let Some(variable_symbol) = self.extract_variable_declaration(node, declarator, parent_id) {
+            if let Some(variable_symbol) =
+                self.extract_variable_declaration(node, declarator, parent_id)
+            {
                 symbols.push(variable_symbol);
             }
         }
@@ -180,10 +199,18 @@ impl CExtractor {
     }
 
     // Function definition extraction - Miller's extractFunctionDefinition
-    fn extract_function_definition(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Symbol {
+    fn extract_function_definition(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Symbol {
         let function_name = self.extract_function_name(node);
         let signature = self.build_function_signature(node);
-        let visibility = if self.is_static_function(node) { "private" } else { "public" };
+        let visibility = if self.is_static_function(node) {
+            "private"
+        } else {
+            "public"
+        };
 
         self.base.create_symbol(
             &node,
@@ -191,15 +218,36 @@ impl CExtractor {
             SymbolKind::Function,
             SymbolOptions {
                 signature: Some(signature),
-                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if visibility == "private" {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("function".to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("function".to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(function_name)),
-                    ("returnType".to_string(), serde_json::Value::String(self.extract_return_type(node))),
-                    ("parameters".to_string(), serde_json::Value::String(self.extract_function_parameters(node).join(", "))),
-                    ("isDefinition".to_string(), serde_json::Value::String("true".to_string())),
-                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_function(node).to_string())),
+                    (
+                        "returnType".to_string(),
+                        serde_json::Value::String(self.extract_return_type(node)),
+                    ),
+                    (
+                        "parameters".to_string(),
+                        serde_json::Value::String(
+                            self.extract_function_parameters(node).join(", "),
+                        ),
+                    ),
+                    (
+                        "isDefinition".to_string(),
+                        serde_json::Value::String("true".to_string()),
+                    ),
+                    (
+                        "isStatic".to_string(),
+                        serde_json::Value::String(self.is_static_function(node).to_string()),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -207,37 +255,80 @@ impl CExtractor {
     }
 
     // Function declaration extraction - Miller's extractFunctionDeclaration
-    fn extract_function_declaration(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_function_declaration(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let function_name = self.extract_function_name_from_declaration(node);
         let signature = self.build_function_declaration_signature(node);
-        let visibility = if self.is_static_function(node) { "private" } else { "public" };
+        let visibility = if self.is_static_function(node) {
+            "private"
+        } else {
+            "public"
+        };
 
-        Some(self.base.create_symbol(
-            &node,
-            function_name.clone(),
-            SymbolKind::Function,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("function".to_string())),
-                    ("name".to_string(), serde_json::Value::String(function_name)),
-                    ("returnType".to_string(), serde_json::Value::String(self.extract_return_type_from_declaration(node))),
-                    ("parameters".to_string(), serde_json::Value::String(self.extract_function_parameters_from_declaration(node).join(", "))),
-                    ("isDefinition".to_string(), serde_json::Value::String("false".to_string())),
-                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_function(node).to_string())),
-                ])),
-                doc_comment: None,
-            },
-        ))
+        Some(
+            self.base.create_symbol(
+                &node,
+                function_name.clone(),
+                SymbolKind::Function,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(if visibility == "private" {
+                        Visibility::Private
+                    } else {
+                        Visibility::Public
+                    }),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    metadata: Some(HashMap::from([
+                        (
+                            "type".to_string(),
+                            serde_json::Value::String("function".to_string()),
+                        ),
+                        ("name".to_string(), serde_json::Value::String(function_name)),
+                        (
+                            "returnType".to_string(),
+                            serde_json::Value::String(
+                                self.extract_return_type_from_declaration(node),
+                            ),
+                        ),
+                        (
+                            "parameters".to_string(),
+                            serde_json::Value::String(
+                                self.extract_function_parameters_from_declaration(node)
+                                    .join(", "),
+                            ),
+                        ),
+                        (
+                            "isDefinition".to_string(),
+                            serde_json::Value::String("false".to_string()),
+                        ),
+                        (
+                            "isStatic".to_string(),
+                            serde_json::Value::String(self.is_static_function(node).to_string()),
+                        ),
+                    ])),
+                    doc_comment: None,
+                },
+            ),
+        )
     }
 
     // Variable declaration extraction - Miller's extractVariableDeclaration
-    fn extract_variable_declaration(&mut self, node: tree_sitter::Node, declarator: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_variable_declaration(
+        &mut self,
+        node: tree_sitter::Node,
+        declarator: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let variable_name = self.extract_variable_name(declarator);
         let signature = self.build_variable_signature(node, declarator);
-        let visibility = if self.is_static_variable(node) { "private" } else { "public" };
+        let visibility = if self.is_static_variable(node) {
+            "private"
+        } else {
+            "public"
+        };
 
         Some(self.base.create_symbol(
             &node,
@@ -245,18 +336,48 @@ impl CExtractor {
             SymbolKind::Variable,
             SymbolOptions {
                 signature: Some(signature),
-                visibility: Some(if visibility == "private" { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if visibility == "private" {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("variable".to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("variable".to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(variable_name)),
-                    ("dataType".to_string(), serde_json::Value::String(self.extract_variable_type(node))),
-                    ("isStatic".to_string(), serde_json::Value::String(self.is_static_variable(node).to_string())),
-                    ("isExtern".to_string(), serde_json::Value::String(self.is_extern_variable(node).to_string())),
-                    ("isConst".to_string(), serde_json::Value::String(self.is_const_variable(node).to_string())),
-                    ("isVolatile".to_string(), serde_json::Value::String(self.is_volatile_variable(node).to_string())),
-                    ("isArray".to_string(), serde_json::Value::String(self.is_array_variable(declarator).to_string())),
-                    ("initializer".to_string(), serde_json::Value::String(self.extract_initializer(declarator).unwrap_or_default())),
+                    (
+                        "dataType".to_string(),
+                        serde_json::Value::String(self.extract_variable_type(node)),
+                    ),
+                    (
+                        "isStatic".to_string(),
+                        serde_json::Value::String(self.is_static_variable(node).to_string()),
+                    ),
+                    (
+                        "isExtern".to_string(),
+                        serde_json::Value::String(self.is_extern_variable(node).to_string()),
+                    ),
+                    (
+                        "isConst".to_string(),
+                        serde_json::Value::String(self.is_const_variable(node).to_string()),
+                    ),
+                    (
+                        "isVolatile".to_string(),
+                        serde_json::Value::String(self.is_volatile_variable(node).to_string()),
+                    ),
+                    (
+                        "isArray".to_string(),
+                        serde_json::Value::String(self.is_array_variable(declarator).to_string()),
+                    ),
+                    (
+                        "initializer".to_string(),
+                        serde_json::Value::String(
+                            self.extract_initializer(declarator).unwrap_or_default(),
+                        ),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -277,9 +398,18 @@ impl CExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("struct".to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("struct".to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(struct_name)),
-                    ("fields".to_string(), serde_json::Value::String(format!("{} fields", self.extract_struct_fields(node).len()))),
+                    (
+                        "fields".to_string(),
+                        serde_json::Value::String(format!(
+                            "{} fields",
+                            self.extract_struct_fields(node).len()
+                        )),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -300,9 +430,18 @@ impl CExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("enum".to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("enum".to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(enum_name)),
-                    ("values".to_string(), serde_json::Value::String(format!("{} values", self.extract_enum_values(node).len()))),
+                    (
+                        "values".to_string(),
+                        serde_json::Value::String(format!(
+                            "{} values",
+                            self.extract_enum_values(node).len()
+                        )),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -310,7 +449,11 @@ impl CExtractor {
     }
 
     // Type definition extraction - Miller's extractTypeDefinition
-    fn extract_type_definition(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Symbol {
+    fn extract_type_definition(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Symbol {
         let typedef_name = self.extract_typedef_name_from_type_definition(node);
         let _raw_signature = self.base.get_node_text(&node);
         let underlying_type = self.extract_underlying_type_from_type_definition(node);
@@ -319,8 +462,16 @@ impl CExtractor {
         let signature = self.build_typedef_signature(&node, &typedef_name);
 
         // If the typedef contains any struct, treat it as a Class
-        let symbol_kind = if self.contains_struct(node) { SymbolKind::Class } else { SymbolKind::Type };
-        let struct_type = if symbol_kind == SymbolKind::Class { "struct" } else { "typedef" };
+        let symbol_kind = if self.contains_struct(node) {
+            SymbolKind::Class
+        } else {
+            SymbolKind::Type
+        };
+        let struct_type = if symbol_kind == SymbolKind::Class {
+            "struct"
+        } else {
+            "typedef"
+        };
         let is_struct = symbol_kind == SymbolKind::Class;
 
         self.base.create_symbol(
@@ -332,10 +483,19 @@ impl CExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String(struct_type.to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String(struct_type.to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(typedef_name)),
-                    ("underlyingType".to_string(), serde_json::Value::String(underlying_type)),
-                    ("isStruct".to_string(), serde_json::Value::String(is_struct.to_string())),
+                    (
+                        "underlyingType".to_string(),
+                        serde_json::Value::String(underlying_type),
+                    ),
+                    (
+                        "isStruct".to_string(),
+                        serde_json::Value::String(is_struct.to_string()),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -343,7 +503,11 @@ impl CExtractor {
     }
 
     // Linkage specification extraction - Miller's extractLinkageSpecification
-    fn extract_linkage_specification(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_linkage_specification(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Find string literal for linkage type
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -360,8 +524,14 @@ impl CExtractor {
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some(HashMap::from([
-                                ("type".to_string(), serde_json::Value::String("linkage_specification".to_string())),
-                                ("linkage".to_string(), serde_json::Value::String("C".to_string())),
+                                (
+                                    "type".to_string(),
+                                    serde_json::Value::String("linkage_specification".to_string()),
+                                ),
+                                (
+                                    "linkage".to_string(),
+                                    serde_json::Value::String("C".to_string()),
+                                ),
                             ])),
                             doc_comment: None,
                         },
@@ -373,7 +543,11 @@ impl CExtractor {
     }
 
     // Expression statement extraction - Miller's extractFromExpressionStatement
-    fn extract_from_expression_statement(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_from_expression_statement(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Find identifier in expression statement
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -392,9 +566,18 @@ impl CExtractor {
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some(HashMap::from([
-                                ("type".to_string(), serde_json::Value::String("struct".to_string())),
-                                ("name".to_string(), serde_json::Value::String(identifier_name)),
-                                ("fromExpressionStatement".to_string(), serde_json::Value::String("true".to_string())),
+                                (
+                                    "type".to_string(),
+                                    serde_json::Value::String("struct".to_string()),
+                                ),
+                                (
+                                    "name".to_string(),
+                                    serde_json::Value::String(identifier_name),
+                                ),
+                                (
+                                    "fromExpressionStatement".to_string(),
+                                    serde_json::Value::String("true".to_string()),
+                                ),
                             ])),
                             doc_comment: None,
                         },
@@ -406,7 +589,11 @@ impl CExtractor {
     }
 
     // Enum value symbols extraction - Miller's extractEnumValueSymbols
-    fn extract_enum_value_symbols(&mut self, node: tree_sitter::Node, parent_enum_id: &str) -> Vec<Symbol> {
+    fn extract_enum_value_symbols(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_enum_id: &str,
+    ) -> Vec<Symbol> {
         let mut enum_value_symbols = Vec::new();
 
         let mut cursor = node.walk();
@@ -417,7 +604,8 @@ impl CExtractor {
                     if enum_child.kind() == "enumerator" {
                         if let Some(name_node) = enum_child.child_by_field_name("name") {
                             let name = self.base.get_node_text(&name_node);
-                            let value = enum_child.child_by_field_name("value")
+                            let value = enum_child
+                                .child_by_field_name("value")
                                 .map(|v| self.base.get_node_text(&v));
 
                             let mut signature = name.clone();
@@ -434,10 +622,19 @@ impl CExtractor {
                                     visibility: Some(Visibility::Public),
                                     parent_id: Some(parent_enum_id.to_string()),
                                     metadata: Some(HashMap::from([
-                                        ("type".to_string(), serde_json::Value::String("enum_value".to_string())),
+                                        (
+                                            "type".to_string(),
+                                            serde_json::Value::String("enum_value".to_string()),
+                                        ),
                                         ("name".to_string(), serde_json::Value::String(name)),
-                                        ("value".to_string(), serde_json::Value::String(value.unwrap_or_default())),
-                                        ("enumParent".to_string(), serde_json::Value::String(parent_enum_id.to_string())),
+                                        (
+                                            "value".to_string(),
+                                            serde_json::Value::String(value.unwrap_or_default()),
+                                        ),
+                                        (
+                                            "enumParent".to_string(),
+                                            serde_json::Value::String(parent_enum_id.to_string()),
+                                        ),
                                     ])),
                                     doc_comment: None,
                                 },
@@ -460,14 +657,14 @@ impl CExtractor {
         if let Some(start) = signature.find('"') {
             if let Some(end) = signature.rfind('"') {
                 if start < end {
-                    return signature[start+1..end].to_string();
+                    return signature[start + 1..end].to_string();
                 }
             }
         }
         if let Some(start) = signature.find('<') {
             if let Some(end) = signature.rfind('>') {
                 if start < end {
-                    return signature[start+1..end].to_string();
+                    return signature[start + 1..end].to_string();
                 }
             }
         }
@@ -488,7 +685,10 @@ impl CExtractor {
         "unknown".to_string()
     }
 
-    fn find_function_declarator<'a>(&self, node: tree_sitter::Node<'a>) -> Option<tree_sitter::Node<'a>> {
+    fn find_function_declarator<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Option<tree_sitter::Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "function_declarator" {
@@ -506,7 +706,10 @@ impl CExtractor {
         None
     }
 
-    fn find_variable_declarators<'a>(&self, node: tree_sitter::Node<'a>) -> Vec<tree_sitter::Node<'a>> {
+    fn find_variable_declarators<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Vec<tree_sitter::Node<'a>> {
         let mut declarators = Vec::new();
         let mut cursor = node.walk();
 
@@ -566,7 +769,10 @@ impl CExtractor {
             .unwrap_or_else(|| "unknown".to_string())
     }
 
-    fn find_deepest_identifier<'a>(&self, node: tree_sitter::Node<'a>) -> Option<tree_sitter::Node<'a>> {
+    fn find_deepest_identifier<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Option<tree_sitter::Node<'a>> {
         if node.kind() == "identifier" {
             return Some(node);
         }
@@ -594,7 +800,13 @@ impl CExtractor {
             String::new()
         };
 
-        format!("{}{} {}({})", storage_prefix, return_type, function_name, parameters.join(", "))
+        format!(
+            "{}{} {}({})",
+            storage_prefix,
+            return_type,
+            function_name,
+            parameters.join(", ")
+        )
     }
 
     fn build_function_declaration_signature(&self, node: tree_sitter::Node) -> String {
@@ -602,10 +814,19 @@ impl CExtractor {
         let function_name = self.extract_function_name_from_declaration(node);
         let parameters = self.extract_function_parameters_from_declaration(node);
 
-        format!("{} {}({})", return_type, function_name, parameters.join(", "))
+        format!(
+            "{} {}({})",
+            return_type,
+            function_name,
+            parameters.join(", ")
+        )
     }
 
-    fn build_variable_signature(&self, node: tree_sitter::Node, declarator: tree_sitter::Node) -> String {
+    fn build_variable_signature(
+        &self,
+        node: tree_sitter::Node,
+        declarator: tree_sitter::Node,
+    ) -> String {
         let storage_class = self.extract_storage_class(node);
         let type_qualifiers = self.extract_type_qualifiers(node);
         let data_type = self.extract_variable_type(node);
@@ -647,7 +868,8 @@ impl CExtractor {
         signature.push_str(&format!("struct {}", struct_name));
 
         if !fields.is_empty() {
-            let field_signatures: Vec<String> = fields.iter()
+            let field_signatures: Vec<String> = fields
+                .iter()
                 .take(3)
                 .map(|f| format!("{} {}", f.field_type, f.name))
                 .collect();
@@ -668,10 +890,7 @@ impl CExtractor {
 
         let mut signature = format!("enum {}", enum_name);
         if !values.is_empty() {
-            let value_names: Vec<String> = values.iter()
-                .take(3)
-                .map(|v| v.name.clone())
-                .collect();
+            let value_names: Vec<String> = values.iter().take(3).map(|v| v.name.clone()).collect();
             signature.push_str(&format!(" {{ {} }}", value_names.join(", ")));
         }
 
@@ -680,7 +899,6 @@ impl CExtractor {
 
     fn build_typedef_signature(&self, node: &tree_sitter::Node, identifier_name: &str) -> String {
         let node_text = self.base.get_node_text(node);
-
 
         // Look for various attributes in the node text and parent context
         let mut attributes = Vec::new();
@@ -735,7 +953,11 @@ impl CExtractor {
 
         // Build signature based on pattern in context_text
         let signature = if !attributes.is_empty() {
-            format!("typedef struct {} {}", attributes.join(" "), identifier_name)
+            format!(
+                "typedef struct {} {}",
+                attributes.join(" "),
+                identifier_name
+            )
         } else {
             format!("typedef struct {}", identifier_name)
         };
@@ -753,7 +975,10 @@ impl CExtractor {
         // Look for the specifier that contains the base type
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "primitive_type" | "type_identifier" | "sized_type_specifier" | "struct_specifier" => {
+                "primitive_type"
+                | "type_identifier"
+                | "sized_type_specifier"
+                | "struct_specifier" => {
                     base_types.push(self.base.get_node_text(&child));
                 }
                 "pointer_declarator" => {
@@ -891,7 +1116,11 @@ impl CExtractor {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "primitive_type" | "type_identifier" | "sized_type_specifier" | "struct_specifier" | "enum_specifier" => {
+                "primitive_type"
+                | "type_identifier"
+                | "sized_type_specifier"
+                | "struct_specifier"
+                | "enum_specifier" => {
                     return self.base.get_node_text(&child);
                 }
                 _ => {}
@@ -1037,7 +1266,8 @@ impl CExtractor {
                 if child.kind() == "enumerator" {
                     if let Some(name_node) = child.child_by_field_name("name") {
                         let name = self.base.get_node_text(&name_node);
-                        let value = child.child_by_field_name("value")
+                        let value = child
+                            .child_by_field_name("value")
                             .map(|v| self.base.get_node_text(&v));
 
                         values.push(EnumValue { name, value });
@@ -1056,7 +1286,10 @@ impl CExtractor {
         self.collect_all_identifiers(node, &mut all_identifiers);
 
         // The typedef name should be the last identifier that's not a C keyword
-        let c_keywords = ["typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void", "const", "volatile", "static", "extern"];
+        let c_keywords = [
+            "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void",
+            "const", "volatile", "static", "extern",
+        ];
 
         for identifier in all_identifiers.iter().rev() {
             if !c_keywords.contains(&identifier.as_str()) {
@@ -1128,14 +1361,20 @@ impl CExtractor {
     fn is_typedef_declaration(&self, node: tree_sitter::Node) -> bool {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "storage_class_specifier" && self.base.get_node_text(&child) == "typedef" {
+            if child.kind() == "storage_class_specifier"
+                && self.base.get_node_text(&child) == "typedef"
+            {
                 return true;
             }
         }
         false
     }
 
-    fn extract_typedef_from_declaration(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_typedef_from_declaration(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let typedef_name = self.extract_typedef_name_from_declaration(node);
         let signature = self.base.get_node_text(&node);
         let underlying_type = self.extract_underlying_type_from_declaration(node);
@@ -1149,9 +1388,15 @@ impl CExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(HashMap::from([
-                    ("type".to_string(), serde_json::Value::String("typedef".to_string())),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("typedef".to_string()),
+                    ),
                     ("name".to_string(), serde_json::Value::String(typedef_name)),
-                    ("underlyingType".to_string(), serde_json::Value::String(underlying_type)),
+                    (
+                        "underlyingType".to_string(),
+                        serde_json::Value::String(underlying_type),
+                    ),
                 ])),
                 doc_comment: None,
             },
@@ -1173,7 +1418,10 @@ impl CExtractor {
         self.collect_all_identifiers(node, &mut all_identifiers);
 
         // The typedef name should be the last identifier that's not a C keyword
-        let c_keywords = ["typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void", "const", "volatile", "static", "extern"];
+        let c_keywords = [
+            "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void",
+            "const", "volatile", "static", "extern",
+        ];
 
         for identifier in all_identifiers.iter().rev() {
             if !c_keywords.contains(&identifier.as_str()) {
@@ -1208,7 +1456,10 @@ impl CExtractor {
 
     fn is_valid_typedef_name(&self, name: &str) -> bool {
         // Check if this is a valid typedef name (not a C keyword)
-        let c_keywords = ["typedef", "int", "char", "void", "const", "volatile", "static", "extern", "unsigned", "signed", "long", "short", "float", "double"];
+        let c_keywords = [
+            "typedef", "int", "char", "void", "const", "volatile", "static", "extern", "unsigned",
+            "signed", "long", "short", "float", "double",
+        ];
         !c_keywords.contains(&name) && !name.is_empty()
     }
 
@@ -1230,7 +1481,8 @@ impl CExtractor {
                             // - Single lowercase letter (parameter name)
                             // - "unknown" (failed extraction)
                             // - Name not matching the correct name from signature
-                            let should_fix = (symbol.name.len() <= 2 && symbol.name.chars().all(|c| c.is_ascii_lowercase()))
+                            let should_fix = (symbol.name.len() <= 2
+                                && symbol.name.chars().all(|c| c.is_ascii_lowercase()))
                                 || symbol.name == "unknown"
                                 || symbol.name != correct_name;
 
@@ -1240,7 +1492,10 @@ impl CExtractor {
 
                                 // Also update metadata
                                 if let Some(metadata) = &mut symbol.metadata {
-                                    metadata.insert("name".to_string(), serde_json::Value::String(correct_name.to_string()));
+                                    metadata.insert(
+                                        "name".to_string(),
+                                        serde_json::Value::String(correct_name.to_string()),
+                                    );
                                 }
                             }
                         }
@@ -1263,9 +1518,16 @@ impl CExtractor {
                     if signature.contains("typedef struct") && !signature.contains("ALIGN(") {
                         // Check if there's alignment attribute that should be preserved
                         // This is specifically for cases like AtomicCounter
-                        if symbol.name == "AtomicCounter" || signature.contains("volatile int counter") {
+                        if symbol.name == "AtomicCounter"
+                            || signature.contains("volatile int counter")
+                        {
                             // Reconstruct signature with ALIGN attribute for specific cases
-                            if let Some(new_signature) = self.reconstruct_struct_signature_with_alignment(signature, &symbol.name) {
+                            if let Some(new_signature) = self
+                                .reconstruct_struct_signature_with_alignment(
+                                    signature,
+                                    &symbol.name,
+                                )
+                            {
                                 symbol.signature = Some(new_signature);
                             }
                         }
@@ -1276,7 +1538,8 @@ impl CExtractor {
                             let align_attr = align_match.as_str();
                             // Ensure the signature properly shows the alignment
                             if !signature.contains(&format!("struct {}", align_attr)) {
-                                let fixed_signature = signature.replace("struct", &format!("struct {}", align_attr));
+                                let fixed_signature =
+                                    signature.replace("struct", &format!("struct {}", align_attr));
                                 symbol.signature = Some(fixed_signature);
                             }
                         }
@@ -1287,7 +1550,12 @@ impl CExtractor {
     }
 
     #[allow(dead_code)]
-    fn build_enhanced_typedef_signature(&self, raw_signature: &str, typedef_name: &str, node: tree_sitter::Node) -> String {
+    fn build_enhanced_typedef_signature(
+        &self,
+        raw_signature: &str,
+        typedef_name: &str,
+        node: tree_sitter::Node,
+    ) -> String {
         // Check if this is a struct typedef with alignment attributes
         if raw_signature.contains("typedef struct") && raw_signature.contains("ALIGN(") {
             // Extract ALIGN attribute from raw signature
@@ -1296,7 +1564,8 @@ impl CExtractor {
                     let align_attr = &raw_signature[align_start..align_start + align_end + 1];
 
                     // Extract struct body if present
-                    let struct_body = if raw_signature.contains('{') && raw_signature.contains('}') {
+                    let struct_body = if raw_signature.contains('{') && raw_signature.contains('}')
+                    {
                         self.extract_struct_body_from_signature(raw_signature)
                     } else {
                         String::new()
@@ -1306,7 +1575,10 @@ impl CExtractor {
                     if struct_body.is_empty() {
                         return format!("typedef struct {}({})", typedef_name, align_attr);
                     } else {
-                        return format!("typedef struct {}({}) {{\n{}\n}} {};", "", align_attr, struct_body, typedef_name);
+                        return format!(
+                            "typedef struct {}({}) {{\n{}\n}} {};",
+                            "", align_attr, struct_body, typedef_name
+                        );
                     }
                 }
             }
@@ -1326,9 +1598,10 @@ impl CExtractor {
         if let Some(start) = signature.find('{') {
             if let Some(end) = signature.rfind('}') {
                 if start < end {
-                    let body = &signature[start+1..end];
+                    let body = &signature[start + 1..end];
                     // Clean up the body formatting
-                    return body.trim()
+                    return body
+                        .trim()
                         .split('\n')
                         .map(|line| format!("    {}", line.trim()))
                         .filter(|line| !line.trim().is_empty())
@@ -1341,7 +1614,11 @@ impl CExtractor {
     }
 
     #[allow(dead_code)]
-    fn reconstruct_typedef_signature_from_node(&self, node: tree_sitter::Node, typedef_name: &str) -> String {
+    fn reconstruct_typedef_signature_from_node(
+        &self,
+        node: tree_sitter::Node,
+        typedef_name: &str,
+    ) -> String {
         // Try to reconstruct signature from tree-sitter node
         let raw_text = self.base.get_node_text(&node);
 
@@ -1354,7 +1631,11 @@ impl CExtractor {
         format!("typedef struct {}", typedef_name)
     }
 
-    fn reconstruct_struct_signature_with_alignment(&self, signature: &str, symbol_name: &str) -> Option<String> {
+    fn reconstruct_struct_signature_with_alignment(
+        &self,
+        signature: &str,
+        symbol_name: &str,
+    ) -> Option<String> {
         // Specifically handle AtomicCounter case
         if symbol_name == "AtomicCounter" && signature.contains("volatile int counter") {
             // Reconstruct with ALIGN attribute
@@ -1385,7 +1666,9 @@ impl CExtractor {
         let mut found_typedef = false;
 
         for child in node.children(&mut cursor) {
-            if child.kind() == "storage_class_specifier" && self.base.get_node_text(&child) == "typedef" {
+            if child.kind() == "storage_class_specifier"
+                && self.base.get_node_text(&child) == "typedef"
+            {
                 found_typedef = true;
                 continue;
             }
@@ -1408,7 +1691,9 @@ impl CExtractor {
         // Remove the last item if it looks like a typedef name (not a known C type)
         if types.len() > 1 {
             let last_type = &types[types.len() - 1];
-            let known_c_types = ["char", "int", "short", "long", "float", "double", "void", "unsigned", "signed"];
+            let known_c_types = [
+                "char", "int", "short", "long", "float", "double", "void", "unsigned", "signed",
+            ];
             if !known_c_types.iter().any(|&t| last_type.contains(t)) {
                 types.pop(); // Remove the typedef name
             }
@@ -1425,7 +1710,9 @@ impl CExtractor {
     fn is_static_function(&self, node: tree_sitter::Node) -> bool {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "storage_class_specifier" && self.base.get_node_text(&child) == "static" {
+            if child.kind() == "storage_class_specifier"
+                && self.base.get_node_text(&child) == "static"
+            {
                 return true;
             }
         }
@@ -1439,7 +1726,9 @@ impl CExtractor {
     fn is_extern_variable(&self, node: tree_sitter::Node) -> bool {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "storage_class_specifier" && self.base.get_node_text(&child) == "extern" {
+            if child.kind() == "storage_class_specifier"
+                && self.base.get_node_text(&child) == "extern"
+            {
                 return true;
             }
         }
@@ -1467,10 +1756,15 @@ impl CExtractor {
     }
 
     fn is_array_variable(&self, declarator: tree_sitter::Node) -> bool {
-        self.find_node_by_type(declarator, "array_declarator").is_some()
+        self.find_node_by_type(declarator, "array_declarator")
+            .is_some()
     }
 
-    fn find_node_by_type<'a>(&self, node: tree_sitter::Node<'a>, node_type: &str) -> Option<tree_sitter::Node<'a>> {
+    fn find_node_by_type<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        node_type: &str,
+    ) -> Option<tree_sitter::Node<'a>> {
         if node.kind() == node_type {
             return Some(node);
         }
@@ -1486,7 +1780,12 @@ impl CExtractor {
     }
 
     // Relationship extraction methods
-    fn extract_relationships_from_node(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_relationships_from_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "call_expression" => {
                 self.extract_function_call_relationships(node, symbols, relationships);
@@ -1503,11 +1802,19 @@ impl CExtractor {
         }
     }
 
-    fn extract_function_call_relationships(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_function_call_relationships(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         if let Some(function_node) = node.child_by_field_name("function") {
             if function_node.kind() == "identifier" {
                 let function_name = self.base.get_node_text(&function_node);
-                if let Some(called_symbol) = symbols.iter().find(|s| s.name == function_name && s.kind == SymbolKind::Function) {
+                if let Some(called_symbol) = symbols
+                    .iter()
+                    .find(|s| s.name == function_name && s.kind == SymbolKind::Function)
+                {
                     if let Some(containing_symbol) = self.find_containing_symbol(node, symbols) {
                         relationships.push(self.base.create_relationship(
                             containing_symbol.id.clone(),
@@ -1523,28 +1830,47 @@ impl CExtractor {
         }
     }
 
-    fn extract_include_relationships(&mut self, node: tree_sitter::Node, _symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_include_relationships(
+        &mut self,
+        node: tree_sitter::Node,
+        _symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         let include_path = self.extract_include_path(&self.base.get_node_text(&node));
         relationships.push(Relationship {
-            id: format!("{}_{}_{:?}_{}", format!("file:{}", self.base.file_path), format!("header:{}", include_path), crate::extractors::base::RelationshipKind::Imports, node.start_position().row),
+            id: format!(
+                "{}_{}_{:?}_{}",
+                format!("file:{}", self.base.file_path),
+                format!("header:{}", include_path),
+                crate::extractors::base::RelationshipKind::Imports,
+                node.start_position().row
+            ),
             from_symbol_id: format!("file:{}", self.base.file_path),
             to_symbol_id: format!("header:{}", include_path),
             kind: crate::extractors::base::RelationshipKind::Imports,
             file_path: self.base.file_path.clone(),
             line_number: (node.start_position().row + 1) as u32,
             confidence: 1.0,
-            metadata: Some(HashMap::from([("includePath".to_string(), serde_json::Value::String(include_path))])),
+            metadata: Some(HashMap::from([(
+                "includePath".to_string(),
+                serde_json::Value::String(include_path),
+            )])),
         });
     }
 
-    fn find_containing_symbol(&self, _node: tree_sitter::Node, _symbols: &[Symbol]) -> Option<&Symbol> {
+    fn find_containing_symbol(
+        &self,
+        _node: tree_sitter::Node,
+        _symbols: &[Symbol],
+    ) -> Option<&Symbol> {
         // Simplified implementation - would need more sophisticated logic to find the containing function
         None
     }
 
     // Helper for converting string metadata to serde_json::Value metadata
     fn create_metadata_map(&self, metadata: HashMap<String, String>) -> HashMap<String, Value> {
-        metadata.into_iter()
+        metadata
+            .into_iter()
             .map(|(k, v)| (k, Value::String(v)))
             .collect()
     }

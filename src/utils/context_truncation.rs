@@ -110,20 +110,28 @@ impl ContextTruncator {
             let trimmed = line.trim();
 
             // Doc comments and regular comments at the start
-            if trimmed.starts_with("///") || trimmed.starts_with("/**") || trimmed.starts_with("//") {
+            if trimmed.starts_with("///") || trimmed.starts_with("/**") || trimmed.starts_with("//")
+            {
                 essential[i] = true;
             }
 
             // Function signatures
-            if trimmed.contains("fn ") || trimmed.contains("function ") ||
-               trimmed.contains("def ") || trimmed.contains("public ") ||
-               trimmed.contains("private ") || trimmed.contains("protected ") {
+            if trimmed.contains("fn ")
+                || trimmed.contains("function ")
+                || trimmed.contains("def ")
+                || trimmed.contains("public ")
+                || trimmed.contains("private ")
+                || trimmed.contains("protected ")
+            {
                 essential[i] = true;
             }
 
             // Class/struct/interface definitions
-            if trimmed.contains("class ") || trimmed.contains("struct ") ||
-               trimmed.contains("interface ") || trimmed.contains("enum ") {
+            if trimmed.contains("class ")
+                || trimmed.contains("struct ")
+                || trimmed.contains("interface ")
+                || trimmed.contains("enum ")
+            {
                 essential[i] = true;
             }
 
@@ -133,8 +141,11 @@ impl ContextTruncator {
             }
 
             // Return statements
-            if trimmed.starts_with("return ") || trimmed.starts_with("Ok(") ||
-               trimmed.starts_with("Err(") || trimmed == "}" {
+            if trimmed.starts_with("return ")
+                || trimmed.starts_with("Ok(")
+                || trimmed.starts_with("Err(")
+                || trimmed == "}"
+            {
                 essential[i] = true;
             }
 

@@ -4,9 +4,9 @@
 
 #[cfg(test)]
 mod search_quality_tests {
+    use crate::extractors::base::{Symbol, SymbolKind, Visibility};
     use crate::tools::search::FastSearchTool;
     use crate::utils::path_relevance::PathRelevanceScorer;
-    use crate::extractors::base::{Symbol, SymbolKind, Visibility};
     use std::collections::HashMap;
 
     /// Create test symbols for search quality testing
@@ -100,12 +100,22 @@ mod search_quality_tests {
         let test_dir_score = scorer.calculate_score("tests/integration/user.test.ts");
 
         // Verify scoring hierarchy: production > test file > test directory
-        assert!(production_score > test_file_score, "Production code should score higher than test files");
-        assert!(test_file_score > test_dir_score, "Test files in src should score higher than dedicated test directories");
+        assert!(
+            production_score > test_file_score,
+            "Production code should score higher than test files"
+        );
+        assert!(
+            test_file_score > test_dir_score,
+            "Test files in src should score higher than dedicated test directories"
+        );
 
         // Verify significant quality boost (2-3x improvement target)
         let production_boost_ratio = production_score / test_dir_score;
-        assert!(production_boost_ratio >= 2.0, "Production code should be at least 2x better than test directories (actual: {:.2}x)", production_boost_ratio);
+        assert!(
+            production_boost_ratio >= 2.0,
+            "Production code should be at least 2x better than test directories (actual: {:.2}x)",
+            production_boost_ratio
+        );
     }
 
     #[test]
@@ -120,6 +130,7 @@ mod search_quality_tests {
             language: None,
             file_pattern: None,
             limit: 10,
+            workspace: Some("primary".to_string()),
         };
 
         // Test the integrated behavior by verifying that PathRelevanceScorer is properly imported
@@ -134,8 +145,10 @@ mod search_quality_tests {
         let test_score = scorer.calculate_score("tests/user.test.ts");
 
         // This validates the integration expectation: production code ranks higher
-        assert!(production_score > test_score,
-                "PathRelevanceScorer integration should rank production code higher than test files");
+        assert!(
+            production_score > test_score,
+            "PathRelevanceScorer integration should rank production code higher than test files"
+        );
 
         // Integration verified: FastSearchTool now includes PathRelevanceScorer sorting!
         // The actual runtime behavior is tested through real search queries below
@@ -155,8 +168,10 @@ mod search_quality_tests {
         let test_score_with_test_query = test_searcher.calculate_score(test_file_path);
         let test_score_with_prod_query = prod_searcher.calculate_score(test_file_path);
 
-        assert!(test_score_with_test_query > test_score_with_prod_query,
-                "Test files should score higher when explicitly searching for 'test'");
+        assert!(
+            test_score_with_test_query > test_score_with_prod_query,
+            "Test files should score higher when explicitly searching for 'test'"
+        );
     }
 
     #[test]
@@ -169,12 +184,19 @@ mod search_quality_tests {
         let src_score = scorer.get_directory_score(std::path::Path::new("src/user.ts"));
         let test_score = scorer.get_directory_score(std::path::Path::new("tests/user.ts"));
         let docs_score = scorer.get_directory_score(std::path::Path::new("docs/user.md"));
-        let deps_score = scorer.get_directory_score(std::path::Path::new("node_modules/lib/user.js"));
+        let deps_score =
+            scorer.get_directory_score(std::path::Path::new("node_modules/lib/user.js"));
 
         // Verify hierarchy
         assert!(src_score > test_score, "src should score higher than tests");
-        assert!(test_score > docs_score, "tests should score higher than docs");
-        assert!(docs_score > deps_score, "docs should score higher than dependencies");
+        assert!(
+            test_score > docs_score,
+            "tests should score higher than docs"
+        );
+        assert!(
+            docs_score > deps_score,
+            "docs should score higher than dependencies"
+        );
 
         // Verify exact values match codesearch
         assert_eq!(src_score, 1.0, "src should have score 1.0");
@@ -197,12 +219,36 @@ mod search_quality_tests {
         // Test different scenarios with realistic symbol names and file paths
         let test_cases = vec![
             // (symbol_name, file_path, description)
-            ("getUserData", "src/services/user.ts", "Exact match in production code - should rank highest"),
-            ("getUserDataAsync", "src/services/user.ts", "Prefix match in production code - should rank high"),
-            ("getUserData", "src/services/user.test.ts", "Exact match in test file - should rank lower than production"),
-            ("findUserData", "src/utils/data.ts", "Substring match in production code"),
-            ("getUserData", "tests/integration/user.test.ts", "Exact match in test directory - lowest production ranking"),
-            ("createUser", "src/services/user.ts", "No match in production code - base production score only"),
+            (
+                "getUserData",
+                "src/services/user.ts",
+                "Exact match in production code - should rank highest",
+            ),
+            (
+                "getUserDataAsync",
+                "src/services/user.ts",
+                "Prefix match in production code - should rank high",
+            ),
+            (
+                "getUserData",
+                "src/services/user.test.ts",
+                "Exact match in test file - should rank lower than production",
+            ),
+            (
+                "findUserData",
+                "src/utils/data.ts",
+                "Substring match in production code",
+            ),
+            (
+                "getUserData",
+                "tests/integration/user.test.ts",
+                "Exact match in test directory - lowest production ranking",
+            ),
+            (
+                "createUser",
+                "src/services/user.ts",
+                "No match in production code - base production score only",
+            ),
         ];
 
         let mut scores = Vec::new();
@@ -210,10 +256,17 @@ mod search_quality_tests {
             let path_score = path_scorer.calculate_score(file_path);
             let exact_boost = exact_match_booster.calculate_boost(symbol_name);
             let combined_score = path_score * exact_boost;
-            scores.push((combined_score, symbol_name.to_string(), file_path.to_string(), description.to_string()));
+            scores.push((
+                combined_score,
+                symbol_name.to_string(),
+                file_path.to_string(),
+                description.to_string(),
+            ));
 
-            println!("  {} in {} -> path={:.2} × exact={:.2} = {:.2} ({})",
-                     symbol_name, file_path, path_score, exact_boost, combined_score, description);
+            println!(
+                "  {} in {} -> path={:.2} × exact={:.2} = {:.2} ({})",
+                symbol_name, file_path, path_score, exact_boost, combined_score, description
+            );
         }
 
         // Sort by combined score (descending) to verify ranking
@@ -230,15 +283,19 @@ mod search_quality_tests {
         // Combined scoring should provide better results than either system alone
         let exact_match_prod_score = scores[0].0;
         let exact_match_test_score_in_src = scores[1].0; // This is getUserData in user.test.ts
-        // Find the exact match in the dedicated test directory (tests/)
-        let exact_match_test_dir_score = scores.iter()
+                                                         // Find the exact match in the dedicated test directory (tests/)
+        let exact_match_test_dir_score = scores
+            .iter()
             .find(|(_, name, path, _)| name == "getUserData" && path.starts_with("tests/"))
-            .unwrap().0;
+            .unwrap()
+            .0;
 
         // Find the prefix match in production
-        let prefix_match_prod_score = scores.iter()
+        let prefix_match_prod_score = scores
+            .iter()
             .find(|(_, name, path, _)| name == "getUserDataAsync" && path.contains("src/"))
-            .unwrap().0;
+            .unwrap()
+            .0;
 
         // Exact match in production should significantly outrank exact match in test directories
         assert!(exact_match_prod_score > exact_match_test_dir_score * 2.0,
@@ -246,16 +303,24 @@ mod search_quality_tests {
                 exact_match_prod_score, exact_match_test_dir_score);
 
         // Exact match in production should outrank exact match in test files in src/
-        assert!(exact_match_prod_score > exact_match_test_score_in_src,
-                "Exact match in production ({:.2}) should outrank exact match in test files ({:.2})",
-                exact_match_prod_score, exact_match_test_score_in_src);
+        assert!(
+            exact_match_prod_score > exact_match_test_score_in_src,
+            "Exact match in production ({:.2}) should outrank exact match in test files ({:.2})",
+            exact_match_prod_score,
+            exact_match_test_score_in_src
+        );
 
         // Prefix match in production should outrank exact match in test directories
         assert!(prefix_match_prod_score > exact_match_test_dir_score,
                 "Prefix match in production ({:.2}) should outrank exact match in test directories ({:.2})",
                 prefix_match_prod_score, exact_match_test_dir_score);
 
-        println!("\n🎯 Combined scoring successfully integrates PathRelevanceScorer + ExactMatchBoost!");
-        println!("   Top result: {} in {} (score: {:.2})", scores[0].1, scores[0].2, scores[0].0);
+        println!(
+            "\n🎯 Combined scoring successfully integrates PathRelevanceScorer + ExactMatchBoost!"
+        );
+        println!(
+            "   Top result: {} in {} (score: {:.2})",
+            scores[0].1, scores[0].2, scores[0].0
+        );
     }
 }

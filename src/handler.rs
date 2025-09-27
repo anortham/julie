@@ -1,3 +1,4 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use rust_mcp_sdk::schema::{
     schema_utils::CallToolError, CallToolRequest, CallToolResult, ListToolsRequest,
@@ -5,13 +6,12 @@ use rust_mcp_sdk::schema::{
 };
 use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
 use std::sync::Arc;
-use tracing::{info, debug, error, warn};
-use anyhow::Result;
+use tracing::{debug, error, info, warn};
 
-use crate::tools::JulieTools;
-use crate::extractors::{Symbol, Relationship};
-use crate::search::SearchEngine;
 use crate::embeddings::EmbeddingEngine;
+use crate::extractors::{Relationship, Symbol};
+use crate::search::SearchEngine;
+use crate::tools::JulieTools;
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
@@ -44,9 +44,8 @@ impl JulieServerHandler {
 
         // Initialize SearchEngine with in-memory index for compatibility (workspace will override)
         info!("🔍 Initializing fallback Tantivy search engine");
-        let search_engine = SearchEngine::in_memory().map_err(|e| {
-            anyhow::anyhow!("Failed to initialize fallback search engine: {}", e)
-        })?;
+        let search_engine = SearchEngine::in_memory()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize fallback search engine: {}", e))?;
 
         debug!("✓ Julie handler components initialized");
 
@@ -78,9 +77,8 @@ impl JulieServerHandler {
                 anyhow::anyhow!("Failed to create embedding cache directory: {}", e)
             })?;
 
-            let engine = EmbeddingEngine::new("bge-small", cache_dir).map_err(|e| {
-                anyhow::anyhow!("Failed to initialize embedding engine: {}", e)
-            })?;
+            let engine = EmbeddingEngine::new("bge-small", cache_dir)
+                .map_err(|e| anyhow::anyhow!("Failed to initialize embedding engine: {}", e))?;
 
             *embedding_guard = Some(engine);
             info!("✅ Cached embedding engine initialized successfully");
@@ -89,18 +87,34 @@ impl JulieServerHandler {
         Ok(())
     }
 
+    /// Get the active Tantivy search engine, preferring the workspace's persistent index
+    pub async fn active_search_engine(&self) -> Arc<RwLock<SearchEngine>> {
+        if let Some(workspace) = self.workspace.read().await.as_ref() {
+            if let Some(search) = &workspace.search {
+                return search.clone();
+            }
+        }
+
+        self.search_engine.clone()
+    }
+
     /// Initialize or load workspace and update components to use persistent storage
     pub async fn initialize_workspace(&self, workspace_path: Option<String>) -> Result<()> {
-        self.initialize_workspace_with_force(workspace_path, false).await
+        self.initialize_workspace_with_force(workspace_path, false)
+            .await
     }
 
     /// Initialize or load workspace with optional force reinitialization
-    pub async fn initialize_workspace_with_force(&self, workspace_path: Option<String>, force: bool) -> Result<()> {
+    pub async fn initialize_workspace_with_force(
+        &self,
+        workspace_path: Option<String>,
+        force: bool,
+    ) -> Result<()> {
         let target_path = match workspace_path {
             Some(path) => {
                 let expanded_path = shellexpand::tilde(&path).to_string();
                 std::path::PathBuf::from(expanded_path)
-            },
+            }
             None => self.get_workspace_path(),
         };
 
@@ -140,7 +154,7 @@ impl JulieServerHandler {
                 Some(existing_workspace) => {
                     info!("Loaded existing workspace");
                     existing_workspace
-                },
+                }
                 None => {
                     info!("Creating new workspace");
                     JulieWorkspace::initialize(target_path)?
@@ -148,19 +162,9 @@ impl JulieServerHandler {
             }
         };
 
-        // Update search engine to use persistent index from workspace
-        if let Some(persistent_search) = &workspace.search {
-            // Replace the handler's search engine with the workspace's persistent search engine
-            // Both are Arc<RwLock<SearchEngine>>, so we replace the Arc itself
-            let mut search_engine_guard = self.search_engine.write().await;
-            let persistent_guard = persistent_search.read().await;
-
-            // Create a new SearchEngine based on the persistent one's path/state
-            // Since SearchEngine doesn't implement Clone, we need to create a new one
-            // For now, keep the existing search engine but note this needs proper implementation
-            warn!("TODO: Properly adopt persistent search engine - requires SearchEngine::clone or new API");
-
-            info!("✅ Would adopt persistent search index from workspace");
+        // Log availability of persistent search index
+        if workspace.search.is_some() {
+            info!("✅ Persistent search index detected and ready for use");
         } else {
             warn!("⚠️  Workspace has no persistent search index - using in-memory fallback");
         }
@@ -228,62 +232,61 @@ impl ServerHandler for JulieServerHandler {
         debug!("🛠️  Executing tool: {}", request.params.name);
 
         // Convert request parameters to JulieTools enum
-        let tool_params: JulieTools = JulieTools::try_from(request.params)
-            .map_err(|e| {
-                error!("❌ Failed to parse tool parameters: {}", e);
-                CallToolError::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid tool parameters: {}", e)
-                ))
-            })?;
+        let tool_params: JulieTools = JulieTools::try_from(request.params).map_err(|e| {
+            error!("❌ Failed to parse tool parameters: {}", e);
+            CallToolError::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid tool parameters: {}", e),
+            ))
+        })?;
 
         // Execute the requested tool
         let result = match &tool_params {
             JulieTools::ManageWorkspaceTool(tool) => {
                 info!("🏗️ Managing workspace: {:?}", tool.command);
                 tool.call_tool(self).await
-            },
+            }
             // Consolidated fast tools with appealing names
             JulieTools::FastSearchTool(tool) => {
                 debug!("⚡ Fast search: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::FastGotoTool(tool) => {
                 debug!("⚡ Fast goto definition: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::FastRefsTool(tool) => {
                 debug!("⚡ Fast find references: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::FastExploreTool(tool) => {
                 debug!("⚡ Fast explore codebase: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::FindLogicTool(tool) => {
                 debug!("🏢 Find business logic: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::FastEditTool(tool) => {
                 debug!("⚡ Fast edit: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
             JulieTools::LineEditTool(tool) => {
                 debug!("📝 Line edit: {:?}", tool);
                 tool.call_tool(self).await
-            },
+            }
         };
 
         match result {
             Ok(call_result) => {
                 info!("✅ Tool executed successfully");
                 Ok(call_result)
-            },
+            }
             Err(e) => {
                 error!("❌ Tool execution failed: {}", e);
                 Err(CallToolError::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    format!("Tool execution failed: {}", e)
+                    format!("Tool execution failed: {}", e),
                 )))
             }
         }

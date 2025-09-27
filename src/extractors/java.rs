@@ -12,11 +12,13 @@
 // - Modern Java features (records, sealed classes, pattern matching)
 // - Inheritance and implementation relationships
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
-use std::collections::HashMap;
-use serde_json;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use regex;
+use serde_json;
+use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 pub struct JavaExtractor {
     base: BaseExtractor,
@@ -70,7 +72,8 @@ impl JavaExtractor {
     }
 
     fn extract_package(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let scoped_id = node.children(&mut node.walk())
+        let scoped_id = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "scoped_identifier")?;
 
         let package_name = self.base.get_node_text(&scoped_id);
@@ -83,21 +86,27 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, package_name, SymbolKind::Namespace, options))
+        Some(
+            self.base
+                .create_symbol(&node, package_name, SymbolKind::Namespace, options),
+        )
     }
 
     fn extract_import(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let scoped_id = node.children(&mut node.walk())
+        let scoped_id = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "scoped_identifier")?;
 
         let mut full_import_path = self.base.get_node_text(&scoped_id);
 
         // Check if it's a static import
-        let is_static = node.children(&mut node.walk())
+        let is_static = node
+            .children(&mut node.walk())
             .any(|c| c.kind() == "static");
 
         // Check for wildcard imports (asterisk node)
-        let has_asterisk = node.children(&mut node.walk())
+        let has_asterisk = node
+            .children(&mut node.walk())
             .any(|c| c.kind() == "asterisk");
         if has_asterisk {
             full_import_path.push_str(".*");
@@ -132,11 +141,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, symbol_name, SymbolKind::Import, options))
+        Some(
+            self.base
+                .create_symbol(&node, symbol_name, SymbolKind::Import, options),
+        )
     }
 
     fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -152,7 +165,10 @@ impl JavaExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(node) {
-            signature = signature.replace(&format!("class {}", name), &format!("class {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("class {}", name),
+                &format!("class {}{}", name, type_params),
+            );
         }
 
         // Check for inheritance and implementations
@@ -166,7 +182,10 @@ impl JavaExtractor {
         }
 
         // Handle sealed class permits clause (Java 17+)
-        if let Some(permits_clause) = node.children(&mut node.walk()).find(|c| c.kind() == "permits") {
+        if let Some(permits_clause) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "permits")
+        {
             signature.push_str(&format!(" {}", self.base.get_node_text(&permits_clause)));
         }
 
@@ -177,11 +196,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
     fn extract_interface(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -203,7 +226,10 @@ impl JavaExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(node) {
-            signature = signature.replace(&format!("interface {}", name), &format!("interface {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("interface {}", name),
+                &format!("interface {}{}", name, type_params),
+            );
         }
 
         let options = SymbolOptions {
@@ -213,11 +239,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Interface, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Interface, options),
+        )
     }
 
     fn extract_method(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -229,9 +259,16 @@ impl JavaExtractor {
         let name_index = children.iter().position(|c| c.id() == name_node.id())?;
 
         let return_type_node = children[0..name_index].iter().find(|c| {
-            matches!(c.kind(),
-                "type_identifier" | "generic_type" | "void_type" | "array_type" |
-                "primitive_type" | "integral_type" | "floating_point_type" | "boolean_type"
+            matches!(
+                c.kind(),
+                "type_identifier"
+                    | "generic_type"
+                    | "void_type"
+                    | "array_type"
+                    | "primitive_type"
+                    | "integral_type"
+                    | "floating_point_type"
+                    | "boolean_type"
             )
         });
         let return_type = return_type_node
@@ -239,7 +276,8 @@ impl JavaExtractor {
             .unwrap_or_else(|| "void".to_string());
 
         // Get parameters
-        let param_list = node.children(&mut node.walk())
+        let param_list = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "formal_parameters");
         let params = param_list
             .map(|p| self.base.get_node_text(&p))
@@ -257,14 +295,15 @@ impl JavaExtractor {
         } else {
             format!("{} ", modifiers.join(" "))
         };
-        let type_param_str = type_params
-            .map(|tp| format!("{} ", tp))
-            .unwrap_or_default();
+        let type_param_str = type_params.map(|tp| format!("{} ", tp)).unwrap_or_default();
         let throws_str = throws_clause
             .map(|tc| format!(" {}", tc))
             .unwrap_or_default();
 
-        let signature = format!("{}{}{} {}{}{}", modifier_str, type_param_str, return_type, name, params, throws_str);
+        let signature = format!(
+            "{}{}{} {}{}{}",
+            modifier_str, type_param_str, return_type, name, params, throws_str
+        );
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -273,11 +312,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     fn extract_constructor(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -285,7 +328,8 @@ impl JavaExtractor {
         let visibility = self.determine_visibility(&modifiers);
 
         // Get parameters
-        let param_list = node.children(&mut node.walk())
+        let param_list = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "formal_parameters");
         let params = param_list
             .map(|p| self.base.get_node_text(&p))
@@ -306,7 +350,10 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Constructor, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Constructor, options),
+        )
     }
 
     fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -315,9 +362,16 @@ impl JavaExtractor {
 
         // Get type
         let type_node = node.children(&mut node.walk()).find(|c| {
-            matches!(c.kind(),
-                "type_identifier" | "generic_type" | "array_type" | "primitive_type" |
-                "boolean_type" | "integral_type" | "floating_point_type" | "void_type"
+            matches!(
+                c.kind(),
+                "type_identifier"
+                    | "generic_type"
+                    | "array_type"
+                    | "primitive_type"
+                    | "boolean_type"
+                    | "integral_type"
+                    | "floating_point_type"
+                    | "void_type"
             )
         });
         let field_type = type_node
@@ -325,20 +379,22 @@ impl JavaExtractor {
             .unwrap_or_else(|| "unknown".to_string());
 
         // Get variable declarator(s) - there can be multiple fields in one declaration
-        let declarators: Vec<Node> = node.children(&mut node.walk())
+        let declarators: Vec<Node> = node
+            .children(&mut node.walk())
             .filter(|c| c.kind() == "variable_declarator")
             .collect();
 
         // For now, handle the first declarator (we could extend to handle multiple)
         let declarator = declarators.first()?;
-        let name_node = declarator.children(&mut declarator.walk())
+        let name_node = declarator
+            .children(&mut declarator.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
 
         // Check if it's a constant (static final)
-        let is_constant = modifiers.contains(&"static".to_string()) &&
-                         modifiers.contains(&"final".to_string());
+        let is_constant =
+            modifiers.contains(&"static".to_string()) && modifiers.contains(&"final".to_string());
         let symbol_kind = if is_constant {
             SymbolKind::Constant
         } else {
@@ -377,7 +433,8 @@ impl JavaExtractor {
     }
 
     fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -404,18 +461,23 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Enum, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Enum, options),
+        )
     }
 
     fn extract_enum_constant(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
 
         // Build signature - include arguments if present
         let mut signature = name.clone();
-        let argument_list = node.children(&mut node.walk())
+        let argument_list = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "argument_list");
         if let Some(args) = argument_list {
             signature.push_str(&self.base.get_node_text(&args));
@@ -428,11 +490,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::EnumMember, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::EnumMember, options),
+        )
     }
 
     fn extract_annotation(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -453,11 +519,15 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Interface, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Interface, options),
+        )
     }
 
     fn extract_record(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -465,7 +535,8 @@ impl JavaExtractor {
         let visibility = self.determine_visibility(&modifiers);
 
         // Get record parameters (record components)
-        let param_list = node.children(&mut node.walk())
+        let param_list = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "formal_parameters");
         let params = param_list
             .map(|p| self.base.get_node_text(&p))
@@ -480,7 +551,10 @@ impl JavaExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(node) {
-            signature = signature.replace(&format!("record {}", name), &format!("record {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("record {}", name),
+                &format!("record {}{}", name, type_params),
+            );
         }
 
         // Check for interface implementations (records can implement interfaces)
@@ -490,7 +564,10 @@ impl JavaExtractor {
         }
 
         let mut metadata = HashMap::new();
-        metadata.insert("type".to_string(), serde_json::Value::String("record".to_string()));
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("record".to_string()),
+        );
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -500,7 +577,10 @@ impl JavaExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
@@ -509,9 +589,17 @@ impl JavaExtractor {
         relationships
     }
 
-    fn visit_node_for_relationships(&mut self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn visit_node_for_relationships(
+        &mut self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
-            "class_declaration" | "interface_declaration" | "enum_declaration" | "record_declaration" => {
+            "class_declaration"
+            | "interface_declaration"
+            | "enum_declaration"
+            | "record_declaration" => {
                 self.extract_inheritance_relationships(node, symbols, relationships);
             }
             _ => {}
@@ -522,7 +610,12 @@ impl JavaExtractor {
         }
     }
 
-    fn extract_inheritance_relationships(&mut self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_inheritance_relationships(
+        &mut self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         let type_symbol = self.find_type_symbol(node, symbols);
         if type_symbol.is_none() {
             return;
@@ -535,7 +628,13 @@ impl JavaExtractor {
                 s.name == superclass && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
             }) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", type_symbol.id, base_type_symbol.id, RelationshipKind::Extends, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        type_symbol.id,
+                        base_type_symbol.id,
+                        RelationshipKind::Extends,
+                        node.start_position().row
+                    ),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: base_type_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -544,7 +643,10 @@ impl JavaExtractor {
                     confidence: 1.0,
                     metadata: {
                         let mut map = HashMap::new();
-                        map.insert("baseType".to_string(), serde_json::Value::String(superclass));
+                        map.insert(
+                            "baseType".to_string(),
+                            serde_json::Value::String(superclass),
+                        );
                         Some(map)
                     },
                 });
@@ -554,11 +656,18 @@ impl JavaExtractor {
         // Handle interface implementations
         let interfaces = self.extract_implemented_interfaces(node);
         for interface_name in interfaces {
-            if let Some(interface_symbol) = symbols.iter().find(|s| {
-                s.name == interface_name && s.kind == SymbolKind::Interface
-            }) {
+            if let Some(interface_symbol) = symbols
+                .iter()
+                .find(|s| s.name == interface_name && s.kind == SymbolKind::Interface)
+            {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", type_symbol.id, interface_symbol.id, RelationshipKind::Implements, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        type_symbol.id,
+                        interface_symbol.id,
+                        RelationshipKind::Implements,
+                        node.start_position().row
+                    ),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: interface_symbol.id.clone(),
                     kind: RelationshipKind::Implements,
@@ -567,7 +676,10 @@ impl JavaExtractor {
                     confidence: 1.0,
                     metadata: {
                         let mut map = HashMap::new();
-                        map.insert("interface".to_string(), serde_json::Value::String(interface_name));
+                        map.insert(
+                            "interface".to_string(),
+                            serde_json::Value::String(interface_name),
+                        );
                         Some(map)
                     },
                 });
@@ -576,14 +688,18 @@ impl JavaExtractor {
     }
 
     fn find_type_symbol<'a>(&self, node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier")?;
         let type_name = self.base.get_node_text(&name_node);
 
         symbols.iter().find(|s| {
-            s.name == type_name &&
-            matches!(s.kind, SymbolKind::Class | SymbolKind::Interface | SymbolKind::Enum) &&
-            s.file_path == self.base.file_path
+            s.name == type_name
+                && matches!(
+                    s.kind,
+                    SymbolKind::Class | SymbolKind::Interface | SymbolKind::Enum
+                )
+                && s.file_path == self.base.file_path
         })
     }
 
@@ -623,10 +739,12 @@ impl JavaExtractor {
                         if let Some(field_type_match) = captures.get(1) {
                             let field_type = field_type_match.as_str().trim();
                             // Clean up modifiers from field type
-                            let clean_field_type = regex::Regex::new(r"^(public|private|protected|static|final|volatile|transient)\s+")
-                                .ok()
-                                .map(|re| re.replace(field_type, "").to_string())
-                                .unwrap_or_else(|| field_type.to_string());
+                            let clean_field_type = regex::Regex::new(
+                                r"^(public|private|protected|static|final|volatile|transient)\s+",
+                            )
+                            .ok()
+                            .map(|re| re.replace(field_type, "").to_string())
+                            .unwrap_or_else(|| field_type.to_string());
                             types.insert(symbol.id.clone(), clean_field_type);
                         }
                     }
@@ -642,7 +760,8 @@ impl JavaExtractor {
         node.children(&mut node.walk())
             .find(|c| c.kind() == "modifiers")
             .map(|modifiers_node| {
-                modifiers_node.children(&mut modifiers_node.walk())
+                modifiers_node
+                    .children(&mut modifiers_node.walk())
                     .map(|c| self.base.get_node_text(&c))
                     .collect()
             })
@@ -662,23 +781,29 @@ impl JavaExtractor {
     }
 
     fn extract_superclass(&self, node: Node) -> Option<String> {
-        let superclass_node = node.children(&mut node.walk())
+        let superclass_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "superclass")?;
 
-        let type_node = superclass_node.children(&mut superclass_node.walk())
+        let type_node = superclass_node
+            .children(&mut superclass_node.walk())
             .find(|c| matches!(c.kind(), "type_identifier" | "generic_type"))?;
 
         Some(self.base.get_node_text(&type_node))
     }
 
     fn extract_implemented_interfaces(&self, node: Node) -> Vec<String> {
-        let interfaces_node = node.children(&mut node.walk())
+        let interfaces_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "super_interfaces");
 
         if let Some(interfaces_node) = interfaces_node {
-            if let Some(type_list_node) = interfaces_node.children(&mut interfaces_node.walk())
-                .find(|c| c.kind() == "type_list") {
-                return type_list_node.children(&mut type_list_node.walk())
+            if let Some(type_list_node) = interfaces_node
+                .children(&mut interfaces_node.walk())
+                .find(|c| c.kind() == "type_list")
+            {
+                return type_list_node
+                    .children(&mut type_list_node.walk())
                     .filter(|c| matches!(c.kind(), "type_identifier" | "generic_type"))
                     .map(|c| self.base.get_node_text(&c))
                     .collect();
@@ -689,13 +814,17 @@ impl JavaExtractor {
     }
 
     fn extract_extended_interfaces(&self, node: Node) -> Vec<String> {
-        let extends_node = node.children(&mut node.walk())
+        let extends_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "extends_interfaces");
 
         if let Some(extends_node) = extends_node {
-            if let Some(type_list_node) = extends_node.children(&mut extends_node.walk())
-                .find(|c| c.kind() == "type_list") {
-                return type_list_node.children(&mut type_list_node.walk())
+            if let Some(type_list_node) = extends_node
+                .children(&mut extends_node.walk())
+                .find(|c| c.kind() == "type_list")
+            {
+                return type_list_node
+                    .children(&mut type_list_node.walk())
                     .filter(|c| matches!(c.kind(), "type_identifier" | "generic_type"))
                     .map(|c| self.base.get_node_text(&c))
                     .collect();
@@ -706,14 +835,16 @@ impl JavaExtractor {
     }
 
     fn extract_type_parameters(&self, node: Node) -> Option<String> {
-        let type_params_node = node.children(&mut node.walk())
+        let type_params_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")?;
 
         Some(self.base.get_node_text(&type_params_node))
     }
 
     fn extract_throws_clause(&self, node: Node) -> Option<String> {
-        let throws_node = node.children(&mut node.walk())
+        let throws_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "throws")?;
 
         // The throws node contains the entire clause including the 'throws' keyword

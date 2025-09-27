@@ -1,16 +1,24 @@
-use crate::extractors::base::{Symbol, SymbolKind, Relationship};
+use crate::extractors::base::{Relationship, Symbol, SymbolKind};
 use crate::extractors::razor::RazorExtractor;
 use crate::tests::test_utils::init_parser;
 
 fn extract_symbols(code: &str) -> Vec<Symbol> {
     let tree = init_parser(code, "razor");
-    let mut extractor = RazorExtractor::new("razor".to_string(), "test.razor".to_string(), code.to_string());
+    let mut extractor = RazorExtractor::new(
+        "razor".to_string(),
+        "test.razor".to_string(),
+        code.to_string(),
+    );
     extractor.extract_symbols(&tree)
 }
 
 fn extract_relationships(code: &str, symbols: &[Symbol]) -> Vec<Relationship> {
     let tree = init_parser(code, "razor");
-    let mut extractor = RazorExtractor::new("razor".to_string(), "test.razor".to_string(), code.to_string());
+    let mut extractor = RazorExtractor::new(
+        "razor".to_string(),
+        "test.razor".to_string(),
+        code.to_string(),
+    );
     extractor.extract_relationships(&tree, symbols)
 }
 
@@ -118,15 +126,27 @@ mod razor_extractor_tests {
         let page_directive = symbols.iter().find(|s| s.name == "@page");
         assert!(page_directive.is_some());
         assert_eq!(page_directive.unwrap().kind, SymbolKind::Import);
-        assert!(page_directive.unwrap().signature.as_ref().unwrap().contains("/products/{id:int?}"));
+        assert!(page_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("/products/{id:int?}"));
 
         // Model directive
         let model_directive = symbols.iter().find(|s| s.name == "@model");
         assert!(model_directive.is_some());
-        assert!(model_directive.unwrap().signature.as_ref().unwrap().contains("ProductDetailsModel"));
+        assert!(model_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("ProductDetailsModel"));
 
         // Using directives
-        let using_auth = symbols.iter().find(|s| s.name == "Microsoft.AspNetCore.Authorization");
+        let using_auth = symbols
+            .iter()
+            .find(|s| s.name == "Microsoft.AspNetCore.Authorization");
         assert!(using_auth.is_some());
         assert_eq!(using_auth.unwrap().kind, SymbolKind::Import);
 
@@ -137,44 +157,88 @@ mod razor_extractor_tests {
         let logger_inject = symbols.iter().find(|s| s.name == "Logger");
         assert!(logger_inject.is_some());
         assert_eq!(logger_inject.unwrap().kind, SymbolKind::Property);
-        assert!(logger_inject.unwrap().signature.as_ref().unwrap().contains("@inject ILogger<ProductDetailsModel> Logger"));
+        assert!(logger_inject
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@inject ILogger<ProductDetailsModel> Logger"));
 
         let service_inject = symbols.iter().find(|s| s.name == "ProductService");
         assert!(service_inject.is_some());
-        assert!(service_inject.unwrap().signature.as_ref().unwrap().contains("@inject IProductService ProductService"));
+        assert!(service_inject
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@inject IProductService ProductService"));
 
         // Attribute directive
         let attribute_directive = symbols.iter().find(|s| s.name == "@attribute");
         assert!(attribute_directive.is_some());
-        assert!(attribute_directive.unwrap().signature.as_ref().unwrap().contains("[Authorize]"));
+        assert!(attribute_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[Authorize]"));
 
         // Code block variables
         let is_logged_in = symbols.iter().find(|s| s.name == "isLoggedIn");
         assert!(is_logged_in.is_some());
         assert_eq!(is_logged_in.unwrap().kind, SymbolKind::Variable);
-        assert!(is_logged_in.unwrap().signature.as_ref().unwrap().contains("User.Identity.IsAuthenticated"));
+        assert!(is_logged_in
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("User.Identity.IsAuthenticated"));
 
         let product_id = symbols.iter().find(|s| s.name == "productId");
         assert!(product_id.is_some());
-        assert!(product_id.unwrap().signature.as_ref().unwrap().contains("Model.ProductId"));
+        assert!(product_id
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("Model.ProductId"));
 
         let display_name = symbols.iter().find(|s| s.name == "displayName");
         assert!(display_name.is_some());
-        assert!(display_name.unwrap().signature.as_ref().unwrap().contains("Model.Product?.Name ?? \"Unknown Product\""));
+        assert!(display_name
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("Model.Product?.Name ?? \"Unknown Product\""));
 
         // ViewData assignment
-        let view_data_title = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("ViewData[\"Title\"]")));
+        let view_data_title = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
+        });
         assert!(view_data_title.is_some());
 
         // Section blocks
         let scripts_section = symbols.iter().find(|s| s.name == "Scripts");
         assert!(scripts_section.is_some());
         assert_eq!(scripts_section.unwrap().kind, SymbolKind::Module);
-        assert!(scripts_section.unwrap().signature.as_ref().unwrap().contains("@section Scripts"));
+        assert!(scripts_section
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@section Scripts"));
 
         let styles_section = symbols.iter().find(|s| s.name == "Styles");
         assert!(styles_section.is_some());
-        assert!(styles_section.unwrap().signature.as_ref().unwrap().contains("@section Styles"));
+        assert!(styles_section
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@section Styles"));
     }
 
     #[test]
@@ -415,77 +479,163 @@ mod razor_extractor_tests {
         // Namespace directive
         let namespace_directive = symbols.iter().find(|s| s.name == "@namespace");
         assert!(namespace_directive.is_some());
-        assert!(namespace_directive.unwrap().signature.as_ref().unwrap().contains("MyApp.Components"));
+        assert!(namespace_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("MyApp.Components"));
 
         // Inherits directive
         let inherits_directive = symbols.iter().find(|s| s.name == "@inherits");
         assert!(inherits_directive.is_some());
-        assert!(inherits_directive.unwrap().signature.as_ref().unwrap().contains("ComponentBase"));
+        assert!(inherits_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("ComponentBase"));
 
         // Implements directive
         let implements_directive = symbols.iter().find(|s| s.name == "@implements");
         assert!(implements_directive.is_some());
-        assert!(implements_directive.unwrap().signature.as_ref().unwrap().contains("IDisposable"));
+        assert!(implements_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("IDisposable"));
 
         // Parameters
-        let display_name_param = symbols.iter().find(|s| s.name == "DisplayName" && s.signature.as_ref().map_or(false, |sig| sig.contains("[Parameter]")));
+        let display_name_param = symbols.iter().find(|s| {
+            s.name == "DisplayName"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("[Parameter]"))
+        });
         assert!(display_name_param.is_some());
         assert_eq!(display_name_param.unwrap().kind, SymbolKind::Property);
-        assert!(display_name_param.unwrap().signature.as_ref().unwrap().contains("[Parameter] public string? DisplayName"));
+        assert!(display_name_param
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[Parameter] public string? DisplayName"));
 
-        let email_param = symbols.iter().find(|s| s.name == "Email" && s.signature.as_ref().map_or(false, |sig| sig.contains("[Parameter]")));
+        let email_param = symbols.iter().find(|s| {
+            s.name == "Email"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("[Parameter]"))
+        });
         assert!(email_param.is_some());
 
-        let child_content_param = symbols.iter().find(|s| s.name == "ChildContent" && s.kind == SymbolKind::Property);
+        let child_content_param = symbols
+            .iter()
+            .find(|s| s.name == "ChildContent" && s.kind == SymbolKind::Property);
         assert!(child_content_param.is_some());
-        assert!(child_content_param.unwrap().signature.as_ref().unwrap().contains("RenderFragment? ChildContent"));
+        assert!(child_content_param
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("RenderFragment? ChildContent"));
 
         // Event callback parameters
         let on_click_param = symbols.iter().find(|s| s.name == "OnClick");
         assert!(on_click_param.is_some());
-        assert!(on_click_param.unwrap().signature.as_ref().unwrap().contains("EventCallback<MouseEventArgs> OnClick"));
+        assert!(on_click_param
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("EventCallback<MouseEventArgs> OnClick"));
 
         // Cascading parameters
         let theme_param = symbols.iter().find(|s| s.name == "Theme");
         assert!(theme_param.is_some());
-        assert!(theme_param.unwrap().signature.as_ref().unwrap().contains("[CascadingParameter] public ThemeProvider? Theme"));
+        assert!(theme_param
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[CascadingParameter] public ThemeProvider? Theme"));
 
         let user_context_param = symbols.iter().find(|s| s.name == "UserContext");
         assert!(user_context_param.is_some());
-        assert!(user_context_param.unwrap().signature.as_ref().unwrap().contains("[CascadingParameter(Name = \"UserContext\")]"));
+        assert!(user_context_param
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[CascadingParameter(Name = \"UserContext\")]"));
 
         // Private fields
         let is_editing = symbols.iter().find(|s| s.name == "IsEditing");
         assert!(is_editing.is_some());
-        assert!(is_editing.unwrap().signature.as_ref().unwrap().contains("private bool IsEditing"));
+        assert!(is_editing
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private bool IsEditing"));
 
         let edit_model = symbols.iter().find(|s| s.name == "EditModel");
         assert!(edit_model.is_some());
-        assert!(edit_model.unwrap().signature.as_ref().unwrap().contains("private UserEditModel EditModel"));
-
+        assert!(edit_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private UserEditModel EditModel"));
 
         // Lifecycle methods
         let on_initialized = symbols.iter().find(|s| s.name == "OnInitializedAsync");
         assert!(on_initialized.is_some());
         assert_eq!(on_initialized.unwrap().kind, SymbolKind::Method);
-        assert!(on_initialized.unwrap().signature.as_ref().unwrap().contains("protected override async Task OnInitializedAsync()"));
+        assert!(on_initialized
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("protected override async Task OnInitializedAsync()"));
 
         let on_parameters_set = symbols.iter().find(|s| s.name == "OnParametersSetAsync");
         assert!(on_parameters_set.is_some());
-        assert!(on_parameters_set.unwrap().signature.as_ref().unwrap().contains("protected override async Task OnParametersSetAsync()"));
+        assert!(on_parameters_set
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("protected override async Task OnParametersSetAsync()"));
 
         let should_render = symbols.iter().find(|s| s.name == "ShouldRender");
         assert!(should_render.is_some());
-        assert!(should_render.unwrap().signature.as_ref().unwrap().contains("protected override bool ShouldRender()"));
+        assert!(should_render
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("protected override bool ShouldRender()"));
 
         let on_after_render = symbols.iter().find(|s| s.name == "OnAfterRenderAsync");
         assert!(on_after_render.is_some());
-        assert!(on_after_render.unwrap().signature.as_ref().unwrap().contains("protected override async Task OnAfterRenderAsync(bool firstRender)"));
+        assert!(on_after_render
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("protected override async Task OnAfterRenderAsync(bool firstRender)"));
 
         // Event handlers
         let handle_click = symbols.iter().find(|s| s.name == "HandleClick");
         assert!(handle_click.is_some());
-        assert!(handle_click.unwrap().signature.as_ref().unwrap().contains("private async Task HandleClick(MouseEventArgs args)"));
+        assert!(handle_click
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task HandleClick(MouseEventArgs args)"));
 
         let handle_submit = symbols.iter().find(|s| s.name == "HandleSubmit");
         assert!(handle_submit.is_some());
@@ -493,25 +643,50 @@ mod razor_extractor_tests {
         // JSInvokable method
         let js_callback = symbols.iter().find(|s| s.name == "OnJSCallback");
         assert!(js_callback.is_some());
-        assert!(js_callback.unwrap().signature.as_ref().unwrap().contains("[JSInvokable]"));
+        assert!(js_callback
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[JSInvokable]"));
 
         // Disposal methods
         let dispose_async = symbols.iter().find(|s| s.name == "DisposeAsync");
         assert!(dispose_async.is_some());
-        assert!(dispose_async.unwrap().signature.as_ref().unwrap().contains("public async ValueTask DisposeAsync()"));
+        assert!(dispose_async
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("public async ValueTask DisposeAsync()"));
 
         let dispose = symbols.iter().find(|s| s.name == "Dispose");
         assert!(dispose.is_some());
-        assert!(dispose.unwrap().signature.as_ref().unwrap().contains("void IDisposable.Dispose()"));
+        assert!(dispose
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("void IDisposable.Dispose()"));
 
         // Functions block
         let get_status_css_class = symbols.iter().find(|s| s.name == "GetStatusCssClass");
         assert!(get_status_css_class.is_some());
-        assert!(get_status_css_class.unwrap().signature.as_ref().unwrap().contains("private string GetStatusCssClass()"));
+        assert!(get_status_css_class
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private string GetStatusCssClass()"));
 
         let format_last_seen = symbols.iter().find(|s| s.name == "FormatLastSeen");
         assert!(format_last_seen.is_some());
-        assert!(format_last_seen.unwrap().signature.as_ref().unwrap().contains("private static string FormatLastSeen(DateTime? lastSeen)"));
+        assert!(format_last_seen
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private static string FormatLastSeen(DateTime? lastSeen)"));
     }
 
     #[test]
@@ -679,59 +854,119 @@ mod razor_extractor_tests {
         let symbols = extract_symbols(razor_code);
 
         // Layout assignment
-        let layout_assignment = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("Layout = \"_Layout\"")));
+        let layout_assignment = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("Layout = \"_Layout\""))
+        });
         assert!(layout_assignment.is_some());
 
         // ViewData assignments
-        let title_assignment = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("ViewData[\"Title\"]")));
+        let title_assignment = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
+        });
         assert!(title_assignment.is_some());
 
-        let meta_description = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("ViewBag.MetaDescription")));
+        let meta_description = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("ViewBag.MetaDescription"))
+        });
         assert!(meta_description.is_some());
 
         // Component invocation
-        let component_invoke = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("Component.InvokeAsync(\"FeaturedProducts\"")));
+        let component_invoke = symbols.iter().find(|s| {
+            s.signature.as_ref().map_or(false, |sig| {
+                sig.contains("Component.InvokeAsync(\"FeaturedProducts\"")
+            })
+        });
         assert!(component_invoke.is_some());
 
         // Sections
-        let meta_tags_section = symbols.iter().find(|s| s.name == "MetaTags" && s.signature.as_ref().map_or(false, |sig| sig.contains("@section MetaTags")));
+        let meta_tags_section = symbols.iter().find(|s| {
+            s.name == "MetaTags"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("@section MetaTags"))
+        });
         assert!(meta_tags_section.is_some());
         assert_eq!(meta_tags_section.unwrap().kind, SymbolKind::Module);
 
-        let scripts_section = symbols.iter().find(|s| s.name == "Scripts" && s.signature.as_ref().map_or(false, |sig| sig.contains("@section Scripts")));
+        let scripts_section = symbols.iter().find(|s| {
+            s.name == "Scripts"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("@section Scripts"))
+        });
         assert!(scripts_section.is_some());
 
-        let styles_section = symbols.iter().find(|s| s.name == "Styles" && s.signature.as_ref().map_or(false, |sig| sig.contains("@section Styles")));
+        let styles_section = symbols.iter().find(|s| {
+            s.name == "Styles"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("@section Styles"))
+        });
         assert!(styles_section.is_some());
 
         // Functions
         let get_section_css_class = symbols.iter().find(|s| s.name == "GetSectionCssClass");
         assert!(get_section_css_class.is_some());
-        assert!(get_section_css_class.unwrap().signature.as_ref().unwrap().contains("private string GetSectionCssClass(string sectionType)"));
+        assert!(get_section_css_class
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private string GetSectionCssClass(string sectionType)"));
 
         let get_localized_content = symbols.iter().find(|s| s.name == "GetLocalizedContent");
         assert!(get_localized_content.is_some());
-        assert!(get_localized_content.unwrap().signature.as_ref().unwrap().contains("private async Task<string> GetLocalizedContent(string key)"));
+        assert!(get_localized_content
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task<string> GetLocalizedContent(string key)"));
 
         // Test layout parsing separately
         let layout_symbols = extract_symbols(layout_code);
 
         // Layout directives
-        let using_directive = layout_symbols.iter().find(|s| s.name == "Microsoft.AspNetCore.Mvc.TagHelpers");
+        let using_directive = layout_symbols
+            .iter()
+            .find(|s| s.name == "Microsoft.AspNetCore.Mvc.TagHelpers");
         assert!(using_directive.is_some());
 
         let namespace_directive = layout_symbols.iter().find(|s| s.name == "@namespace");
         assert!(namespace_directive.is_some());
-        assert!(namespace_directive.unwrap().signature.as_ref().unwrap().contains("MyApp.Views.Shared"));
+        assert!(namespace_directive
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("MyApp.Views.Shared"));
 
-        let add_tag_helper = layout_symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers")));
+        let add_tag_helper = layout_symbols.iter().find(|s| {
+            s.signature.as_ref().map_or(false, |sig| {
+                sig.contains("@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers")
+            })
+        });
         assert!(add_tag_helper.is_some());
 
         // Render methods
-        let render_section_async = layout_symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("RenderSectionAsync(\"MetaTags\"")));
+        let render_section_async = layout_symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("RenderSectionAsync(\"MetaTags\""))
+        });
         assert!(render_section_async.is_some());
 
-        let render_body = layout_symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("RenderBody()")));
+        let render_body = layout_symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("RenderBody()"))
+        });
         assert!(render_body.is_some());
     }
 
@@ -1013,35 +1248,66 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
 
-
         // Two-way binding
-        let first_name_binding = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@bind-Value=\"Model.FirstName\"")));
+        let first_name_binding = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("@bind-Value=\"Model.FirstName\""))
+        });
         assert!(first_name_binding.is_some());
 
-        let email_binding = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@bind-Value=\"Model.Email\"")));
+        let email_binding = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("@bind-Value=\"Model.Email\""))
+        });
         assert!(email_binding.is_some());
 
         // Event binding with custom event
-        let input_binding = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@bind-Value:event=\"oninput\"")));
+        let input_binding = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("@bind-Value:event=\"oninput\""))
+        });
         assert!(input_binding.is_some());
 
         // Event handlers
         let validate_email = symbols.iter().find(|s| s.name == "ValidateEmail");
         assert!(validate_email.is_some());
-        assert!(validate_email.unwrap().signature.as_ref().unwrap().contains("private async Task ValidateEmail()"));
+        assert!(validate_email
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task ValidateEmail()"));
 
         let handle_subject_change = symbols.iter().find(|s| s.name == "HandleSubjectChange");
         assert!(handle_subject_change.is_some());
-        assert!(handle_subject_change.unwrap().signature.as_ref().unwrap().contains("private async Task HandleSubjectChange(ChangeEventArgs e)"));
+        assert!(handle_subject_change
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task HandleSubjectChange(ChangeEventArgs e)"));
 
         let handle_file_selection = symbols.iter().find(|s| s.name == "HandleFileSelection");
         assert!(handle_file_selection.is_some());
-        assert!(handle_file_selection.unwrap().signature.as_ref().unwrap().contains("private async Task HandleFileSelection(InputFileChangeEventArgs e)"));
+        assert!(handle_file_selection
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task HandleFileSelection(InputFileChangeEventArgs e)"));
 
         // Form submission handlers
         let handle_valid_submit = symbols.iter().find(|s| s.name == "HandleValidSubmit");
         assert!(handle_valid_submit.is_some());
-        assert!(handle_valid_submit.unwrap().signature.as_ref().unwrap().contains("private async Task HandleValidSubmit(EditContext editContext)"));
+        assert!(handle_valid_submit
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private async Task HandleValidSubmit(EditContext editContext)"));
 
         let handle_invalid_submit = symbols.iter().find(|s| s.name == "HandleInvalidSubmit");
         assert!(handle_invalid_submit.is_some());
@@ -1049,11 +1315,21 @@ mod razor_extractor_tests {
         // Private fields
         let is_submitting = symbols.iter().find(|s| s.name == "IsSubmitting");
         assert!(is_submitting.is_some());
-        assert!(is_submitting.unwrap().signature.as_ref().unwrap().contains("private bool IsSubmitting"));
+        assert!(is_submitting
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private bool IsSubmitting"));
 
         let selected_files = symbols.iter().find(|s| s.name == "SelectedFiles");
         assert!(selected_files.is_some());
-        assert!(selected_files.unwrap().signature.as_ref().unwrap().contains("private List<IBrowserFile> SelectedFiles"));
+        assert!(selected_files
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private List<IBrowserFile> SelectedFiles"));
 
         let validation_timer = symbols.iter().find(|s| s.name == "validationTimer");
         assert!(validation_timer.is_some());
@@ -1068,14 +1344,26 @@ mod razor_extractor_tests {
         let validate_form = symbols.iter().find(|s| s.name == "ValidateForm");
         assert!(validate_form.is_some());
 
-        let remove_file = symbols.iter().find(|s| s.name == "RemoveFile" && s.kind == SymbolKind::Method);
+        let remove_file = symbols
+            .iter()
+            .find(|s| s.name == "RemoveFile" && s.kind == SymbolKind::Method);
         assert!(remove_file.is_some());
-        assert!(remove_file.unwrap().signature.as_ref().unwrap().contains("private void RemoveFile(IBrowserFile file)"));
+        assert!(remove_file
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("private void RemoveFile(IBrowserFile file)"));
 
         // Disposal
         let dispose = symbols.iter().find(|s| s.name == "Dispose");
         assert!(dispose.is_some());
-        assert!(dispose.unwrap().signature.as_ref().unwrap().contains("protected override void Dispose(bool disposing)"));
+        assert!(dispose
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("protected override void Dispose(bool disposing)"));
     }
 
     #[test]
@@ -1125,7 +1413,11 @@ mod razor_extractor_tests {
         let symbols = extract_symbols(razor_code);
         let types = {
             let _tree = init_parser(razor_code, "razor");
-            let extractor = RazorExtractor::new("razor".to_string(), "test.razor".to_string(), razor_code.to_string());
+            let extractor = RazorExtractor::new(
+                "razor".to_string(),
+                "test.razor".to_string(),
+                razor_code.to_string(),
+            );
             extractor.infer_types(&symbols)
         };
 
@@ -1151,11 +1443,15 @@ mod razor_extractor_tests {
         assert!(on_initialized.is_some());
         assert_eq!(types.get(&on_initialized.unwrap().id).unwrap(), "Task");
 
-        let load_users = symbols.iter().find(|s| s.name == "LoadUsers" && s.kind == SymbolKind::Method);
+        let load_users = symbols
+            .iter()
+            .find(|s| s.name == "LoadUsers" && s.kind == SymbolKind::Method);
         assert!(load_users.is_some());
         assert_eq!(types.get(&load_users.unwrap().id).unwrap(), "Task");
 
-        let start_auto_refresh = symbols.iter().find(|s| s.name == "StartAutoRefresh" && s.kind == SymbolKind::Method);
+        let start_auto_refresh = symbols
+            .iter()
+            .find(|s| s.name == "StartAutoRefresh" && s.kind == SymbolKind::Method);
         assert!(start_auto_refresh.is_some());
         assert_eq!(types.get(&start_auto_refresh.unwrap().id).unwrap(), "void");
     }
@@ -1220,32 +1516,43 @@ mod razor_extractor_tests {
         let symbols = extract_symbols(razor_code);
         let relationships = extract_relationships(razor_code, &symbols);
 
-
         // Should find component usage relationships
         assert!(relationships.len() >= 4);
 
         // Component dependencies (uses relationships)
         let header_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses" &&
-            symbols.iter().find(|s| &s.id == &r.to_symbol_id).map_or(false, |s| s.name == "AppHeader")
+            r.kind.to_string() == "uses"
+                && symbols
+                    .iter()
+                    .find(|s| &s.id == &r.to_symbol_id)
+                    .map_or(false, |s| s.name == "AppHeader")
         });
         assert!(header_usage.is_some());
 
         let navigation_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses" &&
-            symbols.iter().find(|s| &s.id == &r.to_symbol_id).map_or(false, |s| s.name == "Navigation")
+            r.kind.to_string() == "uses"
+                && symbols
+                    .iter()
+                    .find(|s| &s.id == &r.to_symbol_id)
+                    .map_or(false, |s| s.name == "Navigation")
         });
         assert!(navigation_usage.is_some());
 
         let footer_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses" &&
-            symbols.iter().find(|s| &s.id == &r.to_symbol_id).map_or(false, |s| s.name == "AppFooter")
+            r.kind.to_string() == "uses"
+                && symbols
+                    .iter()
+                    .find(|s| &s.id == &r.to_symbol_id)
+                    .map_or(false, |s| s.name == "AppFooter")
         });
         assert!(footer_usage.is_some());
 
         let notification_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses" &&
-            symbols.iter().find(|s| &s.id == &r.to_symbol_id).map_or(false, |s| s.name == "NotificationContainer")
+            r.kind.to_string() == "uses"
+                && symbols
+                    .iter()
+                    .find(|s| &s.id == &r.to_symbol_id)
+                    .map_or(false, |s| s.name == "NotificationContainer")
         });
         assert!(notification_usage.is_some());
     }

@@ -1,7 +1,9 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use regex::Regex;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Common regex patterns used for Vue SFC parsing
 /// Compiled once for better performance
@@ -109,9 +111,18 @@ impl VueExtractor {
                         Some(format!("Vue Single File Component: {}", component_name)),
                         Some({
                             let mut metadata = HashMap::new();
-                            metadata.insert("type".to_string(), Value::String("vue-sfc".to_string()));
-                            metadata.insert("sections".to_string(),
-                                Value::String(sections.iter().map(|s| s.section_type.clone()).collect::<Vec<_>>().join(",")));
+                            metadata
+                                .insert("type".to_string(), Value::String("vue-sfc".to_string()));
+                            metadata.insert(
+                                "sections".to_string(),
+                                Value::String(
+                                    sections
+                                        .iter()
+                                        .map(|s| s.section_type.clone())
+                                        .collect::<Vec<_>>()
+                                        .join(","),
+                                ),
+                            );
                             metadata
                         }),
                     );
@@ -127,7 +138,11 @@ impl VueExtractor {
     }
 
     /// Extract relationships from Vue SFC
-    pub fn extract_relationships(&mut self, _tree: Option<&tree_sitter::Tree>, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: Option<&tree_sitter::Tree>,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         // Miller's implementation returns empty for now - follow the same approach
         Vec::new()
     }
@@ -168,11 +183,17 @@ impl VueExtractor {
                 }
 
                 // Start new section
-                let section_type = if template_match.is_some() { "template" }
-                                  else if script_match.is_some() { "script" }
-                                  else { "style" };
+                let section_type = if template_match.is_some() {
+                    "template"
+                } else if script_match.is_some() {
+                    "script"
+                } else {
+                    "style"
+                };
 
-                let attrs = template_match.or(script_match).or(style_match)
+                let attrs = template_match
+                    .or(script_match)
+                    .or(style_match)
                     .and_then(|m| m.get(1))
                     .map(|m| m.as_str())
                     .unwrap_or("");
@@ -199,7 +220,9 @@ impl VueExtractor {
 
             // Check for section end
             if Regex::new(r"^</(template|script|style)>")
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?.is_match(trimmed) {
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
+                .is_match(trimmed)
+            {
                 if let Some(section) = current_section.take() {
                     sections.push(section.build(section_content.join("\n"), i));
                     section_content.clear();
@@ -264,8 +287,8 @@ impl VueExtractor {
             parent_id: options.parent_id,
             metadata: Some(options.metadata.unwrap_or_default()),
             semantic_group: None, // Vue components don't have cross-language groups yet
-            confidence: None, // Will be set during validation
-            code_context: None, // Will be populated during context extraction
+            confidence: None,     // Will be set during validation
+            code_context: None,   // Will be populated during context extraction
         }
     }
 
@@ -308,7 +331,10 @@ impl VueExtractor {
                     symbols.push(self.create_symbol_manual(
                         "data",
                         SymbolKind::Function,
-                        actual_line, 1, actual_line, 5,
+                        actual_line,
+                        1,
+                        actual_line,
+                        5,
                         Some("data()".to_string()),
                         Some("Vue component data".to_string()),
                         None,
@@ -321,7 +347,10 @@ impl VueExtractor {
                     symbols.push(self.create_symbol_manual(
                         "methods",
                         SymbolKind::Property,
-                        actual_line, 1, actual_line, 8,
+                        actual_line,
+                        1,
+                        actual_line,
+                        8,
                         Some("methods: {}".to_string()),
                         Some("Vue component methods".to_string()),
                         None,
@@ -334,7 +363,10 @@ impl VueExtractor {
                     symbols.push(self.create_symbol_manual(
                         "computed",
                         SymbolKind::Property,
-                        actual_line, 1, actual_line, 9,
+                        actual_line,
+                        1,
+                        actual_line,
+                        9,
                         Some("computed: {}".to_string()),
                         Some("Vue computed properties".to_string()),
                         None,
@@ -347,7 +379,10 @@ impl VueExtractor {
                     symbols.push(self.create_symbol_manual(
                         "props",
                         SymbolKind::Property,
-                        actual_line, 1, actual_line, 6,
+                        actual_line,
+                        1,
+                        actual_line,
+                        6,
                         Some("props: {}".to_string()),
                         Some("Vue component props".to_string()),
                         None,
@@ -364,7 +399,10 @@ impl VueExtractor {
                         symbols.push(self.create_symbol_manual(
                             name,
                             SymbolKind::Method,
-                            actual_line, start_col, actual_line, start_col + name.len(),
+                            actual_line,
+                            start_col,
+                            actual_line,
+                            start_col + name.len(),
                             Some(format!("{}()", name)),
                             Some("Vue component method".to_string()),
                             None,
@@ -395,7 +433,10 @@ impl VueExtractor {
                         symbols.push(self.create_symbol_manual(
                             name,
                             SymbolKind::Class,
-                            actual_line, start_col, actual_line, start_col + name.len(),
+                            actual_line,
+                            start_col,
+                            actual_line,
+                            start_col + name.len(),
                             Some(format!("<{}>", name)),
                             Some("Vue component usage".to_string()),
                             None,
@@ -413,7 +454,10 @@ impl VueExtractor {
                         symbols.push(self.create_symbol_manual(
                             name,
                             SymbolKind::Property,
-                            actual_line, start_col, actual_line, start_col + name.len(),
+                            actual_line,
+                            start_col,
+                            actual_line,
+                            start_col + name.len(),
                             Some(name.to_string()),
                             Some("Vue directive".to_string()),
                             None,
@@ -444,7 +488,10 @@ impl VueExtractor {
                         symbols.push(self.create_symbol_manual(
                             name,
                             SymbolKind::Property,
-                            actual_line, start_col, actual_line, start_col + name.len(),
+                            actual_line,
+                            start_col,
+                            actual_line,
+                            start_col + name.len(),
                             Some(format!(".{}", name)),
                             Some("CSS class".to_string()),
                             None,
@@ -474,7 +521,9 @@ impl VueExtractor {
         }
 
         // Fall back to file name - following Miller's logic
-        let file_name = self.base.file_path
+        let file_name = self
+            .base
+            .file_path
             .split('/')
             .last()
             .and_then(|name| name.strip_suffix(".vue"));

@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod exploration_tools_tests {
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
     use crate::tools::exploration::FastExploreTool;
-    use crate::extractors::base::{Symbol, SymbolKind, Visibility, Relationship, RelationshipKind};
     use std::collections::HashMap;
 
     #[test]
@@ -97,11 +97,25 @@ mod exploration_tools_tests {
         let mut relationships = Vec::new();
 
         // Create 1000 symbols across many files and languages to trigger progressive reduction
-        let languages = vec!["rust", "typescript", "python", "java", "go", "cpp", "javascript", "php"];
+        let languages = vec![
+            "rust",
+            "typescript",
+            "python",
+            "java",
+            "go",
+            "cpp",
+            "javascript",
+            "php",
+        ];
         let symbol_types = vec![
-            SymbolKind::Function, SymbolKind::Class, SymbolKind::Variable,
-            SymbolKind::Module, SymbolKind::Interface, SymbolKind::Struct,
-            SymbolKind::Enum, SymbolKind::Trait
+            SymbolKind::Function,
+            SymbolKind::Class,
+            SymbolKind::Variable,
+            SymbolKind::Module,
+            SymbolKind::Interface,
+            SymbolKind::Struct,
+            SymbolKind::Enum,
+            SymbolKind::Trait,
         ];
 
         for i in 1..=1000 {
@@ -154,7 +168,10 @@ mod exploration_tools_tests {
         let result = explore_tool.format_optimized_results(&symbols, &relationships);
 
         // Should contain progressive reduction notice for large responses
-        assert!(result.contains("Applied progressive reduction") || result.contains("Response truncated to stay within token limits"));
+        assert!(
+            result.contains("Applied progressive reduction")
+                || result.contains("Response truncated to stay within token limits")
+        );
 
         // Should contain basic overview but with reduced detail
         assert!(result.contains("🧭 Codebase Overview"));
@@ -222,14 +239,17 @@ mod exploration_tools_tests {
 
         // Should apply token optimization for dependencies mode
         let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination = result.contains("Response truncated to stay within token limits");
+        let has_early_termination =
+            result.contains("Response truncated to stay within token limits");
         assert!(has_progressive_reduction || has_early_termination);
 
         // Should contain mode-specific content
         assert!(result.contains("dependencies") || result.contains("Dependencies"));
 
         // Should include first symbols but may exclude later ones due to token limits
-        assert!(result.contains("complex_dependency_symbol_with_extensive_interconnections_and_detailed_naming_1"));
+        assert!(result.contains(
+            "complex_dependency_symbol_with_extensive_interconnections_and_detailed_naming_1"
+        ));
     }
 
     #[test]

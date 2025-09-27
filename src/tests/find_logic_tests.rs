@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod find_logic_tests {
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
     use crate::tools::exploration::FindLogicTool;
-    use crate::extractors::base::{Symbol, SymbolKind, Visibility, Relationship, RelationshipKind};
     use std::collections::HashMap;
 
     #[test]
@@ -42,7 +42,15 @@ mod find_logic_tests {
                 end_column: 0,
                 start_byte: 0,
                 end_byte: 100,
-                signature: Some(format!("pub {} {}", if matches!(kind, SymbolKind::Class) { "struct" } else { "fn" }, name)),
+                signature: Some(format!(
+                    "pub {} {}",
+                    if matches!(kind, SymbolKind::Class) {
+                        "struct"
+                    } else {
+                        "fn"
+                    },
+                    name
+                )),
                 doc_comment: Some(format!("Business logic for {}", name)),
                 visibility: Some(Visibility::Public),
                 parent_id: None,
@@ -149,7 +157,10 @@ mod find_logic_tests {
         let result = find_logic_tool.format_optimized_results(&symbols, &relationships);
 
         // Should contain progressive reduction notice for large responses
-        assert!(result.contains("Applied progressive reduction") || result.contains("Response truncated to stay within token limits"));
+        assert!(
+            result.contains("Applied progressive reduction")
+                || result.contains("Response truncated to stay within token limits")
+        );
 
         // Should contain business logic overview but with reduced detail
         assert!(result.contains("🏢 Business Logic Discovery"));
@@ -157,7 +168,8 @@ mod find_logic_tests {
 
         // When progressive reduction is applied, should NOT show all 300
         let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination = result.contains("Response truncated to stay within token limits");
+        let has_early_termination =
+            result.contains("Response truncated to stay within token limits");
         if has_progressive_reduction || has_early_termination {
             assert!(!result.contains("300 business components found")); // Should be reduced
         } else {
@@ -165,8 +177,10 @@ mod find_logic_tests {
         }
 
         // Should show early components but not all 300
-        assert!(result.contains("business_logic_component_with_comprehensive_enterprise_functionality_1"));
-        assert!(!result.contains("business_logic_component_with_comprehensive_enterprise_functionality_300")); // Last component should be excluded
+        assert!(result
+            .contains("business_logic_component_with_comprehensive_enterprise_functionality_1"));
+        assert!(!result
+            .contains("business_logic_component_with_comprehensive_enterprise_functionality_300")); // Last component should be excluded
 
         // Should show grouping information when enabled (may be reduced due to token optimization)
         // The key test is that token optimization works, not specific layer content
@@ -236,7 +250,8 @@ mod find_logic_tests {
 
         // Should apply token optimization for large business logic content
         let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination = result.contains("Response truncated to stay within token limits");
+        let has_early_termination =
+            result.contains("Response truncated to stay within token limits");
         assert!(has_progressive_reduction || has_early_termination);
 
         // Should contain business domain information

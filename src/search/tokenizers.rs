@@ -23,20 +23,33 @@ impl OperatorPreservingTokenizer {
         Self {
             operators: vec![
                 // Logical operators
-                "&&".to_string(), "||".to_string(), "!".to_string(),
+                "&&".to_string(),
+                "||".to_string(),
+                "!".to_string(),
                 // Arrow functions and lambdas
-                "=>".to_string(), "->".to_string(), "|>".to_string(),
+                "=>".to_string(),
+                "->".to_string(),
+                "|>".to_string(),
                 // Comparison operators
-                "===".to_string(), "==".to_string(), "!=".to_string(),
-                "!==".to_string(), "<=".to_string(), ">=".to_string(), "<>".to_string(),
+                "===".to_string(),
+                "==".to_string(),
+                "!=".to_string(),
+                "!==".to_string(),
+                "<=".to_string(),
+                ">=".to_string(),
+                "<>".to_string(),
                 // Optional chaining and null coalescing
-                "?.".to_string(), "??".to_string(), "??=".to_string(),
+                "?.".to_string(),
+                "??".to_string(),
+                "??=".to_string(),
                 // Spread and rest
                 "...".to_string(),
                 // Type annotations
-                "::".to_string(), ":".to_string(),
+                "::".to_string(),
+                ":".to_string(),
                 // Access operators
-                ".".to_string(), "?[".to_string(),
+                ".".to_string(),
+                "?[".to_string(),
             ],
         }
     }
@@ -281,10 +294,7 @@ impl Tokenizer for OperatorPreservingTokenizer {
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
         let tokens = self.tokenize(text);
-        OperatorPreservingTokenStream {
-            tokens,
-            current: 0,
-        }
+        OperatorPreservingTokenStream { tokens, current: 0 }
     }
 }
 
@@ -297,7 +307,11 @@ impl OperatorPreservingTokenizer {
 
         while current_pos < text_len {
             // Skip whitespace
-            if text.chars().nth(current_pos).map_or(false, |c| c.is_whitespace()) {
+            if text
+                .chars()
+                .nth(current_pos)
+                .map_or(false, |c| c.is_whitespace())
+            {
                 current_pos += 1;
                 continue;
             }
@@ -347,10 +361,7 @@ impl Tokenizer for GenericAwareTokenizer {
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
         let tokens = self.tokenize(text);
-        GenericAwareTokenStream {
-            tokens,
-            current: 0,
-        }
+        GenericAwareTokenStream { tokens, current: 0 }
     }
 }
 
@@ -363,7 +374,11 @@ impl GenericAwareTokenizer {
 
         while current_pos < text_len {
             // Skip whitespace
-            if text.chars().nth(current_pos).map_or(false, |c| c.is_whitespace()) {
+            if text
+                .chars()
+                .nth(current_pos)
+                .map_or(false, |c| c.is_whitespace())
+            {
                 current_pos += 1;
                 continue;
             }
@@ -382,7 +397,8 @@ impl GenericAwareTokenizer {
 
                 if self.emit_components {
                     // Extract components from the generic type
-                    let mut component_tokens = self.extract_generic_components(generic_text, current_pos);
+                    let mut component_tokens =
+                        self.extract_generic_components(generic_text, current_pos);
                     tokens.append(&mut component_tokens);
                 }
 
@@ -451,7 +467,11 @@ impl GenericAwareTokenizer {
         let text_len = generic_text.len();
 
         while current_pos < text_len {
-            if generic_text.chars().nth(current_pos).map_or(false, |c| c.is_whitespace()) {
+            if generic_text
+                .chars()
+                .nth(current_pos)
+                .map_or(false, |c| c.is_whitespace())
+            {
                 current_pos += 1;
                 continue;
             }
@@ -495,10 +515,7 @@ impl Tokenizer for CodeIdentifierTokenizer {
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
         let tokens = self.tokenize(text);
-        CodeIdentifierTokenStream {
-            tokens,
-            current: 0,
-        }
+        CodeIdentifierTokenStream { tokens, current: 0 }
     }
 }
 
@@ -511,7 +528,11 @@ impl CodeIdentifierTokenizer {
 
         while current_pos < text_len {
             // Skip whitespace
-            if text.chars().nth(current_pos).map_or(false, |c| c.is_whitespace()) {
+            if text
+                .chars()
+                .nth(current_pos)
+                .map_or(false, |c| c.is_whitespace())
+            {
                 current_pos += 1;
                 continue;
             }
@@ -600,9 +621,10 @@ impl CodeIdentifierTokenizer {
                 let mut found = false;
                 for i in word_start..chars.len() {
                     if i + word_chars.len() <= chars.len() {
-                        let matches = word_chars.iter().enumerate().all(|(j, &ch)| {
-                            chars[i + j].to_lowercase().eq(ch.to_lowercase())
-                        });
+                        let matches = word_chars
+                            .iter()
+                            .enumerate()
+                            .all(|(j, &ch)| chars[i + j].to_lowercase().eq(ch.to_lowercase()));
 
                         if matches {
                             result.push((i, word.clone()));
@@ -691,13 +713,18 @@ impl CodeAwareTokenizer {
                         });
                     } else {
                         // Apply identifier tokenization
-                        let identifier_tokens = self.identifier_tokenizer.tokenize(&generic_token.text);
+                        let identifier_tokens =
+                            self.identifier_tokenizer.tokenize(&generic_token.text);
 
                         for identifier_token in identifier_tokens {
                             final_tokens.push(Token {
                                 text: identifier_token.text,
-                                offset_from: token.offset_from + generic_token.offset_from + identifier_token.offset_from,
-                                offset_to: token.offset_from + generic_token.offset_from + identifier_token.offset_to,
+                                offset_from: token.offset_from
+                                    + generic_token.offset_from
+                                    + identifier_token.offset_from,
+                                offset_to: token.offset_from
+                                    + generic_token.offset_from
+                                    + identifier_token.offset_to,
                                 ..identifier_token
                             });
                         }
@@ -711,7 +738,9 @@ impl CodeAwareTokenizer {
 
     /// Check if a token is an operator
     fn is_operator(&self, text: &str) -> bool {
-        self.operator_tokenizer.operators.contains(&text.to_string())
+        self.operator_tokenizer
+            .operators
+            .contains(&text.to_string())
     }
 
     /// Check if a token is generic syntax (like '<', '>', ',')
@@ -725,10 +754,7 @@ impl Tokenizer for CodeAwareTokenizer {
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
         let tokens = self.tokenize(text);
-        CodeAwareTokenStream {
-            tokens,
-            current: 0,
-        }
+        CodeAwareTokenStream { tokens, current: 0 }
     }
 }
 
@@ -817,9 +843,18 @@ mod tests {
         }
 
         // Should include both the complete generic type and its components
-        assert!(tokens.contains(&"List<User>".to_string()), "Should include complete generic type");
-        assert!(tokens.contains(&"List".to_string()), "Should include generic base type");
-        assert!(tokens.contains(&"User".to_string()), "Should include generic parameter");
+        assert!(
+            tokens.contains(&"List<User>".to_string()),
+            "Should include complete generic type"
+        );
+        assert!(
+            tokens.contains(&"List".to_string()),
+            "Should include generic base type"
+        );
+        assert!(
+            tokens.contains(&"User".to_string()),
+            "Should include generic parameter"
+        );
     }
 
     #[test]
@@ -836,10 +871,22 @@ mod tests {
         }
 
         // Should include both the complete generic type and all its components
-        assert!(tokens.contains(&"Map<String, User>".to_string()), "Should include complete generic type");
-        assert!(tokens.contains(&"Map".to_string()), "Should include generic base type");
-        assert!(tokens.contains(&"String".to_string()), "Should include first parameter");
-        assert!(tokens.contains(&"User".to_string()), "Should include second parameter");
+        assert!(
+            tokens.contains(&"Map<String, User>".to_string()),
+            "Should include complete generic type"
+        );
+        assert!(
+            tokens.contains(&"Map".to_string()),
+            "Should include generic base type"
+        );
+        assert!(
+            tokens.contains(&"String".to_string()),
+            "Should include first parameter"
+        );
+        assert!(
+            tokens.contains(&"User".to_string()),
+            "Should include second parameter"
+        );
     }
 
     #[test]
@@ -856,10 +903,22 @@ mod tests {
         }
 
         // Should include both the complete nested generic type and all its components
-        assert!(tokens.contains(&"Promise<Result<User>>".to_string()), "Should include complete nested generic type");
-        assert!(tokens.contains(&"Promise".to_string()), "Should include outer generic base type");
-        assert!(tokens.contains(&"Result".to_string()), "Should include inner generic base type");
-        assert!(tokens.contains(&"User".to_string()), "Should include innermost parameter");
+        assert!(
+            tokens.contains(&"Promise<Result<User>>".to_string()),
+            "Should include complete nested generic type"
+        );
+        assert!(
+            tokens.contains(&"Promise".to_string()),
+            "Should include outer generic base type"
+        );
+        assert!(
+            tokens.contains(&"Result".to_string()),
+            "Should include inner generic base type"
+        );
+        assert!(
+            tokens.contains(&"User".to_string()),
+            "Should include innermost parameter"
+        );
 
         // May also include intermediate forms like "Result<User>"
         // but the exact tokenization strategy can vary
@@ -992,7 +1051,10 @@ mod tests {
         // Should handle gracefully - exact tokenization may vary but shouldn't crash
         // The important thing is it doesn't panic and produces some reasonable output
         assert!(!tokens.is_empty(), "Should produce at least some tokens");
-        assert!(tokens.iter().any(|t| t.contains("func")), "Should preserve the word 'func'");
+        assert!(
+            tokens.iter().any(|t| t.contains("func")),
+            "Should preserve the word 'func'"
+        );
     }
 
     #[test]
@@ -1012,7 +1074,10 @@ mod tests {
         }
 
         // Should be around 15,000+ characters
-        assert!(large_input.len() > 10000, "Test input should be large enough");
+        assert!(
+            large_input.len() > 10000,
+            "Test input should be large enough"
+        );
 
         let start = std::time::Instant::now();
         let mut token_stream = tokenizer.token_stream(&large_input);
@@ -1026,9 +1091,12 @@ mod tests {
 
         // Performance requirement: should tokenize large input in reasonable time
         // Note: Current implementation is not optimized for performance
-        assert!(duration.as_millis() < 5000,
+        assert!(
+            duration.as_millis() < 5000,
             "Tokenization of {} chars took {}ms, should be <5000ms",
-            large_input.len(), duration.as_millis());
+            large_input.len(),
+            duration.as_millis()
+        );
 
         // Should find a reasonable number of tokens
         assert!(token_count > 100, "Should find many tokens in large input");

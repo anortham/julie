@@ -19,7 +19,10 @@ mod path_relevance_tests {
         assert_eq!(scorer.get_directory_score(Path::new("lib/utils.js")), 1.0);
         assert_eq!(scorer.get_directory_score(Path::new("tests/unit.rs")), 0.4);
         assert_eq!(scorer.get_directory_score(Path::new("docs/readme.md")), 0.2);
-        assert_eq!(scorer.get_directory_score(Path::new("node_modules/react/index.js")), 0.1);
+        assert_eq!(
+            scorer.get_directory_score(Path::new("node_modules/react/index.js")),
+            0.1
+        );
     }
 
     #[test]
@@ -46,8 +49,12 @@ mod path_relevance_tests {
         let test_score = scorer.calculate_score("src/user_test.rs");
         let production_score = scorer.calculate_score("src/user.rs");
 
-        println!("Test score: {}, Production score: {}, Ratio: {}",
-                 test_score, production_score, test_score / production_score);
+        println!(
+            "Test score: {}, Production score: {}, Ratio: {}",
+            test_score,
+            production_score,
+            test_score / production_score
+        );
 
         // Test file should have much lower score due to penalty
         assert!(test_score < production_score);
@@ -63,8 +70,12 @@ mod path_relevance_tests {
         let test_score = scorer.calculate_score("src/user_test.rs");
         let production_score = scorer.calculate_score("src/user.rs");
 
-        println!("Test search - Test score: {}, Production score: {}, Ratio: {}",
-                 test_score, production_score, test_score / production_score);
+        println!(
+            "Test search - Test score: {}, Production score: {}, Ratio: {}",
+            test_score,
+            production_score,
+            test_score / production_score
+        );
 
         // Test files should not get penalty when searching for "test"
         // Test files won't get production boost, so ratio should be ~0.83 (1.0/1.2)
@@ -98,8 +109,10 @@ mod path_relevance_tests {
         // Very low score: node_modules
         let deps = scorer.calculate_score("node_modules/react/index.js");
 
-        println!("Scores - Src prod: {}, Test in src: {}, Test in tests: {}, Deps: {}",
-                 src_prod, test_in_src, test_in_tests, deps);
+        println!(
+            "Scores - Src prod: {}, Test in src: {}, Test in tests: {}, Deps: {}",
+            src_prod, test_in_src, test_in_tests, deps
+        );
 
         // Verify relative ordering
         assert!(src_prod > test_in_src);

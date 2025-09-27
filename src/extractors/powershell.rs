@@ -1,9 +1,11 @@
 // PowerShell language extractor - port of Miller's PowerShell extractor
 // Handles PowerShell-specific constructs for Windows/Azure DevOps
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps:
 /// - Functions (simple and advanced with [CmdletBinding()])
@@ -33,7 +35,12 @@ impl PowerShellExtractor {
         symbols
     }
 
-    fn walk_tree_for_symbols(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+    fn walk_tree_for_symbols(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) {
         let mut current_parent_id = parent_id;
 
         if let Some(symbol) = self.extract_symbol_from_node(node, current_parent_id.as_deref()) {
@@ -116,7 +123,9 @@ impl PowerShellExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
-                doc_comment: Some("Advanced PowerShell function with [CmdletBinding()]".to_string()),
+                doc_comment: Some(
+                    "Advanced PowerShell function with [CmdletBinding()]".to_string(),
+                ),
             },
         ))
     }
@@ -168,7 +177,10 @@ impl PowerShellExtractor {
                 // Find the direct child variable node (the parameter name), not any variable in the subtree
                 let mut cursor = script_param.walk();
                 let children: Vec<_> = script_param.children(&mut cursor).collect();
-                if let Some(variable_node) = children.into_iter().find(|child| child.kind() == "variable") {
+                if let Some(variable_node) = children
+                    .into_iter()
+                    .find(|child| child.kind() == "variable")
+                {
                     let param_name = self.base.get_node_text(&variable_node).replace("$", "");
                     let is_mandatory = self.has_parameter_attribute(script_param, "Mandatory");
 
@@ -205,7 +217,12 @@ impl PowerShellExtractor {
         let mut name = self.base.get_node_text(&name_node);
 
         // Remove $ prefix and scope qualifiers
-        name = name.replace("$", "").replace("Global:", "").replace("Script:", "").replace("Local:", "").replace("Using:", "");
+        name = name
+            .replace("$", "")
+            .replace("Global:", "")
+            .replace("Script:", "")
+            .replace("Local:", "")
+            .replace("Using:", "");
 
         // Determine scope and visibility
         let full_text = self.base.get_node_text(&name_node);
@@ -215,8 +232,13 @@ impl PowerShellExtractor {
         let is_automatic = self.is_automatic_variable(&name);
 
         let signature = self.extract_variable_signature(node);
-        let visibility = if is_global { Visibility::Public } else { Visibility::Private };
-        let doc_comment = self.get_variable_documentation(is_environment, is_automatic, is_global, is_script);
+        let visibility = if is_global {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        };
+        let doc_comment =
+            self.get_variable_documentation(is_environment, is_automatic, is_global, is_script);
 
         Some(self.base.create_symbol(
             &node,
@@ -227,21 +249,36 @@ impl PowerShellExtractor {
                 visibility: Some(visibility),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
-                doc_comment: if doc_comment.is_empty() { None } else { Some(doc_comment) },
+                doc_comment: if doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(doc_comment)
+                },
             },
         ))
     }
 
-    fn extract_variable_reference(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_variable_reference(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut name = self.base.get_node_text(&node);
 
         // Remove $ prefix and scope qualifiers
-        name = name.replace("$", "").replace("Global:", "").replace("Script:", "").replace("Local:", "").replace("Using:", "").replace("env:", "");
+        name = name
+            .replace("$", "")
+            .replace("Global:", "")
+            .replace("Script:", "")
+            .replace("Local:", "")
+            .replace("Using:", "")
+            .replace("env:", "");
 
         // Only extract automatic variables, environment variables, and special variables
         // to avoid creating symbols for every variable reference
         let is_automatic = self.is_automatic_variable(&name);
-        let is_environment = self.is_environment_variable(&name) || self.base.get_node_text(&node).contains("env:");
+        let is_environment =
+            self.is_environment_variable(&name) || self.base.get_node_text(&node).contains("env:");
 
         if !is_automatic && !is_environment {
             return None; // Skip regular variable references
@@ -251,8 +288,13 @@ impl PowerShellExtractor {
         let full_text = self.base.get_node_text(&node);
         let is_global = is_automatic || full_text.contains("Global:");
 
-        let visibility = if is_global { Visibility::Public } else { Visibility::Private };
-        let doc_comment = self.get_variable_documentation(is_environment, is_automatic, is_global, false);
+        let visibility = if is_global {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        };
+        let doc_comment =
+            self.get_variable_documentation(is_environment, is_automatic, is_global, false);
 
         Some(self.base.create_symbol(
             &node,
@@ -263,7 +305,11 @@ impl PowerShellExtractor {
                 visibility: Some(visibility),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
-                doc_comment: if doc_comment.is_empty() { None } else { Some(doc_comment) },
+                doc_comment: if doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(doc_comment)
+                },
             },
         ))
     }
@@ -295,8 +341,16 @@ impl PowerShellExtractor {
         let is_hidden = self.has_modifier(node, "hidden");
 
         let signature = self.extract_method_signature(node);
-        let visibility = if is_hidden { Visibility::Private } else { Visibility::Public };
-        let doc_comment = if is_static { Some("Static method".to_string()) } else { None };
+        let visibility = if is_hidden {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        };
+        let doc_comment = if is_static {
+            Some("Static method".to_string())
+        } else {
+            None
+        };
 
         Some(self.base.create_symbol(
             &node,
@@ -319,7 +373,11 @@ impl PowerShellExtractor {
 
         let is_hidden = self.has_modifier(node, "hidden");
         let signature = self.extract_property_signature(node);
-        let visibility = if is_hidden { Visibility::Private } else { Visibility::Public };
+        let visibility = if is_hidden {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        };
 
         Some(self.base.create_symbol(
             &node,
@@ -434,22 +492,34 @@ impl PowerShellExtractor {
         // Focus on Azure, Windows, and cross-platform DevOps commands
         let devops_commands = [
             // Azure PowerShell
-            "Connect-AzAccount", "Set-AzContext", "New-AzResourceGroup", "New-AzResourceGroupDeployment",
-            "New-AzContainerGroup", "New-AzAksCluster", "Get-AzAksCluster",
+            "Connect-AzAccount",
+            "Set-AzContext",
+            "New-AzResourceGroup",
+            "New-AzResourceGroupDeployment",
+            "New-AzContainerGroup",
+            "New-AzAksCluster",
+            "Get-AzAksCluster",
             // Windows Management
-            "Enable-WindowsOptionalFeature", "Install-WindowsFeature", "Set-ItemProperty",
-            "Set-Service", "Start-Service", "New-Item", "Copy-Item",
+            "Enable-WindowsOptionalFeature",
+            "Install-WindowsFeature",
+            "Set-ItemProperty",
+            "Set-Service",
+            "Start-Service",
+            "New-Item",
+            "Copy-Item",
             // Cross-platform DevOps
-            "docker", "kubectl", "az",
+            "docker",
+            "kubectl",
+            "az",
             // PowerShell Core
-            "Invoke-Command"
+            "Invoke-Command",
         ];
 
-        let is_interesting = devops_commands.contains(&command_name.as_str()) ||
-                           command_name.starts_with("Connect-") ||
-                           command_name.starts_with("New-") ||
-                           command_name.starts_with("Set-") ||
-                           command_name.starts_with("Get-");
+        let is_interesting = devops_commands.contains(&command_name.as_str())
+            || command_name.starts_with("Connect-")
+            || command_name.starts_with("New-")
+            || command_name.starts_with("Set-")
+            || command_name.starts_with("Get-");
 
         if is_interesting {
             let signature = self.extract_command_signature(node);
@@ -472,25 +542,49 @@ impl PowerShellExtractor {
         }
     }
 
-    fn extract_import_command(&mut self, node: Node, command_name: &str, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_import_command(
+        &mut self,
+        node: Node,
+        command_name: &str,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let node_text = self.base.get_node_text(&node);
         let mut module_name = String::new();
         let signature = node_text.trim().to_string();
 
         if command_name == "Import-Module" {
             // Extract module name from "Import-Module Az.Accounts" or "Import-Module -Name 'Custom.Tools'"
-            if let Some(captures) = regex::Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#).unwrap().captures(&node_text) {
-                module_name = captures.get(1).or_else(|| captures.get(2)).map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(captures) = regex::Regex::new(
+                r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#,
+            )
+            .unwrap()
+            .captures(&node_text)
+            {
+                module_name = captures
+                    .get(1)
+                    .or_else(|| captures.get(2))
+                    .map_or("unknown".to_string(), |m| m.as_str().to_string());
             }
         } else if command_name == "using" {
             // Extract from "using namespace System.Collections.Generic" or "using module Az.Storage"
-            if let Some(captures) = regex::Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)").unwrap().captures(&node_text) {
-                module_name = captures.get(1).map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(captures) =
+                regex::Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
+                    .unwrap()
+                    .captures(&node_text)
+            {
+                module_name = captures
+                    .get(1)
+                    .map_or("unknown".to_string(), |m| m.as_str().to_string());
             }
         } else if command_name == "Export-ModuleMember" {
             // Extract the type being exported (Function, Variable, Alias)
-            if let Some(captures) = regex::Regex::new(r"Export-ModuleMember\s+-(\w+)").unwrap().captures(&node_text) {
-                module_name = captures.get(1).map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(captures) = regex::Regex::new(r"Export-ModuleMember\s+-(\w+)")
+                .unwrap()
+                .captures(&node_text)
+            {
+                module_name = captures
+                    .get(1)
+                    .map_or("unknown".to_string(), |m| m.as_str().to_string());
             } else {
                 // Fallback: try to extract from the full text
                 if node_text.contains("-Function") {
@@ -512,7 +606,11 @@ impl PowerShellExtractor {
         let is_using = command_name == "using";
         let is_export = command_name == "Export-ModuleMember";
 
-        let symbol_kind = if is_export { SymbolKind::Export } else { SymbolKind::Import };
+        let symbol_kind = if is_export {
+            SymbolKind::Export
+        } else {
+            SymbolKind::Import
+        };
         let doc_comment = if is_export {
             Some("Module export".to_string())
         } else if is_using {
@@ -538,7 +636,9 @@ impl PowerShellExtractor {
     fn extract_dot_sourcing(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract script path from dot sourcing like '. "$PSScriptRoot\CommonFunctions.ps1"'
         let mut cursor = node.walk();
-        let command_name_expr_node = node.children(&mut cursor).find(|child| child.kind() == "command_name_expr")?;
+        let command_name_expr_node = node
+            .children(&mut cursor)
+            .find(|child| child.kind() == "command_name_expr")?;
 
         let script_path = self.base.get_node_text(&command_name_expr_node);
         let signature = self.base.get_node_text(&node).trim().to_string();
@@ -575,7 +675,12 @@ impl PowerShellExtractor {
         relationships
     }
 
-    fn walk_tree_for_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn walk_tree_for_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "command_expression" | "pipeline_expression" => {
                 self.extract_command_relationships(node, symbols, relationships);
@@ -592,17 +697,28 @@ impl PowerShellExtractor {
         }
     }
 
-    fn extract_command_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_command_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         if let Some(command_name_node) = self.find_command_name_node(node) {
             let command_name = self.base.get_node_text(&command_name_node);
-            if let Some(command_symbol) = symbols.iter().find(|s| s.name == command_name && s.kind == SymbolKind::Function) {
+            if let Some(command_symbol) = symbols
+                .iter()
+                .find(|s| s.name == command_name && s.kind == SymbolKind::Function)
+            {
                 // Find the parent function that calls this command
                 let mut current = Some(node);
                 while let Some(n) = current {
                     if n.kind() == "function_definition" {
                         if let Some(func_name_node) = self.find_function_name_node(n) {
                             let func_name = self.base.get_node_text(&func_name_node);
-                            if let Some(func_symbol) = symbols.iter().find(|s| s.name == func_name && s.kind == SymbolKind::Function) {
+                            if let Some(func_symbol) = symbols
+                                .iter()
+                                .find(|s| s.name == func_name && s.kind == SymbolKind::Function)
+                            {
                                 if func_symbol.id != command_symbol.id {
                                     relationships.push(self.base.create_relationship(
                                         func_symbol.id.clone(),
@@ -623,12 +739,21 @@ impl PowerShellExtractor {
         }
     }
 
-    fn extract_inheritance_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_inheritance_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         if let Some(inheritance) = self.extract_inheritance(node) {
             if let Some(class_name_node) = self.find_class_name_node(node) {
                 let class_name = self.base.get_node_text(&class_name_node);
-                let child_class = symbols.iter().find(|s| s.name == class_name && s.kind == SymbolKind::Class);
-                let parent_class = symbols.iter().find(|s| s.name == inheritance && s.kind == SymbolKind::Class);
+                let child_class = symbols
+                    .iter()
+                    .find(|s| s.name == class_name && s.kind == SymbolKind::Class);
+                let parent_class = symbols
+                    .iter()
+                    .find(|s| s.name == inheritance && s.kind == SymbolKind::Class);
 
                 if let (Some(child), Some(parent)) = (child_class, parent_class) {
                     relationships.push(self.base.create_relationship(
@@ -653,7 +778,8 @@ impl PowerShellExtractor {
                 let mut type_name = "object".to_string();
 
                 // Extract type from PowerShell type annotations
-                if let Some(captures) = regex::Regex::new(r"\[(\w+)\]").unwrap().captures(signature) {
+                if let Some(captures) = regex::Regex::new(r"\[(\w+)\]").unwrap().captures(signature)
+                {
                     type_name = captures.get(1).unwrap().as_str().to_lowercase();
                 } else if signature.contains("=") {
                     // Infer from value
@@ -662,7 +788,10 @@ impl PowerShellExtractor {
                         type_name = "int".to_string();
                     } else if regex::Regex::new(r"^\d+\.\d+$").unwrap().is_match(value) {
                         type_name = "double".to_string();
-                    } else if regex::Regex::new(r"^\$(true|false)$").unwrap().is_match(value) {
+                    } else if regex::Regex::new(r"^\$(true|false)$")
+                        .unwrap()
+                        .is_match(value)
+                    {
                         type_name = "bool".to_string();
                     } else if value.starts_with('"') || value.starts_with("'") {
                         type_name = "string".to_string();
@@ -684,65 +813,68 @@ impl PowerShellExtractor {
     fn find_function_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "function_name" | "identifier" | "cmdlet_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "function_name" | "identifier" | "cmdlet_name"))
     }
 
     fn find_variable_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
         children.into_iter().find(|child| {
-            matches!(child.kind(), "left_assignment_expression" | "variable" | "identifier")
+            matches!(
+                child.kind(),
+                "left_assignment_expression" | "variable" | "identifier"
+            )
         })
     }
 
     fn find_parameter_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "variable" | "parameter_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "variable" | "parameter_name"))
     }
 
     fn find_class_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "simple_name" | "identifier" | "type_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "simple_name" | "identifier" | "type_name"))
     }
 
     fn find_method_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "simple_name" | "identifier" | "method_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "simple_name" | "identifier" | "method_name"))
     }
 
     fn find_property_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "variable" | "property_name" | "identifier")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "variable" | "property_name" | "identifier"))
     }
 
     fn find_enum_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "simple_name" | "identifier" | "type_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "simple_name" | "identifier" | "type_name"))
     }
 
     fn find_enum_member_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "simple_name" | "identifier")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "simple_name" | "identifier"))
     }
 
     fn extract_enum_member_value(&self, node: Node) -> Option<String> {
@@ -761,33 +893,39 @@ impl PowerShellExtractor {
     fn find_module_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "string" | "identifier" | "module_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "string" | "identifier" | "module_name"))
     }
 
     fn find_command_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
-        children.into_iter().find(|child| {
-            matches!(child.kind(), "command_name" | "identifier" | "cmdlet_name")
-        })
+        children
+            .into_iter()
+            .find(|child| matches!(child.kind(), "command_name" | "identifier" | "cmdlet_name"))
     }
 
     // Signature extraction methods
     fn extract_function_signature(&self, node: Node) -> String {
-        let name = self.find_function_name_node(node)
+        let name = self
+            .find_function_name_node(node)
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "unknown".to_string());
 
         let has_attributes = self.has_attribute(node, "CmdletBinding");
-        let prefix = if has_attributes { "[CmdletBinding()] " } else { "" };
+        let prefix = if has_attributes {
+            "[CmdletBinding()] "
+        } else {
+            ""
+        };
 
         format!("{}function {}()", prefix, name)
     }
 
     fn extract_parameter_signature(&self, node: Node) -> String {
-        let name = self.find_parameter_name_node(node)
+        let name = self
+            .find_parameter_name_node(node)
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "unknown".to_string());
 
@@ -801,7 +939,8 @@ impl PowerShellExtractor {
 
     fn extract_script_parameter_signature(&self, node: Node) -> String {
         // Extract variable name
-        let name = self.find_nodes_by_type(node, "variable")
+        let name = self
+            .find_nodes_by_type(node, "variable")
             .first()
             .map(|n| self.base.get_node_text(n))
             .unwrap_or_else(|| "$unknown".to_string());
@@ -851,7 +990,8 @@ impl PowerShellExtractor {
     }
 
     fn extract_class_signature(&self, node: Node) -> String {
-        let name = self.find_class_name_node(node)
+        let name = self
+            .find_class_name_node(node)
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "unknown".to_string());
 
@@ -864,7 +1004,8 @@ impl PowerShellExtractor {
     }
 
     fn extract_method_signature(&self, node: Node) -> String {
-        let name = self.find_method_name_node(node)
+        let name = self
+            .find_method_name_node(node)
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "unknown".to_string());
 
@@ -878,7 +1019,8 @@ impl PowerShellExtractor {
     }
 
     fn extract_property_signature(&self, node: Node) -> String {
-        let name = self.find_property_name_node(node)
+        let name = self
+            .find_property_name_node(node)
             .map(|n| self.base.get_node_text(&n).replace("$", ""))
             .unwrap_or_else(|| "unknown".to_string());
 
@@ -910,7 +1052,8 @@ impl PowerShellExtractor {
 
     fn has_parameter_attribute(&self, node: Node, attribute_name: &str) -> bool {
         let node_text = self.base.get_node_text(&node);
-        node_text.contains(&format!("{}=$true", attribute_name)) || node_text.contains(&format!("{}=true", attribute_name))
+        node_text.contains(&format!("{}=$true", attribute_name))
+            || node_text.contains(&format!("{}=true", attribute_name))
     }
 
     fn has_modifier(&self, node: Node, modifier: &str) -> bool {
@@ -920,7 +1063,10 @@ impl PowerShellExtractor {
 
     fn extract_parameter_attributes(&self, node: Node) -> String {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r"\[Parameter[^\]]*\]").unwrap().captures(&node_text) {
+        if let Some(captures) = regex::Regex::new(r"\[Parameter[^\]]*\]")
+            .unwrap()
+            .captures(&node_text)
+        {
             captures.get(0).unwrap().as_str().to_string()
         } else {
             String::new()
@@ -929,7 +1075,10 @@ impl PowerShellExtractor {
 
     fn extract_inheritance(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r":\s*(\w+)").unwrap().captures(&node_text) {
+        if let Some(captures) = regex::Regex::new(r":\s*(\w+)")
+            .unwrap()
+            .captures(&node_text)
+        {
             Some(captures.get(1).unwrap().as_str().to_string())
         } else {
             None
@@ -938,7 +1087,10 @@ impl PowerShellExtractor {
 
     fn extract_return_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]").unwrap().captures(&node_text) {
+        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]")
+            .unwrap()
+            .captures(&node_text)
+        {
             Some(format!("[{}]", captures.get(1).unwrap().as_str()))
         } else {
             None
@@ -947,7 +1099,10 @@ impl PowerShellExtractor {
 
     fn extract_property_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]").unwrap().captures(&node_text) {
+        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]")
+            .unwrap()
+            .captures(&node_text)
+        {
             Some(format!("[{}]", captures.get(1).unwrap().as_str()))
         } else {
             None
@@ -957,28 +1112,61 @@ impl PowerShellExtractor {
     // Variable classification methods
     fn is_environment_variable(&self, name: &str) -> bool {
         let env_vars = [
-            "PATH", "COMPUTERNAME", "USERNAME", "TEMP", "TMP", "USERPROFILE",
-            "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
-            "POWERSHELL_TELEMETRY_OPTOUT"
+            "PATH",
+            "COMPUTERNAME",
+            "USERNAME",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "AZURE_CLIENT_ID",
+            "AZURE_CLIENT_SECRET",
+            "AZURE_TENANT_ID",
+            "POWERSHELL_TELEMETRY_OPTOUT",
         ];
-        env_vars.contains(&name) || regex::Regex::new(r"^[A-Z_][A-Z0-9_]*$").unwrap().is_match(name)
+        env_vars.contains(&name)
+            || regex::Regex::new(r"^[A-Z_][A-Z0-9_]*$")
+                .unwrap()
+                .is_match(name)
     }
 
     fn is_automatic_variable(&self, name: &str) -> bool {
         let auto_vars = [
-            "PSVersionTable", "PWD", "LASTEXITCODE", "Error", "Host", "Profile",
-            "PSScriptRoot", "PSCommandPath", "MyInvocation", "Args", "Input"
+            "PSVersionTable",
+            "PWD",
+            "LASTEXITCODE",
+            "Error",
+            "Host",
+            "Profile",
+            "PSScriptRoot",
+            "PSCommandPath",
+            "MyInvocation",
+            "Args",
+            "Input",
         ];
         auto_vars.contains(&name)
     }
 
-    fn get_variable_documentation(&self, is_environment: bool, is_automatic: bool, is_global: bool, is_script: bool) -> String {
+    fn get_variable_documentation(
+        &self,
+        is_environment: bool,
+        is_automatic: bool,
+        is_global: bool,
+        is_script: bool,
+    ) -> String {
         let mut annotations = Vec::new();
 
-        if is_environment { annotations.push("Environment Variable"); }
-        if is_automatic { annotations.push("Automatic Variable"); }
-        if is_global { annotations.push("Global Scope"); }
-        if is_script { annotations.push("Script Scope"); }
+        if is_environment {
+            annotations.push("Environment Variable");
+        }
+        if is_automatic {
+            annotations.push("Automatic Variable");
+        }
+        if is_global {
+            annotations.push("Global Scope");
+        }
+        if is_script {
+            annotations.push("Script Scope");
+        }
 
         if !annotations.is_empty() {
             format!("[{}]", annotations.join(", "))
@@ -1009,12 +1197,24 @@ impl PowerShellExtractor {
         }
 
         // Pattern matching for commands
-        if command_name.starts_with("Connect-Az") { return "[Azure CLI Call]".to_string(); }
-        if command_name.starts_with("New-Az") { return "[Azure Resource Creation]".to_string(); }
-        if command_name.starts_with("Set-Az") { return "[Azure Configuration]".to_string(); }
-        if command_name.starts_with("Get-Az") { return "[Azure Information Retrieval]".to_string(); }
-        if command_name.contains("WindowsFeature") { return "[Windows Feature Management]".to_string(); }
-        if command_name.contains("Service") { return "[Windows Service Management]".to_string(); }
+        if command_name.starts_with("Connect-Az") {
+            return "[Azure CLI Call]".to_string();
+        }
+        if command_name.starts_with("New-Az") {
+            return "[Azure Resource Creation]".to_string();
+        }
+        if command_name.starts_with("Set-Az") {
+            return "[Azure Configuration]".to_string();
+        }
+        if command_name.starts_with("Get-Az") {
+            return "[Azure Information Retrieval]".to_string();
+        }
+        if command_name.contains("WindowsFeature") {
+            return "[Windows Feature Management]".to_string();
+        }
+        if command_name.contains("Service") {
+            return "[Windows Service Management]".to_string();
+        }
 
         "[PowerShell Command]".to_string()
     }
@@ -1039,7 +1239,11 @@ impl PowerShellExtractor {
                 if child.kind() == "ERROR" {
                     let text = self.base.get_node_text(&child);
                     // Extract function name from text like "\nfunction Set-CustomProperty {"
-                    if let Some(captures) = regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap().captures(&text) {
+                    if let Some(captures) =
+                        regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)")
+                            .unwrap()
+                            .captures(&text)
+                    {
                         return Some(captures.get(1).unwrap().as_str().to_string());
                     }
                 }
@@ -1051,7 +1255,10 @@ impl PowerShellExtractor {
         while let Some(n) = current {
             if n.kind() == "ERROR" {
                 let text = self.base.get_node_text(&n);
-                if let Some(captures) = regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap().captures(&text) {
+                if let Some(captures) = regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)")
+                    .unwrap()
+                    .captures(&text)
+                {
                     return Some(captures.get(1).unwrap().as_str().to_string());
                 }
             }
@@ -1066,8 +1273,12 @@ impl PowerShellExtractor {
         let has_output_type = self.has_attribute(node, "OutputType");
 
         let mut signature = String::new();
-        if has_cmdlet_binding { signature.push_str("[CmdletBinding()] "); }
-        if has_output_type { signature.push_str("[OutputType([void])] "); }
+        if has_cmdlet_binding {
+            signature.push_str("[CmdletBinding()] ");
+        }
+        if has_output_type {
+            signature.push_str("[OutputType([void])] ");
+        }
         signature.push_str(&format!("function {}()", function_name));
 
         signature

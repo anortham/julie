@@ -13,7 +13,9 @@ use tree_sitter::Parser;
 /// Initialize Rust parser
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).expect("Error loading Rust grammar");
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Error loading Rust grammar");
     parser
 }
 
@@ -52,14 +54,24 @@ struct Point(f64, f64);
             assert!(user_struct.is_some());
             let user_struct = user_struct.unwrap();
             assert_eq!(user_struct.kind, SymbolKind::Class);
-            assert!(user_struct.signature.as_ref().unwrap().contains("pub struct User"));
-            assert_eq!(user_struct.visibility.as_ref().unwrap(), &Visibility::Public);
+            assert!(user_struct
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub struct User"));
+            assert_eq!(
+                user_struct.visibility.as_ref().unwrap(),
+                &Visibility::Public
+            );
 
             let point_struct = symbols.iter().find(|s| s.name == "Point");
             assert!(point_struct.is_some());
             let point_struct = point_struct.unwrap();
             assert_eq!(point_struct.kind, SymbolKind::Class);
-            assert_eq!(point_struct.visibility.as_ref().unwrap(), &Visibility::Private);
+            assert_eq!(
+                point_struct.visibility.as_ref().unwrap(),
+                &Visibility::Private
+            );
         }
     }
 
@@ -95,13 +107,23 @@ enum Color { Red, Green, Blue }
             assert!(status_enum.is_some());
             let status_enum = status_enum.unwrap();
             assert_eq!(status_enum.kind, SymbolKind::Class);
-            assert!(status_enum.signature.as_ref().unwrap().contains("pub enum Status"));
-            assert_eq!(status_enum.visibility.as_ref().unwrap(), &Visibility::Public);
+            assert!(status_enum
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub enum Status"));
+            assert_eq!(
+                status_enum.visibility.as_ref().unwrap(),
+                &Visibility::Public
+            );
 
             let color_enum = symbols.iter().find(|s| s.name == "Color");
             assert!(color_enum.is_some());
             let color_enum = color_enum.unwrap();
-            assert_eq!(color_enum.visibility.as_ref().unwrap(), &Visibility::Private);
+            assert_eq!(
+                color_enum.visibility.as_ref().unwrap(),
+                &Visibility::Private
+            );
         }
     }
 
@@ -138,13 +160,22 @@ trait Clone {
             assert!(display_trait.is_some());
             let display_trait = display_trait.unwrap();
             assert_eq!(display_trait.kind, SymbolKind::Interface);
-            assert_eq!(display_trait.signature.as_ref().unwrap(), "pub trait Display");
-            assert_eq!(display_trait.visibility.as_ref().unwrap(), &Visibility::Public);
+            assert_eq!(
+                display_trait.signature.as_ref().unwrap(),
+                "pub trait Display"
+            );
+            assert_eq!(
+                display_trait.visibility.as_ref().unwrap(),
+                &Visibility::Public
+            );
 
             let clone_trait = symbols.iter().find(|s| s.name == "Clone");
             assert!(clone_trait.is_some());
             let clone_trait = clone_trait.unwrap();
-            assert_eq!(clone_trait.visibility.as_ref().unwrap(), &Visibility::Private);
+            assert_eq!(
+                clone_trait.visibility.as_ref().unwrap(),
+                &Visibility::Private
+            );
         }
     }
 
@@ -185,23 +216,38 @@ fn private_helper() {}
             assert!(add_func.is_some());
             let add_func = add_func.unwrap();
             assert_eq!(add_func.kind, SymbolKind::Function);
-            assert!(add_func.signature.as_ref().unwrap().contains("pub fn add(a: i32, b: i32)"));
+            assert!(add_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub fn add(a: i32, b: i32)"));
             assert_eq!(add_func.visibility.as_ref().unwrap(), &Visibility::Public);
 
             let fetch_func = symbols.iter().find(|s| s.name == "fetch_data");
             assert!(fetch_func.is_some());
             let fetch_func = fetch_func.unwrap();
-            assert!(fetch_func.signature.as_ref().unwrap().contains("pub async fn fetch_data"));
+            assert!(fetch_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub async fn fetch_data"));
 
             let unsafe_func = symbols.iter().find(|s| s.name == "raw_memory_access");
             assert!(unsafe_func.is_some());
             let unsafe_func = unsafe_func.unwrap();
-            assert!(unsafe_func.signature.as_ref().unwrap().contains("unsafe fn raw_memory_access"));
+            assert!(unsafe_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("unsafe fn raw_memory_access"));
 
             let private_func = symbols.iter().find(|s| s.name == "private_helper");
             assert!(private_func.is_some());
             let private_func = private_func.unwrap();
-            assert_eq!(private_func.visibility.as_ref().unwrap(), &Visibility::Private);
+            assert_eq!(
+                private_func.visibility.as_ref().unwrap(),
+                &Visibility::Private
+            );
         }
 
         #[test]
@@ -241,18 +287,30 @@ impl Calculator {
             assert!(new_method.is_some());
             let new_method = new_method.unwrap();
             assert_eq!(new_method.kind, SymbolKind::Method);
-            assert!(new_method.signature.as_ref().unwrap().contains("pub fn new(value: f64)"));
+            assert!(new_method
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub fn new(value: f64)"));
 
             let add_method = symbols.iter().find(|s| s.name == "add");
             assert!(add_method.is_some());
             let add_method = add_method.unwrap();
             assert_eq!(add_method.kind, SymbolKind::Method);
-            assert!(add_method.signature.as_ref().unwrap().contains("fn add(&mut self, other: f64)"));
+            assert!(add_method
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("fn add(&mut self, other: f64)"));
 
             let get_value_method = symbols.iter().find(|s| s.name == "get_value");
             assert!(get_value_method.is_some());
             let get_value_method = get_value_method.unwrap();
-            assert!(get_value_method.signature.as_ref().unwrap().contains("&self"));
+            assert!(get_value_method
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("&self"));
         }
     }
 
@@ -287,12 +345,18 @@ mod private_module {
             let utils_module = utils_module.unwrap();
             assert_eq!(utils_module.kind, SymbolKind::Namespace);
             assert_eq!(utils_module.signature.as_ref().unwrap(), "pub mod utils");
-            assert_eq!(utils_module.visibility.as_ref().unwrap(), &Visibility::Public);
+            assert_eq!(
+                utils_module.visibility.as_ref().unwrap(),
+                &Visibility::Public
+            );
 
             let private_module = symbols.iter().find(|s| s.name == "private_module");
             assert!(private_module.is_some());
             let private_module = private_module.unwrap();
-            assert_eq!(private_module.visibility.as_ref().unwrap(), &Visibility::Private);
+            assert_eq!(
+                private_module.visibility.as_ref().unwrap(),
+                &Visibility::Private
+            );
         }
     }
 
@@ -323,17 +387,29 @@ use crate::model::User;
             assert!(hashmap_import.is_some());
             let hashmap_import = hashmap_import.unwrap();
             assert_eq!(hashmap_import.kind, SymbolKind::Import);
-            assert!(hashmap_import.signature.as_ref().unwrap().contains("use std::collections::HashMap"));
+            assert!(hashmap_import
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("use std::collections::HashMap"));
 
             let alias_import = symbols.iter().find(|s| s.name == "util");
             assert!(alias_import.is_some());
             let alias_import = alias_import.unwrap();
-            assert!(alias_import.signature.as_ref().unwrap().contains("use super::utils as util"));
+            assert!(alias_import
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("use super::utils as util"));
 
             let user_import = symbols.iter().find(|s| s.name == "User");
             assert!(user_import.is_some());
             let user_import = user_import.unwrap();
-            assert!(user_import.signature.as_ref().unwrap().contains("use crate::model::User"));
+            assert!(user_import
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("use crate::model::User"));
         }
     }
 
@@ -365,23 +441,38 @@ static GLOBAL_CONFIG: Config = Config::new();
             assert!(max_size_const.is_some());
             let max_size_const = max_size_const.unwrap();
             assert_eq!(max_size_const.kind, SymbolKind::Constant);
-            assert!(max_size_const.signature.as_ref().unwrap().contains("const MAX_SIZE: usize = 1024"));
+            assert!(max_size_const
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("const MAX_SIZE: usize = 1024"));
 
             let version_const = symbols.iter().find(|s| s.name == "VERSION");
             assert!(version_const.is_some());
             let version_const = version_const.unwrap();
-            assert_eq!(version_const.visibility.as_ref().unwrap(), &Visibility::Public);
+            assert_eq!(
+                version_const.visibility.as_ref().unwrap(),
+                &Visibility::Public
+            );
 
             let counter_static = symbols.iter().find(|s| s.name == "COUNTER");
             assert!(counter_static.is_some());
             let counter_static = counter_static.unwrap();
             assert_eq!(counter_static.kind, SymbolKind::Variable);
-            assert!(counter_static.signature.as_ref().unwrap().contains("static mut COUNTER: i32 = 0"));
+            assert!(counter_static
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static mut COUNTER: i32 = 0"));
 
             let config_static = symbols.iter().find(|s| s.name == "GLOBAL_CONFIG");
             assert!(config_static.is_some());
             let config_static = config_static.unwrap();
-            assert!(config_static.signature.as_ref().unwrap().contains("static GLOBAL_CONFIG"));
+            assert!(config_static
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static GLOBAL_CONFIG"));
         }
     }
 
@@ -421,12 +512,18 @@ macro_rules! create_function {
             assert!(vec_macro.is_some());
             let vec_macro = vec_macro.unwrap();
             assert_eq!(vec_macro.kind, SymbolKind::Function);
-            assert_eq!(vec_macro.signature.as_ref().unwrap(), "macro_rules! vec_of_strings");
+            assert_eq!(
+                vec_macro.signature.as_ref().unwrap(),
+                "macro_rules! vec_of_strings"
+            );
 
             let create_func_macro = symbols.iter().find(|s| s.name == "create_function");
             assert!(create_func_macro.is_some());
             let create_func_macro = create_func_macro.unwrap();
-            assert_eq!(create_func_macro.signature.as_ref().unwrap(), "macro_rules! create_function");
+            assert_eq!(
+                create_func_macro.signature.as_ref().unwrap(),
+                "macro_rules! create_function"
+            );
         }
     }
 
@@ -511,41 +608,77 @@ where
             assert!(container.is_some());
             let container = container.unwrap();
             assert_eq!(container.kind, SymbolKind::Class);
-            assert!(container.signature.as_ref().unwrap().contains("pub struct Container"));
-            assert!(container.signature.as_ref().unwrap().contains("<'a, T: Debug + Clone>"));
+            assert!(container
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub struct Container"));
+            assert!(container
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<'a, T: Debug + Clone>"));
 
             let iterator_trait = symbols.iter().find(|s| s.name == "Iterator");
             assert!(iterator_trait.is_some());
             let iterator_trait = iterator_trait.unwrap();
             assert_eq!(iterator_trait.kind, SymbolKind::Interface);
-            assert!(iterator_trait.signature.as_ref().unwrap().contains("pub trait Iterator<T>"));
+            assert!(iterator_trait
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub trait Iterator<T>"));
 
             let sort_func = symbols.iter().find(|s| s.name == "sort_and_display");
             assert!(sort_func.is_some());
             let sort_func = sort_func.unwrap();
-            assert!(sort_func.signature.as_ref().unwrap().contains("pub fn sort_and_display<T>"));
-            assert!(sort_func.signature.as_ref().unwrap().contains("T: Ord + Display + Clone"));
+            assert!(sort_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub fn sort_and_display<T>"));
+            assert!(sort_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("T: Ord + Display + Clone"));
 
             let closure_func = symbols.iter().find(|s| s.name == "closure_example");
             assert!(closure_func.is_some());
             let closure_func = closure_func.unwrap();
-            assert!(closure_func.signature.as_ref().unwrap().contains("for<'a> Fn(&'a str) -> i32"));
+            assert!(closure_func
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("for<'a> Fn(&'a str) -> i32"));
 
             let collect_trait = symbols.iter().find(|s| s.name == "Collect");
             assert!(collect_trait.is_some());
             let collect_trait = collect_trait.unwrap();
-            assert!(collect_trait.signature.as_ref().unwrap().contains("type Output: Debug"));
+            assert!(collect_trait
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("type Output: Debug"));
 
             let either_enum = symbols.iter().find(|s| s.name == "Either");
             assert!(either_enum.is_some());
             let either_enum = either_enum.unwrap();
-            assert!(either_enum.signature.as_ref().unwrap().contains("pub enum Either<L, R>"));
+            assert!(either_enum
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub enum Either<L, R>"));
 
             let user_map_type = symbols.iter().find(|s| s.name == "UserMap");
             assert!(user_map_type.is_some());
             let user_map_type = user_map_type.unwrap();
             assert_eq!(user_map_type.kind, SymbolKind::Type);
-            assert!(user_map_type.signature.as_ref().unwrap().contains("type UserMap<K>"));
+            assert!(user_map_type
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("type UserMap<K>"));
         }
     }
 
@@ -644,39 +777,69 @@ pub extern "C" fn create_point(x: f64, y: f64, z: f64) -> Point3D {
             let malloc_extern = symbols.iter().find(|s| s.name == "malloc");
             assert!(malloc_extern.is_some());
             let malloc_extern = malloc_extern.unwrap();
-            assert!(malloc_extern.signature.as_ref().unwrap().contains("fn malloc(size: usize)"));
+            assert!(malloc_extern
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("fn malloc(size: usize)"));
 
             let raw_buffer = symbols.iter().find(|s| s.name == "RawBuffer");
             assert!(raw_buffer.is_some());
             let raw_buffer = raw_buffer.unwrap();
             assert_eq!(raw_buffer.kind, SymbolKind::Class);
-            assert!(raw_buffer.signature.as_ref().unwrap().contains("pub struct RawBuffer"));
+            assert!(raw_buffer
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub struct RawBuffer"));
 
-            let unsafe_new = symbols.iter().find(|s| s.name == "new" && s.parent_id == Some(raw_buffer.id.clone()));
+            let unsafe_new = symbols
+                .iter()
+                .find(|s| s.name == "new" && s.parent_id == Some(raw_buffer.id.clone()));
             assert!(unsafe_new.is_some());
             let unsafe_new = unsafe_new.unwrap();
-            assert!(unsafe_new.signature.as_ref().unwrap().contains("pub unsafe fn new"));
+            assert!(unsafe_new
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub unsafe fn new"));
 
             let as_slice = symbols.iter().find(|s| s.name == "as_slice");
             assert!(as_slice.is_some());
             let as_slice = as_slice.unwrap();
-            assert!(as_slice.signature.as_ref().unwrap().contains("pub unsafe fn as_slice"));
+            assert!(as_slice
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub unsafe fn as_slice"));
 
             let float_bytes = symbols.iter().find(|s| s.name == "FloatBytes");
             assert!(float_bytes.is_some());
             let float_bytes = float_bytes.unwrap();
             assert_eq!(float_bytes.kind, SymbolKind::Union);
-            assert!(float_bytes.signature.as_ref().unwrap().contains("union FloatBytes"));
+            assert!(float_bytes
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("union FloatBytes"));
 
             let float_to_bytes = symbols.iter().find(|s| s.name == "float_to_bytes");
             assert!(float_to_bytes.is_some());
             let float_to_bytes = float_to_bytes.unwrap();
-            assert!(float_to_bytes.signature.as_ref().unwrap().contains("pub fn float_to_bytes"));
+            assert!(float_to_bytes
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub fn float_to_bytes"));
 
             let create_point = symbols.iter().find(|s| s.name == "create_point");
             assert!(create_point.is_some());
             let create_point = create_point.unwrap();
-            assert!(create_point.signature.as_ref().unwrap().contains("pub extern \"C\" fn create_point"));
+            assert!(create_point
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub extern \"C\" fn create_point"));
         }
     }
 
@@ -768,7 +931,10 @@ static mut COUNTER: i32 = 0;
 
             // Check we extracted all major symbols
             assert!(symbols.iter().find(|s| s.name == "User").is_some());
-            assert!(symbols.iter().find(|s| s.name == "UserOperations").is_some());
+            assert!(symbols
+                .iter()
+                .find(|s| s.name == "UserOperations")
+                .is_some());
             assert!(symbols.iter().find(|s| s.name == "Status").is_some());
             assert!(symbols.iter().find(|s| s.name == "utils").is_some());
             assert!(symbols.iter().find(|s| s.name == "create_user").is_some());
@@ -777,10 +943,18 @@ static mut COUNTER: i32 = 0;
 
             // Check specific features
             let user_struct = symbols.iter().find(|s| s.name == "User").unwrap();
-            assert!(user_struct.signature.as_ref().unwrap().contains("pub struct User"));
+            assert!(user_struct
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub struct User"));
 
             let fetch_method = symbols.iter().find(|s| s.name == "fetch_from_db").unwrap();
-            assert!(fetch_method.signature.as_ref().unwrap().contains("pub async fn fetch_from_db"));
+            assert!(fetch_method
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub async fn fetch_from_db"));
 
             let macro_symbol = symbols.iter().find(|s| s.name == "create_user").unwrap();
             assert_eq!(macro_symbol.kind, SymbolKind::Function);

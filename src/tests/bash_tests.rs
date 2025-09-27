@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod bash_extractor_tests {
+    use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
     use crate::extractors::bash::BashExtractor;
-    use crate::extractors::base::{Symbol, SymbolKind, RelationshipKind};
     use tree_sitter::Parser;
 
     fn init_parser() -> Parser {
@@ -18,14 +18,18 @@ mod bash_extractor_tests {
     fn extract_symbols(code: &str) -> Vec<Symbol> {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
-        let mut extractor = BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
+        let mut extractor =
+            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
         extractor.extract_symbols(&tree)
     }
 
-    fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<crate::extractors::base::Relationship>) {
+    fn extract_symbols_and_relationships(
+        code: &str,
+    ) -> (Vec<Symbol>, Vec<crate::extractors::base::Relationship>) {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
-        let mut extractor = BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
+        let mut extractor =
+            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
         (symbols, relationships)
@@ -66,14 +70,27 @@ declare -r CONFIG_PATH="/etc/app/config"
         let symbols = extract_symbols(bash_code);
 
         // Should extract functions
-        let functions: Vec<&Symbol> = symbols.iter().filter(|s| s.kind == SymbolKind::Function).collect();
-        assert!(functions.len() >= 3, "Expected at least 3 functions, got {}", functions.len());
+        let functions: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Function)
+            .collect();
+        assert!(
+            functions.len() >= 3,
+            "Expected at least 3 functions, got {}",
+            functions.len()
+        );
 
         let deploy_app = functions.iter().find(|f| f.name == "deploy_app");
         assert!(deploy_app.is_some(), "deploy_app function not found");
         let deploy_app = deploy_app.unwrap();
-        assert_eq!(deploy_app.signature, Some("function deploy_app()".to_string()));
-        assert_eq!(deploy_app.visibility, Some(crate::extractors::base::Visibility::Public));
+        assert_eq!(
+            deploy_app.signature,
+            Some("function deploy_app()".to_string())
+        );
+        assert_eq!(
+            deploy_app.visibility,
+            Some(crate::extractors::base::Visibility::Public)
+        );
 
         let build_app = functions.iter().find(|f| f.name == "build_app");
         assert!(build_app.is_some(), "build_app function not found");
@@ -82,15 +99,23 @@ declare -r CONFIG_PATH="/etc/app/config"
         assert!(test_app.is_some(), "test_app function not found");
 
         // Should extract variables
-        let variables: Vec<&Symbol> = symbols.iter().filter(|s|
-            s.kind == SymbolKind::Variable || s.kind == SymbolKind::Constant
-        ).collect();
-        assert!(variables.len() >= 4, "Expected at least 4 variables, got {}", variables.len());
+        let variables: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Variable || s.kind == SymbolKind::Constant)
+            .collect();
+        assert!(
+            variables.len() >= 4,
+            "Expected at least 4 variables, got {}",
+            variables.len()
+        );
 
         let node_env = variables.iter().find(|v| v.name == "NODE_ENV");
         assert!(node_env.is_some(), "NODE_ENV variable not found");
         let node_env = node_env.unwrap();
-        assert_eq!(node_env.visibility, Some(crate::extractors::base::Visibility::Public)); // exported
+        assert_eq!(
+            node_env.visibility,
+            Some(crate::extractors::base::Visibility::Public)
+        ); // exported
 
         let api_key = variables.iter().find(|v| v.name == "API_KEY");
         assert!(api_key.is_some(), "API_KEY variable not found");
@@ -98,15 +123,23 @@ declare -r CONFIG_PATH="/etc/app/config"
         assert_eq!(api_key.kind, SymbolKind::Constant); // readonly
 
         // Should extract positional parameters
-        let parameters: Vec<&Symbol> = symbols.iter().filter(|s|
-            s.name.starts_with('$') && s.kind == SymbolKind::Variable
-        ).collect();
-        assert!(parameters.len() >= 2, "Expected at least 2 positional parameters, got {}", parameters.len());
+        let parameters: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name.starts_with('$') && s.kind == SymbolKind::Variable)
+            .collect();
+        assert!(
+            parameters.len() >= 2,
+            "Expected at least 2 positional parameters, got {}",
+            parameters.len()
+        );
 
         let param1 = parameters.iter().find(|p| p.name == "$1");
         assert!(param1.is_some(), "$1 parameter not found");
         let param1 = param1.unwrap();
-        assert_eq!(param1.signature, Some("$1 (positional parameter)".to_string()));
+        assert_eq!(
+            param1.signature,
+            Some("$1 (positional parameter)".to_string())
+        );
     }
 
     #[test]
@@ -172,39 +205,79 @@ monitoring_setup() {
         let symbols = extract_symbols(bash_code);
 
         // Should extract cross-language commands
-        let commands: Vec<&Symbol> = symbols.iter().filter(|s|
-            s.kind == SymbolKind::Function &&
-            ["python3", "npm", "bun", "node", "go", "docker", "kubectl", "terraform", "git",
-             "java", "mvn", "dotnet", "php", "ruby", "curl", "ssh", "scp"].contains(&s.name.as_str())
-        ).collect();
+        let commands: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Function
+                    && [
+                        "python3",
+                        "npm",
+                        "bun",
+                        "node",
+                        "go",
+                        "docker",
+                        "kubectl",
+                        "terraform",
+                        "git",
+                        "java",
+                        "mvn",
+                        "dotnet",
+                        "php",
+                        "ruby",
+                        "curl",
+                        "ssh",
+                        "scp",
+                    ]
+                    .contains(&s.name.as_str())
+            })
+            .collect();
 
-        assert!(commands.len() >= 10, "Expected at least 10 cross-language commands, got {}", commands.len());
+        assert!(
+            commands.len() >= 10,
+            "Expected at least 10 cross-language commands, got {}",
+            commands.len()
+        );
 
         // Verify specific commands
         let python_cmd = commands.iter().find(|c| c.name == "python3");
         assert!(python_cmd.is_some(), "python3 command not found");
         let python_cmd = python_cmd.unwrap();
-        assert_eq!(python_cmd.doc_comment, Some("[Python 3 Interpreter Call]".to_string()));
+        assert_eq!(
+            python_cmd.doc_comment,
+            Some("[Python 3 Interpreter Call]".to_string())
+        );
 
         let node_cmd = commands.iter().find(|c| c.name == "node");
         assert!(node_cmd.is_some(), "node command not found");
         let node_cmd = node_cmd.unwrap();
-        assert_eq!(node_cmd.doc_comment, Some("[Node.js Runtime Call]".to_string()));
+        assert_eq!(
+            node_cmd.doc_comment,
+            Some("[Node.js Runtime Call]".to_string())
+        );
 
         let docker_cmd = commands.iter().find(|c| c.name == "docker");
         assert!(docker_cmd.is_some(), "docker command not found");
         let docker_cmd = docker_cmd.unwrap();
-        assert_eq!(docker_cmd.doc_comment, Some("[Docker Container Call]".to_string()));
+        assert_eq!(
+            docker_cmd.doc_comment,
+            Some("[Docker Container Call]".to_string())
+        );
 
         let kubectl_cmd = commands.iter().find(|c| c.name == "kubectl");
         assert!(kubectl_cmd.is_some(), "kubectl command not found");
         let kubectl_cmd = kubectl_cmd.unwrap();
-        assert_eq!(kubectl_cmd.doc_comment, Some("[Kubernetes CLI Call]".to_string()));
+        assert_eq!(
+            kubectl_cmd.doc_comment,
+            Some("[Kubernetes CLI Call]".to_string())
+        );
 
         let terraform_cmd = commands.iter().find(|c| c.name == "terraform");
         assert!(terraform_cmd.is_some(), "terraform command not found");
         let terraform_cmd = terraform_cmd.unwrap();
-        assert_eq!(terraform_cmd.doc_comment, Some("[Infrastructure as Code Call]".to_string()));
+        assert_eq!(
+            terraform_cmd.doc_comment,
+            Some("[Infrastructure as Code Call]".to_string())
+        );
 
         let bun_cmd = commands.iter().find(|c| c.name == "bun");
         assert!(bun_cmd.is_some(), "bun command not found");
@@ -257,26 +330,51 @@ deploy_with_rollback() {
         let symbols = extract_symbols(bash_code);
 
         // Should extract environment variables
-        let env_vars: Vec<&Symbol> = symbols.iter().filter(|s|
-            (s.kind == SymbolKind::Constant || s.kind == SymbolKind::Variable) &&
-            ["DOCKER_HOST", "KUBECONFIG", "PATH", "HOME", "NODE_ENV"].contains(&s.name.as_str())
-        ).collect();
-        assert!(env_vars.len() >= 3, "Expected at least 3 environment variables, got {}", env_vars.len());
+        let env_vars: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| {
+                (s.kind == SymbolKind::Constant || s.kind == SymbolKind::Variable)
+                    && ["DOCKER_HOST", "KUBECONFIG", "PATH", "HOME", "NODE_ENV"]
+                        .contains(&s.name.as_str())
+            })
+            .collect();
+        assert!(
+            env_vars.len() >= 3,
+            "Expected at least 3 environment variables, got {}",
+            env_vars.len()
+        );
 
         let docker_host = env_vars.iter().find(|v| v.name == "DOCKER_HOST");
         assert!(docker_host.is_some(), "DOCKER_HOST variable not found");
         let docker_host = docker_host.unwrap();
-        assert_eq!(docker_host.visibility, Some(crate::extractors::base::Visibility::Public)); // exported
-        assert!(docker_host.doc_comment.as_ref().unwrap().contains("Environment Variable"));
+        assert_eq!(
+            docker_host.visibility,
+            Some(crate::extractors::base::Visibility::Public)
+        ); // exported
+        assert!(docker_host
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Environment Variable"));
 
         let kube_config = env_vars.iter().find(|v| v.name == "KUBECONFIG");
         assert!(kube_config.is_some(), "KUBECONFIG variable not found");
         let kube_config = kube_config.unwrap();
-        assert_eq!(kube_config.visibility, Some(crate::extractors::base::Visibility::Public)); // exported
+        assert_eq!(
+            kube_config.visibility,
+            Some(crate::extractors::base::Visibility::Public)
+        ); // exported
 
         // Should extract control flow
-        let control_flow: Vec<&Symbol> = symbols.iter().filter(|s| s.kind == SymbolKind::Method).collect();
-        assert!(control_flow.len() >= 2, "Expected at least 2 control flow blocks, got {}", control_flow.len());
+        let control_flow: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Method)
+            .collect();
+        assert!(
+            control_flow.len() >= 2,
+            "Expected at least 2 control flow blocks, got {}",
+            control_flow.len()
+        );
 
         let if_block = control_flow.iter().find(|c| c.name.contains("if block"));
         assert!(if_block.is_some(), "if block not found");
@@ -286,14 +384,26 @@ deploy_with_rollback() {
         let for_block = control_flow.iter().find(|c| c.name.contains("for block"));
         assert!(for_block.is_some(), "for block not found");
         let for_block = for_block.unwrap();
-        assert_eq!(for_block.doc_comment, Some("[FOR control flow]".to_string()));
+        assert_eq!(
+            for_block.doc_comment,
+            Some("[FOR control flow]".to_string())
+        );
 
         // Should extract functions
-        let functions: Vec<&Symbol> = symbols.iter().filter(|s| s.kind == SymbolKind::Function).collect();
+        let functions: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Function)
+            .collect();
         let deploy_func = functions.iter().find(|f| f.name == "deploy_with_rollback");
-        assert!(deploy_func.is_some(), "deploy_with_rollback function not found");
+        assert!(
+            deploy_func.is_some(),
+            "deploy_with_rollback function not found"
+        );
         let deploy_func = deploy_func.unwrap();
-        assert_eq!(deploy_func.signature, Some("function deploy_with_rollback()".to_string()));
+        assert_eq!(
+            deploy_func.signature,
+            Some("function deploy_with_rollback()".to_string())
+        );
     }
 
     #[test]
@@ -326,7 +436,11 @@ configure_app() {
 
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).expect("Failed to parse code");
-        let mut extractor = BashExtractor::new("bash".to_string(), "types.sh".to_string(), bash_code.to_string());
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "types.sh".to_string(),
+            bash_code.to_string(),
+        );
         let symbols = extractor.extract_symbols(&tree);
         let types = extractor.infer_types(&symbols);
 
@@ -338,10 +452,15 @@ configure_app() {
         assert_eq!(types.get("CONFIG_PATH"), Some(&"path".to_string()));
 
         // Extract symbols to verify declarations
-        let declarations: Vec<&Symbol> = symbols.iter().filter(|s|
-            ["COUNTER", "VERSION", "LOCAL_VAR", "SERVICES"].contains(&s.name.as_str())
-        ).collect();
-        assert!(declarations.len() >= 3, "Expected at least 3 declarations, got {}", declarations.len());
+        let declarations: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| ["COUNTER", "VERSION", "LOCAL_VAR", "SERVICES"].contains(&s.name.as_str()))
+            .collect();
+        assert!(
+            declarations.len() >= 3,
+            "Expected at least 3 declarations, got {}",
+            declarations.len()
+        );
 
         let version_var = declarations.iter().find(|d| d.name == "VERSION");
         assert!(version_var.is_some(), "VERSION variable not found");
@@ -396,32 +515,56 @@ main "$@"
         let (symbols, relationships) = extract_symbols_and_relationships(bash_code);
 
         // Should extract function call relationships
-        let call_relationships: Vec<&crate::extractors::base::Relationship> = relationships.iter()
-            .filter(|r| r.kind == RelationshipKind::Calls).collect();
-        assert!(call_relationships.len() >= 3, "Expected at least 3 call relationships, got {}", call_relationships.len());
+        let call_relationships: Vec<&crate::extractors::base::Relationship> = relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Calls)
+            .collect();
+        assert!(
+            call_relationships.len() >= 3,
+            "Expected at least 3 call relationships, got {}",
+            call_relationships.len()
+        );
 
         // Verify specific relationships
-        let main_function = symbols.iter().find(|s| s.name == "main" && s.kind == SymbolKind::Function);
-        let setup_function = symbols.iter().find(|s| s.name == "setup_environment" && s.kind == SymbolKind::Function);
+        let main_function = symbols
+            .iter()
+            .find(|s| s.name == "main" && s.kind == SymbolKind::Function);
+        let setup_function = symbols
+            .iter()
+            .find(|s| s.name == "setup_environment" && s.kind == SymbolKind::Function);
 
         assert!(main_function.is_some(), "main function not found");
-        assert!(setup_function.is_some(), "setup_environment function not found");
+        assert!(
+            setup_function.is_some(),
+            "setup_environment function not found"
+        );
 
         let main_function = main_function.unwrap();
         let setup_function = setup_function.unwrap();
 
         // Should have relationship from main to setup_environment
-        let main_to_setup = call_relationships.iter().find(|r|
-            r.from_symbol_id == main_function.id && r.to_symbol_id == setup_function.id
+        let main_to_setup = call_relationships
+            .iter()
+            .find(|r| r.from_symbol_id == main_function.id && r.to_symbol_id == setup_function.id);
+        assert!(
+            main_to_setup.is_some(),
+            "main -> setup_environment relationship not found"
         );
-        assert!(main_to_setup.is_some(), "main -> setup_environment relationship not found");
 
         // Should extract external command calls
-        let commands: Vec<&Symbol> = symbols.iter().filter(|s|
-            s.kind == SymbolKind::Function &&
-            ["npm", "python3", "docker-compose", "kubectl", "curl"].contains(&s.name.as_str())
-        ).collect();
-        assert!(commands.len() >= 4, "Expected at least 4 external command calls, got {}", commands.len());
+        let commands: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Function
+                    && ["npm", "python3", "docker-compose", "kubectl", "curl"]
+                        .contains(&s.name.as_str())
+            })
+            .collect();
+        assert!(
+            commands.len() >= 4,
+            "Expected at least 4 external command calls, got {}",
+            commands.len()
+        );
     }
 
     #[test]
@@ -462,7 +605,13 @@ helper_function() {
         let minimal_symbols = extract_symbols(minimal_bash);
 
         // Should handle gracefully without errors
-        assert!(empty_symbols.is_empty(), "Empty bash should produce no symbols");
-        assert!(minimal_symbols.is_empty(), "Minimal bash should produce no symbols");
+        assert!(
+            empty_symbols.is_empty(),
+            "Empty bash should produce no symbols"
+        );
+        assert!(
+            minimal_symbols.is_empty(),
+            "Minimal bash should produce no symbols"
+        );
     }
 }

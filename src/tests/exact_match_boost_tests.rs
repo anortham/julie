@@ -36,8 +36,10 @@ mod exact_match_boost_tests {
         let no_boost = booster.calculate_boost("completely_different");
         assert_eq!(no_boost, 1.0);
 
-        println!("Exact boost: {}, Prefix boost: {}, No boost: {}",
-                 exact_boost, prefix_boost, no_boost);
+        println!(
+            "Exact boost: {}, Prefix boost: {}, No boost: {}",
+            exact_boost, prefix_boost, no_boost
+        );
     }
 
     #[test]
@@ -56,8 +58,10 @@ mod exact_match_boost_tests {
         assert!(substring_boost >= no_match_boost);
         assert_eq!(no_match_boost, 1.0);
 
-        println!("Logarithmic progression - Exact: {}, Prefix: {}, Substring: {}, No match: {}",
-                 exact_boost, prefix_boost, substring_boost, no_match_boost);
+        println!(
+            "Logarithmic progression - Exact: {}, Prefix: {}, Substring: {}, No match: {}",
+            exact_boost, prefix_boost, substring_boost, no_match_boost
+        );
     }
 
     #[test]
@@ -74,9 +78,11 @@ mod exact_match_boost_tests {
         assert_eq!(original_boost, upper_boost);
         assert_eq!(original_boost, mixed_boost);
 
-        println!("Case insensitive boosts - all should be equal: {}", original_boost);
+        println!(
+            "Case insensitive boosts - all should be equal: {}",
+            original_boost
+        );
     }
-
 
     #[test]
     fn test_multi_word_query_boost() {
@@ -84,15 +90,17 @@ mod exact_match_boost_tests {
 
         // Test symbol names that match parts of the query
         let exact_boost = booster.calculate_boost("getUserData"); // Matches camelCase
-        let partial_boost = booster.calculate_boost("getUser");   // Matches prefix
-        let no_boost = booster.calculate_boost("setPassword");    // No match
+        let partial_boost = booster.calculate_boost("getUser"); // Matches prefix
+        let no_boost = booster.calculate_boost("setPassword"); // No match
 
         assert!(exact_boost > partial_boost);
         assert!(partial_boost > no_boost);
         assert_eq!(no_boost, 1.0);
 
-        println!("Multi-word query boosts - Exact: {}, Partial: {}, No match: {}",
-                 exact_boost, partial_boost, no_boost);
+        println!(
+            "Multi-word query boosts - Exact: {}, Partial: {}, No match: {}",
+            exact_boost, partial_boost, no_boost
+        );
     }
 
     #[test]
@@ -134,20 +142,26 @@ mod exact_match_boost_tests {
     fn test_realistic_search_scenarios() {
         // Test realistic code search scenarios
         let scenarios = vec![
-            ("findUser", vec![
-                ("findUser", "should get highest boost"),
-                ("findUserById", "should get prefix boost"),
-                ("findAllUsers", "should get substring boost"),
-                ("createUser", "should get minimal boost"),
-                ("deleteRecord", "should get no boost"),
-            ]),
-            ("Logger", vec![
-                ("Logger", "exact match"),
-                ("LoggerService", "prefix match"),
-                ("FileLogger", "suffix match"),
-                ("log", "different but related"),
-                ("Database", "no relation"),
-            ]),
+            (
+                "findUser",
+                vec![
+                    ("findUser", "should get highest boost"),
+                    ("findUserById", "should get prefix boost"),
+                    ("findAllUsers", "should get substring boost"),
+                    ("createUser", "should get minimal boost"),
+                    ("deleteRecord", "should get no boost"),
+                ],
+            ),
+            (
+                "Logger",
+                vec![
+                    ("Logger", "exact match"),
+                    ("LoggerService", "prefix match"),
+                    ("FileLogger", "suffix match"),
+                    ("log", "different but related"),
+                    ("Database", "no relation"),
+                ],
+            ),
         ];
 
         for (query, test_cases) in scenarios {
@@ -163,9 +177,13 @@ mod exact_match_boost_tests {
                 // (though this is a loose heuristic, not a strict requirement)
                 if boost > 1.1 {
                     // Only compare significant boosts to avoid noise from minimal boosts
-                    assert!(boost <= prev_boost + 0.1,
-                            "Boost progression should generally be descending for {}: {} vs prev {}",
-                            symbol, boost, prev_boost);
+                    assert!(
+                        boost <= prev_boost + 0.1,
+                        "Boost progression should generally be descending for {}: {} vs prev {}",
+                        symbol,
+                        boost,
+                        prev_boost
+                    );
                 }
                 if boost > 1.1 {
                     prev_boost = boost;

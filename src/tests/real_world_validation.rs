@@ -5,10 +5,10 @@
 
 #[cfg(test)]
 mod real_world_tests {
+    use crate::extractors::*;
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use crate::extractors::*;
     use tree_sitter::{Parser, Tree};
 
     const REAL_WORLD_TEST_DIR: &str = "debug/test-workspace-real";
@@ -66,199 +66,199 @@ mod real_world_tests {
                 let mut extractor = kotlin::KotlinExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "ruby" => {
                 let mut extractor = ruby::RubyExtractor::new(
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "rust" => {
                 let mut extractor = rust::RustExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "typescript" | "tsx" => {
                 let mut extractor = typescript::TypeScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "javascript" | "jsx" => {
                 let mut extractor = javascript::JavaScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "python" => {
                 let mut extractor = python::PythonExtractor::new(
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "java" => {
                 let mut extractor = java::JavaExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "csharp" => {
                 let mut extractor = csharp::CSharpExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "go" => {
                 let mut extractor = go::GoExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "php" => {
                 let mut extractor = php::PhpExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "swift" => {
                 let mut extractor = swift::SwiftExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "razor" => {
                 let mut extractor = razor::RazorExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "vue" => {
                 let mut extractor = vue::VueExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(Some(&tree))
-            },
+            }
             "bash" => {
                 let mut extractor = bash::BashExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "css" => {
                 let mut extractor = css::CSSExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "dart" => {
                 let mut extractor = dart::DartExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "gdscript" => {
                 let mut extractor = gdscript::GDScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "html" => {
                 let mut extractor = html::HTMLExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "powershell" => {
                 let mut extractor = powershell::PowerShellExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "regex" => {
                 let mut extractor = regex::RegexExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "sql" => {
                 let mut extractor = sql::SqlExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "zig" => {
                 let mut extractor = zig::ZigExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "c" => {
                 let mut extractor = crate::extractors::c::CExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "cpp" => {
                 let mut extractor = cpp::CppExtractor::new(
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             "lua" => {
                 let mut extractor = lua::LuaExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
-                    content.clone()
+                    content.clone(),
                 );
                 extractor.extract_symbols(&tree)
-            },
+            }
             _ => panic!("Unsupported language: {}", language),
         };
 
@@ -270,11 +270,10 @@ mod real_world_tests {
         );
 
         // Generate symbol breakdown for analysis (Miller's logging approach)
-        let symbol_summary = symbols.iter()
-            .fold(HashMap::new(), |mut acc, symbol| {
-                *acc.entry(symbol.kind.clone()).or_insert(0) += 1;
-                acc
-            });
+        let symbol_summary = symbols.iter().fold(HashMap::new(), |mut acc, symbol| {
+            *acc.entry(symbol.kind.clone()).or_insert(0) += 1;
+            acc
+        });
 
         println!(
             "📊 {} extracted {} symbols: {:?}",
@@ -321,7 +320,10 @@ mod real_world_tests {
         let kotlin_files = get_files_with_extension(&kotlin_dir, &["kt"]);
 
         if kotlin_files.is_empty() {
-            println!("⚠️ No Kotlin real-world test files found in {}", kotlin_dir.display());
+            println!(
+                "⚠️ No Kotlin real-world test files found in {}",
+                kotlin_dir.display()
+            );
             return;
         }
 
@@ -337,7 +339,10 @@ mod real_world_tests {
         let ruby_files = get_files_with_extension(&ruby_dir, &["rb"]);
 
         if ruby_files.is_empty() {
-            println!("⚠️ No Ruby real-world test files found in {}", ruby_dir.display());
+            println!(
+                "⚠️ No Ruby real-world test files found in {}",
+                ruby_dir.display()
+            );
             return;
         }
 
@@ -353,12 +358,19 @@ mod real_world_tests {
         let ts_files = get_files_with_extension(&ts_dir, &["ts", "tsx"]);
 
         if ts_files.is_empty() {
-            println!("⚠️ No TypeScript real-world test files found in {}", ts_dir.display());
+            println!(
+                "⚠️ No TypeScript real-world test files found in {}",
+                ts_dir.display()
+            );
             return;
         }
 
         for file_path in ts_files {
-            let language = if file_path.extension().unwrap() == "tsx" { "tsx" } else { "typescript" };
+            let language = if file_path.extension().unwrap() == "tsx" {
+                "tsx"
+            } else {
+                "typescript"
+            };
             test_real_world_file(&file_path, language);
         }
     }
@@ -392,7 +404,10 @@ mod real_world_tests {
         let go_dir = Path::new(REAL_WORLD_TEST_DIR).join("go");
         let go_files = get_files_with_extension(&go_dir, &["go"]);
         if go_files.is_empty() {
-            println!("⚠️ No Go real-world test files found in {}", go_dir.display());
+            println!(
+                "⚠️ No Go real-world test files found in {}",
+                go_dir.display()
+            );
             return;
         }
         for file_path in go_files {
@@ -407,7 +422,10 @@ mod real_world_tests {
         let java_files = get_files_with_extension(&java_dir, &["java"]);
 
         if java_files.is_empty() {
-            println!("⚠️ No Java real-world test files found in {}", java_dir.display());
+            println!(
+                "⚠️ No Java real-world test files found in {}",
+                java_dir.display()
+            );
             return;
         }
 
@@ -423,7 +441,10 @@ mod real_world_tests {
         let php_files = get_files_with_extension(&php_dir, &["php"]);
 
         if php_files.is_empty() {
-            println!("⚠️ No PHP real-world test files found in {}", php_dir.display());
+            println!(
+                "⚠️ No PHP real-world test files found in {}",
+                php_dir.display()
+            );
             return;
         }
 
@@ -439,7 +460,10 @@ mod real_world_tests {
         let swift_files = get_files_with_extension(&swift_dir, &["swift"]);
 
         if swift_files.is_empty() {
-            println!("⚠️ No Swift real-world test files found in {}", swift_dir.display());
+            println!(
+                "⚠️ No Swift real-world test files found in {}",
+                swift_dir.display()
+            );
             return;
         }
 
@@ -455,7 +479,10 @@ mod real_world_tests {
         let razor_files = get_files_with_extension(&razor_dir, &["razor"]);
 
         if razor_files.is_empty() {
-            println!("⚠️ No Razor real-world test files found in {}", razor_dir.display());
+            println!(
+                "⚠️ No Razor real-world test files found in {}",
+                razor_dir.display()
+            );
             return;
         }
 
@@ -471,7 +498,10 @@ mod real_world_tests {
         let vue_files = get_files_with_extension(&vue_dir, &["vue"]);
 
         if vue_files.is_empty() {
-            println!("⚠️ No Vue real-world test files found in {}", vue_dir.display());
+            println!(
+                "⚠️ No Vue real-world test files found in {}",
+                vue_dir.display()
+            );
             return;
         }
 
@@ -487,7 +517,10 @@ mod real_world_tests {
         let python_files = get_files_with_extension(&python_dir, &["py"]);
 
         if python_files.is_empty() {
-            println!("⚠️ No Python real-world test files found in {}", python_dir.display());
+            println!(
+                "⚠️ No Python real-world test files found in {}",
+                python_dir.display()
+            );
             return;
         }
 
@@ -503,7 +536,10 @@ mod real_world_tests {
         let js_files = get_files_with_extension(&js_dir, &["js"]);
 
         if js_files.is_empty() {
-            println!("⚠️ No JavaScript real-world test files found in {}", js_dir.display());
+            println!(
+                "⚠️ No JavaScript real-world test files found in {}",
+                js_dir.display()
+            );
             return;
         }
 
@@ -519,7 +555,10 @@ mod real_world_tests {
         let rust_files = get_files_with_extension(&rust_dir, &["rs"]);
 
         if rust_files.is_empty() {
-            println!("⚠️ No Rust real-world test files found in {}", rust_dir.display());
+            println!(
+                "⚠️ No Rust real-world test files found in {}",
+                rust_dir.display()
+            );
             return;
         }
 
@@ -535,7 +574,10 @@ mod real_world_tests {
         let bash_files = get_files_with_extension(&bash_dir, &["sh"]);
 
         if bash_files.is_empty() {
-            println!("⚠️ No Bash real-world test files found in {}", bash_dir.display());
+            println!(
+                "⚠️ No Bash real-world test files found in {}",
+                bash_dir.display()
+            );
             return;
         }
 
@@ -551,7 +593,10 @@ mod real_world_tests {
         let css_files = get_files_with_extension(&css_dir, &["css"]);
 
         if css_files.is_empty() {
-            println!("⚠️ No CSS real-world test files found in {}", css_dir.display());
+            println!(
+                "⚠️ No CSS real-world test files found in {}",
+                css_dir.display()
+            );
             return;
         }
 
@@ -567,7 +612,10 @@ mod real_world_tests {
         let dart_files = get_files_with_extension(&dart_dir, &["dart"]);
 
         if dart_files.is_empty() {
-            println!("⚠️ No Dart real-world test files found in {}", dart_dir.display());
+            println!(
+                "⚠️ No Dart real-world test files found in {}",
+                dart_dir.display()
+            );
             return;
         }
 
@@ -583,7 +631,10 @@ mod real_world_tests {
         let gdscript_files = get_files_with_extension(&gdscript_dir, &["gd"]);
 
         if gdscript_files.is_empty() {
-            println!("⚠️ No GDScript real-world test files found in {}", gdscript_dir.display());
+            println!(
+                "⚠️ No GDScript real-world test files found in {}",
+                gdscript_dir.display()
+            );
             return;
         }
 
@@ -599,7 +650,10 @@ mod real_world_tests {
         let html_files = get_files_with_extension(&html_dir, &["html"]);
 
         if html_files.is_empty() {
-            println!("⚠️ No HTML real-world test files found in {}", html_dir.display());
+            println!(
+                "⚠️ No HTML real-world test files found in {}",
+                html_dir.display()
+            );
             return;
         }
 
@@ -615,7 +669,10 @@ mod real_world_tests {
         let powershell_files = get_files_with_extension(&powershell_dir, &["ps1"]);
 
         if powershell_files.is_empty() {
-            println!("⚠️ No PowerShell real-world test files found in {}", powershell_dir.display());
+            println!(
+                "⚠️ No PowerShell real-world test files found in {}",
+                powershell_dir.display()
+            );
             return;
         }
 
@@ -631,7 +688,10 @@ mod real_world_tests {
         let regex_files = get_files_with_extension(&regex_dir, &["regex", "regexp"]);
 
         if regex_files.is_empty() {
-            println!("⚠️ No Regex real-world test files found in {}", regex_dir.display());
+            println!(
+                "⚠️ No Regex real-world test files found in {}",
+                regex_dir.display()
+            );
             return;
         }
 
@@ -647,7 +707,10 @@ mod real_world_tests {
         let sql_files = get_files_with_extension(&sql_dir, &["sql"]);
 
         if sql_files.is_empty() {
-            println!("⚠️ No SQL real-world test files found in {}", sql_dir.display());
+            println!(
+                "⚠️ No SQL real-world test files found in {}",
+                sql_dir.display()
+            );
             return;
         }
 
@@ -663,7 +726,10 @@ mod real_world_tests {
         let zig_files = get_files_with_extension(&zig_dir, &["zig"]);
 
         if zig_files.is_empty() {
-            println!("⚠️ No Zig real-world test files found in {}", zig_dir.display());
+            println!(
+                "⚠️ No Zig real-world test files found in {}",
+                zig_dir.display()
+            );
             return;
         }
 
@@ -695,7 +761,10 @@ mod real_world_tests {
         let cpp_files = get_files_with_extension(&cpp_dir, &["cpp", "cc", "cxx", "hpp", "h"]);
 
         if cpp_files.is_empty() {
-            println!("⚠️ No C++ real-world test files found in {}", cpp_dir.display());
+            println!(
+                "⚠️ No C++ real-world test files found in {}",
+                cpp_dir.display()
+            );
             return;
         }
 
@@ -710,7 +779,10 @@ mod real_world_tests {
         let lua_dir = Path::new(REAL_WORLD_TEST_DIR).join("lua");
         let lua_files = get_files_with_extension(&lua_dir, &["lua"]);
         if lua_files.is_empty() {
-            println!("⚠️ No Lua real-world test files found in {}", lua_dir.display());
+            println!(
+                "⚠️ No Lua real-world test files found in {}",
+                lua_dir.display()
+            );
             return;
         }
         for file_path in lua_files {

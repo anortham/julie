@@ -1,7 +1,7 @@
 use crate::database::SymbolDatabase;
-use crate::search::SearchEngine;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::Symbol;
+use crate::search::SearchEngine;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -46,23 +46,23 @@ pub struct TraceStep {
 /// How symbols are connected across languages
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionType {
-    DirectCall,         // Function/method call (AST-based)
-    DataFlow,          // Parameter/return value
-    NetworkCall,       // HTTP request/response
-    DatabaseQuery,     // SQL query/table access
-    SemanticMatch,     // Embedding-based connection
-    TypeMapping,       // Interface/DTO mapping across languages
-    ImportUsage,       // Import/require/using statement
-    ConfigReference,   // Configuration-based connection
+    DirectCall,      // Function/method call (AST-based)
+    DataFlow,        // Parameter/return value
+    NetworkCall,     // HTTP request/response
+    DatabaseQuery,   // SQL query/table access
+    SemanticMatch,   // Embedding-based connection
+    TypeMapping,     // Interface/DTO mapping across languages
+    ImportUsage,     // Import/require/using statement
+    ConfigReference, // Configuration-based connection
 }
 
 /// Architectural layers for proper flow progression
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArchitecturalLayer {
-    Frontend,    // React, TypeScript, JavaScript UI
-    ApiGateway,  // Express, routing, middleware
-    Backend,     // C#, Java, Python services
-    Database,    // SQL, NoSQL queries
+    Frontend,       // React, TypeScript, JavaScript UI
+    ApiGateway,     // Express, routing, middleware
+    Backend,        // C#, Java, Python services
+    Database,       // SQL, NoSQL queries
     Infrastructure, // Config, deployment
     Unknown,
 }
@@ -88,7 +88,7 @@ impl Default for TraceOptions {
             target_layers: vec![
                 ArchitecturalLayer::Frontend,
                 ArchitecturalLayer::Backend,
-                ArchitecturalLayer::Database
+                ArchitecturalLayer::Database,
             ],
             timeout_seconds: Some(30),
         }
@@ -161,7 +161,10 @@ impl CrossLanguageTracer {
         let max_steps = options.max_steps.unwrap_or(50);
 
         for step_num in 2..=std::cmp::min(max_depth, max_steps) {
-            if let Some(next_step) = self.find_next_step(&current_symbol, &visited, &options).await? {
+            if let Some(next_step) = self
+                .find_next_step(&current_symbol, &visited, &options)
+                .await?
+            {
                 if visited.contains(&next_step.symbol.id) {
                     break; // Cycle detection
                 }
@@ -228,7 +231,8 @@ impl CrossLanguageTracer {
                 if current.name.contains("onClick") {
                     self.create_mock_backend_symbol("authService.login").await?
                 } else if current.name.contains("login") {
-                    self.create_mock_backend_symbol("AuthController.Login").await?
+                    self.create_mock_backend_symbol("AuthController.Login")
+                        .await?
                 } else {
                     return Ok(None); // End of trace
                 }
@@ -254,8 +258,12 @@ impl CrossLanguageTracer {
 
         // Determine connection type based on layer transition
         let connection_type = match (current_layer.clone(), self.detect_layer(&next_symbol)) {
-            (ArchitecturalLayer::Frontend, ArchitecturalLayer::Backend) => ConnectionType::NetworkCall,
-            (ArchitecturalLayer::Backend, ArchitecturalLayer::Database) => ConnectionType::DatabaseQuery,
+            (ArchitecturalLayer::Frontend, ArchitecturalLayer::Backend) => {
+                ConnectionType::NetworkCall
+            }
+            (ArchitecturalLayer::Backend, ArchitecturalLayer::Database) => {
+                ConnectionType::DatabaseQuery
+            }
             _ => ConnectionType::SemanticMatch,
         };
 
@@ -274,7 +282,10 @@ impl CrossLanguageTracer {
         }
 
         let layer = self.detect_layer(&next_symbol);
-        let evidence = vec![format!("Mock transition from {} to {}", current.name, next_symbol.name)];
+        let evidence = vec![format!(
+            "Mock transition from {} to {}",
+            current.name, next_symbol.name
+        )];
 
         Ok(Some(TraceStep {
             symbol: next_symbol,
@@ -303,7 +314,10 @@ impl CrossLanguageTracer {
             end_column: 9,
             start_byte: 1200,
             end_byte: 1800,
-            signature: Some(format!("[HttpPost] public async Task<IActionResult> {}", name)),
+            signature: Some(format!(
+                "[HttpPost] public async Task<IActionResult> {}",
+                name
+            )),
             doc_comment: Some(format!("Mock backend endpoint: {}", name)),
             visibility: None,
             parent_id: Some("auth_controller".to_string()),
@@ -398,9 +412,9 @@ impl CrossLanguageTracer {
         ConfidenceScore {
             overall: (base_confidence + evidence_bonus).min(1.0),
             connection_strength: base_confidence,
-            semantic_similarity: 0.7, // Default for GREEN phase
+            semantic_similarity: 0.7,    // Default for GREEN phase
             pattern_match_strength: 0.6, // Default for GREEN phase
-            cross_language_bonus: 0.1, // Default for GREEN phase
+            cross_language_bonus: 0.1,   // Default for GREEN phase
         }
     }
 
@@ -408,10 +422,15 @@ impl CrossLanguageTracer {
     pub fn detect_layer(&self, symbol: &Symbol) -> ArchitecturalLayer {
         match symbol.language.as_str() {
             "typescript" | "javascript" => {
-                if symbol.file_path.contains("component") || symbol.file_path.contains("page")
-                    || symbol.file_path.contains("Component") || symbol.file_path.contains("Page") {
+                if symbol.file_path.contains("component")
+                    || symbol.file_path.contains("page")
+                    || symbol.file_path.contains("Component")
+                    || symbol.file_path.contains("Page")
+                {
                     ArchitecturalLayer::Frontend
-                } else if symbol.file_path.contains("service") || symbol.file_path.contains("Service") {
+                } else if symbol.file_path.contains("service")
+                    || symbol.file_path.contains("Service")
+                {
                     ArchitecturalLayer::ApiGateway
                 } else {
                     ArchitecturalLayer::Frontend // Default for TS/JS
@@ -430,13 +449,29 @@ impl CrossLanguageTracer {
 
         // For GREEN phase: create realistic mock symbols based on common patterns
         let (language, file_path, kind) = if symbol_name.contains("onClick") {
-            ("typescript".to_string(), "/src/components/LoginButton.tsx".to_string(), SymbolKind::Method)
+            (
+                "typescript".to_string(),
+                "/src/components/LoginButton.tsx".to_string(),
+                SymbolKind::Method,
+            )
         } else if symbol_name.contains("login") || symbol_name.contains("Login") {
-            ("csharp".to_string(), "/Controllers/AuthController.cs".to_string(), SymbolKind::Method)
+            (
+                "csharp".to_string(),
+                "/Controllers/AuthController.cs".to_string(),
+                SymbolKind::Method,
+            )
         } else if symbol_name.contains("user") || symbol_name.contains("User") {
-            ("sql".to_string(), "/database/schema.sql".to_string(), SymbolKind::Class)
+            (
+                "sql".to_string(),
+                "/database/schema.sql".to_string(),
+                SymbolKind::Class,
+            )
         } else {
-            ("typescript".to_string(), "/src/unknown.ts".to_string(), SymbolKind::Function)
+            (
+                "typescript".to_string(),
+                "/src/unknown.ts".to_string(),
+                SymbolKind::Function,
+            )
         };
 
         Ok(Symbol {
@@ -472,7 +507,8 @@ impl DataFlowTrace {
 
     /// Get summary of the complete flow for AI consumption
     pub fn get_flow_summary(&self) -> String {
-        let layers: Vec<_> = self.steps
+        let layers: Vec<_> = self
+            .steps
             .iter()
             .map(|s| format!("{:?}", s.layer))
             .collect();
@@ -546,18 +582,21 @@ mod tests {
         println!("🚀 Testing revolutionary cross-language tracing...");
 
         // This is the killer use case: trace from a React button click
-        let trace = tracer.trace_data_flow(
-            "onClick",
-            TraceOptions {
-                max_depth: Some(5),
-                target_layers: vec![
-                    ArchitecturalLayer::Frontend,
-                    ArchitecturalLayer::Backend,
-                    ArchitecturalLayer::Database
-                ],
-                ..Default::default()
-            }
-        ).await.expect("Trace should succeed");
+        let trace = tracer
+            .trace_data_flow(
+                "onClick",
+                TraceOptions {
+                    max_depth: Some(5),
+                    target_layers: vec![
+                        ArchitecturalLayer::Frontend,
+                        ArchitecturalLayer::Backend,
+                        ArchitecturalLayer::Database,
+                    ],
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("Trace should succeed");
 
         // Verify our revolutionary cross-language tracing works!
         println!("🎉 REVOLUTIONARY TRACING RESULT:");
@@ -568,7 +607,8 @@ mod tests {
 
         // Print the complete trace for verification
         for (i, step) in trace.steps.iter().enumerate() {
-            println!("Step {}: {} ({} → {:?}) - {:.1}% confidence",
+            println!(
+                "Step {}: {} ({} → {:?}) - {:.1}% confidence",
                 i + 1,
                 step.symbol.name,
                 step.symbol.language,
@@ -580,7 +620,10 @@ mod tests {
         // Verify basic GREEN phase functionality
         assert!(!trace.steps.is_empty(), "Should have trace steps");
         assert!(trace.confidence > 0.0, "Should have some confidence");
-        assert!(trace.is_cross_layer_trace(), "Should span multiple architectural layers");
+        assert!(
+            trace.is_cross_layer_trace(),
+            "Should span multiple architectural layers"
+        );
 
         println!("🚀 SUCCESS: Cross-language tracing GREEN phase is working!");
     }
@@ -594,7 +637,10 @@ mod tests {
         let layer = tracer.detect_layer(&test_symbol);
 
         println!("🎯 Testing layer detection:");
-        println!("   Symbol: {} in {}", test_symbol.name, test_symbol.file_path);
+        println!(
+            "   Symbol: {} in {}",
+            test_symbol.name, test_symbol.file_path
+        );
         println!("   Detected layer: {:?}", layer);
 
         assert_eq!(layer, ArchitecturalLayer::Frontend);

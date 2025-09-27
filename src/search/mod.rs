@@ -3,19 +3,22 @@
 // This module provides lightning-fast code search using Tantivy with custom
 // code-aware tokenizers for sub-10ms search performance across large codebases.
 
-pub mod tokenizers;
 pub mod schema;
+pub mod tokenizers;
 
 use anyhow::Result;
-use tantivy::{Index, IndexReader, IndexWriter, Term};
+use std::path::Path;
 use tantivy::collector::TopDocs;
+use tantivy::directory::MmapDirectory;
 use tantivy::query::{Query, QueryParser, TermQuery};
 use tantivy::schema::{Field, Value};
-use std::path::Path;
+use tantivy::{Index, IndexReader, IndexWriter, Term};
 use tracing::debug;
 
+use self::schema::{
+    CodeSearchSchema, LanguageBoosting, QueryIntent, QueryProcessor, SearchDocument,
+};
 use crate::extractors::Symbol;
-use self::schema::{CodeSearchSchema, SearchDocument, QueryProcessor, QueryIntent, LanguageBoosting};
 
 /// Helper function to capitalize first letter
 fn capitalize_first_letter(s: &str) -> String {
@@ -68,7 +71,8 @@ impl SearchEngine {
     /// Create a new search engine with the given index path
     pub fn new<P: AsRef<Path>>(index_path: P) -> Result<Self> {
         let schema = CodeSearchSchema::new()?;
-        let index = Index::create_in_dir(&index_path, schema.schema().clone())?;
+        let directory = MmapDirectory::open(index_path.as_ref())?;
+        let index = Index::open_or_create(directory, schema.schema().clone())?;
 
         let reader = index.reader()?;
 
@@ -109,7 +113,7 @@ impl SearchEngine {
 
     /// Index a batch of symbols
     pub async fn index_symbols(&mut self, symbols: Vec<Symbol>) -> Result<()> {
-        use tracing::{info, debug};
+        use tracing::{debug, info};
         let start_time = std::time::Instant::now();
         let symbol_count = symbols.len();
 
@@ -136,7 +140,9 @@ impl SearchEngine {
                 end_byte: symbol.end_byte,
                 visibility: symbol.visibility.map(|v| v.to_string()),
                 parent_id: symbol.parent_id.clone(),
-                metadata: symbol.metadata.as_ref()
+                metadata: symbol
+                    .metadata
+                    .as_ref()
                     .map(|m| serde_json::to_string(m).unwrap_or_default()),
                 semantic_group: symbol.semantic_group.clone(),
                 confidence: symbol.confidence.map(|c| c as f64),
@@ -146,8 +152,11 @@ impl SearchEngine {
         }
 
         let elapsed = start_time.elapsed();
-        info!("✅ Indexing completed: {} symbols indexed in {:.2}ms",
-              symbol_count, elapsed.as_secs_f64() * 1000.0);
+        info!(
+            "✅ Indexing completed: {} symbols indexed in {:.2}ms",
+            symbol_count,
+            elapsed.as_secs_f64() * 1000.0
+        );
 
         debug!("💾 Committing changes to search index...");
         self.commit().await?;
@@ -232,10 +241,14 @@ impl SearchEngine {
 
     /// Perform intelligent search with intent detection
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        use tracing::{info, debug, trace};
+        use tracing::{debug, info, trace};
         let start_time = std::time::Instant::now();
 
-        debug!("🔍 Search started: query='{}', length={}", query, query.len());
+        debug!(
+            "🔍 Search started: query='{}', length={}",
+            query,
+            query.len()
+        );
 
         let intent = self.query_processor.detect_intent(query);
         debug!("🎯 Intent detected: {:?}", intent);
@@ -256,15 +269,26 @@ impl SearchEngine {
         let elapsed = start_time.elapsed();
         match &results {
             Ok(search_results) => {
-                info!("✅ Search completed: query='{}', results={}, time={:.2}ms",
-                      query, search_results.len(), elapsed.as_secs_f64() * 1000.0);
+                info!(
+                    "✅ Search completed: query='{}', results={}, time={:.2}ms",
+                    query,
+                    search_results.len(),
+                    elapsed.as_secs_f64() * 1000.0
+                );
                 if search_results.len() > 0 {
-                    debug!("📋 Top result: {} in {}", search_results[0].symbol.name, search_results[0].symbol.file_path);
+                    debug!(
+                        "📋 Top result: {} in {}",
+                        search_results[0].symbol.name, search_results[0].symbol.file_path
+                    );
                 }
             }
             Err(e) => {
-                info!("❌ Search failed: query='{}', error='{}', time={:.2}ms",
-                      query, e, elapsed.as_secs_f64() * 1000.0);
+                info!(
+                    "❌ Search failed: query='{}', error='{}', time={:.2}ms",
+                    query,
+                    e,
+                    elapsed.as_secs_f64() * 1000.0
+                );
             }
         }
 
@@ -298,7 +322,8 @@ impl SearchEngine {
             for variation in variations {
                 if variation != clean_query {
                     let term = Term::from_field_text(fields.symbol_name_exact, &variation);
-                    let term_query = TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
+                    let term_query =
+                        TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
                     let variation_docs = searcher.search(&term_query, &TopDocs::with_limit(50))?;
 
                     if !variation_docs.is_empty() {
@@ -317,18 +342,23 @@ impl SearchEngine {
 
             // Try different query formulations for partial matching
             let tokenized_queries = vec![
-                clean_query.to_string(),                    // Direct query
-                format!("*{}*", clean_query),              // Wildcard search
-                clean_query.to_lowercase(),                // Lowercase variant
-                capitalize_first_letter(clean_query),     // Capitalized variant
+                clean_query.to_string(),              // Direct query
+                format!("*{}*", clean_query),         // Wildcard search
+                clean_query.to_lowercase(),           // Lowercase variant
+                capitalize_first_letter(clean_query), // Capitalized variant
             ];
 
             for query_variant in tokenized_queries {
                 match query_parser.parse_query(&query_variant) {
                     Ok(parsed_query) => {
-                        let tokenized_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
+                        let tokenized_docs =
+                            searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
                         if !tokenized_docs.is_empty() {
-                            debug!("🎯 Tokenized search found {} results with query: '{}'", tokenized_docs.len(), query_variant);
+                            debug!(
+                                "🎯 Tokenized search found {} results with query: '{}'",
+                                tokenized_docs.len(),
+                                query_variant
+                            );
                             top_docs = tokenized_docs;
                             break;
                         }
@@ -361,17 +391,20 @@ impl SearchEngine {
         let inner_types = self.extract_generic_types(query);
 
         // Build a boolean query to match both exact and component searches
-        let query_parser = QueryParser::for_index(&self.index, vec![
-            fields.signature,
-            fields.signature_exact,
-            fields.symbol_name,
-            fields.all_text,
-        ]);
+        let query_parser = QueryParser::for_index(
+            &self.index,
+            vec![
+                fields.signature,
+                fields.signature_exact,
+                fields.symbol_name,
+                fields.all_text,
+            ],
+        );
 
         // Search for exact match first, then components
         let mut search_terms = vec![query.to_string()]; // Exact match
-        search_terms.push(base_type.clone());           // Base type (List, Map, etc.)
-        search_terms.extend(inner_types);               // Inner types (User, String, etc.)
+        search_terms.push(base_type.clone()); // Base type (List, Map, etc.)
+        search_terms.extend(inner_types); // Inner types (User, String, etc.)
 
         let combined_query = search_terms.join(" OR ");
         let parsed_query = query_parser.parse_query(&combined_query)?;
@@ -412,7 +445,8 @@ impl SearchEngine {
         if let Some(start) = query.find('<') {
             if let Some(end) = query.rfind('>') {
                 let inner = &query[start + 1..end];
-                return inner.split(',')
+                return inner
+                    .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -431,11 +465,10 @@ impl SearchEngine {
         let term_query = TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
 
         // Also search in all_text field for broader coverage
-        let query_parser = QueryParser::for_index(&self.index, vec![
-            fields.signature,
-            fields.signature_exact,
-            fields.all_text,
-        ]);
+        let query_parser = QueryParser::for_index(
+            &self.index,
+            vec![fields.signature, fields.signature_exact, fields.all_text],
+        );
 
         // Escape the operator for query parsing and use quotes for exact matching
         let escaped_query = format!("\"{}\"", query);
@@ -494,12 +527,15 @@ impl SearchEngine {
         let searcher = self.reader.searcher();
         let fields = self.schema.fields();
 
-        let query_parser = QueryParser::for_index(&self.index, vec![
-            fields.all_text,
-            fields.symbol_name,
-            fields.signature,
-            fields.doc_comment,
-        ]);
+        let query_parser = QueryParser::for_index(
+            &self.index,
+            vec![
+                fields.all_text,
+                fields.symbol_name,
+                fields.signature,
+                fields.doc_comment,
+            ],
+        );
 
         let parsed_query = query_parser.parse_query(query)?;
         let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
@@ -516,7 +552,11 @@ impl SearchEngine {
     }
 
     /// Mixed search combining multiple intents
-    async fn mixed_search(&self, query: &str, intents: &[QueryIntent]) -> Result<Vec<SearchResult>> {
+    async fn mixed_search(
+        &self,
+        query: &str,
+        intents: &[QueryIntent],
+    ) -> Result<Vec<SearchResult>> {
         let mut all_results = Vec::new();
 
         // Execute search for each intent and combine results
@@ -524,8 +564,11 @@ impl SearchEngine {
             let results = match intent {
                 QueryIntent::ExactSymbol => {
                     // Extract symbol-like words for exact search
-                    let symbols: Vec<&str> = query.split_whitespace()
-                        .filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '_') && w.len() > 2)
+                    let symbols: Vec<&str> = query
+                        .split_whitespace()
+                        .filter(|w| {
+                            w.chars().all(|c| c.is_alphanumeric() || c == '_') && w.len() > 2
+                        })
                         .collect();
 
                     if let Some(symbol) = symbols.first() {
@@ -536,7 +579,8 @@ impl SearchEngine {
                 }
                 QueryIntent::FilePath => {
                     // Extract path-like words
-                    let paths: Vec<&str> = query.split_whitespace()
+                    let paths: Vec<&str> = query
+                        .split_whitespace()
                         .filter(|w| w.contains('/') || w.contains('.'))
                         .collect();
 
@@ -566,7 +610,8 @@ impl SearchEngine {
         }
 
         // Deduplicate by symbol_id and merge scores
-        let mut unique_results: std::collections::HashMap<String, SearchResult> = std::collections::HashMap::new();
+        let mut unique_results: std::collections::HashMap<String, SearchResult> =
+            std::collections::HashMap::new();
 
         for result in all_results {
             let key = format!("{}:{}", result.symbol.id, result.symbol.file_path);
@@ -601,7 +646,11 @@ impl SearchEngine {
 
         let extract_optional_text = |field: Field| -> Option<String> {
             let text = extract_text(field);
-            if text.is_empty() { None } else { Some(text) }
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
         };
 
         let extract_u64 = |field: Field| -> u32 {
@@ -727,8 +776,7 @@ pub struct SearchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractors::{SymbolKind, base::Symbol};
-    
+    use crate::extractors::{base::Symbol, SymbolKind};
 
     #[tokio::test]
     async fn test_basic_search_functionality() {
@@ -849,7 +897,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/user.ts".to_string(),
-                signature: Some("function getUserByEmail(email: string): Promise<User>".to_string()),
+                signature: Some(
+                    "function getUserByEmail(email: string): Promise<User>".to_string(),
+                ),
                 start_line: 20,
                 end_line: 25,
                 start_column: 0,
@@ -960,17 +1010,28 @@ mod tests {
         let results = engine.search("List<User>").await.unwrap();
 
         // Should find results for generic type query
-        assert!(!results.is_empty(), "Should find at least one result for List<User>");
-        assert!(results.len() >= 1, "Should find multiple results including related symbols");
+        assert!(
+            !results.is_empty(),
+            "Should find at least one result for List<User>"
+        );
+        assert!(
+            results.len() >= 1,
+            "Should find multiple results including related symbols"
+        );
 
         // Should include the exact List<User> match
         let exact_match = results.iter().find(|r| r.snippet.contains("List<User>"));
-        assert!(exact_match.is_some(), "Should find function with List<User> signature");
+        assert!(
+            exact_match.is_some(),
+            "Should find function with List<User> signature"
+        );
         assert_eq!(exact_match.unwrap().symbol.name, "getAllUsers");
 
         // Test that search returned the correct exact match
         assert!(results.iter().any(|r| r.symbol.name == "getAllUsers"));
-        assert!(results.iter().any(|r| r.snippet.contains("List<User>") || r.snippet.contains("List<Product>")));
+        assert!(results
+            .iter()
+            .any(|r| r.snippet.contains("List<User>") || r.snippet.contains("List<Product>")));
     }
 
     #[tokio::test]
@@ -1052,19 +1113,37 @@ mod tests {
 
         // Test that we can search for and find functions by exact name
         let validate_results = engine.search("validateUser").await.unwrap();
-        assert_eq!(validate_results.len(), 1, "Should find exactly one validateUser function");
+        assert_eq!(
+            validate_results.len(),
+            1,
+            "Should find exactly one validateUser function"
+        );
         assert_eq!(validate_results[0].symbol.name, "validateUser");
-        assert!(validate_results[0].snippet.contains("&&"), "validateUser signature should contain && operator");
+        assert!(
+            validate_results[0].snippet.contains("&&"),
+            "validateUser signature should contain && operator"
+        );
 
         // Test arrow function search
         let process_results = engine.search("processItems").await.unwrap();
-        assert_eq!(process_results.len(), 1, "Should find exactly one processItems function");
+        assert_eq!(
+            process_results.len(),
+            1,
+            "Should find exactly one processItems function"
+        );
         assert_eq!(process_results[0].symbol.name, "processItems");
-        assert!(process_results[0].snippet.contains("=>"), "processItems signature should contain => operator");
+        assert!(
+            process_results[0].snippet.contains("=>"),
+            "processItems signature should contain => operator"
+        );
 
         // Test that we indexed all 3 functions by searching for a function that should exist
         let username_results = engine.search("getUserName").await.unwrap();
-        assert_eq!(username_results.len(), 1, "Should find exactly one getUserName function");
+        assert_eq!(
+            username_results.len(),
+            1,
+            "Should find exactly one getUserName function"
+        );
         assert_eq!(username_results[0].symbol.name, "getUserName");
     }
 
@@ -1104,7 +1183,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/user.ts".to_string(),
-                signature: Some("function createUser(userData: UserData): Promise<User>".to_string()),
+                signature: Some(
+                    "function createUser(userData: UserData): Promise<User>".to_string(),
+                ),
                 start_line: 20,
                 end_line: 25,
                 start_column: 0,
@@ -1125,7 +1206,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/product.ts".to_string(),
-                signature: Some("function getProductById(id: string): Promise<Product>".to_string()),
+                signature: Some(
+                    "function getProductById(id: string): Promise<Product>".to_string(),
+                ),
                 start_line: 10,
                 end_line: 15,
                 start_column: 0,
@@ -1146,7 +1229,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/auth/authentication.ts".to_string(),
-                signature: Some("function authenticateUser(credentials: Credentials): boolean".to_string()),
+                signature: Some(
+                    "function authenticateUser(credentials: Credentials): boolean".to_string(),
+                ),
                 start_line: 5,
                 end_line: 10,
                 start_column: 0,
@@ -1168,21 +1253,36 @@ mod tests {
 
         // Test file path search - should find symbols in user.ts file
         let user_file_results = engine.search("src/user").await.unwrap();
-        assert_eq!(user_file_results.len(), 2, "Should find both functions from src/user.ts");
+        assert_eq!(
+            user_file_results.len(),
+            2,
+            "Should find both functions from src/user.ts"
+        );
 
         // Verify both functions from user.ts are found
-        let user_ids: Vec<&str> = user_file_results.iter().map(|r| r.symbol.name.as_str()).collect();
+        let user_ids: Vec<&str> = user_file_results
+            .iter()
+            .map(|r| r.symbol.name.as_str())
+            .collect();
         assert!(user_ids.contains(&"getUserById"));
         assert!(user_ids.contains(&"createUser"));
 
         // Test more specific file path search
         let product_file_results = engine.search("src/product").await.unwrap();
-        assert_eq!(product_file_results.len(), 1, "Should find one function from src/product.ts");
+        assert_eq!(
+            product_file_results.len(),
+            1,
+            "Should find one function from src/product.ts"
+        );
         assert_eq!(product_file_results[0].symbol.name, "getProductById");
 
         // Test nested path search
         let auth_file_results = engine.search("src/auth").await.unwrap();
-        assert_eq!(auth_file_results.len(), 1, "Should find one function from src/auth/ directory");
+        assert_eq!(
+            auth_file_results.len(),
+            1,
+            "Should find one function from src/auth/ directory"
+        );
         assert_eq!(auth_file_results[0].symbol.name, "authenticateUser");
     }
 
@@ -1201,7 +1301,10 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/auth.ts".to_string(),
-                signature: Some("function userLogin(email: string, password: string): Promise<AuthResult>".to_string()),
+                signature: Some(
+                    "function userLogin(email: string, password: string): Promise<AuthResult>"
+                        .to_string(),
+                ),
                 start_line: 10,
                 end_line: 15,
                 start_column: 0,
@@ -1222,7 +1325,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/auth.ts".to_string(),
-                signature: Some("function authenticateUser(credentials: Credentials): boolean".to_string()),
+                signature: Some(
+                    "function authenticateUser(credentials: Credentials): boolean".to_string(),
+                ),
                 start_line: 20,
                 end_line: 25,
                 start_column: 0,
@@ -1243,7 +1348,9 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: "src/user.ts".to_string(),
-                signature: Some("function createUserAccount(userData: UserData): Promise<User>".to_string()),
+                signature: Some(
+                    "function createUserAccount(userData: UserData): Promise<User>".to_string(),
+                ),
                 start_line: 30,
                 end_line: 35,
                 start_column: 0,
@@ -1286,13 +1393,18 @@ mod tests {
 
         // Test semantic search by finding related functions through exact name search
         let auth_results = engine.search("authenticateUser").await.unwrap();
-        assert!(!auth_results.is_empty(), "Should find authenticateUser function");
+        assert!(
+            !auth_results.is_empty(),
+            "Should find authenticateUser function"
+        );
         assert_eq!(auth_results[0].symbol.name, "authenticateUser");
 
         // Verify the function has authentication-related content in its signature and docs
-        assert!(auth_results[0].snippet.contains("authenticate") ||
-                auth_results[0].snippet.contains("Credentials") ||
-                auth_results[0].snippet.contains("boolean"));
+        assert!(
+            auth_results[0].snippet.contains("authenticate")
+                || auth_results[0].snippet.contains("Credentials")
+                || auth_results[0].snippet.contains("boolean")
+        );
 
         // Test user login search
         let user_results = engine.search("userLogin").await.unwrap();
@@ -1301,7 +1413,10 @@ mod tests {
 
         // Test user account management search
         let account_results = engine.search("createUserAccount").await.unwrap();
-        assert!(!account_results.is_empty(), "Should find account creation function");
+        assert!(
+            !account_results.is_empty(),
+            "Should find account creation function"
+        );
         assert_eq!(account_results[0].symbol.name, "createUserAccount");
 
         // Test that we can differentiate - tax function should not appear in user searches
@@ -1310,10 +1425,20 @@ mod tests {
         assert_eq!(tax_results[0].symbol.name, "calculateTax");
 
         // Verify we indexed all 4 functions correctly
-        let all_functions = vec!["userLogin", "authenticateUser", "createUserAccount", "calculateTax"];
+        let all_functions = vec![
+            "userLogin",
+            "authenticateUser",
+            "createUserAccount",
+            "calculateTax",
+        ];
         for func_name in all_functions {
             let results = engine.search(func_name).await.unwrap();
-            assert_eq!(results.len(), 1, "Should find exactly one result for {}", func_name);
+            assert_eq!(
+                results.len(),
+                1,
+                "Should find exactly one result for {}",
+                func_name
+            );
             assert_eq!(results[0].symbol.name, func_name);
         }
     }
@@ -1335,7 +1460,10 @@ mod tests {
                 kind: SymbolKind::Function,
                 language: "typescript".to_string(),
                 file_path: format!("src/module{}.ts", i % 10),
-                signature: Some(format!("function function{}(param: string): Promise<Result{}>", i, i)),
+                signature: Some(format!(
+                    "function function{}(param: string): Promise<Result{}>",
+                    i, i
+                )),
                 start_line: (i % 100) as u32 + 1,
                 end_line: (i % 100) as u32 + 5,
                 start_column: 0,
@@ -1371,12 +1499,19 @@ mod tests {
             let duration = start.elapsed();
 
             // Performance requirement: <10ms per search
-            assert!(duration.as_millis() < 10,
-                "Search for '{}' took {}ms, should be <10ms", query, duration.as_millis());
+            assert!(
+                duration.as_millis() < 10,
+                "Search for '{}' took {}ms, should be <10ms",
+                query,
+                duration.as_millis()
+            );
 
             // Sanity check: should find at least some results for most queries
             if query.starts_with("function") {
-                assert!(!results.is_empty(), "Should find results for function search");
+                assert!(
+                    !results.is_empty(),
+                    "Should find results for function search"
+                );
             }
         }
 
@@ -1388,8 +1523,11 @@ mod tests {
         let batch_duration = start.elapsed();
         let avg_duration = batch_duration.as_millis() / 100;
 
-        assert!(avg_duration < 10,
-            "Average search time {}ms should be <10ms", avg_duration);
+        assert!(
+            avg_duration < 10,
+            "Average search time {}ms should be <10ms",
+            avg_duration
+        );
     }
 
     #[tokio::test]
@@ -1461,43 +1599,53 @@ mod tests {
         engine.commit().await.unwrap();
 
         // Add new symbols for the updated file
-        let updated_symbols = vec![
-            Symbol {
-                id: "new-function-1".to_string(),
-                name: "newFunction".to_string(),
-                kind: SymbolKind::Function,
-                language: "typescript".to_string(),
-                file_path: "src/updated.ts".to_string(),
-                signature: Some("function newFunction(): Promise<string>".to_string()),
-                start_line: 10,
-                end_line: 15,
-                start_column: 0,
-                end_column: 0,
-                start_byte: 100,
-                end_byte: 300,
-                doc_comment: Some("New function implementation".to_string()),
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: None,
-                confidence: None,
-                code_context: None,
-            },
-        ];
+        let updated_symbols = vec![Symbol {
+            id: "new-function-1".to_string(),
+            name: "newFunction".to_string(),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: "src/updated.ts".to_string(),
+            signature: Some("function newFunction(): Promise<string>".to_string()),
+            start_line: 10,
+            end_line: 15,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 100,
+            end_byte: 300,
+            doc_comment: Some("New function implementation".to_string()),
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+        }];
 
         engine.index_symbols(updated_symbols).await.unwrap();
 
         // Verify incremental update worked correctly
         let old_results_after = engine.search("oldFunction").await.unwrap();
-        assert_eq!(old_results_after.len(), 0, "Should not find old function after update");
+        assert_eq!(
+            old_results_after.len(),
+            0,
+            "Should not find old function after update"
+        );
 
         let new_results = engine.search("newFunction").await.unwrap();
-        assert_eq!(new_results.len(), 1, "Should find new function after update");
+        assert_eq!(
+            new_results.len(),
+            1,
+            "Should find new function after update"
+        );
         assert_eq!(new_results[0].symbol.name, "newFunction");
 
         // Verify unchanged file is still intact
         let unchanged_results_after = engine.search("unchangedFunction").await.unwrap();
-        assert_eq!(unchanged_results_after.len(), 1, "Should still find unchanged function");
+        assert_eq!(
+            unchanged_results_after.len(),
+            1,
+            "Should still find unchanged function"
+        );
         assert_eq!(unchanged_results_after[0].symbol.name, "unchangedFunction");
     }
 }

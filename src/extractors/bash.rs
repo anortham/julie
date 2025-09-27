@@ -12,9 +12,11 @@
 // Special focus on cross-language tracing since Bash scripts often orchestrate
 // other programs (Python, Node.js, Go binaries, Docker containers, etc.).
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::Tree;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::{HashMap, HashSet};
+use tree_sitter::Tree;
 
 pub struct BashExtractor {
     base: BaseExtractor,
@@ -33,7 +35,12 @@ impl BashExtractor {
         symbols
     }
 
-    fn walk_tree_for_symbols(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+    fn walk_tree_for_symbols(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) {
         let symbol = self.extract_symbol_from_node(node, parent_id.as_deref());
         let mut current_parent_id = parent_id;
 
@@ -56,18 +63,28 @@ impl BashExtractor {
         }
     }
 
-    fn extract_symbol_from_node(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_symbol_from_node(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         match node.kind() {
             "function_definition" => self.extract_function(node, parent_id),
             "variable_assignment" => self.extract_variable(node, parent_id),
             "declaration_command" => self.extract_declaration(node, parent_id),
             "command" | "simple_command" => self.extract_command(node, parent_id),
-            "for_statement" | "while_statement" | "if_statement" => self.extract_control_flow(node, parent_id),
+            "for_statement" | "while_statement" | "if_statement" => {
+                self.extract_control_flow(node, parent_id)
+            }
             _ => None,
         }
     }
 
-    fn extract_function(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_function(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name_node = self.find_name_node(node)?;
         let name = self.base.get_node_text(&name_node);
 
@@ -79,10 +96,17 @@ impl BashExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Function, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Function, options),
+        )
     }
 
-    fn extract_positional_parameters(&mut self, func_node: tree_sitter::Node, parent_id: &str) -> Vec<Symbol> {
+    fn extract_positional_parameters(
+        &mut self,
+        func_node: tree_sitter::Node,
+        parent_id: &str,
+    ) -> Vec<Symbol> {
         let mut parameters = Vec::new();
         let mut seen_params = HashSet::new();
 
@@ -106,7 +130,12 @@ impl BashExtractor {
                             ..Default::default()
                         };
 
-                        let param_symbol = self.base.create_symbol(&node, param_name, SymbolKind::Variable, options);
+                        let param_symbol = self.base.create_symbol(
+                            &node,
+                            param_name,
+                            SymbolKind::Variable,
+                            options,
+                        );
                         parameters.push(param_symbol);
                     }
                 }
@@ -116,7 +145,11 @@ impl BashExtractor {
         parameters
     }
 
-    fn collect_parameter_nodes<'a>(&self, node: tree_sitter::Node<'a>, param_nodes: &mut Vec<tree_sitter::Node<'a>>) {
+    fn collect_parameter_nodes<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        param_nodes: &mut Vec<tree_sitter::Node<'a>>,
+    ) {
         if matches!(node.kind(), "simple_expansion" | "expansion") {
             param_nodes.push(node);
         }
@@ -127,7 +160,11 @@ impl BashExtractor {
         }
     }
 
-    fn extract_variable(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_variable(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name_node = self.find_variable_name_node(node)?;
         let name = self.base.get_node_text(&name_node);
 
@@ -137,17 +174,34 @@ impl BashExtractor {
 
         let options = SymbolOptions {
             signature: Some(self.extract_variable_signature(node)),
-            visibility: if is_exported { Some(Visibility::Public) } else { Some(Visibility::Private) },
+            visibility: if is_exported {
+                Some(Visibility::Public)
+            } else {
+                Some(Visibility::Private)
+            },
             parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: Some(self.extract_variable_documentation(node, is_environment, is_exported, false)),
+            doc_comment: Some(self.extract_variable_documentation(
+                node,
+                is_environment,
+                is_exported,
+                false,
+            )),
             ..Default::default()
         };
 
-        let symbol_kind = if is_environment { SymbolKind::Constant } else { SymbolKind::Variable };
+        let symbol_kind = if is_environment {
+            SymbolKind::Constant
+        } else {
+            SymbolKind::Variable
+        };
         Some(self.base.create_symbol(&node, name, symbol_kind, options))
     }
 
-    fn extract_declaration(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_declaration(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Handle declare, export, readonly commands
         let declaration_text = self.base.get_node_text(&node);
         let declaration_type = declaration_text.split_whitespace().next()?;
@@ -160,9 +214,9 @@ impl BashExtractor {
             let name = self.base.get_node_text(&name_node);
 
             // Check if it's readonly: either 'readonly' command or 'declare -r'
-            let is_readonly = declaration_type == "readonly" ||
-                            declaration_type.contains("readonly") ||
-                            (declaration_type == "declare" && declaration_text.contains(" -r "));
+            let is_readonly = declaration_type == "readonly"
+                || declaration_type.contains("readonly")
+                || (declaration_type == "declare" && declaration_text.contains(" -r "));
 
             // Check if it's an environment variable (but not if it's readonly)
             let is_environment = !is_readonly && self.is_environment_variable(assignment, &name);
@@ -170,36 +224,76 @@ impl BashExtractor {
 
             let options = SymbolOptions {
                 signature: Some(format!("{} {}", declaration_type, name)),
-                visibility: if is_exported { Some(Visibility::Public) } else { Some(Visibility::Private) },
+                visibility: if is_exported {
+                    Some(Visibility::Public)
+                } else {
+                    Some(Visibility::Private)
+                },
                 parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: Some(self.extract_variable_documentation(assignment, is_environment, is_exported, is_readonly)),
+                doc_comment: Some(self.extract_variable_documentation(
+                    assignment,
+                    is_environment,
+                    is_exported,
+                    is_readonly,
+                )),
                 ..Default::default()
             };
 
-            let symbol_kind = if is_readonly { SymbolKind::Constant } else { SymbolKind::Variable };
-            return Some(self.base.create_symbol(&assignment, name, symbol_kind, options));
+            let symbol_kind = if is_readonly {
+                SymbolKind::Constant
+            } else {
+                SymbolKind::Variable
+            };
+            return Some(
+                self.base
+                    .create_symbol(&assignment, name, symbol_kind, options),
+            );
         }
 
         None
     }
 
-    fn extract_command(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_command(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract external commands - this is crucial for cross-language tracing!
         let command_name_node = self.find_command_name_node(node)?;
         let command_name = self.base.get_node_text(&command_name_node);
 
         // Focus on commands that call other programs/languages
         let cross_language_commands = [
-            "python", "python3", "node", "npm", "bun", "deno",
-            "go", "cargo", "rustc", "java", "javac", "mvn",
-            "dotnet", "php", "ruby", "gem",
-            "docker", "kubectl", "helm", "terraform",
-            "git", "curl", "wget", "ssh", "scp"
+            "python",
+            "python3",
+            "node",
+            "npm",
+            "bun",
+            "deno",
+            "go",
+            "cargo",
+            "rustc",
+            "java",
+            "javac",
+            "mvn",
+            "dotnet",
+            "php",
+            "ruby",
+            "gem",
+            "docker",
+            "kubectl",
+            "helm",
+            "terraform",
+            "git",
+            "curl",
+            "wget",
+            "ssh",
+            "scp",
         ];
 
-        let is_interesting = cross_language_commands.contains(&command_name.as_str()) ||
-                           command_name.starts_with("./") ||
-                           command_name.contains('/');
+        let is_interesting = cross_language_commands.contains(&command_name.as_str())
+            || command_name.starts_with("./")
+            || command_name.contains('/');
 
         if is_interesting {
             let options = SymbolOptions {
@@ -210,13 +304,20 @@ impl BashExtractor {
                 ..Default::default()
             };
 
-            Some(self.base.create_symbol(&node, command_name, SymbolKind::Function, options))
+            Some(
+                self.base
+                    .create_symbol(&node, command_name, SymbolKind::Function, options),
+            )
         } else {
             None
         }
     }
 
-    fn extract_control_flow(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_control_flow(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract control flow constructs for understanding script logic
         let control_type = node.kind().replace("_statement", "");
         let name = format!("{} block", control_type);
@@ -229,19 +330,34 @@ impl BashExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     // Helper methods for variable analysis
     fn is_environment_variable(&self, _node: tree_sitter::Node, name: &str) -> bool {
         // Common environment variables
         let env_vars = [
-            "PATH", "HOME", "USER", "PWD", "SHELL", "TERM",
-            "NODE_ENV", "PYTHON_PATH", "JAVA_HOME", "GOPATH",
-            "DOCKER_HOST", "KUBECONFIG"
+            "PATH",
+            "HOME",
+            "USER",
+            "PWD",
+            "SHELL",
+            "TERM",
+            "NODE_ENV",
+            "PYTHON_PATH",
+            "JAVA_HOME",
+            "GOPATH",
+            "DOCKER_HOST",
+            "KUBECONFIG",
         ];
 
-        env_vars.contains(&name) || regex::Regex::new(r"^[A-Z_][A-Z0-9_]*$").unwrap().is_match(name)
+        env_vars.contains(&name)
+            || regex::Regex::new(r"^[A-Z_][A-Z0-9_]*$")
+                .unwrap()
+                .is_match(name)
     }
 
     fn is_exported_variable(&self, node: tree_sitter::Node) -> bool {
@@ -260,13 +376,17 @@ impl BashExtractor {
     // Signature extraction methods
     fn extract_function_signature(&self, node: tree_sitter::Node) -> String {
         let name_node = self.find_name_node(node);
-        let name = name_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "unknown".to_string());
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknown".to_string());
         format!("function {}()", name)
     }
 
     fn extract_variable_signature(&self, node: tree_sitter::Node) -> String {
         let name_node = self.find_variable_name_node(node);
-        let name = name_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "unknown".to_string());
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Get the full assignment text and extract value
         let full_text = self.base.get_node_text(&node);
@@ -313,12 +433,24 @@ impl BashExtractor {
     }
 
     // Documentation helpers
-    fn extract_variable_documentation(&self, _node: tree_sitter::Node, is_environment: bool, is_exported: bool, is_readonly: bool) -> String {
+    fn extract_variable_documentation(
+        &self,
+        _node: tree_sitter::Node,
+        is_environment: bool,
+        is_exported: bool,
+        is_readonly: bool,
+    ) -> String {
         let mut annotations = Vec::new();
 
-        if is_readonly { annotations.push("READONLY"); }
-        if is_environment { annotations.push("Environment Variable"); }
-        if is_exported { annotations.push("Exported"); }
+        if is_readonly {
+            annotations.push("READONLY");
+        }
+        if is_environment {
+            annotations.push("Environment Variable");
+        }
+        if is_exported {
+            annotations.push("Exported");
+        }
 
         if annotations.is_empty() {
             String::new()
@@ -342,9 +474,15 @@ impl BashExtractor {
             ("kubectl", "[Kubernetes CLI Call]"),
             ("terraform", "[Infrastructure as Code Call]"),
             ("git", "[Version Control Call]"),
-        ].iter().cloned().collect::<HashMap<&str, &str>>();
+        ]
+        .iter()
+        .cloned()
+        .collect::<HashMap<&str, &str>>();
 
-        command_docs.get(command_name).unwrap_or(&"[External Program Call]").to_string()
+        command_docs
+            .get(command_name)
+            .unwrap_or(&"[External Program Call]")
+            .to_string()
     }
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
@@ -353,7 +491,12 @@ impl BashExtractor {
         relationships
     }
 
-    fn walk_tree_for_relationships(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn walk_tree_for_relationships(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "command" | "simple_command" => {
                 self.extract_command_relationships(node, symbols, relationships);
@@ -374,13 +517,18 @@ impl BashExtractor {
         }
     }
 
-    fn extract_command_relationships(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_command_relationships(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Extract relationships between functions and the commands they call
         if let Some(command_name_node) = self.find_command_name_node(node) {
             let command_name = self.base.get_node_text(&command_name_node);
-            let command_symbol = symbols.iter().find(|s|
-                s.name == command_name && s.kind == SymbolKind::Function
-            );
+            let command_symbol = symbols
+                .iter()
+                .find(|s| s.name == command_name && s.kind == SymbolKind::Function);
 
             if let Some(cmd_sym) = command_symbol {
                 // Find the parent function that calls this command
@@ -389,9 +537,9 @@ impl BashExtractor {
                     if parent_node.kind() == "function_definition" {
                         if let Some(func_name_node) = self.find_name_node(parent_node) {
                             let func_name = self.base.get_node_text(&func_name_node);
-                            let func_symbol = symbols.iter().find(|s|
-                                s.name == func_name && s.kind == SymbolKind::Function
-                            );
+                            let func_symbol = symbols
+                                .iter()
+                                .find(|s| s.name == func_name && s.kind == SymbolKind::Function);
 
                             if let Some(func_sym) = func_symbol {
                                 if func_sym.id != cmd_sym.id {
@@ -415,13 +563,23 @@ impl BashExtractor {
         }
     }
 
-    fn extract_command_substitution_relationships(&mut self, _node: tree_sitter::Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
+    fn extract_command_substitution_relationships(
+        &mut self,
+        _node: tree_sitter::Node,
+        _symbols: &[Symbol],
+        _relationships: &mut Vec<Relationship>,
+    ) {
         // Extract relationships for command substitutions $(command) or `command`
         // These show data flow dependencies
         // TODO: Implement if needed for additional relationship extraction
     }
 
-    fn extract_file_relationships(&mut self, _node: tree_sitter::Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
+    fn extract_file_relationships(
+        &mut self,
+        _node: tree_sitter::Node,
+        _symbols: &[Symbol],
+        _relationships: &mut Vec<Relationship>,
+    ) {
         // Extract relationships for file redirections and pipes
         // These show data flow between commands
         // TODO: Implement if needed for additional relationship extraction
@@ -443,7 +601,10 @@ impl BashExtractor {
                         var_type = "integer".to_string();
                     } else if regex::Regex::new(r"^\d+\.\d+$").unwrap().is_match(value) {
                         var_type = "float".to_string();
-                    } else if regex::Regex::new(r"^(true|false)$").unwrap().is_match(&value.to_lowercase()) {
+                    } else if regex::Regex::new(r"^(true|false)$")
+                        .unwrap()
+                        .is_match(&value.to_lowercase())
+                    {
                         var_type = "boolean".to_string();
                     } else if value.starts_with('/') || value.contains('/') {
                         var_type = "path".to_string();
@@ -474,7 +635,10 @@ impl BashExtractor {
         None
     }
 
-    fn find_variable_name_node<'a>(&self, node: tree_sitter::Node<'a>) -> Option<tree_sitter::Node<'a>> {
+    fn find_variable_name_node<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Option<tree_sitter::Node<'a>> {
         // Look for variable name in assignments
         if let Some(name_field) = node.child_by_field_name("name") {
             return Some(name_field);
@@ -498,7 +662,10 @@ impl BashExtractor {
         None
     }
 
-    fn find_command_name_node<'a>(&self, node: tree_sitter::Node<'a>) -> Option<tree_sitter::Node<'a>> {
+    fn find_command_name_node<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Option<tree_sitter::Node<'a>> {
         // Look for command name field
         if let Some(name_field) = node.child_by_field_name("name") {
             return Some(name_field);
@@ -522,7 +689,11 @@ impl BashExtractor {
         None
     }
 
-    fn get_children_of_type<'a>(&self, node: tree_sitter::Node<'a>, node_type: &str) -> Vec<tree_sitter::Node<'a>> {
+    fn get_children_of_type<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        node_type: &str,
+    ) -> Vec<tree_sitter::Node<'a>> {
         let mut children = Vec::new();
         let mut cursor = node.walk();
 

@@ -37,13 +37,13 @@ impl PathRelevanceScorer {
         let mut score = self.get_directory_score(path);
 
         // Check if file is in a dedicated test directory (not just a test file in a production directory)
-        let in_test_directory = path_str.starts_with("test/") ||
-                                path_str.starts_with("tests/") ||
-                                path_str.starts_with("spec/") ||
-                                path_str.contains("/test/") ||
-                                path_str.contains("/tests/") ||
-                                path_str.contains("/spec/") ||
-                                path_str.contains("__tests__/");
+        let in_test_directory = path_str.starts_with("test/")
+            || path_str.starts_with("tests/")
+            || path_str.starts_with("spec/")
+            || path_str.contains("/test/")
+            || path_str.contains("/tests/")
+            || path_str.contains("/spec/")
+            || path_str.contains("__tests__/");
 
         // Apply test file penalty only for test files in production directories
         if self.is_test_file(path) && !self.search_contains_test && !in_test_directory {
@@ -86,7 +86,8 @@ impl PathRelevanceScorer {
         }
 
         // Only then check for dedicated test directories
-        if path_str.contains("test") || path_str.contains("spec") || path_str.contains("__tests__") {
+        if path_str.contains("test") || path_str.contains("spec") || path_str.contains("__tests__")
+        {
             return 0.4; // Medium-low priority for tests
         }
 
@@ -97,21 +98,22 @@ impl PathRelevanceScorer {
     /// Check if file is a test file
     pub fn is_test_file(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy().to_lowercase();
-        let file_name = path.file_name()
+        let file_name = path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_lowercase();
 
         // Check common test patterns
-        path_str.contains("test") ||
-        path_str.contains("spec") ||
-        path_str.contains("__tests__") ||
-        file_name.ends_with("_test.rs") ||
-        file_name.ends_with(".test.js") ||
-        file_name.ends_with(".test.ts") ||
-        file_name.ends_with(".spec.js") ||
-        file_name.ends_with(".spec.ts") ||
-        file_name.starts_with("test_")
+        path_str.contains("test")
+            || path_str.contains("spec")
+            || path_str.contains("__tests__")
+            || file_name.ends_with("_test.rs")
+            || file_name.ends_with(".test.js")
+            || file_name.ends_with(".test.ts")
+            || file_name.ends_with(".spec.js")
+            || file_name.ends_with(".spec.ts")
+            || file_name.starts_with("test_")
     }
 
     /// Check if file is production source code
@@ -119,10 +121,10 @@ impl PathRelevanceScorer {
         let path_str = path.to_string_lossy().to_lowercase();
 
         // Production indicators
-        (path_str.contains("src") || path_str.contains("lib")) &&
-        !self.is_test_file(path) &&
-        !path_str.contains("node_modules") &&
-        !path_str.contains("vendor")
+        (path_str.contains("src") || path_str.contains("lib"))
+            && !self.is_test_file(path)
+            && !path_str.contains("node_modules")
+            && !path_str.contains("vendor")
     }
 
     /// Get test file penalty factor
@@ -156,7 +158,10 @@ mod tests {
         assert_eq!(scorer.get_directory_score(Path::new("lib/utils.js")), 1.0);
         assert_eq!(scorer.get_directory_score(Path::new("tests/unit.rs")), 0.4);
         assert_eq!(scorer.get_directory_score(Path::new("docs/readme.md")), 0.2);
-        assert_eq!(scorer.get_directory_score(Path::new("node_modules/react/index.js")), 0.1);
+        assert_eq!(
+            scorer.get_directory_score(Path::new("node_modules/react/index.js")),
+            0.1
+        );
     }
 
     #[test]
@@ -183,7 +188,6 @@ mod tests {
         let test_score = scorer.calculate_score("src/user_test.rs");
         let production_score = scorer.calculate_score("src/user.rs");
 
-
         // Test file should have much lower score due to penalty
         assert!(test_score < production_score);
         assert!((test_score / production_score - 0.42).abs() < 0.1); // ~42% of production score (0.5 penalty for test files in production dirs)
@@ -198,8 +202,12 @@ mod tests {
         let production_score = scorer.calculate_score("src/user.rs");
 
         // Debug: Print actual scores
-        println!("Test search - Test score: {}, Production score: {}, Ratio: {}",
-                 test_score, production_score, test_score / production_score);
+        println!(
+            "Test search - Test score: {}, Production score: {}, Ratio: {}",
+            test_score,
+            production_score,
+            test_score / production_score
+        );
 
         // Both should have similar base scores (no test penalty applied)
         assert!((test_score / production_score - 1.0).abs() < 0.3); // Should be close
@@ -230,8 +238,10 @@ mod tests {
         let deps = scorer.calculate_score("node_modules/react/index.js");
 
         // Debug: Print actual scores
-        println!("Combined - Src prod: {}, Test file: {}, Deps: {}",
-                 src_prod, test_file, deps);
+        println!(
+            "Combined - Src prod: {}, Test file: {}, Deps: {}",
+            src_prod, test_file, deps
+        );
 
         // Verify relative ordering
         assert!(src_prod > test_file);

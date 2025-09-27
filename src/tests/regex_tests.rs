@@ -1,10 +1,14 @@
-use crate::extractors::regex::RegexExtractor;
 use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::regex::RegexExtractor;
 use crate::tests::test_utils::init_parser;
 
 fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
     let tree = init_parser(code, "regex");
-    let mut extractor = RegexExtractor::new("regex".to_string(), "test.regex".to_string(), code.to_string());
+    let mut extractor = RegexExtractor::new(
+        "regex".to_string(),
+        "test.regex".to_string(),
+        code.to_string(),
+    );
     extractor.extract_symbols(&tree)
 }
 
@@ -171,7 +175,11 @@ a+
         assert!(hello_symbol.is_some());
 
         if let Some(symbol) = hello_symbol {
-            assert!(symbol.metadata.as_ref().map(|m| m.contains_key("type")).unwrap_or(false));
+            assert!(symbol
+                .metadata
+                .as_ref()
+                .map(|m| m.contains_key("type"))
+                .unwrap_or(false));
             assert_eq!(symbol.visibility, Some(Visibility::Public));
             assert!(symbol.signature.is_some());
         }

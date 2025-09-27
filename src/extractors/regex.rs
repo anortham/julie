@@ -1,7 +1,9 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use serde_json::Value;
+use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 pub struct RegexExtractor {
     base: BaseExtractor,
@@ -16,7 +18,8 @@ impl RegexExtractor {
 
     /// Helper function to create metadata with JSON values
     fn create_metadata(&self, pairs: &[(&str, &str)]) -> HashMap<String, Value> {
-        pairs.iter()
+        pairs
+            .iter()
             .map(|(key, value)| (key.to_string(), Value::String(value.to_string())))
             .collect()
     }
@@ -31,22 +34,37 @@ impl RegexExtractor {
         symbols
     }
 
-    fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) -> Option<String> {
+    fn visit_node(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) -> Option<String> {
         let symbol = match node.kind() {
             "pattern" | "regex" | "expression" => self.extract_pattern(node, parent_id.clone()),
             "character_class" => self.extract_character_class(node, parent_id.clone()),
-            "group" | "capturing_group" | "non_capturing_group" | "named_capturing_group" =>
-                self.extract_group(node, parent_id.clone()),
-            "quantifier" | "quantified_expression" => self.extract_quantifier(node, parent_id.clone()),
-            "anchor" | "start_assertion" | "end_assertion" | "word_boundary_assertion" =>
-                self.extract_anchor(node, parent_id.clone()),
-            "lookahead_assertion" | "lookbehind_assertion" | "positive_lookahead" |
-            "negative_lookahead" | "positive_lookbehind" | "negative_lookbehind" =>
-                self.extract_lookaround(node, parent_id.clone()),
+            "group" | "capturing_group" | "non_capturing_group" | "named_capturing_group" => {
+                self.extract_group(node, parent_id.clone())
+            }
+            "quantifier" | "quantified_expression" => {
+                self.extract_quantifier(node, parent_id.clone())
+            }
+            "anchor" | "start_assertion" | "end_assertion" | "word_boundary_assertion" => {
+                self.extract_anchor(node, parent_id.clone())
+            }
+            "lookahead_assertion"
+            | "lookbehind_assertion"
+            | "positive_lookahead"
+            | "negative_lookahead"
+            | "positive_lookbehind"
+            | "negative_lookbehind" => self.extract_lookaround(node, parent_id.clone()),
             "alternation" | "disjunction" => self.extract_alternation(node, parent_id.clone()),
-            "character_escape" | "predefined_character_class" =>
-                self.extract_predefined_class(node, parent_id.clone()),
-            "unicode_property" | "unicode_category" => self.extract_unicode_property(node, parent_id.clone()),
+            "character_escape" | "predefined_character_class" => {
+                self.extract_predefined_class(node, parent_id.clone())
+            }
+            "unicode_property" | "unicode_category" => {
+                self.extract_unicode_property(node, parent_id.clone())
+            }
             "backreference" => self.extract_backreference(node, parent_id.clone()),
             "conditional" => self.extract_conditional(node, parent_id.clone()),
             "atomic_group" => self.extract_atomic_group(node, parent_id.clone()),
@@ -85,7 +103,10 @@ impl RegexExtractor {
         let metadata = self.create_metadata(&[
             ("type", "regex-pattern"),
             ("pattern", &pattern_text),
-            ("complexity", &self.calculate_complexity(&pattern_text).to_string()),
+            (
+                "complexity",
+                &self.calculate_complexity(&pattern_text).to_string(),
+            ),
         ]);
 
         Some(self.base.create_symbol(
@@ -133,7 +154,10 @@ impl RegexExtractor {
         let mut metadata = self.create_metadata(&[
             ("type", "group"),
             ("pattern", &group_text),
-            ("capturing", &self.is_capturing_group(&group_text).to_string()),
+            (
+                "capturing",
+                &self.is_capturing_group(&group_text).to_string(),
+            ),
         ]);
 
         if let Some(name) = self.extract_group_name(&group_text) {
@@ -210,8 +234,14 @@ impl RegexExtractor {
         let metadata = self.create_metadata(&[
             ("type", "lookaround"),
             ("pattern", &lookaround_text),
-            ("direction", &self.get_lookaround_direction(&lookaround_text)),
-            ("positive", &self.is_positive_lookaround(&lookaround_text).to_string()),
+            (
+                "direction",
+                &self.get_lookaround_direction(&lookaround_text),
+            ),
+            (
+                "positive",
+                &self.is_positive_lookaround(&lookaround_text).to_string(),
+            ),
         ]);
 
         Some(self.base.create_symbol(
@@ -235,7 +265,12 @@ impl RegexExtractor {
         let metadata = self.create_metadata(&[
             ("type", "alternation"),
             ("pattern", &alternation_text),
-            ("options", &self.extract_alternation_options(&alternation_text).join(",")),
+            (
+                "options",
+                &self
+                    .extract_alternation_options(&alternation_text)
+                    .join(","),
+            ),
         ]);
 
         Some(self.base.create_symbol(
@@ -252,7 +287,11 @@ impl RegexExtractor {
         ))
     }
 
-    fn extract_predefined_class(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+    fn extract_predefined_class(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let class_text = self.base.get_node_text(&node);
         let signature = self.build_predefined_class_signature(&class_text);
 
@@ -276,14 +315,21 @@ impl RegexExtractor {
         ))
     }
 
-    fn extract_unicode_property(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+    fn extract_unicode_property(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let property_text = self.base.get_node_text(&node);
         let signature = self.build_unicode_property_signature(&property_text);
 
         let metadata = self.create_metadata(&[
             ("type", "unicode-property"),
             ("pattern", &property_text),
-            ("property", &self.extract_unicode_property_name(&property_text)),
+            (
+                "property",
+                &self.extract_unicode_property_name(&property_text),
+            ),
         ]);
 
         Some(self.base.create_symbol(
@@ -304,10 +350,8 @@ impl RegexExtractor {
         let backref_text = self.base.get_node_text(&node);
         let signature = self.build_backreference_signature(&backref_text);
 
-        let mut metadata = self.create_metadata(&[
-            ("type", "backreference"),
-            ("pattern", &backref_text),
-        ]);
+        let mut metadata =
+            self.create_metadata(&[("type", "backreference"), ("pattern", &backref_text)]);
 
         if let Some(group_number) = self.extract_group_number(&backref_text) {
             metadata.insert("groupNumber".to_string(), Value::String(group_number));
@@ -390,10 +434,7 @@ impl RegexExtractor {
             .trim()
             .to_string();
 
-        let metadata = self.create_metadata(&[
-            ("type", "comment"),
-            ("content", &clean_comment),
-        ]);
+        let metadata = self.create_metadata(&[("type", "comment"), ("content", &clean_comment)]);
 
         Some(self.base.create_symbol(
             &node,
@@ -416,7 +457,10 @@ impl RegexExtractor {
         let metadata = self.create_metadata(&[
             ("type", "literal"),
             ("pattern", &literal_text),
-            ("escaped", &self.is_escaped_literal(&literal_text).to_string()),
+            (
+                "escaped",
+                &self.is_escaped_literal(&literal_text).to_string(),
+            ),
         ]);
 
         Some(self.base.create_symbol(
@@ -484,7 +528,10 @@ impl RegexExtractor {
                     ("type", "text-pattern"),
                     ("pattern", &clean_line),
                     ("lineNumber", &(i + 1).to_string()),
-                    ("complexity", &self.calculate_complexity(&clean_line).to_string()),
+                    (
+                        "complexity",
+                        &self.calculate_complexity(&clean_line).to_string(),
+                    ),
                 ]);
 
                 // Create a symbol using the standard method
@@ -508,8 +555,8 @@ impl RegexExtractor {
                     parent_id: None,
                     metadata: Some(metadata),
                     semantic_group: None, // Regex patterns don't have cross-language groups
-                    confidence: None, // Will be set during validation
-                    code_context: None, // Will be populated during context extraction
+                    confidence: None,     // Will be set during validation
+                    code_context: None,   // Will be populated during context extraction
                 };
                 symbols.push(symbol);
             }
@@ -519,9 +566,20 @@ impl RegexExtractor {
     fn is_regex_pattern(&self, node: &Node) -> bool {
         matches!(
             node.kind(),
-            "pattern" | "regex" | "expression" | "character_class" | "group"
-                | "quantifier" | "anchor" | "lookahead" | "lookbehind" | "alternation"
-                | "character_escape" | "unicode_property" | "backreference" | "conditional"
+            "pattern"
+                | "regex"
+                | "expression"
+                | "character_class"
+                | "group"
+                | "quantifier"
+                | "anchor"
+                | "lookahead"
+                | "lookbehind"
+                | "alternation"
+                | "character_escape"
+                | "unicode_property"
+                | "backreference"
+                | "conditional"
         )
     }
 
@@ -556,38 +614,55 @@ impl RegexExtractor {
         }
 
         // Allow simple groups and common patterns
-        if (text.starts_with('(') && text.ends_with(')'))
-            || text.ends_with('*')
-            || text == "**" {
+        if (text.starts_with('(') && text.ends_with(')')) || text.ends_with('*') || text == "**" {
             return true;
         }
 
         // Check for regex-specific characters or patterns
         let regex_indicators = [
-            r"[\[\](){}*+?^$|\\]",        // Special regex characters
-            r"\\[dwsWDSnrtfve]",          // Escape sequences
-            r"\(\?\<?[!=]",               // Lookarounds
-            r"\(\?\w+\)",                 // Groups with modifiers
-            r"\\p\{",                     // Unicode properties
-            r"\[\^",                      // Negated character classes
-            r"\{[\d,]+\}",                // Quantifiers
+            r"[\[\](){}*+?^$|\\]", // Special regex characters
+            r"\\[dwsWDSnrtfve]",   // Escape sequences
+            r"\(\?\<?[!=]",        // Lookarounds
+            r"\(\?\w+\)",          // Groups with modifiers
+            r"\\p\{",              // Unicode properties
+            r"\[\^",               // Negated character classes
+            r"\{[\d,]+\}",         // Quantifiers
         ];
 
         regex_indicators.iter().any(|pattern| {
             // Simple pattern matching - check for common regex constructs
             match *pattern {
                 r"[\[\](){}*+?^$|\\]" => text.chars().any(|c| "[](){}*+?^$|\\".contains(c)),
-                r"\\[dwsWDSnrtfve]" => text.contains(r"\d") || text.contains(r"\w") || text.contains(r"\s") ||
-                                      text.contains(r"\D") || text.contains(r"\W") || text.contains(r"\S") ||
-                                      text.contains(r"\n") || text.contains(r"\r") || text.contains(r"\t") ||
-                                      text.contains(r"\f") || text.contains(r"\v") || text.contains(r"\e"),
-                r"\(\?\<?[!=]" => text.contains("(?=") || text.contains("(?!") || text.contains("(?<=") || text.contains("(?<!"),
+                r"\\[dwsWDSnrtfve]" => {
+                    text.contains(r"\d")
+                        || text.contains(r"\w")
+                        || text.contains(r"\s")
+                        || text.contains(r"\D")
+                        || text.contains(r"\W")
+                        || text.contains(r"\S")
+                        || text.contains(r"\n")
+                        || text.contains(r"\r")
+                        || text.contains(r"\t")
+                        || text.contains(r"\f")
+                        || text.contains(r"\v")
+                        || text.contains(r"\e")
+                }
+                r"\(\?\<?[!=]" => {
+                    text.contains("(?=")
+                        || text.contains("(?!")
+                        || text.contains("(?<=")
+                        || text.contains("(?<!")
+                }
                 r"\(\?\w+\)" => text.contains("(?") && text.contains(')'),
                 r"\\p\{" => text.contains(r"\p{") || text.contains(r"\P{"),
                 r"\[\^" => text.contains("[^"),
-                r"\{[\d,]+\}" => text.contains('{') && text.contains('}') &&
-                                text.chars().any(|c| c.is_ascii_digit()) &&
-                                (text.contains(',') || text.chars().filter(|c| c.is_ascii_digit()).count() > 0),
+                r"\{[\d,]+\}" => {
+                    text.contains('{')
+                        && text.contains('}')
+                        && text.chars().any(|c| c.is_ascii_digit())
+                        && (text.contains(',')
+                            || text.chars().filter(|c| c.is_ascii_digit()).count() > 0)
+                }
                 _ => false,
             }
         })
@@ -595,7 +670,11 @@ impl RegexExtractor {
 
     fn determine_pattern_kind(&self, pattern: &str) -> SymbolKind {
         // Lookarounds (check first, before groups)
-        if pattern.contains("(?=") || pattern.contains("(?!") || pattern.contains("(?<=") || pattern.contains("(?<!") {
+        if pattern.contains("(?=")
+            || pattern.contains("(?!")
+            || pattern.contains("(?<=")
+            || pattern.contains("(?<!")
+        {
             return SymbolKind::Method;
         }
 
@@ -605,25 +684,37 @@ impl RegexExtractor {
         }
 
         // Groups (but not lookarounds)
-        if pattern.starts_with('(') && pattern.ends_with(')')
-            && !pattern.contains("(?=") && !pattern.contains("(?!")
-            && !pattern.contains("(?<=") && !pattern.contains("(?<!") {
+        if pattern.starts_with('(')
+            && pattern.ends_with(')')
+            && !pattern.contains("(?=")
+            && !pattern.contains("(?!")
+            && !pattern.contains("(?<=")
+            && !pattern.contains("(?<!")
+        {
             return SymbolKind::Class;
         }
 
         // Quantifiers
-        if pattern.ends_with('?') || pattern.ends_with('*') || pattern.ends_with('+')
-            || (pattern.contains('{') && pattern.contains('}')) {
+        if pattern.ends_with('?')
+            || pattern.ends_with('*')
+            || pattern.ends_with('+')
+            || (pattern.contains('{') && pattern.contains('}'))
+        {
             return SymbolKind::Function;
         }
 
         // Anchors and predefined classes
         if matches!(pattern, "^" | "$")
-            || pattern == r"\b" || pattern == r"\B"
-            || pattern == r"\d" || pattern == r"\D"
-            || pattern == r"\w" || pattern == r"\W"
-            || pattern == r"\s" || pattern == r"\S"
-            || pattern == "." {
+            || pattern == r"\b"
+            || pattern == r"\B"
+            || pattern == r"\d"
+            || pattern == r"\D"
+            || pattern == r"\w"
+            || pattern == r"\W"
+            || pattern == r"\s"
+            || pattern == r"\S"
+            || pattern == "."
+        {
             return SymbolKind::Constant;
         }
 
@@ -668,7 +759,11 @@ impl RegexExtractor {
 
     fn build_lookaround_signature(&self, lookaround_text: &str) -> String {
         let direction = self.get_lookaround_direction(lookaround_text);
-        let polarity = if self.is_positive_lookaround(lookaround_text) { "positive" } else { "negative" };
+        let polarity = if self.is_positive_lookaround(lookaround_text) {
+            "positive"
+        } else {
+            "negative"
+        };
         format!("{} {}: {}", polarity, direction, lookaround_text)
     }
 
@@ -715,7 +810,9 @@ impl RegexExtractor {
 
     // Helper methods
     fn is_capturing_group(&self, group_text: &str) -> bool {
-        !group_text.starts_with("(?:") && !group_text.starts_with("(?<") && !group_text.starts_with("(?P<")
+        !group_text.starts_with("(?:")
+            && !group_text.starts_with("(?<")
+            && !group_text.starts_with("(?P<")
     }
 
     fn extract_group_name(&self, group_text: &str) -> Option<String> {
@@ -758,7 +855,10 @@ impl RegexExtractor {
     }
 
     fn extract_alternation_options(&self, alternation_text: &str) -> Vec<String> {
-        alternation_text.split('|').map(|s| s.trim().to_string()).collect()
+        alternation_text
+            .split('|')
+            .map(|s| s.trim().to_string())
+            .collect()
     }
 
     fn get_predefined_class_category(&self, class_text: &str) -> String {
@@ -782,7 +882,10 @@ impl RegexExtractor {
     }
 
     fn extract_unicode_property_name(&self, property_text: &str) -> String {
-        if let Some(start) = property_text.find(r"\p{").or_else(|| property_text.find(r"\P{")) {
+        if let Some(start) = property_text
+            .find(r"\p{")
+            .or_else(|| property_text.find(r"\P{"))
+        {
             if let Some(end) = property_text[start..].find('}') {
                 let inner = &property_text[start + 3..start + end];
                 return inner.to_string();
@@ -842,7 +945,11 @@ impl RegexExtractor {
         complexity
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: &Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         // For now, return empty relationships
         // In a full implementation, this would extract relationships between
         // backreferences and their corresponding groups, etc.

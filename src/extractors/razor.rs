@@ -1,5 +1,7 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
+use tree_sitter::{Node, Tree};
 
 // Include stub implementations to reduce file size
 include!("razor_stubs.rs");
@@ -36,13 +38,16 @@ impl RazorExtractor {
         let mut symbol = None;
         let node_type = node.kind();
 
-
-
-
         match node_type {
-            "razor_directive" | "razor_inject_directive" | "razor_using_directive"
-            | "razor_page_directive" | "razor_namespace_directive" | "razor_model_directive"
-            | "razor_attribute_directive" | "razor_inherits_directive" | "razor_implements_directive"
+            "razor_directive"
+            | "razor_inject_directive"
+            | "razor_using_directive"
+            | "razor_page_directive"
+            | "razor_namespace_directive"
+            | "razor_model_directive"
+            | "razor_attribute_directive"
+            | "razor_inherits_directive"
+            | "razor_implements_directive"
             | "razor_addtaghelper_directive" => {
                 symbol = self.extract_directive(node, parent_id.as_deref());
             }
@@ -55,7 +60,14 @@ impl RazorExtractor {
             "razor_block" => {
                 symbol = self.extract_code_block(node, parent_id.as_deref());
                 // Extract C# symbols from within the block
-                self.extract_csharp_symbols(node, symbols, symbol.as_ref().map(|s| s.id.as_str()).or(parent_id.as_deref()));
+                self.extract_csharp_symbols(
+                    node,
+                    symbols,
+                    symbol
+                        .as_ref()
+                        .map(|s| s.id.as_str())
+                        .or(parent_id.as_deref()),
+                );
                 // Don't visit children since we already extracted them
                 return;
             }
@@ -134,7 +146,12 @@ impl RazorExtractor {
         !node.kind().is_empty() && !node.is_error()
     }
 
-    fn extract_from_text_content(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_from_text_content(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         let content = self.base.get_node_text(&node);
 
         // Extract Razor directives from text
@@ -218,7 +235,10 @@ impl RazorExtractor {
 
         // For certain directives, use the value as the symbol name
         let symbol_name = match directive_name.as_str() {
-            "using" => directive_value.as_ref().map(|s| s.clone()).unwrap_or_else(|| format!("@{}", directive_name)),
+            "using" => directive_value
+                .as_ref()
+                .map(|s| s.clone())
+                .unwrap_or_else(|| format!("@{}", directive_name)),
             "inject" => {
                 // Extract property name from "@inject IService PropertyName"
                 if let Some(value) = &directive_value {
@@ -245,10 +265,19 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-directive".to_string()));
-                    metadata.insert("directiveName".to_string(), serde_json::Value::String(directive_name.clone()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-directive".to_string()),
+                    );
+                    metadata.insert(
+                        "directiveName".to_string(),
+                        serde_json::Value::String(directive_name.clone()),
+                    );
                     if let Some(value) = directive_value {
-                        metadata.insert("directiveValue".to_string(), serde_json::Value::String(value));
+                        metadata.insert(
+                            "directiveValue".to_string(),
+                            serde_json::Value::String(value),
+                        );
                     }
                     metadata
                 }),
@@ -272,7 +301,8 @@ impl RazorExtractor {
                 let text = self.base.get_node_text(&node);
                 if text.contains("@addTagHelper") {
                     "addTagHelper".to_string()
-                } else if let Some(captures) = regex::Regex::new(r"@(\w+)").unwrap().captures(&text) {
+                } else if let Some(captures) = regex::Regex::new(r"@(\w+)").unwrap().captures(&text)
+                {
                     captures[1].to_string()
                 } else {
                     "unknown".to_string()
@@ -283,29 +313,28 @@ impl RazorExtractor {
 
     fn extract_directive_value(&self, node: Node) -> Option<String> {
         match node.kind() {
-            "razor_page_directive" => {
-                self.find_child_by_type(node, "string_literal")
-                    .map(|n| self.base.get_node_text(&n))
-            }
+            "razor_page_directive" => self
+                .find_child_by_type(node, "string_literal")
+                .map(|n| self.base.get_node_text(&n)),
             "razor_model_directive" | "razor_inherits_directive" | "razor_implements_directive" => {
                 self.find_child_by_type(node, "identifier")
                     .map(|n| self.base.get_node_text(&n))
             }
-            "razor_using_directive" | "razor_namespace_directive" => {
-                self.find_child_by_types(node, &["qualified_name", "identifier"])
-                    .map(|n| self.base.get_node_text(&n))
-            }
-            "razor_inject_directive" => {
-                self.find_child_by_type(node, "variable_declaration")
-                    .map(|n| self.base.get_node_text(&n))
-            }
-            "razor_attribute_directive" => {
-                self.find_child_by_type(node, "attribute_list")
-                    .map(|n| self.base.get_node_text(&n))
-            }
+            "razor_using_directive" | "razor_namespace_directive" => self
+                .find_child_by_types(node, &["qualified_name", "identifier"])
+                .map(|n| self.base.get_node_text(&n)),
+            "razor_inject_directive" => self
+                .find_child_by_type(node, "variable_declaration")
+                .map(|n| self.base.get_node_text(&n)),
+            "razor_attribute_directive" => self
+                .find_child_by_type(node, "attribute_list")
+                .map(|n| self.base.get_node_text(&n)),
             "razor_addtaghelper_directive" => {
                 let text = self.base.get_node_text(&node);
-                if let Some(captures) = regex::Regex::new(r"@addTagHelper\s+(.+)").unwrap().captures(&text) {
+                if let Some(captures) = regex::Regex::new(r"@addTagHelper\s+(.+)")
+                    .unwrap()
+                    .captures(&text)
+                {
                     Some(captures[1].trim().to_string())
                 } else {
                     None
@@ -314,12 +343,17 @@ impl RazorExtractor {
             _ => {
                 let text = self.base.get_node_text(&node);
                 if text.contains("@addTagHelper") {
-                    if let Some(captures) = regex::Regex::new(r"@addTagHelper\s+(.+)").unwrap().captures(&text) {
+                    if let Some(captures) = regex::Regex::new(r"@addTagHelper\s+(.+)")
+                        .unwrap()
+                        .captures(&text)
+                    {
                         Some(captures[1].trim().to_string())
                     } else {
                         None
                     }
-                } else if let Some(captures) = regex::Regex::new(r"@\w+\s+(.*)").unwrap().captures(&text) {
+                } else if let Some(captures) =
+                    regex::Regex::new(r"@\w+\s+(.*)").unwrap().captures(&text)
+                {
                     Some(captures[1].trim().to_string())
                 } else {
                     None
@@ -347,7 +381,9 @@ impl RazorExtractor {
         let directive_value = if let Some(parent) = node.parent() {
             let text = self.base.get_node_text(&parent);
             if let Some(captures) = regex::Regex::new(&format!(r"@{}\s+(\S+)", directive_type))
-                .unwrap().captures(&text) {
+                .unwrap()
+                .captures(&text)
+            {
                 Some(captures[1].to_string())
             } else {
                 None
@@ -374,10 +410,19 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-token-directive".to_string()));
-                    metadata.insert("directiveType".to_string(), serde_json::Value::String(directive_type.clone()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-token-directive".to_string()),
+                    );
+                    metadata.insert(
+                        "directiveType".to_string(),
+                        serde_json::Value::String(directive_type.clone()),
+                    );
                     if let Some(value) = directive_value {
-                        metadata.insert("directiveValue".to_string(), serde_json::Value::String(value));
+                        metadata.insert(
+                            "directiveValue".to_string(),
+                            serde_json::Value::String(value),
+                        );
                     }
                     metadata
                 }),
@@ -401,7 +446,10 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-section".to_string()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-section".to_string()),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -430,9 +478,18 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-code-block".to_string()));
-                    metadata.insert("blockType".to_string(), serde_json::Value::String(block_type.clone()));
-                    metadata.insert("content".to_string(), serde_json::Value::String(content[..content.len().min(200)].to_string()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-code-block".to_string()),
+                    );
+                    metadata.insert(
+                        "blockType".to_string(),
+                        serde_json::Value::String(block_type.clone()),
+                    );
+                    metadata.insert(
+                        "content".to_string(),
+                        serde_json::Value::String(content[..content.len().min(200)].to_string()),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -455,7 +512,8 @@ impl RazorExtractor {
 
     fn extract_expression(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let expression = self.base.get_node_text(&node);
-        let variable_name = self.extract_variable_from_expression(&expression)
+        let variable_name = self
+            .extract_variable_from_expression(&expression)
             .unwrap_or_else(|| "expression".to_string());
 
         Some(self.base.create_symbol(
@@ -468,8 +526,14 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-expression".to_string()));
-                    metadata.insert("expression".to_string(), serde_json::Value::String(expression.clone()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-expression".to_string()),
+                    );
+                    metadata.insert(
+                        "expression".to_string(),
+                        serde_json::Value::String(expression.clone()),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -485,7 +549,11 @@ impl RazorExtractor {
         }
     }
 
-    fn create_external_component_symbols_if_needed(&mut self, node: Node, symbols: &mut Vec<Symbol>) {
+    fn create_external_component_symbols_if_needed(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+    ) {
         let node_text = self.base.get_node_text(&node);
 
         // Use regex to find all component tags within the element (Miller's approach)
@@ -507,8 +575,14 @@ impl RazorExtractor {
                                 parent_id: None,
                                 metadata: Some({
                                     let mut metadata = HashMap::new();
-                                    metadata.insert("type".to_string(), serde_json::Value::String("external-component".to_string()));
-                                    metadata.insert("source".to_string(), serde_json::Value::String("inferred".to_string()));
+                                    metadata.insert(
+                                        "type".to_string(),
+                                        serde_json::Value::String("external-component".to_string()),
+                                    );
+                                    metadata.insert(
+                                        "source".to_string(),
+                                        serde_json::Value::String("inferred".to_string()),
+                                    );
                                     metadata
                                 }),
                                 doc_comment: None,
@@ -521,7 +595,12 @@ impl RazorExtractor {
         }
     }
 
-    fn extract_binding_attributes_from_element(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_binding_attributes_from_element(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         let element_text = self.base.get_node_text(&node);
 
         // Extract @bind-Value attributes using regex patterns (Miller approach)
@@ -529,8 +608,13 @@ impl RazorExtractor {
             for captures in value_regex.captures_iter(&element_text) {
                 if let Some(value_match) = captures.get(1) {
                     let binding_value = value_match.as_str();
-                    let binding_name = format!("{}_binding",
-                        binding_value.replace("Model.", "").replace(".", "_").to_lowercase());
+                    let binding_name = format!(
+                        "{}_binding",
+                        binding_value
+                            .replace("Model.", "")
+                            .replace(".", "_")
+                            .to_lowercase()
+                    );
                     let binding_signature = format!("@bind-Value=\"{}\"", binding_value);
 
                     let binding_symbol = self.base.create_symbol(
@@ -543,9 +627,18 @@ impl RazorExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("type".to_string(), serde_json::Value::String("data-binding".to_string()));
-                                metadata.insert("bindingType".to_string(), serde_json::Value::String("two-way".to_string()));
-                                metadata.insert("property".to_string(), serde_json::Value::String(binding_value.to_string()));
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("data-binding".to_string()),
+                                );
+                                metadata.insert(
+                                    "bindingType".to_string(),
+                                    serde_json::Value::String("two-way".to_string()),
+                                );
+                                metadata.insert(
+                                    "property".to_string(),
+                                    serde_json::Value::String(binding_value.to_string()),
+                                );
                                 metadata
                             }),
                             doc_comment: None,
@@ -574,8 +667,14 @@ impl RazorExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("type".to_string(), serde_json::Value::String("event-binding".to_string()));
-                                metadata.insert("event".to_string(), serde_json::Value::String(event_value.to_string()));
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("event-binding".to_string()),
+                                );
+                                metadata.insert(
+                                    "event".to_string(),
+                                    serde_json::Value::String(event_value.to_string()),
+                                );
                                 metadata
                             }),
                             doc_comment: None,
@@ -606,9 +705,15 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("html-element".to_string()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("html-element".to_string()),
+                    );
                     metadata.insert("tagName".to_string(), serde_json::Value::String(tag_name));
-                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::Value::String(attributes.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -675,9 +780,18 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("razor-component".to_string()));
-                    metadata.insert("componentName".to_string(), serde_json::Value::String(component_name));
-                    metadata.insert("parameters".to_string(), serde_json::Value::String(parameters.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-component".to_string()),
+                    );
+                    metadata.insert(
+                        "componentName".to_string(),
+                        serde_json::Value::String(component_name),
+                    );
+                    metadata.insert(
+                        "parameters".to_string(),
+                        serde_json::Value::String(parameters.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -704,17 +818,26 @@ impl RazorExtractor {
         parameters
     }
 
-    fn extract_csharp_symbols(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_csharp_symbols(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.visit_csharp_node(child, symbols, parent_id);
         }
     }
 
-    fn visit_csharp_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn visit_csharp_node(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         let mut symbol = None;
         let current_parent_id = parent_id;
-
 
         match node.kind() {
             "local_declaration_statement" => {
@@ -780,8 +903,14 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("using-directive".to_string()));
-                    metadata.insert("namespace".to_string(), serde_json::Value::String(namespace_name));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("using-directive".to_string()),
+                    );
+                    metadata.insert(
+                        "namespace".to_string(),
+                        serde_json::Value::String(namespace_name),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -790,7 +919,9 @@ impl RazorExtractor {
     }
 
     fn extract_namespace(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name = if let Some(name_node) = self.find_child_by_types(node, &["qualified_name", "identifier"]) {
+        let name = if let Some(name_node) =
+            self.find_child_by_types(node, &["qualified_name", "identifier"])
+        {
             self.base.get_node_text(&name_node)
         } else {
             "UnknownNamespace".to_string()
@@ -806,7 +937,10 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("namespace".to_string()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("namespace".to_string()),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -837,8 +971,14 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("class".to_string()));
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("class".to_string()),
+                    );
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -895,7 +1035,15 @@ impl RazorExtractor {
         if let Some(ref ret_type) = return_type {
             signature_parts.push(ret_type.clone());
         }
-        signature_parts.push(format!("{}{}{}", interface_qualification, name, parameters.as_ref().map(|s| s.clone()).unwrap_or_else(|| "()".to_string())));
+        signature_parts.push(format!(
+            "{}{}{}",
+            interface_qualification,
+            name,
+            parameters
+                .as_ref()
+                .map(|s| s.clone())
+                .unwrap_or_else(|| "()".to_string())
+        ));
 
         Some(self.base.create_symbol(
             &node,
@@ -907,15 +1055,30 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("method".to_string()));
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("method".to_string()),
+                    );
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     if let Some(params) = &parameters {
-                        metadata.insert("parameters".to_string(), serde_json::Value::String(params.clone()));
+                        metadata.insert(
+                            "parameters".to_string(),
+                            serde_json::Value::String(params.clone()),
+                        );
                     }
                     if let Some(ret_type) = return_type {
-                        metadata.insert("returnType".to_string(), serde_json::Value::String(ret_type));
+                        metadata.insert(
+                            "returnType".to_string(),
+                            serde_json::Value::String(ret_type),
+                        );
                     }
-                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::Value::String(attributes.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -934,8 +1097,17 @@ impl RazorExtractor {
             if child.kind() == "identifier" {
                 // Check if this identifier comes after a type node
                 let has_preceding_type = children.iter().take(i).any(|c| {
-                    matches!(c.kind(), "predefined_type" | "nullable_type" | "array_type" | "generic_name" | "identifier")
-                        && children.iter().take(i).any(|prev| prev.kind() == "modifier")
+                    matches!(
+                        c.kind(),
+                        "predefined_type"
+                            | "nullable_type"
+                            | "array_type"
+                            | "generic_name"
+                            | "identifier"
+                    ) && children
+                        .iter()
+                        .take(i)
+                        .any(|prev| prev.kind() == "modifier")
                 });
 
                 if has_preceding_type {
@@ -964,9 +1136,21 @@ impl RazorExtractor {
         // Check for accessors
         if let Some(accessor_list) = self.find_child_by_type(node, "accessor_list") {
             let mut cursor = accessor_list.walk();
-            let accessors: Vec<_> = accessor_list.children(&mut cursor)
-                .filter(|c| matches!(c.kind(), "get_accessor_declaration" | "set_accessor_declaration"))
-                .map(|c| if c.kind() == "get_accessor_declaration" { "get" } else { "set" })
+            let accessors: Vec<_> = accessor_list
+                .children(&mut cursor)
+                .filter(|c| {
+                    matches!(
+                        c.kind(),
+                        "get_accessor_declaration" | "set_accessor_declaration"
+                    )
+                })
+                .map(|c| {
+                    if c.kind() == "get_accessor_declaration" {
+                        "get"
+                    } else {
+                        "set"
+                    }
+                })
                 .collect();
 
             if !accessors.is_empty() {
@@ -996,16 +1180,28 @@ impl RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("property".to_string()));
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("property".to_string()),
+                    );
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     if let Some(prop_type) = property_type {
-                        metadata.insert("propertyType".to_string(), serde_json::Value::String(prop_type));
+                        metadata.insert(
+                            "propertyType".to_string(),
+                            serde_json::Value::String(prop_type),
+                        );
                     }
-                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::Value::String(attributes.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
             },
         ))
     }
-    }
+}

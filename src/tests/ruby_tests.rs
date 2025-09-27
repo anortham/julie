@@ -1,7 +1,7 @@
 // Port of Miller's comprehensive Ruby extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
-use crate::extractors::base::{SymbolKind, RelationshipKind, Visibility};
+use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::ruby::RubyExtractor;
 use tree_sitter::Tree;
 
@@ -12,7 +12,9 @@ mod ruby_extractor_tests {
     // Helper function to create a RubyExtractor and parse Ruby code
     fn create_extractor_and_parse(code: &str) -> (RubyExtractor, Tree) {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_ruby::LANGUAGE.into()).unwrap();
+        parser
+            .set_language(&tree_sitter_ruby::LANGUAGE.into())
+            .unwrap();
         let tree = parser.parse(code, None).unwrap();
         let extractor = RubyExtractor::new("test.rb".to_string(), code.to_string());
         (extractor, tree)
@@ -112,7 +114,12 @@ end
 
         let base_model = symbols.iter().find(|s| s.name == "base_model");
         assert!(base_model.is_some());
-        assert!(base_model.unwrap().signature.as_ref().unwrap().contains("require_relative 'base_model'"));
+        assert!(base_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("require_relative 'base_model'"));
 
         // Module
         let comparable = symbols.iter().find(|s| s.name == "Comparable");
@@ -123,82 +130,166 @@ end
         let spaceship = symbols.iter().find(|s| s.name == "<=>");
         assert!(spaceship.is_some());
         assert_eq!(spaceship.unwrap().kind, SymbolKind::Method);
-        assert_eq!(spaceship.unwrap().parent_id, Some(comparable.unwrap().id.clone()));
+        assert_eq!(
+            spaceship.unwrap().parent_id,
+            Some(comparable.unwrap().id.clone())
+        );
 
         let between = symbols.iter().find(|s| s.name == "between?");
         assert!(between.is_some());
-        assert!(between.unwrap().signature.as_ref().unwrap().contains("def between?(min, max)"));
+        assert!(between
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def between?(min, max)"));
 
         // Module with include
         let enumerable = symbols.iter().find(|s| s.name == "Enumerable");
         assert!(enumerable.is_some());
-        assert!(enumerable.unwrap().signature.as_ref().unwrap().contains("include Comparable"));
+        assert!(enumerable
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Comparable"));
 
         // Class
         let person = symbols.iter().find(|s| s.name == "Person");
         assert!(person.is_some());
         assert_eq!(person.unwrap().kind, SymbolKind::Class);
-        assert!(person.unwrap().signature.as_ref().unwrap().contains("include Comparable"));
-        assert!(person.unwrap().signature.as_ref().unwrap().contains("extend Enumerable"));
+        assert!(person
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Comparable"));
+        assert!(person
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("extend Enumerable"));
 
         // Attribute accessors
-        let name_reader = symbols.iter().find(|s| s.name == "name" && s.signature.as_ref().map_or(false, |sig| sig.contains("attr_reader")));
+        let name_reader = symbols.iter().find(|s| {
+            s.name == "name"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("attr_reader"))
+        });
         assert!(name_reader.is_some());
         assert_eq!(name_reader.unwrap().kind, SymbolKind::Property);
 
-        let email_writer = symbols.iter().find(|s| s.name == "email" && s.signature.as_ref().map_or(false, |sig| sig.contains("attr_writer")));
+        let email_writer = symbols.iter().find(|s| {
+            s.name == "email"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("attr_writer"))
+        });
         assert!(email_writer.is_some());
 
-        let phone_accessor = symbols.iter().find(|s| s.name == "phone" && s.signature.as_ref().map_or(false, |sig| sig.contains("attr_accessor")));
+        let phone_accessor = symbols.iter().find(|s| {
+            s.name == "phone"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("attr_accessor"))
+        });
         assert!(phone_accessor.is_some());
 
         // Class variable
         let population = symbols.iter().find(|s| s.name == "@@population");
         assert!(population.is_some());
         assert_eq!(population.unwrap().kind, SymbolKind::Variable);
-        assert!(population.unwrap().signature.as_ref().unwrap().contains("@@population = 0"));
+        assert!(population
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@@population = 0"));
 
         // Constant
         let species = symbols.iter().find(|s| s.name == "SPECIES");
         assert!(species.is_some());
         assert_eq!(species.unwrap().kind, SymbolKind::Constant);
-        assert!(species.unwrap().signature.as_ref().unwrap().contains("SPECIES = \"Homo sapiens\""));
+        assert!(species
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("SPECIES = \"Homo sapiens\""));
 
         // Constructor
-        let initialize = symbols.iter().find(|s| s.name == "initialize" && s.parent_id == Some(person.unwrap().id.clone()));
+        let initialize = symbols
+            .iter()
+            .find(|s| s.name == "initialize" && s.parent_id == Some(person.unwrap().id.clone()));
         assert!(initialize.is_some());
         assert_eq!(initialize.unwrap().kind, SymbolKind::Constructor);
-        assert!(initialize.unwrap().signature.as_ref().unwrap().contains("def initialize(name, age = 0)"));
+        assert!(initialize
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def initialize(name, age = 0)"));
 
         // Class method
-        let population_method = symbols.iter().find(|s| s.name == "population" && s.signature.as_ref().map_or(false, |sig| sig.contains("self.")));
+        let population_method = symbols.iter().find(|s| {
+            s.name == "population"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("self."))
+        });
         assert!(population_method.is_some());
-        assert!(population_method.unwrap().signature.as_ref().unwrap().contains("def self.population"));
+        assert!(population_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def self.population"));
 
         // Instance method with question mark
         let adult = symbols.iter().find(|s| s.name == "adult?");
         assert!(adult.is_some());
-        assert!(adult.unwrap().signature.as_ref().unwrap().contains("def adult?"));
+        assert!(adult
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def adult?"));
 
         // Private method
         let secret_method = symbols.iter().find(|s| s.name == "secret_method");
         assert!(secret_method.is_some());
-        assert_eq!(secret_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Private);
+        assert_eq!(
+            secret_method.unwrap().visibility.as_ref().unwrap(),
+            &Visibility::Private
+        );
 
         // Protected method
         let family_method = symbols.iter().find(|s| s.name == "family_method");
         assert!(family_method.is_some());
-        assert_eq!(family_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Protected);
+        assert_eq!(
+            family_method.unwrap().visibility.as_ref().unwrap(),
+            &Visibility::Protected
+        );
 
         // Public method
         let public_method = symbols.iter().find(|s| s.name == "public_method");
         assert!(public_method.is_some());
-        assert_eq!(public_method.unwrap().visibility.as_ref().unwrap(), &Visibility::Public);
+        assert_eq!(
+            public_method.unwrap().visibility.as_ref().unwrap(),
+            &Visibility::Public
+        );
 
         // Inheritance
         let employee = symbols.iter().find(|s| s.name == "Employee");
         assert!(employee.is_some());
-        assert!(employee.unwrap().signature.as_ref().unwrap().contains("class Employee < Person"));
+        assert!(employee
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("class Employee < Person"));
 
         // Method alias
         let annual_income = symbols.iter().find(|s| s.name == "annual_income");
@@ -206,7 +297,12 @@ end
 
         let yearly_income = symbols.iter().find(|s| s.name == "yearly_income");
         assert!(yearly_income.is_some());
-        assert!(yearly_income.unwrap().signature.as_ref().unwrap().contains("alias yearly_income annual_income"));
+        assert!(yearly_income
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("alias yearly_income annual_income"));
     }
 
     #[test]
@@ -313,17 +409,30 @@ end
         assert!(dynamic_class.is_some());
 
         // Dynamically defined methods (should extract the define_method call)
-        let define_method_call = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("define_method")));
+        let define_method_call = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("define_method"))
+        });
         assert!(define_method_call.is_some());
 
         // Singleton class
-        let singleton_class = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("class << self")));
+        let singleton_class = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("class << self"))
+        });
         assert!(singleton_class.is_some());
 
         // method_missing
         let method_missing = symbols.iter().find(|s| s.name == "method_missing");
         assert!(method_missing.is_some());
-        assert!(method_missing.unwrap().signature.as_ref().unwrap().contains("def method_missing(method_name, *args, &block)"));
+        assert!(method_missing
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def method_missing(method_name, *args, &block)"));
 
         // respond_to_missing?
         let respond_to_missing = symbols.iter().find(|s| s.name == "respond_to_missing?");
@@ -332,7 +441,12 @@ end
         // Singleton method on object
         let singleton_method = symbols.iter().find(|s| s.name == "singleton_method");
         assert!(singleton_method.is_some());
-        assert!(singleton_method.unwrap().signature.as_ref().unwrap().contains("def obj.singleton_method"));
+        assert!(singleton_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def obj.singleton_method"));
 
         // Module refinement
         let string_extensions = symbols.iter().find(|s| s.name == "StringExtensions");
@@ -345,7 +459,12 @@ end
         // Using directive
         let text_processor = symbols.iter().find(|s| s.name == "TextProcessor");
         assert!(text_processor.is_some());
-        assert!(text_processor.unwrap().signature.as_ref().unwrap().contains("using StringExtensions"));
+        assert!(text_processor
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("using StringExtensions"));
 
         // Eval methods
         let class_eval_example = symbols.iter().find(|s| s.name == "class_eval_example");
@@ -465,11 +584,21 @@ end
         // Method with block parameter
         let process_with_block = symbols.iter().find(|s| s.name == "process_with_block");
         assert!(process_with_block.is_some());
-        assert!(process_with_block.unwrap().signature.as_ref().unwrap().contains("(&block)"));
+        assert!(process_with_block
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("(&block)"));
 
         let each_item = symbols.iter().find(|s| s.name == "each_item");
         assert!(each_item.is_some());
-        assert!(each_item.unwrap().signature.as_ref().unwrap().contains("(items, &block)"));
+        assert!(each_item
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("(items, &block)"));
 
         // Method returning proc
         let create_multiplier = symbols.iter().find(|s| s.name == "create_multiplier");
@@ -482,25 +611,50 @@ end
         // Method with named block parameter
         let transform_data = symbols.iter().find(|s| s.name == "transform_data");
         assert!(transform_data.is_some());
-        assert!(transform_data.unwrap().signature.as_ref().unwrap().contains("transformer: nil, &block"));
+        assert!(transform_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("transformer: nil, &block"));
 
         // Proc assignments
         let doubler = symbols.iter().find(|s| s.name == "doubler");
         assert!(doubler.is_some());
-        assert!(doubler.unwrap().signature.as_ref().unwrap().contains("proc { |x| x * 2 }"));
+        assert!(doubler
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("proc { |x| x * 2 }"));
 
         let tripler = symbols.iter().find(|s| s.name == "tripler");
         assert!(tripler.is_some());
-        assert!(tripler.unwrap().signature.as_ref().unwrap().contains("Proc.new"));
+        assert!(tripler
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("Proc.new"));
 
         // Lambda assignments
         let validator = symbols.iter().find(|s| s.name == "validator");
         assert!(validator.is_some());
-        assert!(validator.unwrap().signature.as_ref().unwrap().contains("lambda"));
+        assert!(validator
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("lambda"));
 
         let shorthand_lambda = symbols.iter().find(|s| s.name == "shorthand_lambda");
         assert!(shorthand_lambda.is_some());
-        assert!(shorthand_lambda.unwrap().signature.as_ref().unwrap().contains("->(x)"));
+        assert!(shorthand_lambda
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("->(x)"));
 
         // Event handler with callbacks
         let event_handler = symbols.iter().find(|s| s.name == "EventHandler");
@@ -618,11 +772,21 @@ end
         let pi = symbols.iter().find(|s| s.name == "PI");
         assert!(pi.is_some());
         assert_eq!(pi.unwrap().kind, SymbolKind::Constant);
-        assert!(pi.unwrap().signature.as_ref().unwrap().contains("PI = 3.14159"));
+        assert!(pi
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("PI = 3.14159"));
 
         let app_name = symbols.iter().find(|s| s.name == "APP_NAME");
         assert!(app_name.is_some());
-        assert!(app_name.unwrap().signature.as_ref().unwrap().contains("\"My Application\""));
+        assert!(app_name
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("\"My Application\""));
 
         // Nested module
         let database = symbols.iter().find(|s| s.name == "Database");
@@ -636,7 +800,12 @@ end
 
         let config = symbols.iter().find(|s| s.name == "CONFIG");
         assert!(config.is_some());
-        assert!(config.unwrap().signature.as_ref().unwrap().contains("CONFIG = {"));
+        assert!(config
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("CONFIG = {"));
 
         // Class with constants
         let user = symbols.iter().find(|s| s.name == "User");
@@ -644,11 +813,21 @@ end
 
         let default_role = symbols.iter().find(|s| s.name == "DEFAULT_ROLE");
         assert!(default_role.is_some());
-        assert!(default_role.unwrap().signature.as_ref().unwrap().contains(":user"));
+        assert!(default_role
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains(":user"));
 
         let valid_statuses = symbols.iter().find(|s| s.name == "VALID_STATUSES");
         assert!(valid_statuses.is_some());
-        assert!(valid_statuses.unwrap().signature.as_ref().unwrap().contains("[:active, :inactive, :pending]"));
+        assert!(valid_statuses
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[:active, :inactive, :pending]"));
 
         // Instance variables
         let name_var = symbols.iter().find(|s| s.name == "@name");
@@ -663,29 +842,59 @@ end
         // Global variable
         let global_var = symbols.iter().find(|s| s.name == "$global_variable");
         assert!(global_var.is_some());
-        assert!(global_var.unwrap().signature.as_ref().unwrap().contains("$global_variable = \"I'm global\""));
+        assert!(global_var
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("$global_variable = \"I'm global\""));
 
         // Symbol assignments
         let status_symbols = symbols.iter().find(|s| s.name == "status_symbols");
         assert!(status_symbols.is_some());
-        assert!(status_symbols.unwrap().signature.as_ref().unwrap().contains("[:pending, :approved, :rejected]"));
+        assert!(status_symbols
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("[:pending, :approved, :rejected]"));
 
         let method_name = symbols.iter().find(|s| s.name == "method_name");
         assert!(method_name.is_some());
-        assert!(method_name.unwrap().signature.as_ref().unwrap().contains(":calculate_total"));
+        assert!(method_name
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains(":calculate_total"));
 
         // Hash with symbols
         let hash_with_symbols = symbols.iter().find(|s| s.name == "hash_with_symbols");
         assert!(hash_with_symbols.is_some());
-        assert!(hash_with_symbols.unwrap().signature.as_ref().unwrap().contains("name: \"John\""));
+        assert!(hash_with_symbols
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("name: \"John\""));
 
         // Parallel assignment
-        let parallel_a = symbols.iter().find(|s| s.name == "a" && s.signature.as_ref().map_or(false, |sig| sig.contains("a, b, c = 1, 2, 3")));
+        let parallel_a = symbols.iter().find(|s| {
+            s.name == "a"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("a, b, c = 1, 2, 3"))
+        });
         assert!(parallel_a.is_some());
 
         let rest = symbols.iter().find(|s| s.name == "rest");
         assert!(rest.is_some());
-        assert!(rest.unwrap().signature.as_ref().unwrap().contains("first, *rest = [1, 2, 3, 4, 5]"));
+        assert!(rest
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("first, *rest = [1, 2, 3, 4, 5]"));
 
         // Multiple return
         let multiple_return = symbols.iter().find(|s| s.name == "multiple_return");
@@ -712,14 +921,20 @@ end
         let simple_return = symbols.iter().find(|s| s.name == "simple_return");
         assert!(simple_return.is_some());
         let simple_signature = simple_return.unwrap().signature.as_ref().unwrap();
-        assert!(simple_signature.contains("return \"hello\""),
-                "Expected signature '{}' to contain 'return \"hello\"'", simple_signature);
+        assert!(
+            simple_signature.contains("return \"hello\""),
+            "Expected signature '{}' to contain 'return \"hello\"'",
+            simple_signature
+        );
 
         let multiple_return = symbols.iter().find(|s| s.name == "multiple_return");
         assert!(multiple_return.is_some());
         let multiple_signature = multiple_return.unwrap().signature.as_ref().unwrap();
-        assert!(multiple_signature.contains("return 1, 2, 3"),
-                "Expected signature '{}' to contain 'return 1, 2, 3'", multiple_signature);
+        assert!(
+            multiple_signature.contains("return 1, 2, 3"),
+            "Expected signature '{}' to contain 'return 1, 2, 3'",
+            multiple_signature
+        );
     }
 
     #[test]
@@ -848,12 +1063,22 @@ end
 
         let included = symbols.iter().find(|s| s.name == "included");
         assert!(included.is_some());
-        assert!(included.unwrap().signature.as_ref().unwrap().contains("def self.included(base)"));
+        assert!(included
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def self.included(base)"));
 
         // Nested module
-        let class_methods = symbols.iter().find(|s| s.name == "ClassMethods" && s.kind == SymbolKind::Module);
+        let class_methods = symbols
+            .iter()
+            .find(|s| s.name == "ClassMethods" && s.kind == SymbolKind::Module);
         assert!(class_methods.is_some());
-        assert_eq!(class_methods.unwrap().parent_id, Some(loggable.unwrap().id.clone()));
+        assert_eq!(
+            class_methods.unwrap().parent_id,
+            Some(loggable.unwrap().id.clone())
+        );
 
         // Module with prepend callback
         let timestampable = symbols.iter().find(|s| s.name == "Timestampable");
@@ -861,22 +1086,51 @@ end
 
         let prepended = symbols.iter().find(|s| s.name == "prepended");
         assert!(prepended.is_some());
-        assert!(prepended.unwrap().signature.as_ref().unwrap().contains("def self.prepended(base)"));
+        assert!(prepended
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("def self.prepended(base)"));
 
         // Class with multiple inclusions
         let base_model = symbols.iter().find(|s| s.name == "BaseModel");
         assert!(base_model.is_some());
-        assert!(base_model.unwrap().signature.as_ref().unwrap().contains("include Loggable"));
-        assert!(base_model.unwrap().signature.as_ref().unwrap().contains("include Cacheable"));
-        assert!(base_model.unwrap().signature.as_ref().unwrap().contains("prepend Timestampable"));
+        assert!(base_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Loggable"));
+        assert!(base_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Cacheable"));
+        assert!(base_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("prepend Timestampable"));
 
         // Class with extension
         let user = symbols.iter().find(|s| s.name == "User");
         assert!(user.is_some());
-        assert!(user.unwrap().signature.as_ref().unwrap().contains("extend Forwardable"));
+        assert!(user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("extend Forwardable"));
 
         // Delegation
-        let def_delegator = symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("def_delegator")));
+        let def_delegator = symbols.iter().find(|s| {
+            s.signature
+                .as_ref()
+                .map_or(false, |sig| sig.contains("def_delegator"))
+        });
         assert!(def_delegator.is_some());
 
         // Nested namespace modules
@@ -886,18 +1140,39 @@ end
         let api_v2 = symbols.iter().find(|s| s.name == "V2");
         assert!(api_v2.is_some());
 
-        let v1_controller = symbols.iter().find(|s| s.name == "UsersController" && s.signature.as_ref().map_or(false, |sig| sig.contains("V1")));
+        let v1_controller = symbols.iter().find(|s| {
+            s.name == "UsersController"
+                && s.signature.as_ref().map_or(false, |sig| sig.contains("V1"))
+        });
         assert!(v1_controller.is_some());
 
-        let v2_controller = symbols.iter().find(|s| s.name == "UsersController" && s.signature.as_ref().map_or(false, |sig| sig.contains("V2")));
+        let v2_controller = symbols.iter().find(|s| {
+            s.name == "UsersController"
+                && s.signature.as_ref().map_or(false, |sig| sig.contains("V2"))
+        });
         assert!(v2_controller.is_some());
 
         // Complex model with multiple mixins
         let complex_model = symbols.iter().find(|s| s.name == "ComplexModel");
         assert!(complex_model.is_some());
-        assert!(complex_model.unwrap().signature.as_ref().unwrap().contains("include Enumerable"));
-        assert!(complex_model.unwrap().signature.as_ref().unwrap().contains("include Comparable"));
-        assert!(complex_model.unwrap().signature.as_ref().unwrap().contains("extend Forwardable"));
+        assert!(complex_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Enumerable"));
+        assert!(complex_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("include Comparable"));
+        assert!(complex_model
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("extend Forwardable"));
     }
 
     #[test]
@@ -1040,35 +1315,67 @@ end
         assert!(relationships.len() >= 4);
 
         // Circle extends Shape
-        let circle_shape = relationships.iter().find(|r|
-            r.kind == RelationshipKind::Extends &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Circle") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Shape")
-        );
+        let circle_shape = relationships.iter().find(|r| {
+            r.kind == RelationshipKind::Extends
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Circle")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Shape")
+        });
         assert!(circle_shape.is_some());
 
         // Rectangle extends Shape
-        let rectangle_shape = relationships.iter().find(|r|
-            r.kind == RelationshipKind::Extends &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Rectangle") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Shape")
-        );
+        let rectangle_shape = relationships.iter().find(|r| {
+            r.kind == RelationshipKind::Extends
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Rectangle")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Shape")
+        });
         assert!(rectangle_shape.is_some());
 
         // Shape includes Drawable
-        let shape_drawable = relationships.iter().find(|r|
-            r.kind == RelationshipKind::Implements &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Shape") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Drawable")
-        );
+        let shape_drawable = relationships.iter().find(|r| {
+            r.kind == RelationshipKind::Implements
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Shape")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Drawable")
+        });
         assert!(shape_drawable.is_some());
 
         // Circle includes Comparable
-        let circle_comparable = relationships.iter().find(|r|
-            r.kind == RelationshipKind::Implements &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Circle") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Comparable")
-        );
+        let circle_comparable = relationships.iter().find(|r| {
+            r.kind == RelationshipKind::Implements
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Circle")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Comparable")
+        });
         assert!(circle_comparable.is_some());
     }
 }

@@ -5,36 +5,41 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod search;
-pub mod navigation;
-pub mod exploration;
 pub mod editing;
+pub mod exploration;
+pub mod navigation;
+pub mod search;
 pub mod workspace;
 
 // Re-export all tools for external use
-pub use search::FastSearchTool;
-pub use navigation::{FastGotoTool, FastRefsTool};
-pub use exploration::{FastExploreTool, FindLogicTool};
 pub use editing::{FastEditTool, LineEditTool};
+pub use exploration::{FastExploreTool, FindLogicTool};
+pub use navigation::{FastGotoTool, FastRefsTool};
+pub use search::FastSearchTool;
 pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types
-pub use shared::{OptimizedResponse, BLACKLISTED_EXTENSIONS, BLACKLISTED_DIRECTORIES, KNOWN_CODE_EXTENSIONS};
+pub use shared::{
+    OptimizedResponse, BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, KNOWN_CODE_EXTENSIONS,
+};
 
 // Generate the JulieTools enum with tool_box! macro (gradually add tools as they are migrated)
-use rust_mcp_sdk::{tool_box};
+use rust_mcp_sdk::tool_box;
 
 // Generates the JulieTools enum with all tool variants
-tool_box!(JulieTools, [
-    // Core tools - all migrated
-    FastSearchTool,
-    FastGotoTool,
-    FastRefsTool,
-    FastExploreTool,
-    FindLogicTool,
-    // Editing tools
-    FastEditTool,
-    LineEditTool,
-    // Workspace management
-    ManageWorkspaceTool,
-]);
+tool_box!(
+    JulieTools,
+    [
+        // Core tools - all migrated
+        FastSearchTool,
+        FastGotoTool,
+        FastRefsTool,
+        FastExploreTool,
+        FindLogicTool,
+        // Editing tools
+        FastEditTool,
+        LineEditTool,
+        // Workspace management
+        ManageWorkspaceTool,
+    ]
+);

@@ -6,9 +6,11 @@
 // Original: /Users/murphy/Source/miller/src/extractors/dart-extractor.ts
 // Test parity: All Miller test cases must pass
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, Visibility, SymbolOptions};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// Dart language extractor that handles Dart-specific constructs including Flutter
 ///
@@ -23,12 +25,12 @@ use std::collections::HashMap;
 /// - Generics and type parameters
 /// - Flutter widgets and StatefulWidget patterns
 /// - Imports and library dependencies
-#[allow(dead_code)]  // TODO: Implement Dart/Flutter extraction
+#[allow(dead_code)] // TODO: Implement Dart/Flutter extraction
 pub struct DartExtractor {
     base: BaseExtractor,
 }
 
-#[allow(dead_code)]  // TODO: Implement Dart extraction methods
+#[allow(dead_code)] // TODO: Implement Dart extraction methods
 impl DartExtractor {
     pub fn new(language: String, file_path: String, content: String) -> Self {
         Self {
@@ -48,7 +50,6 @@ impl DartExtractor {
         if node.kind().is_empty() {
             return; // Skip invalid nodes
         }
-
 
         let mut symbol: Option<Symbol> = None;
         let current_parent_id = parent_id.map(|id| id.to_string());
@@ -91,7 +92,9 @@ impl DartExtractor {
             "extension_declaration" => {
                 symbol = self.extract_extension(&node, current_parent_id.as_deref());
             }
-            "constructor_signature" | "factory_constructor_signature" | "constant_constructor_signature" => {
+            "constructor_signature"
+            | "factory_constructor_signature"
+            | "constant_constructor_signature" => {
                 symbol = self.extract_constructor(&node, current_parent_id.as_deref());
             }
             "getter_signature" => {
@@ -115,10 +118,17 @@ impl DartExtractor {
 
                 // Check if this ERROR node contains enum constants or constructor
                 // Look for patterns like: "green('Green')" or "blue('Blue')" or constructor patterns
-                if error_text.contains("green") || error_text.contains("blue") ||
-                   error_text.contains("const ") || error_text.contains("Color") ||
-                   error_text.contains("Blue") {
-                    self.extract_enum_constants_from_error(&node, current_parent_id.as_deref(), symbols);
+                if error_text.contains("green")
+                    || error_text.contains("blue")
+                    || error_text.contains("const ")
+                    || error_text.contains("Color")
+                    || error_text.contains("Blue")
+                {
+                    self.extract_enum_constants_from_error(
+                        &node,
+                        current_parent_id.as_deref(),
+                        symbols,
+                    );
                 }
             }
             _ => {
@@ -193,7 +203,11 @@ impl DartExtractor {
             symbol_kind,
             SymbolOptions {
                 signature: Some(self.extract_function_signature(node)),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -202,7 +216,10 @@ impl DartExtractor {
 
         // Add async annotation
         if is_async {
-            symbol.metadata.get_or_insert_with(HashMap::new).insert("isAsync".to_string(), serde_json::Value::Bool(true));
+            symbol
+                .metadata
+                .get_or_insert_with(HashMap::new)
+                .insert("isAsync".to_string(), serde_json::Value::Bool(true));
         }
 
         Some(symbol)
@@ -212,7 +229,8 @@ impl DartExtractor {
     fn extract_method(&mut self, node: &Node, parent_id: Option<&str>) -> Option<Symbol> {
         // For method_signature nodes, look inside the nested function_signature
         let target_node = if node.kind() == "method_signature" {
-            self.find_child_by_type(node, "function_signature").unwrap_or(*node)
+            self.find_child_by_type(node, "function_signature")
+                .unwrap_or(*node)
         } else {
             *node
         };
@@ -231,9 +249,15 @@ impl DartExtractor {
 
         // Build method signature with modifiers
         let mut modifiers = Vec::new();
-        if is_static { modifiers.push("static"); }
-        if is_async { modifiers.push("async"); }
-        if is_override { modifiers.push("@override"); }
+        if is_static {
+            modifiers.push("static");
+        }
+        if is_async {
+            modifiers.push("async");
+        }
+        if is_override {
+            modifiers.push("@override");
+        }
 
         let modifier_prefix = if modifiers.is_empty() {
             String::new()
@@ -248,7 +272,11 @@ impl DartExtractor {
             SymbolKind::Method,
             SymbolOptions {
                 signature: Some(signature),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -256,10 +284,22 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isAsync".to_string(), serde_json::Value::Bool(is_async));
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isStatic".to_string(), serde_json::Value::Bool(is_static));
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isOverride".to_string(), serde_json::Value::Bool(is_override));
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isFlutterLifecycle".to_string(), serde_json::Value::Bool(is_flutter_lifecycle));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isAsync".to_string(), serde_json::Value::Bool(is_async));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isStatic".to_string(), serde_json::Value::Bool(is_static));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert(
+            "isOverride".to_string(),
+            serde_json::Value::Bool(is_override),
+        );
+        symbol.metadata.get_or_insert_with(HashMap::new).insert(
+            "isFlutterLifecycle".to_string(),
+            serde_json::Value::Bool(is_flutter_lifecycle),
+        );
 
         Some(symbol)
     }
@@ -286,7 +326,8 @@ impl DartExtractor {
             }
             _ => {
                 // Regular constructor or named constructor
-                let direct_children: Vec<_> = node.children(&mut node.walk())
+                let direct_children: Vec<_> = node
+                    .children(&mut node.walk())
                     .filter(|child| child.kind() == "identifier")
                     .collect();
 
@@ -297,7 +338,8 @@ impl DartExtractor {
                     }
                     _ if direct_children.len() >= 2 => {
                         // Named constructor: ClassName.namedConstructor()
-                        direct_children.iter()
+                        direct_children
+                            .iter()
                             .take(2)
                             .map(|child| self.base.get_node_text(child))
                             .collect::<Vec<_>>()
@@ -325,8 +367,14 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isFactory".to_string(), serde_json::Value::Bool(is_factory));
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isFactory".to_string(), serde_json::Value::Bool(is_factory));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isConst".to_string(), serde_json::Value::Bool(is_const));
 
         Some(symbol)
     }
@@ -342,7 +390,8 @@ impl DartExtractor {
         let identifier_list_node = self.find_child_by_type(node, "initialized_identifier_list")?;
 
         // Get the first initialized_identifier (fields can have multiple like "String a, b, c;")
-        let identifier_node = self.find_child_by_type(&identifier_list_node, "initialized_identifier")?;
+        let identifier_node =
+            self.find_child_by_type(&identifier_list_node, "initialized_identifier")?;
 
         // Get just the identifier part (not the assignment)
         let name_node = self.find_child_by_type(&identifier_node, "identifier")?;
@@ -353,8 +402,8 @@ impl DartExtractor {
 
         // Check for modifiers using child nodes
         let is_late = self.find_child_by_type(node, "late").is_some();
-        let is_final = self.find_child_by_type(node, "final").is_some() ||
-                      self.find_child_by_type(node, "final_builtin").is_some();
+        let is_final = self.find_child_by_type(node, "final").is_some()
+            || self.find_child_by_type(node, "final_builtin").is_some();
         let is_static = self.find_child_by_type(node, "static").is_some();
 
         // Check for nullable type
@@ -363,9 +412,15 @@ impl DartExtractor {
 
         // Build signature with modifiers (port of Miller's logic)
         let mut modifiers = Vec::new();
-        if is_static { modifiers.push("static"); }
-        if is_final { modifiers.push("final"); }
-        if is_late { modifiers.push("late"); }
+        if is_static {
+            modifiers.push("static");
+        }
+        if is_final {
+            modifiers.push("final");
+        }
+        if is_late {
+            modifiers.push("late");
+        }
 
         let modifier_prefix = if modifiers.is_empty() {
             String::new()
@@ -373,7 +428,10 @@ impl DartExtractor {
             format!("{} ", modifiers.join(" "))
         };
         let nullable_suffix = if is_nullable { "?" } else { "" };
-        let field_signature = format!("{}{}{} {}", modifier_prefix, field_type, nullable_suffix, field_name);
+        let field_signature = format!(
+            "{}{}{} {}",
+            modifier_prefix, field_type, nullable_suffix, field_name
+        );
 
         let mut symbol = self.base.create_symbol(
             node,
@@ -381,7 +439,11 @@ impl DartExtractor {
             SymbolKind::Field,
             SymbolOptions {
                 signature: Some(field_signature),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -390,13 +452,23 @@ impl DartExtractor {
 
         // Add field annotations
         let mut annotations = Vec::new();
-        if is_late { annotations.push("Late"); }
-        if is_final { annotations.push("Final"); }
-        if is_static { annotations.push("Static"); }
+        if is_late {
+            annotations.push("Late");
+        }
+        if is_final {
+            annotations.push("Final");
+        }
+        if is_static {
+            annotations.push("Static");
+        }
 
         if !annotations.is_empty() {
             let doc = symbol.doc_comment.unwrap_or_default();
-            symbol.doc_comment = Some(format!("{} [{}]", doc, annotations.join(", ")).trim().to_string());
+            symbol.doc_comment = Some(
+                format!("{} [{}]", doc, annotations.join(", "))
+                    .trim()
+                    .to_string(),
+            );
         }
 
         Some(symbol)
@@ -414,7 +486,11 @@ impl DartExtractor {
             SymbolKind::Property,
             SymbolOptions {
                 signature: Some(format!("get {}", name)),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -440,7 +516,11 @@ impl DartExtractor {
             SymbolKind::Property,
             SymbolOptions {
                 signature: Some(format!("set {}", name)),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -540,9 +620,15 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isMixin".to_string(), serde_json::Value::Bool(true));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isMixin".to_string(), serde_json::Value::Bool(true));
         if let Some(constraint_type) = constraint_type_name {
-            symbol.metadata.get_or_insert_with(HashMap::new).insert("constraintType".to_string(), serde_json::Value::String(constraint_type));
+            symbol.metadata.get_or_insert_with(HashMap::new).insert(
+                "constraintType".to_string(),
+                serde_json::Value::String(constraint_type),
+            );
         }
 
         Some(symbol)
@@ -580,9 +666,15 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isExtension".to_string(), serde_json::Value::Bool(true));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isExtension".to_string(), serde_json::Value::Bool(true));
         if let Some(extended_type) = extended_type_name {
-            symbol.metadata.get_or_insert_with(HashMap::new).insert("extendedType".to_string(), serde_json::Value::String(extended_type));
+            symbol.metadata.get_or_insert_with(HashMap::new).insert(
+                "extendedType".to_string(),
+                serde_json::Value::String(extended_type),
+            );
         }
 
         Some(symbol)
@@ -615,7 +707,11 @@ impl DartExtractor {
                         symbol_kind,
                         SymbolOptions {
                             signature: Some(self.extract_variable_signature(&child)),
-                            visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                            visibility: Some(if is_private {
+                                Visibility::Private
+                            } else {
+                                Visibility::Public
+                            }),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(HashMap::new()),
                             doc_comment: None,
@@ -623,8 +719,14 @@ impl DartExtractor {
                     );
 
                     // Add metadata
-                    symbol.metadata.get_or_insert_with(HashMap::new).insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
-                    symbol.metadata.get_or_insert_with(HashMap::new).insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+                    symbol
+                        .metadata
+                        .get_or_insert_with(HashMap::new)
+                        .insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
+                    symbol
+                        .metadata
+                        .get_or_insert_with(HashMap::new)
+                        .insert("isConst".to_string(), serde_json::Value::Bool(is_const));
 
                     return Some(symbol);
                 }
@@ -674,7 +776,11 @@ impl DartExtractor {
             SymbolKind::Class,
             SymbolOptions {
                 signature: Some(signature),
-                visibility: Some(if is_private { Visibility::Private } else { Visibility::Public }),
+                visibility: Some(if is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(HashMap::new()),
                 doc_comment: None,
@@ -682,8 +788,14 @@ impl DartExtractor {
         );
 
         // Add metadata
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("isTypedef".to_string(), serde_json::Value::Bool(true));
-        symbol.metadata.get_or_insert_with(HashMap::new).insert("aliasedType".to_string(), serde_json::Value::String(aliased_type.trim().to_string()));
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isTypedef".to_string(), serde_json::Value::Bool(true));
+        symbol.metadata.get_or_insert_with(HashMap::new).insert(
+            "aliasedType".to_string(),
+            serde_json::Value::String(aliased_type.trim().to_string()),
+        );
 
         Some(symbol)
     }
@@ -695,11 +807,18 @@ impl DartExtractor {
         if let Some(extends_clause) = self.find_child_by_type(class_node, "superclass") {
             let superclass_name = self.base.get_node_text(&extends_clause);
             let flutter_widgets = [
-                "StatelessWidget", "StatefulWidget", "Widget", "PreferredSizeWidget",
-                "RenderObjectWidget", "SingleChildRenderObjectWidget", "MultiChildRenderObjectWidget"
+                "StatelessWidget",
+                "StatefulWidget",
+                "Widget",
+                "PreferredSizeWidget",
+                "RenderObjectWidget",
+                "SingleChildRenderObjectWidget",
+                "MultiChildRenderObjectWidget",
             ];
 
-            flutter_widgets.iter().any(|widget| superclass_name.contains(widget))
+            flutter_widgets
+                .iter()
+                .any(|widget| superclass_name.contains(widget))
         } else {
             false
         }
@@ -707,8 +826,13 @@ impl DartExtractor {
 
     fn is_flutter_lifecycle_method(&self, method_name: &str) -> bool {
         let lifecycle_methods = [
-            "initState", "dispose", "build", "didChangeDependencies",
-            "didUpdateWidget", "deactivate", "setState"
+            "initState",
+            "dispose",
+            "build",
+            "didChangeDependencies",
+            "didUpdateWidget",
+            "deactivate",
+            "setState",
         ];
         lifecycle_methods.contains(&method_name)
     }
@@ -810,9 +934,10 @@ impl DartExtractor {
             }
 
             // Stop if we hit a substantive non-annotation node
-            if !sibling_text.trim().is_empty() &&
-               sibling.kind() != "annotation" &&
-               !sibling_text.chars().all(|c| c.is_whitespace()) {
+            if !sibling_text.trim().is_empty()
+                && sibling.kind() != "annotation"
+                && !sibling_text.chars().all(|c| c.is_whitespace())
+            {
                 break;
             }
             current = sibling.prev_sibling();
@@ -858,14 +983,18 @@ impl DartExtractor {
     // Signature extraction methods (port of Miller's signature methods)
     fn extract_class_signature(&self, node: &Node) -> String {
         let name_node = self.find_child_by_type(node, "identifier");
-        let name = name_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "Unknown".to_string());
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let is_abstract = self.is_abstract_class(node);
         let abstract_prefix = if is_abstract { "abstract " } else { "" };
 
         // Extract generic type parameters (e.g., <T>)
         let type_params_node = self.find_child_by_type(node, "type_parameters");
-        let type_params = type_params_node.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+        let type_params = type_params_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_default();
 
         let extends_clause = self.find_child_by_type(node, "superclass");
         let extends_text = if let Some(extends_node) = extends_clause {
@@ -902,18 +1031,26 @@ impl DartExtractor {
             String::new()
         };
 
-        format!("{}class {}{}{}{}{}", abstract_prefix, name, type_params, extends_text, mixin_text, implements_text)
+        format!(
+            "{}class {}{}{}{}{}",
+            abstract_prefix, name, type_params, extends_text, mixin_text, implements_text
+        )
     }
 
     fn extract_function_signature(&self, node: &Node) -> String {
         let name_node = self.find_child_by_type(node, "identifier");
-        let name = name_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "unknown".to_string());
+        let name = name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Get return type (can be type_identifier or void_type)
-        let return_type_node = self.find_child_by_type(node, "type_identifier")
+        let return_type_node = self
+            .find_child_by_type(node, "type_identifier")
             .or_else(|| self.find_child_by_type(node, "void_type"));
 
-        let mut return_type = return_type_node.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+        let mut return_type = return_type_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_default();
 
         // Check for generic type arguments (e.g., Future<String>)
         if let Some(type_node) = return_type_node {
@@ -926,11 +1063,15 @@ impl DartExtractor {
 
         // Extract generic type parameters (e.g., <T extends Comparable<T>>)
         let type_params_node = self.find_child_by_type(node, "type_parameters");
-        let type_params = type_params_node.map(|n| self.base.get_node_text(&n)).unwrap_or_default();
+        let type_params = type_params_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_default();
 
         // Get parameters
         let param_list_node = self.find_child_by_type(node, "formal_parameter_list");
-        let params = param_list_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "()".to_string());
+        let params = param_list_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "()".to_string());
 
         // Check for async modifier
         let is_async = self.is_async_function(node);
@@ -938,7 +1079,10 @@ impl DartExtractor {
 
         // Build signature with return type, generic parameters, and async modifier
         if !return_type.is_empty() {
-            format!("{} {}{}{}{}", return_type, name, type_params, params, async_modifier)
+            format!(
+                "{} {}{}{}{}",
+                return_type, name, type_params, params, async_modifier
+            )
         } else {
             format!("{}{}{}{}", name, type_params, params, async_modifier)
         }
@@ -983,7 +1127,9 @@ impl DartExtractor {
 
     fn extract_variable_signature(&self, node: &Node) -> String {
         let name_node = self.find_child_by_type(node, "identifier");
-        name_node.map(|n| self.base.get_node_text(&n)).unwrap_or_else(|| "unknown".to_string())
+        name_node
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknown".to_string())
     }
 
     // === Relationship and Type Extraction (Port of Miller's methods) ===
@@ -991,29 +1137,33 @@ impl DartExtractor {
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
 
-        self.traverse_tree(tree.root_node(), &mut |node| {
-            match node.kind() {
-                "class_definition" => {
-                    self.extract_class_relationships(&node, symbols, &mut relationships);
-                }
-                "method_invocation" => {
-                    self.extract_method_call_relationships(&node, symbols, &mut relationships);
-                }
-                _ => {}
+        self.traverse_tree(tree.root_node(), &mut |node| match node.kind() {
+            "class_definition" => {
+                self.extract_class_relationships(&node, symbols, &mut relationships);
             }
+            "method_invocation" => {
+                self.extract_method_call_relationships(&node, symbols, &mut relationships);
+            }
+            _ => {}
         });
 
         relationships
     }
 
-    fn extract_class_relationships(&self, node: &Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_class_relationships(
+        &self,
+        node: &Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         let class_name = self.find_child_by_type(node, "identifier");
         if class_name.is_none() {
             return;
         }
 
-        let class_symbol = symbols.iter()
-            .find(|s| s.name == self.base.get_node_text(&class_name.unwrap()) && s.kind == SymbolKind::Class);
+        let class_symbol = symbols.iter().find(|s| {
+            s.name == self.base.get_node_text(&class_name.unwrap()) && s.kind == SymbolKind::Class
+        });
         if class_symbol.is_none() {
             return;
         }
@@ -1024,11 +1174,18 @@ impl DartExtractor {
             // Extract the class name from the superclass node
             if let Some(type_node) = self.find_child_by_type(&extends_clause, "type_identifier") {
                 let superclass_name = self.base.get_node_text(&type_node);
-                if let Some(superclass_symbol) = symbols.iter()
-                    .find(|s| s.name == superclass_name && s.kind == SymbolKind::Class) {
-
+                if let Some(superclass_symbol) = symbols
+                    .iter()
+                    .find(|s| s.name == superclass_name && s.kind == SymbolKind::Class)
+                {
                     relationships.push(Relationship {
-                        id: format!("{}_{}_{:?}_{}", class_symbol.id, superclass_symbol.id, RelationshipKind::Extends, node.start_position().row),
+                        id: format!(
+                            "{}_{}_{:?}_{}",
+                            class_symbol.id,
+                            superclass_symbol.id,
+                            RelationshipKind::Extends,
+                            node.start_position().row
+                        ),
                         from_symbol_id: class_symbol.id.clone(),
                         to_symbol_id: superclass_symbol.id.clone(),
                         kind: RelationshipKind::Extends,
@@ -1052,11 +1209,17 @@ impl DartExtractor {
 
                         // Create relationships for any generic types that are classes in our symbols
                         for generic_type_name in generic_types {
-                            if let Some(generic_type_symbol) = symbols.iter()
-                                .find(|s| s.name == generic_type_name && s.kind == SymbolKind::Class) {
-
+                            if let Some(generic_type_symbol) = symbols.iter().find(|s| {
+                                s.name == generic_type_name && s.kind == SymbolKind::Class
+                            }) {
                                 relationships.push(Relationship {
-                                    id: format!("{}_{}_{:?}_{}", class_symbol.id, generic_type_symbol.id, RelationshipKind::Uses, node.start_position().row),
+                                    id: format!(
+                                        "{}_{}_{:?}_{}",
+                                        class_symbol.id,
+                                        generic_type_symbol.id,
+                                        RelationshipKind::Uses,
+                                        node.start_position().row
+                                    ),
                                     from_symbol_id: class_symbol.id.clone(),
                                     to_symbol_id: generic_type_symbol.id.clone(),
                                     kind: RelationshipKind::Uses,
@@ -1083,11 +1246,18 @@ impl DartExtractor {
                     // Create 'uses' relationships for any mixin types that are interfaces in our symbols
                     // Note: Using 'Uses' instead of 'with' since 'with' is not in RelationshipKind enum
                     for mixin_type_name in mixin_types {
-                        if let Some(mixin_type_symbol) = symbols.iter()
-                            .find(|s| s.name == mixin_type_name && s.kind == SymbolKind::Interface) {
-
+                        if let Some(mixin_type_symbol) = symbols
+                            .iter()
+                            .find(|s| s.name == mixin_type_name && s.kind == SymbolKind::Interface)
+                        {
                             relationships.push(Relationship {
-                                id: format!("{}_{}_{:?}_{}", class_symbol.id, mixin_type_symbol.id, RelationshipKind::Uses, node.start_position().row),
+                                id: format!(
+                                    "{}_{}_{:?}_{}",
+                                    class_symbol.id,
+                                    mixin_type_symbol.id,
+                                    RelationshipKind::Uses,
+                                    node.start_position().row
+                                ),
                                 from_symbol_id: class_symbol.id.clone(),
                                 to_symbol_id: mixin_type_symbol.id.clone(),
                                 kind: RelationshipKind::Uses,
@@ -1103,7 +1273,12 @@ impl DartExtractor {
         }
     }
 
-    fn extract_method_call_relationships(&self, _node: &Node, _symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
+    fn extract_method_call_relationships(
+        &self,
+        _node: &Node,
+        _symbols: &[Symbol],
+        _relationships: &mut Vec<Relationship>,
+    ) {
         // Extract method call relationships for cross-method dependencies
         // This could be expanded for more detailed call graph analysis
     }
@@ -1117,7 +1292,8 @@ impl DartExtractor {
                 // Extract type from signatures like "int counter = 0" or "String name"
                 if let Some(captures) = regex::Regex::new(r"^(\w+)\s+\w+")
                     .ok()
-                    .and_then(|re| re.captures(signature)) {
+                    .and_then(|re| re.captures(signature))
+                {
                     if let Some(type_match) = captures.get(1) {
                         types.insert(symbol.name.clone(), type_match.as_str().to_string());
                     }
@@ -1127,12 +1303,16 @@ impl DartExtractor {
             // Use metadata for final/const detection
             if let Some(is_final) = symbol.metadata.as_ref().and_then(|m| m.get("isFinal")) {
                 if is_final.as_bool() == Some(true) {
-                    types.entry(symbol.name.clone()).or_insert_with(|| "final".to_string());
+                    types
+                        .entry(symbol.name.clone())
+                        .or_insert_with(|| "final".to_string());
                 }
             }
             if let Some(is_const) = symbol.metadata.as_ref().and_then(|m| m.get("isConst")) {
                 if is_const.as_bool() == Some(true) {
-                    types.entry(symbol.name.clone()).or_insert_with(|| "const".to_string());
+                    types
+                        .entry(symbol.name.clone())
+                        .or_insert_with(|| "const".to_string());
                 }
             }
         }
@@ -1141,7 +1321,12 @@ impl DartExtractor {
     }
 
     /// Extract enum constants from ERROR nodes - workaround for harper-tree-sitter-dart parser issues
-    fn extract_enum_constants_from_error(&mut self, error_node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+    fn extract_enum_constants_from_error(
+        &mut self,
+        error_node: &Node,
+        parent_id: Option<&str>,
+        symbols: &mut Vec<Symbol>,
+    ) {
         // Look for identifier patterns that look like enum constants in the error node
         let error_text = self.base.get_node_text(error_node);
 
@@ -1185,19 +1370,24 @@ impl DartExtractor {
     }
 
     /// Extract enum constants by parsing error text directly
-    fn extract_enum_constants_from_text(&mut self, text: &str, error_node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+    fn extract_enum_constants_from_text(
+        &mut self,
+        text: &str,
+        error_node: &Node,
+        parent_id: Option<&str>,
+        symbols: &mut Vec<Symbol>,
+    ) {
         // Look for patterns like "blue('Blue')" in the text
         let patterns_and_names = [
             ("blue('Blue')", "blue", SymbolKind::EnumMember),
             ("blue", "blue", SymbolKind::EnumMember),
-            ("Blue')", "blue", SymbolKind::EnumMember),  // Match partial pattern
+            ("Blue')", "blue", SymbolKind::EnumMember), // Match partial pattern
             ("const Color", "Color", SymbolKind::Constructor),
             ("const Color(", "Color", SymbolKind::Constructor),
         ];
 
         for (pattern, name, symbol_kind) in patterns_and_names.iter() {
             if text.contains(pattern) {
-
                 let signature = match symbol_kind {
                     SymbolKind::Constructor => format!("const {}", name),
                     _ => name.to_string(),
@@ -1221,12 +1411,20 @@ impl DartExtractor {
         }
     }
 
-    fn extract_enum_constants_from_error_recursive(&mut self, node: &Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) {
+    fn extract_enum_constants_from_error_recursive(
+        &mut self,
+        node: &Node,
+        parent_id: Option<&str>,
+        symbols: &mut Vec<Symbol>,
+    ) {
         if node.kind() == "identifier" {
             let name = self.base.get_node_text(node);
             // Only extract if it looks like an enum constant (starts with lowercase)
-            if name.chars().next().map_or(false, |c| c.is_lowercase() || c.is_uppercase()) {
-
+            if name
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_lowercase() || c.is_uppercase())
+            {
                 let symbol = self.base.create_symbol(
                     node,
                     name.clone(),

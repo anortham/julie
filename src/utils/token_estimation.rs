@@ -79,7 +79,9 @@ impl TokenEstimator {
             if (code >= 0x4E00 && code <= 0x9FFF) ||  // CJK Unified Ideographs
                (code >= 0x3400 && code <= 0x4DBF) ||  // CJK Extension A
                (code >= 0x3040 && code <= 0x30FF) ||  // Hiragana and Katakana
-               (code >= 0xAC00 && code <= 0xD7AF) {   // Hangul Syllables
+               (code >= 0xAC00 && code <= 0xD7AF)
+            {
+                // Hangul Syllables
                 return true;
             }
         }
@@ -102,7 +104,11 @@ mod tests {
         let estimator = TokenEstimator::new();
         // "Hello world" = 11 chars, should be roughly 11/4 = 2.75 -> 3 tokens
         let tokens = estimator.estimate_string("Hello world");
-        assert!(tokens >= 2 && tokens <= 4, "Expected 2-4 tokens for 'Hello world', got {}", tokens);
+        assert!(
+            tokens >= 2 && tokens <= 4,
+            "Expected 2-4 tokens for 'Hello world', got {}",
+            tokens
+        );
     }
 
     #[test]
@@ -125,8 +131,14 @@ mod tests {
         // Without CJK detection, they should be the same (both use 4 chars/token)
         // With CJK detection, Japanese should be double (using 2 chars/token)
         // Let's explicitly test for CJK giving more tokens
-        assert_eq!(japanese_tokens, 5, "Japanese should be 5 tokens with 2 chars/token ratio (9 chars / 2)");
-        assert_eq!(english_tokens, 2, "English should be 2 tokens with 4 chars/token ratio");
+        assert_eq!(
+            japanese_tokens, 5,
+            "Japanese should be 5 tokens with 2 chars/token ratio (9 chars / 2)"
+        );
+        assert_eq!(
+            english_tokens, 2,
+            "English should be 2 tokens with 4 chars/token ratio"
+        );
     }
 
     #[test]
@@ -137,11 +149,17 @@ mod tests {
         // "hello world test" = 3 words
         // Word-based: 3 * 1.3 = 3.9 -> 4 tokens
         let tokens = estimator.estimate_words("hello world test");
-        assert_eq!(tokens, 4, "3 words should estimate to 4 tokens using 1.3 multiplier");
+        assert_eq!(
+            tokens, 4,
+            "3 words should estimate to 4 tokens using 1.3 multiplier"
+        );
 
         // Test single word
         let tokens = estimator.estimate_words("hello");
-        assert_eq!(tokens, 2, "1 word should estimate to 2 tokens using 1.3 multiplier (1.3 -> 2)");
+        assert_eq!(
+            tokens, 2,
+            "1 word should estimate to 2 tokens using 1.3 multiplier (1.3 -> 2)"
+        );
 
         // Test empty string
         let tokens = estimator.estimate_words("");
@@ -158,7 +176,10 @@ mod tests {
         // Word-based: 1 * 1.3 = 1.3 -> 2 tokens
         // Hybrid (0.6 char + 0.4 word): (1 * 0.6) + (2 * 0.4) = 0.6 + 0.8 = 1.4 -> 2 tokens
         let tokens = estimator.estimate_string_hybrid("a");
-        assert_eq!(tokens, 2, "Single character 'a' should be 2 tokens with hybrid formula");
+        assert_eq!(
+            tokens, 2,
+            "Single character 'a' should be 2 tokens with hybrid formula"
+        );
 
         // Test longer text where hybrid makes a difference
         // "hello world" = 11 chars, 2 words
@@ -166,7 +187,10 @@ mod tests {
         // Word-based: 2 * 1.3 = 2.6 -> 3 tokens
         // Hybrid: (3 * 0.6) + (3 * 0.4) = 1.8 + 1.2 = 3.0 -> 3 tokens
         let tokens = estimator.estimate_string_hybrid("hello world");
-        assert_eq!(tokens, 3, "Text 'hello world' should be 3 tokens with hybrid formula");
+        assert_eq!(
+            tokens, 3,
+            "Text 'hello world' should be 3 tokens with hybrid formula"
+        );
 
         // Test where hybrid differs from pure character-based
         // "x y z" = 5 chars, 3 words
@@ -174,7 +198,10 @@ mod tests {
         // Word-based: 3 * 1.3 = 3.9 -> 4 tokens
         // Hybrid: (2 * 0.6) + (4 * 0.4) = 1.2 + 1.6 = 2.8 -> 3 tokens
         let tokens = estimator.estimate_string_hybrid("x y z");
-        assert_eq!(tokens, 3, "Text 'x y z' should be 3 tokens with hybrid formula");
+        assert_eq!(
+            tokens, 3,
+            "Text 'x y z' should be 3 tokens with hybrid formula"
+        );
     }
 
     #[test]
@@ -184,6 +211,9 @@ mod tests {
         // Current estimate_string should still use character-based only for backward compatibility
         // Until we explicitly switch it to hybrid
         let tokens = estimator.estimate_string("a");
-        assert_eq!(tokens, 1, "Single character should be 1 token with current char-only approach");
+        assert_eq!(
+            tokens, 1,
+            "Single character should be 1 token with current char-only approach"
+        );
     }
 }

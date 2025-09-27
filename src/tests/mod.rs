@@ -4,14 +4,14 @@
 // search functionality, editing tools, and other Julie components.
 
 pub mod editing_tests;
-pub mod line_edit_tests;
 pub mod fast_edit_search_replace_tests;
+pub mod line_edit_tests;
 
 #[cfg(test)]
 pub mod test_helpers {
+    use anyhow::Result;
     use std::path::Path;
     use tempfile::TempDir;
-    use anyhow::Result;
 
     /// Create a temporary test workspace
     pub fn create_test_workspace() -> Result<TempDir> {
@@ -19,7 +19,11 @@ pub mod test_helpers {
     }
 
     /// Create a test file with content
-    pub fn create_test_file(dir: &Path, filename: &str, content: &str) -> Result<std::path::PathBuf> {
+    pub fn create_test_file(
+        dir: &Path,
+        filename: &str,
+        content: &str,
+    ) -> Result<std::path::PathBuf> {
         use std::fs;
         let file_path = dir.join(filename);
         fs::write(&file_path, content)?;
@@ -119,31 +123,31 @@ impl UserService {
 pub mod test_utils;
 
 // ALL 26 Extractor test modules - NO EXCEPTIONS, ALL MUST PASS
-pub mod typescript_tests;        // TypeScript extractor tests
-pub mod python_tests;            // Python extractor tests
-pub mod javascript_tests;        // JavaScript extractor tests
-pub mod rust_tests;              // Rust extractor tests
-// pub mod c_tests;                 // C extractor tests - TEMPORARILY DISABLED
-pub mod cpp_tests;               // C++ extractor tests
-pub mod kotlin_tests;            // Kotlin extractor tests
-pub mod dart_tests;              // Dart extractor tests
-pub mod java;                    // Java extractor tests (split into modules)
-pub mod csharp_tests;            // C# extractor tests
-pub mod ruby_tests;              // Ruby extractor tests
-pub mod swift_tests;             // Swift extractor tests
-pub mod go_tests;                // Go extractor tests
-pub mod php_tests;               // PHP extractor tests
-pub mod bash_tests;              // Bash extractor tests
-pub mod powershell_tests;        // PowerShell extractor tests
-pub mod vue_tests;               // Vue extractor tests
-pub mod razor_tests;             // Razor extractor tests
-pub mod html_tests;              // HTML extractor tests
-pub mod sql_tests;               // SQL extractor tests
-pub mod lua_tests;               // Lua extractor tests
-pub mod gdscript_tests;          // GDScript extractor tests
-pub mod css_tests;               // CSS extractor tests
-pub mod regex_tests;             // Regex extractor tests
-pub mod zig_tests;               // Zig extractor tests
+pub mod bash_tests; // Bash extractor tests
+pub mod c; // C extractor tests
+pub mod cpp; // C++ extractor tests
+pub mod csharp; // C# extractor tests (modularized)
+pub mod css; // CSS extractor tests
+pub mod dart_tests; // Dart extractor tests
+pub mod gdscript; // GDScript extractor tests
+pub mod go_tests; // Go extractor tests
+pub mod html; // HTML extractor tests
+pub mod java; // Java extractor tests (split into modules)
+pub mod javascript_tests; // JavaScript extractor tests
+pub mod kotlin_tests; // Kotlin extractor tests
+pub mod lua; // Lua extractor tests
+pub mod php_tests; // PHP extractor tests
+pub mod powershell_tests; // PowerShell extractor tests
+pub mod python_tests; // Python extractor tests
+pub mod razor_tests; // Razor extractor tests
+pub mod regex_tests; // Regex extractor tests
+pub mod ruby_tests; // Ruby extractor tests
+pub mod rust_tests; // Rust extractor tests
+pub mod sql; // SQL extractor tests
+pub mod swift_tests; // Swift extractor tests
+pub mod typescript_tests; // TypeScript extractor tests
+pub mod vue_tests; // Vue extractor tests
+pub mod zig_tests; // Zig extractor tests
 
 // Debug-specific test modules for troubleshooting
 // pub mod debug_c_failures;       // Debug C extractor specific failures - TEMP DISABLED
@@ -158,10 +162,12 @@ pub mod real_world_validation; // Tests all extractors against real-world code f
 // pub mod intelligence_tools_tests; // Tests for AI-native code intelligence tools - TEMP DISABLED
 
 // Token Optimization Tests (CRITICAL - Fixes 149K token explosion)
-pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
-pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
+pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
 pub mod exploration_tools_tests; // Tests for exploration tool token optimization (FastExploreTool, FindLogicTool)
 pub mod find_logic_tests; // Tests for FindLogicTool token optimization
+pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
 pub mod path_relevance_tests; // Tests for path relevance scoring system
-pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
 pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
+pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
+pub mod watcher_tests;
+pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation

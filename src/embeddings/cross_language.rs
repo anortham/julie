@@ -3,10 +3,10 @@
 // This module groups similar concepts across different programming languages
 // using embedding vectors and similarity analysis.
 
+use super::{cosine_similarity, CodeContext, EmbeddingEngine, SimilarityResult};
+use crate::extractors::base::Symbol;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use crate::extractors::base::Symbol;
-use super::{EmbeddingEngine, CodeContext, cosine_similarity, SimilarityResult};
 
 /// Groups similar concepts across different languages
 pub struct SemanticGrouper {
@@ -43,7 +43,12 @@ impl SemanticGrouper {
     }
 
     /// Find all symbols semantically related to the given symbol
-    pub async fn find_semantic_group(&self, symbol: &Symbol, all_symbols: &[Symbol], embedding_engine: &mut EmbeddingEngine) -> Result<Vec<SemanticGroup>> {
+    pub async fn find_semantic_group(
+        &self,
+        symbol: &Symbol,
+        all_symbols: &[Symbol],
+        embedding_engine: &mut EmbeddingEngine,
+    ) -> Result<Vec<SemanticGroup>> {
         // Step 1: Generate embedding for the target symbol
         let context = CodeContext::from_symbol(symbol);
         let target_embedding = embedding_engine.embed_symbol(symbol, &context)?;
@@ -59,7 +64,8 @@ impl SemanticGrouper {
 
             // Generate embedding for candidate
             let candidate_context = CodeContext::from_symbol(candidate_symbol);
-            let candidate_embedding = embedding_engine.embed_symbol(candidate_symbol, &candidate_context)?;
+            let candidate_embedding =
+                embedding_engine.embed_symbol(candidate_symbol, &candidate_context)?;
 
             // Calculate similarity
             let similarity = cosine_similarity(&target_embedding, &candidate_embedding);
@@ -79,10 +85,9 @@ impl SemanticGrouper {
         }
 
         // Convert candidates back to symbols for validation
-        let candidate_symbols: Vec<&Symbol> = candidates.iter()
-            .filter_map(|result| {
-                all_symbols.iter().find(|s| s.id == result.symbol_id)
-            })
+        let candidate_symbols: Vec<&Symbol> = candidates
+            .iter()
+            .filter_map(|result| all_symbols.iter().find(|s| s.id == result.symbol_id))
             .collect();
 
         // Step 4: Validate the semantic group
@@ -94,14 +99,17 @@ impl SemanticGrouper {
     }
 
     /// Validate that the symbols form a legitimate semantic group
-    fn validate_semantic_group(&self, target: &Symbol, candidates: &[&Symbol], similarity_results: &[SimilarityResult]) -> Option<SemanticGroup> {
+    fn validate_semantic_group(
+        &self,
+        target: &Symbol,
+        candidates: &[&Symbol],
+        similarity_results: &[SimilarityResult],
+    ) -> Option<SemanticGroup> {
         // Must have symbols from at least 2 different languages (including target)
         let mut all_symbols = candidates.to_vec();
         all_symbols.push(target);
 
-        let languages: HashSet<String> = all_symbols.iter()
-            .map(|s| s.language.clone())
-            .collect();
+        let languages: HashSet<String> = all_symbols.iter().map(|s| s.language.clone()).collect();
 
         if languages.len() < 2 {
             return None;
@@ -114,14 +122,17 @@ impl SemanticGrouper {
 
         // Check structural similarity (if we can extract structure info)
         let structure_score = self.calculate_structure_similarity(&all_symbols);
-        if structure_score < 0.3 {  // Lower threshold since structure extraction is hard
+        if structure_score < 0.3 {
+            // Lower threshold since structure extraction is hard
             return None;
         }
 
         // Calculate overall group confidence
-        let avg_similarity = similarity_results.iter()
+        let avg_similarity = similarity_results
+            .iter()
             .map(|r| r.similarity_score)
-            .sum::<f32>() / similarity_results.len() as f32;
+            .sum::<f32>()
+            / similarity_results.len() as f32;
 
         let confidence = (avg_similarity + structure_score) / 2.0;
 
@@ -147,7 +158,8 @@ impl SemanticGrouper {
         }
 
         // Normalize names for comparison
-        let normalized_names: Vec<String> = symbols.iter()
+        let normalized_names: Vec<String> = symbols
+            .iter()
             .map(|s| self.normalize_name(&s.name))
             .collect();
 
@@ -166,11 +178,11 @@ impl SemanticGrouper {
     /// Normalize a symbol name for comparison
     fn normalize_name(&self, name: &str) -> String {
         name.to_lowercase()
-            .trim_start_matches("i")  // Remove interface prefix
+            .trim_start_matches("i") // Remove interface prefix
             .trim_end_matches("dto")
             .trim_end_matches("entity")
             .trim_end_matches("model")
-            .trim_end_matches("s")     // Remove plural
+            .trim_end_matches("s") // Remove plural
             .to_string()
     }
 
@@ -209,13 +221,21 @@ impl SemanticGrouper {
         let len1 = chars1.len();
         let len2 = chars2.len();
 
-        if len1 == 0 { return len2; }
-        if len2 == 0 { return len1; }
+        if len1 == 0 {
+            return len2;
+        }
+        if len2 == 0 {
+            return len1;
+        }
 
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
-        for i in 0..=len1 { matrix[i][0] = i; }
-        for j in 0..=len2 { matrix[0][j] = j; }
+        for i in 0..=len1 {
+            matrix[i][0] = i;
+        }
+        for j in 0..=len2 {
+            matrix[0][j] = j;
+        }
 
         for i in 1..=len1 {
             for j in 1..=len2 {
@@ -235,16 +255,14 @@ impl SemanticGrouper {
         // In a full implementation, we'd parse signatures/types to extract fields
 
         // If all symbols have signatures, that's a good sign
-        let signature_count = symbols.iter()
-            .filter(|s| s.signature.is_some())
-            .count();
+        let signature_count = symbols.iter().filter(|s| s.signature.is_some()).count();
 
         if signature_count == symbols.len() {
-            0.7  // Good structural similarity
+            0.7 // Good structural similarity
         } else if signature_count > 0 {
-            0.5  // Some structural similarity
+            0.5 // Some structural similarity
         } else {
-            0.3  // Minimal structural similarity
+            0.3 // Minimal structural similarity
         }
     }
 
@@ -270,7 +288,8 @@ impl SemanticGrouper {
         }
 
         // Return words that appear in multiple symbols
-        word_counts.into_iter()
+        word_counts
+            .into_iter()
             .filter(|(_, count)| *count > 1)
             .map(|(word, _)| word)
             .collect()
@@ -281,8 +300,11 @@ impl SemanticGrouper {
         let mut words = Vec::new();
 
         // First split on whitespace and punctuation
-        let initial_words: Vec<&str> = text.split_whitespace()
-            .flat_map(|word| word.split(&['(', ')', '{', '}', '[', ']', '<', '>', ':', ';', ',', '.']))
+        let initial_words: Vec<&str> = text
+            .split_whitespace()
+            .flat_map(|word| {
+                word.split(&['(', ')', '{', '}', '[', ']', '<', '>', ':', ';', ',', '.'])
+            })
             .collect();
 
         for word in initial_words {
@@ -336,19 +358,44 @@ impl SemanticGrouper {
 
     /// Check if a word should be ignored
     fn is_stop_word(&self, word: &str) -> bool {
-        matches!(word, "the" | "and" | "or" | "but" | "in" | "on" | "at" | "to" | "for" | "of" |
-                       "with" | "by" | "public" | "private" | "static" | "class" | "interface" |
-                       "function" | "var" | "let" | "const" | "string" | "number" | "boolean")
+        matches!(
+            word,
+            "the"
+                | "and"
+                | "or"
+                | "but"
+                | "in"
+                | "on"
+                | "at"
+                | "to"
+                | "for"
+                | "of"
+                | "with"
+                | "by"
+                | "public"
+                | "private"
+                | "static"
+                | "class"
+                | "interface"
+                | "function"
+                | "var"
+                | "let"
+                | "const"
+                | "string"
+                | "number"
+                | "boolean"
+        )
     }
 
     /// The magic: detect if this represents the same concept across layers
     pub fn detect_architectural_pattern(&self, symbols: &[Symbol]) -> ArchitecturalPattern {
-        let has_frontend = symbols.iter()
+        let has_frontend = symbols
+            .iter()
             .any(|s| matches!(s.language.as_str(), "typescript" | "javascript"));
-        let has_backend = symbols.iter()
+        let has_backend = symbols
+            .iter()
             .any(|s| matches!(s.language.as_str(), "csharp" | "java" | "python"));
-        let has_database = symbols.iter()
-            .any(|s| s.language == "sql");
+        let has_database = symbols.iter().any(|s| s.language == "sql");
 
         match (has_frontend, has_backend, has_database) {
             (true, true, true) => ArchitecturalPattern::FullStackEntity,
@@ -560,7 +607,6 @@ mod tests {
         let symbols = vec![&user_ts, &user_cs];
         let common_props = grouper.extract_common_properties(&symbols);
 
-
         // Should find common words like "user" and "data"
         assert!(common_props.contains(&"user".to_string()));
         assert!(common_props.contains(&"data".to_string()));
@@ -591,7 +637,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
-            code_context: None,
+                code_context: None,
             },
             Symbol {
                 id: "2".to_string(),
@@ -612,7 +658,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
-            code_context: None,
+                code_context: None,
             },
             Symbol {
                 id: "3".to_string(),
@@ -633,7 +679,7 @@ mod tests {
                 metadata: None,
                 semantic_group: None,
                 confidence: None,
-            code_context: None,
+                code_context: None,
             },
         ];
 

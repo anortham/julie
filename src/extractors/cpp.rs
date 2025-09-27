@@ -1,9 +1,11 @@
 // C++ extractor - Port of Miller's comprehensive C++ extraction logic
 // Following Miller's proven patterns while making it idiomatic Rust
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::{HashMap, HashSet};
+use tree_sitter::{Node, Tree};
 
 /// C++ extractor for extracting symbols and relationships from C++ source code
 /// Direct port of Miller's CppExtractor with all advanced C++ features
@@ -60,10 +62,14 @@ impl CppExtractor {
 
     /// Generate unique key for node - port of Miller's getNodeKey
     fn get_node_key(&self, node: Node) -> String {
-        format!("{}:{}:{}:{}:{}",
-            node.start_position().row, node.start_position().column,
-            node.end_position().row, node.end_position().column,
-            node.kind())
+        format!(
+            "{}:{}:{}:{}:{}",
+            node.start_position().row,
+            node.start_position().column,
+            node.end_position().row,
+            node.end_position().column,
+            node.kind()
+        )
     }
 
     /// Extract symbol from a single node - port of Miller's extractSymbol
@@ -71,7 +77,8 @@ impl CppExtractor {
         let node_key = self.get_node_key(node);
 
         // Track specific node types to prevent duplicates (Miller's logic)
-        let should_track = matches!(node.kind(),
+        let should_track = matches!(
+            node.kind(),
             "function_declarator" | "function_definition" | "declaration" | "class_specifier"
         );
 
@@ -81,7 +88,9 @@ impl CppExtractor {
 
         let symbol = match node.kind() {
             "namespace_definition" => self.extract_namespace(node, parent_id),
-            "using_declaration" | "namespace_alias_definition" => self.extract_using(node, parent_id),
+            "using_declaration" | "namespace_alias_definition" => {
+                self.extract_using(node, parent_id)
+            }
             "class_specifier" => self.extract_class(node, parent_id),
             "struct_specifier" => self.extract_struct(node, parent_id),
             "union_specifier" => self.extract_union(node, parent_id),
@@ -95,7 +104,7 @@ impl CppExtractor {
                 } else {
                     None
                 }
-            },
+            }
             "declaration" => self.extract_declaration(node, parent_id),
             "friend_declaration" => self.extract_friend_declaration(node, parent_id),
             "template_declaration" => self.extract_template(node, parent_id),
@@ -115,7 +124,8 @@ impl CppExtractor {
     /// Extract namespace declaration - port of Miller's extractNamespace
     fn extract_namespace(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "namespace_identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -142,13 +152,15 @@ impl CppExtractor {
 
         if node.kind() == "using_declaration" {
             let mut cursor = node.walk();
-            let qualified_id_node = node.children(&mut cursor)
+            let qualified_id_node = node
+                .children(&mut cursor)
                 .find(|c| c.kind() == "qualified_identifier" || c.kind() == "identifier")?;
 
             let full_path = self.base.get_node_text(&qualified_id_node);
 
             // Check if it's "using namespace"
-            let is_namespace = node.children(&mut node.walk())
+            let is_namespace = node
+                .children(&mut node.walk())
                 .any(|c| c.kind() == "namespace");
 
             if is_namespace {
@@ -164,10 +176,12 @@ impl CppExtractor {
             let mut cursor = node.walk();
             let children: Vec<Node> = node.children(&mut cursor).collect();
 
-            let alias_node = children.iter()
+            let alias_node = children
+                .iter()
                 .find(|c| c.kind() == "namespace_identifier")?;
-            let target_node = children.iter()
-                .find(|c| c.kind() == "nested_namespace_specifier" || c.kind() == "qualified_identifier")?;
+            let target_node = children.iter().find(|c| {
+                c.kind() == "nested_namespace_specifier" || c.kind() == "qualified_identifier"
+            })?;
 
             name = self.base.get_node_text(alias_node);
             let target = self.base.get_node_text(target_node);
@@ -195,13 +209,15 @@ impl CppExtractor {
     /// Extract class declaration - port of Miller's extractClass
     fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "type_identifier" || c.kind() == "template_type")?;
 
         let (name, is_specialization) = if name_node.kind() == "template_type" {
             // For template specializations like Vector<bool>, extract just the base name
             // The template_type node contains type_identifier + template_argument_list
-            let type_id = name_node.children(&mut name_node.walk())
+            let type_id = name_node
+                .children(&mut name_node.walk())
                 .find(|c| c.kind() == "type_identifier")
                 .map(|n| self.base.get_node_text(&n))
                 .unwrap_or_else(|| self.base.get_node_text(&name_node));
@@ -224,8 +240,10 @@ impl CppExtractor {
         }
 
         // Handle inheritance
-        if let Some(base_clause) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "base_class_clause") {
+        if let Some(base_clause) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "base_class_clause")
+        {
             let bases = self.extract_base_classes(base_clause);
             if !bases.is_empty() {
                 signature.push_str(&format!(" : {}", bases.join(", ")));
@@ -249,7 +267,8 @@ impl CppExtractor {
     /// Extract struct declaration - port of Miller's extractStruct
     fn extract_struct(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "type_identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -261,8 +280,10 @@ impl CppExtractor {
         }
 
         // Handle inheritance (structs can inherit too)
-        if let Some(base_clause) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "base_class_clause") {
+        if let Some(base_clause) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "base_class_clause")
+        {
             let bases = self.extract_base_classes(base_clause);
             if !bases.is_empty() {
                 signature.push_str(&format!(" : {}", bases.join(", ")));
@@ -271,7 +292,8 @@ impl CppExtractor {
 
         // Check for alignas qualifier
         let mut children_cursor = node.walk();
-        let alignas_node = node.children(&mut children_cursor)
+        let alignas_node = node
+            .children(&mut children_cursor)
             .find(|c| c.kind() == "alignas_qualifier");
         if let Some(alignas) = alignas_node {
             let alignas_text = self.base.get_node_text(&alignas);
@@ -295,7 +317,8 @@ impl CppExtractor {
     /// Extract union declaration - port of Miller's extractUnion
     fn extract_union(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "type_identifier");
 
         let name = if let Some(name_node) = name_node {
@@ -328,14 +351,14 @@ impl CppExtractor {
     /// Extract enum declaration - port of Miller's extractEnum
     fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "type_identifier")?;
 
         let name = self.base.get_node_text(&name_node);
 
         // Check if it's a scoped enum (enum class)
-        let is_scoped = node.children(&mut node.walk())
-            .any(|c| c.kind() == "class");
+        let is_scoped = node.children(&mut node.walk()).any(|c| c.kind() == "class");
 
         let mut signature = if is_scoped {
             format!("enum class {}", name)
@@ -371,7 +394,8 @@ impl CppExtractor {
     /// Extract enum member - port of Miller's extractEnumMember
     fn extract_enum_member(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -382,7 +406,8 @@ impl CppExtractor {
         if let Some(equals_pos) = children.iter().position(|c| c.kind() == "=") {
             if equals_pos + 1 < children.len() {
                 let value_nodes = &children[equals_pos + 1..];
-                let value: String = value_nodes.iter()
+                let value: String = value_nodes
+                    .iter()
                     .map(|n| self.base.get_node_text(n))
                     .collect::<Vec<_>>()
                     .join("")
@@ -398,7 +423,8 @@ impl CppExtractor {
         let enum_parent = self.find_parent_enum(node);
         let is_anonymous_enum = enum_parent
             .and_then(|parent| {
-                parent.children(&mut parent.walk())
+                parent
+                    .children(&mut parent.walk())
                     .find(|c| c.kind() == "type_identifier")
             })
             .is_none();
@@ -430,7 +456,8 @@ impl CppExtractor {
         let mut func_node = node;
         if node.kind() == "function_definition" {
             // Look for function_declarator or reference_declarator
-            let declarator = node.children(&mut node.walk())
+            let declarator = node
+                .children(&mut node.walk())
                 .find(|c| c.kind() == "function_declarator" || c.kind() == "reference_declarator");
             if let Some(declarator) = declarator {
                 func_node = declarator;
@@ -471,7 +498,6 @@ impl CppExtractor {
         let parameters = self.extract_function_parameters(func_node);
         let const_qualifier = self.extract_const_qualifier(func_node);
         let noexcept_spec = self.extract_noexcept_specifier(func_node);
-
 
         let mut signature = String::new();
 
@@ -553,7 +579,8 @@ impl CppExtractor {
 
         // Check if this is a friend declaration first
         let node_text = self.base.get_node_text(&node);
-        let has_friend = node.children(&mut node.walk())
+        let has_friend = node
+            .children(&mut node.walk())
             .any(|c| c.kind() == "friend" || self.base.get_node_text(&c) == "friend");
 
         // Also check the node's own text for friend keyword
@@ -564,18 +591,21 @@ impl CppExtractor {
         }
 
         // Check if this is a conversion operator (e.g., operator double())
-        let operator_cast = node.children(&mut node.walk())
+        let operator_cast = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "operator_cast");
         if operator_cast.is_some() {
             return self.extract_conversion_operator(node, parent_id);
         }
 
         // Check if this is a function declaration
-        let func_declarator = node.children(&mut node.walk())
+        let func_declarator = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "function_declarator");
         if let Some(func_declarator) = func_declarator {
             // Check if this is a destructor by looking for destructor_name
-            let destructor_name = func_declarator.children(&mut func_declarator.walk())
+            let destructor_name = func_declarator
+                .children(&mut func_declarator.walk())
                 .find(|c| c.kind() == "destructor_name");
             if destructor_name.is_some() {
                 return self.extract_destructor_from_declaration(node, func_declarator, parent_id);
@@ -594,13 +624,15 @@ impl CppExtractor {
         }
 
         // Handle variable declarations
-        let declarators: Vec<Node> = node.children(&mut node.walk())
+        let declarators: Vec<Node> = node
+            .children(&mut node.walk())
             .filter(|c| c.kind() == "init_declarator")
             .collect();
 
         // Check for direct identifier declarations (e.g., extern variables)
         if declarators.is_empty() {
-            let identifier_node = node.children(&mut node.walk())
+            let identifier_node = node
+                .children(&mut node.walk())
                 .find(|c| c.kind() == "identifier")?;
 
             let name = self.base.get_node_text(&identifier_node);
@@ -674,16 +706,23 @@ impl CppExtractor {
     fn extract_template(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract template declaration - port of Miller's extractTemplate
         let mut cursor = node.walk();
-        let declaration = node.children(&mut cursor)
-            .find(|c| matches!(c.kind(), "class_specifier" | "struct_specifier" | "function_definition" | "declaration"))?;
+        let declaration = node.children(&mut cursor).find(|c| {
+            matches!(
+                c.kind(),
+                "class_specifier" | "struct_specifier" | "function_definition" | "declaration"
+            )
+        })?;
 
         // Extract the symbol from the inner declaration and add template info
         if let Some(mut symbol) = self.extract_symbol(declaration, parent_id) {
             // Add template parameters to signature
             if let Some(template_params) = self.extract_template_parameters(Some(node)) {
                 if let Some(ref mut sig) = symbol.signature {
-                    *sig = format!("{}
-{}", template_params, sig);
+                    *sig = format!(
+                        "{}
+{}",
+                        template_params, sig
+                    );
                 } else {
                     symbol.signature = Some(template_params);
                 }
@@ -696,13 +735,15 @@ impl CppExtractor {
 
     fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract field declaration - port of Miller's extractField
-        let declarators: Vec<Node> = node.children(&mut node.walk())
+        let declarators: Vec<Node> = node
+            .children(&mut node.walk())
             .filter(|c| matches!(c.kind(), "field_declarator" | "init_declarator"))
             .collect();
 
         if declarators.is_empty() {
             // Check for field_identifier directly (for simple field declarations like static const members)
-            let field_id = node.children(&mut node.walk())
+            let field_id = node
+                .children(&mut node.walk())
                 .find(|c| c.kind() == "field_identifier");
 
             if let Some(field_node) = field_id {
@@ -780,26 +821,38 @@ impl CppExtractor {
         ))
     }
 
-    fn extract_friend_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_friend_declaration(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract friend declaration - port of Miller's extractFriendDeclaration
         // Handles both friend functions AND friend operators
 
         let mut cursor = node.walk();
 
         // Look for the inner declaration node
-        let inner_declaration = node.children(&mut cursor)
+        let inner_declaration = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "declaration")?;
 
         // Look for function_declarator in the declaration
         let function_declarator = self.find_function_declarator_in_node(inner_declaration)?;
 
         // Extract name - handle both operator_name and regular identifier
-        let (name, symbol_kind) = if let Some(operator_name) = function_declarator.children(&mut function_declarator.walk())
-            .find(|c| c.kind() == "operator_name") {
+        let (name, symbol_kind) = if let Some(operator_name) = function_declarator
+            .children(&mut function_declarator.walk())
+            .find(|c| c.kind() == "operator_name")
+        {
             // This is a friend operator (e.g., operator+)
-            (self.base.get_node_text(&operator_name), SymbolKind::Operator)
-        } else if let Some(identifier) = function_declarator.children(&mut function_declarator.walk())
-            .find(|c| c.kind() == "identifier") {
+            (
+                self.base.get_node_text(&operator_name),
+                SymbolKind::Operator,
+            )
+        } else if let Some(identifier) = function_declarator
+            .children(&mut function_declarator.walk())
+            .find(|c| c.kind() == "identifier")
+        {
             // This is a friend function (e.g., dot)
             (self.base.get_node_text(&identifier), SymbolKind::Function)
         } else {
@@ -810,7 +863,9 @@ impl CppExtractor {
         let return_type = self.extract_basic_return_type(inner_declaration);
         let parameters = self.extract_function_parameters(function_declarator);
 
-        let signature = format!("friend {} {}{}", return_type, name, parameters).trim().to_string();
+        let signature = format!("friend {} {}{}", return_type, name, parameters)
+            .trim()
+            .to_string();
 
         // Create the symbol with appropriate kind
         let symbol = self.base.create_symbol(
@@ -903,7 +958,8 @@ impl CppExtractor {
         while let Some(node) = current {
             if node.kind() == "template_declaration" {
                 let mut cursor = node.walk();
-                let param_list = node.children(&mut cursor)
+                let param_list = node
+                    .children(&mut cursor)
                     .find(|c| c.kind() == "template_parameter_list");
                 if let Some(param_list) = param_list {
                     return Some(format!("template{}", self.base.get_node_text(&param_list)));
@@ -935,12 +991,18 @@ impl CppExtractor {
                 i += 1;
                 if i < children.len() {
                     let class_node = children[i];
-                    if matches!(class_node.kind(), "type_identifier" | "qualified_identifier" | "template_type") {
+                    if matches!(
+                        class_node.kind(),
+                        "type_identifier" | "qualified_identifier" | "template_type"
+                    ) {
                         let class_name = self.base.get_node_text(&class_node);
                         bases.push(format!("{} {}", access, class_name));
                     }
                 }
-            } else if matches!(child.kind(), "type_identifier" | "qualified_identifier" | "template_type") {
+            } else if matches!(
+                child.kind(),
+                "type_identifier" | "qualified_identifier" | "template_type"
+            ) {
                 // Class name without explicit access specifier
                 let class_name = self.base.get_node_text(&child);
                 bases.push(class_name);
@@ -1005,19 +1067,27 @@ impl CppExtractor {
 
         // Get the class name
         let mut cursor = class_node.walk();
-        let name_node = class_node.children(&mut cursor)
+        let name_node = class_node
+            .children(&mut cursor)
             .find(|c| c.kind() == "type_identifier");
 
-        let Some(name_node) = name_node else { return relationships };
+        let Some(name_node) = name_node else {
+            return relationships;
+        };
 
         let class_name = self.base.get_node_text(&name_node);
-        let Some(derived_symbol) = symbol_map.get(&class_name) else { return relationships };
+        let Some(derived_symbol) = symbol_map.get(&class_name) else {
+            return relationships;
+        };
 
         // Look for base class clause
-        let base_clause = class_node.children(&mut class_node.walk())
+        let base_clause = class_node
+            .children(&mut class_node.walk())
             .find(|c| c.kind() == "base_class_clause");
 
-        let Some(base_clause) = base_clause else { return relationships };
+        let Some(base_clause) = base_clause else {
+            return relationships;
+        };
 
         // Extract base classes
         let base_classes = self.extract_base_classes(base_clause);
@@ -1031,7 +1101,13 @@ impl CppExtractor {
 
             if let Some(base_symbol) = symbol_map.get(clean_base_name) {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", derived_symbol.id, base_symbol.id, RelationshipKind::Extends, class_node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        derived_symbol.id,
+                        base_symbol.id,
+                        RelationshipKind::Extends,
+                        class_node.start_position().row
+                    ),
                     from_symbol_id: derived_symbol.id.clone(),
                     to_symbol_id: base_symbol.id.clone(),
                     kind: RelationshipKind::Extends,
@@ -1082,19 +1158,26 @@ impl CppExtractor {
         };
 
         // Skip constructors and destructors (no return type)
-        if matches!(symbol.kind, SymbolKind::Constructor | SymbolKind::Destructor) {
+        if matches!(
+            symbol.kind,
+            SymbolKind::Constructor | SymbolKind::Destructor
+        ) {
             return None;
         }
 
         // Pattern: "returnType functionName(params)"
-        let function_pattern = regex::Regex::new(r"^(?:(?:virtual|static|inline|friend)\s+)*(.+?)\s+(\w+|operator\w*|~\w+)\s*\(").ok()?;
+        let function_pattern = regex::Regex::new(
+            r"^(?:(?:virtual|static|inline|friend)\s+)*(.+?)\s+(\w+|operator\w*|~\w+)\s*\(",
+        )
+        .ok()?;
         if let Some(captures) = function_pattern.captures(signature) {
             let return_type = captures.get(1)?.as_str().trim();
             return Some(return_type.to_string());
         }
 
         // Pattern: "auto functionName(params) -> returnType"
-        let auto_pattern = regex::Regex::new(r"auto\s+(\w+)\s*\([^)]*\)\s*->\s*(.+?)(?:\s|$)").ok()?;
+        let auto_pattern =
+            regex::Regex::new(r"auto\s+(\w+)\s*\([^)]*\)\s*->\s*(.+?)(?:\s|$)").ok()?;
         if let Some(captures) = auto_pattern.captures(signature) {
             return Some(captures.get(2)?.as_str().trim().to_string());
         }
@@ -1106,7 +1189,10 @@ impl CppExtractor {
         let signature = symbol.signature.as_ref()?;
 
         // Pattern: "storageClass? typeSpec variableName initializer?"
-        let variable_pattern = regex::Regex::new(r"^(?:(?:static|extern|const|constexpr|mutable)\s+)*(.+?)\s+(\w+)(?:\s*=.*)?$").ok()?;
+        let variable_pattern = regex::Regex::new(
+            r"^(?:(?:static|extern|const|constexpr|mutable)\s+)*(.+?)\s+(\w+)(?:\s*=.*)?$",
+        )
+        .ok()?;
         if let Some(captures) = variable_pattern.captures(signature) {
             return Some(captures.get(1)?.as_str().trim().to_string());
         }
@@ -1120,39 +1206,55 @@ impl CppExtractor {
         // Handle different types of function names - Miller's extractFunctionName
 
         // operator_name (operator overloading)
-        if let Some(operator_node) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "operator_name") {
+        if let Some(operator_node) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "operator_name")
+        {
             return Some(operator_node);
         }
 
         // destructor_name
-        if let Some(destructor_node) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "destructor_name") {
+        if let Some(destructor_node) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "destructor_name")
+        {
             return Some(destructor_node);
         }
 
         // field_identifier (methods)
-        if let Some(field_id_node) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "field_identifier") {
+        if let Some(field_id_node) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "field_identifier")
+        {
             return Some(field_id_node);
         }
 
         // identifier (regular functions)
-        if let Some(identifier_node) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "identifier") {
+        if let Some(identifier_node) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "identifier")
+        {
             return Some(identifier_node);
         }
 
         // qualified_identifier (e.g., ClassName::method)
-        if let Some(qualified_node) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "qualified_identifier") {
+        if let Some(qualified_node) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "qualified_identifier")
+        {
             return Some(qualified_node);
         }
 
         None
     }
 
-    fn extract_method(&mut self, node: Node, func_node: Node, name: &str, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_method(
+        &mut self,
+        node: Node,
+        func_node: Node,
+        name: &str,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port of Miller's extractMethod logic
         let is_constructor = self.is_constructor(name, node);
         let is_destructor = name.starts_with('~');
@@ -1212,8 +1314,10 @@ impl CppExtractor {
         let mut current = Some(node);
         while let Some(parent) = current {
             if matches!(parent.kind(), "class_specifier" | "struct_specifier") {
-                if let Some(class_name_node) = parent.children(&mut parent.walk())
-                    .find(|c| c.kind() == "type_identifier") {
+                if let Some(class_name_node) = parent
+                    .children(&mut parent.walk())
+                    .find(|c| c.kind() == "type_identifier")
+                {
                     let class_name = self.base.get_node_text(&class_name_node);
                     if class_name == name {
                         return true;
@@ -1235,7 +1339,12 @@ impl CppExtractor {
         modifiers
     }
 
-    fn collect_modifiers_recursive(&self, node: Node, modifiers: &mut Vec<String>, modifier_types: &[&str]) {
+    fn collect_modifiers_recursive(
+        &self,
+        node: Node,
+        modifiers: &mut Vec<String>,
+        modifier_types: &[&str],
+    ) {
         for child in node.children(&mut node.walk()) {
             if modifier_types.contains(&child.kind()) {
                 let modifier = self.base.get_node_text(&child);
@@ -1258,7 +1367,14 @@ impl CppExtractor {
     fn extract_basic_return_type(&self, node: Node) -> String {
         // Look for type specifiers before the function declarator
         for child in node.children(&mut node.walk()) {
-            if matches!(child.kind(), "primitive_type" | "type_identifier" | "qualified_identifier" | "auto" | "placeholder_type_specifier") {
+            if matches!(
+                child.kind(),
+                "primitive_type"
+                    | "type_identifier"
+                    | "qualified_identifier"
+                    | "auto"
+                    | "placeholder_type_specifier"
+            ) {
                 return self.base.get_node_text(&child);
             }
         }
@@ -1270,7 +1386,8 @@ impl CppExtractor {
         // The trailing return type is inside the function_declarator node
 
         // First, find the function_declarator child
-        let func_declarator = node.children(&mut node.walk())
+        let func_declarator = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "function_declarator");
 
         if let Some(declarator) = func_declarator {
@@ -1283,8 +1400,14 @@ impl CppExtractor {
                     return self.base.get_node_text(&children[i + 1]);
                 } else if child.kind() == "trailing_return_type" {
                     // Extract the type from trailing_return_type node
-                    return child.children(&mut child.walk())
-                        .find(|c| matches!(c.kind(), "primitive_type" | "type_identifier" | "qualified_identifier"))
+                    return child
+                        .children(&mut child.walk())
+                        .find(|c| {
+                            matches!(
+                                c.kind(),
+                                "primitive_type" | "type_identifier" | "qualified_identifier"
+                            )
+                        })
                         .map(|type_node| self.base.get_node_text(&type_node))
                         .unwrap_or_else(|| self.base.get_node_text(child));
                 }
@@ -1295,16 +1418,19 @@ impl CppExtractor {
     }
 
     fn extract_function_parameters(&self, func_node: Node) -> String {
-        if let Some(param_list) = func_node.children(&mut func_node.walk())
-            .find(|c| c.kind() == "parameter_list") {
+        if let Some(param_list) = func_node
+            .children(&mut func_node.walk())
+            .find(|c| c.kind() == "parameter_list")
+        {
             self.base.get_node_text(&param_list)
         } else {
-            "()" .to_string()
+            "()".to_string()
         }
     }
 
     fn extract_const_qualifier(&self, func_node: Node) -> bool {
-        func_node.children(&mut func_node.walk())
+        func_node
+            .children(&mut func_node.walk())
             .any(|c| c.kind() == "type_qualifier" && self.base.get_node_text(&c) == "const")
     }
 
@@ -1319,11 +1445,16 @@ impl CppExtractor {
 
     // Additional helper methods for declaration extraction
 
-    fn extract_conversion_operator(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_conversion_operator(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract conversion operator like "operator double()"
 
         // Find the operator_cast node
-        let operator_cast = node.children(&mut node.walk())
+        let operator_cast = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "operator_cast")?;
 
         // Extract the target type from operator_cast
@@ -1332,7 +1463,10 @@ impl CppExtractor {
 
         let mut cursor = operator_cast.walk();
         for child in operator_cast.children(&mut cursor) {
-            if matches!(child.kind(), "primitive_type" | "type_identifier" | "qualified_identifier") {
+            if matches!(
+                child.kind(),
+                "primitive_type" | "type_identifier" | "qualified_identifier"
+            ) {
                 let target_type = self.base.get_node_text(&child);
                 operator_name.push(' ');
                 operator_name.push_str(&target_type);
@@ -1356,7 +1490,12 @@ impl CppExtractor {
         ))
     }
 
-    fn extract_destructor_from_declaration(&mut self, node: Node, _func_declarator: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_destructor_from_declaration(
+        &mut self,
+        node: Node,
+        _func_declarator: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract destructor from declaration like "virtual ~MyClass();"
         let signature = self.base.get_node_text(&node);
         let name_start = signature.find('~')?;
@@ -1407,14 +1546,21 @@ impl CppExtractor {
         type_specifiers
     }
 
-    fn is_constant_declaration(&self, storage_class: &[String], type_specifiers: &[String]) -> bool {
-        type_specifiers.iter().any(|spec| spec == "const" || spec == "constexpr") ||
-        storage_class.iter().any(|sc| sc == "constexpr")
+    fn is_constant_declaration(
+        &self,
+        storage_class: &[String],
+        type_specifiers: &[String],
+    ) -> bool {
+        type_specifiers
+            .iter()
+            .any(|spec| spec == "const" || spec == "constexpr")
+            || storage_class.iter().any(|sc| sc == "constexpr")
     }
 
     fn extract_declarator_name<'a>(&self, declarator: Node<'a>) -> Option<Node<'a>> {
         // Look for identifier in declarator
-        declarator.children(&mut declarator.walk())
+        declarator
+            .children(&mut declarator.walk())
             .find(|c| c.kind() == "identifier")
     }
 
@@ -1437,7 +1583,10 @@ impl CppExtractor {
 
         // Add type
         for child in node.children(&mut node.walk()) {
-            if matches!(child.kind(), "primitive_type" | "type_identifier" | "qualified_identifier") {
+            if matches!(
+                child.kind(),
+                "primitive_type" | "type_identifier" | "qualified_identifier"
+            ) {
                 signature.push_str(&self.base.get_node_text(&child));
                 signature.push(' ');
                 break;
@@ -1461,7 +1610,10 @@ impl CppExtractor {
 
         // Add type from node
         for child in node.children(&mut node.walk()) {
-            if matches!(child.kind(), "primitive_type" | "type_identifier" | "qualified_identifier") {
+            if matches!(
+                child.kind(),
+                "primitive_type" | "type_identifier" | "qualified_identifier"
+            ) {
                 parts.push(self.base.get_node_text(&child));
                 break;
             }
@@ -1484,7 +1636,8 @@ impl CppExtractor {
 
     fn extract_field_name<'a>(&self, field_node: Node<'a>) -> Option<Node<'a>> {
         // Look for identifier in field declarator
-        field_node.children(&mut field_node.walk())
+        field_node
+            .children(&mut field_node.walk())
             .find(|c| c.kind() == "field_identifier" || c.kind() == "identifier")
     }
 
@@ -1501,7 +1654,10 @@ impl CppExtractor {
 
         // Add type from node
         for child in node.children(&mut node.walk()) {
-            if matches!(child.kind(), "primitive_type" | "type_identifier" | "qualified_identifier") {
+            if matches!(
+                child.kind(),
+                "primitive_type" | "type_identifier" | "qualified_identifier"
+            ) {
                 parts.push(self.base.get_node_text(&child));
                 break;
             }
@@ -1527,8 +1683,7 @@ impl CppExtractor {
         // Check if this is a static member variable inside a class
 
         // First check if it has static storage class
-        let has_static = storage_class.iter()
-            .any(|sc| sc == "static");
+        let has_static = storage_class.iter().any(|sc| sc == "static");
 
         if !has_static {
             return false;
@@ -1547,7 +1702,12 @@ impl CppExtractor {
         false
     }
 
-    fn extract_constructor_from_declaration(&mut self, node: Node, func_declarator: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_constructor_from_declaration(
+        &mut self,
+        node: Node,
+        func_declarator: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract constructor from declaration with = delete, = default, etc.
         let name_node = self.extract_function_name(func_declarator)?;
         let name = self.base.get_node_text(&name_node);
@@ -1602,7 +1762,9 @@ impl CppExtractor {
 
     fn extract_method_modifiers(&self, declaration_node: Node, func_node: Node) -> Vec<String> {
         let mut modifiers = Vec::new();
-        let modifier_types = ["virtual", "static", "explicit", "friend", "inline", "override"];
+        let modifier_types = [
+            "virtual", "static", "explicit", "friend", "inline", "override",
+        ];
 
         // For C++ class methods, check multiple tree levels for modifiers
         let mut nodes_to_check = vec![declaration_node, func_node];

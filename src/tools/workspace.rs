@@ -1,19 +1,18 @@
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use anyhow::Result;
 use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use tracing::{info, debug, warn, error};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 use std::fs;
+use std::path::{Path, PathBuf};
+use tracing::{debug, error, info, warn};
 
-use crate::handler::JulieServerHandler;
-use crate::workspace::registry::{WorkspaceType, generate_workspace_id};
-use crate::workspace::registry_service::{WorkspaceRegistryService, WorkspaceCleanupReport, ComprehensiveCleanupReport};
+use super::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use crate::extractors::Symbol;
-use crate::workspace::JulieWorkspace;
-use super::shared::{BLACKLISTED_EXTENSIONS, BLACKLISTED_DIRECTORIES};
+use crate::handler::JulieServerHandler;
+use crate::workspace::registry::WorkspaceType;
+use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //******************//
 // Workspace Management Commands //
@@ -27,52 +26,52 @@ pub enum WorkspaceCommand {
         /// Path to workspace (defaults to current directory)
         path: Option<String>,
         /// Force complete re-indexing even if cache exists
-        force: bool
+        force: bool,
     },
     /// Add reference workspace for cross-project search
     Add {
         /// Path to the workspace to add
         path: String,
         /// Optional display name for the workspace
-        name: Option<String>
+        name: Option<String>,
     },
     /// Remove specific workspace by ID
     Remove {
         /// Workspace ID to remove
-        workspace_id: String
+        workspace_id: String,
     },
     /// List all registered workspaces with status
     List,
     /// Clean up expired or orphaned workspaces
     Clean {
         /// Only clean expired workspaces, not orphaned ones
-        expired_only: bool
+        expired_only: bool,
     },
     /// Re-index specific workspace
     Refresh {
         /// Workspace ID to refresh
-        workspace_id: String
+        workspace_id: String,
     },
     /// Show workspace statistics
     Stats {
         /// Optional specific workspace ID (defaults to all)
-        workspace_id: Option<String>
+        workspace_id: Option<String>,
     },
     /// Set TTL for reference workspaces
     SetTtl {
         /// Number of days before reference workspaces expire
-        days: u32
+        days: u32,
     },
     /// Set storage size limit
     SetLimit {
         /// Maximum total index size in MB
-        max_size_mb: u64
+        max_size_mb: u64,
     },
 }
 
 #[mcp_tool(
     name = "manage_workspace",
-    description = "🏗️ UNIFIED WORKSPACE MANAGEMENT - Index, add, remove, and manage multiple project workspaces",
+    description = "🏗️ UNIFIED WORKSPACE MANAGEMENT - Index, add, remove, and manage multiple project workspaces\n\nCommon operations:\n• Index workspace: Use 'index' command to enable fast search capabilities\n• Force reindex: Use 'index' with force=true to rebuild from scratch\n• Multi-workspace: Use 'add' to include reference workspaces for cross-project search\n• Maintenance: Use 'clean' to remove expired workspaces and optimize storage\n\nMust provide command as JSON object with command type + parameters (see examples in parameter docs)",
     title = "Manage Julie Workspaces",
     idempotent_hint = false,
     destructive_hint = false,
@@ -82,7 +81,22 @@ pub enum WorkspaceCommand {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Workspace management command to execute
+    /// Workspace management command to execute.
+    ///
+    /// Examples:
+    /// - Index current directory: {"command": "index", "force": false, "path": null}
+    /// - Force reindex workspace: {"command": "index", "force": true, "path": null}
+    /// - Index specific path: {"command": "index", "force": false, "path": "/path/to/workspace"}
+    /// - Add reference workspace: {"command": "add", "path": "/path/to/other/project", "name": "Optional Display Name"}
+    /// - List all workspaces: {"command": "list"}
+    /// - Remove workspace: {"command": "remove", "workspace_id": "workspace-id-here"}
+    /// - Clean expired workspaces: {"command": "clean", "expired_only": true}
+    /// - Show statistics: {"command": "stats", "workspace_id": null}
+    /// - Set TTL: {"command": "set_ttl", "days": 30}
+    /// - Set storage limit: {"command": "set_limit", "max_size_mb": 1024}
+    ///
+    /// Note: The command field uses a tagged enum structure where the command type and parameters
+    /// are combined in a single JSON object with the command type as the "command" field.
     pub command: WorkspaceCommand,
 }
 
@@ -92,32 +106,30 @@ impl ManageWorkspaceTool {
 
         match &self.command {
             WorkspaceCommand::Index { path, force } => {
-                self.handle_index_command(handler, path.clone(), *force).await
-            },
+                self.handle_index_command(handler, path.clone(), *force)
+                    .await
+            }
             WorkspaceCommand::Add { path, name } => {
                 self.handle_add_command(handler, path, name.clone()).await
-            },
+            }
             WorkspaceCommand::Remove { workspace_id } => {
                 self.handle_remove_command(handler, workspace_id).await
-            },
-            WorkspaceCommand::List => {
-                self.handle_list_command(handler).await
-            },
+            }
+            WorkspaceCommand::List => self.handle_list_command(handler).await,
             WorkspaceCommand::Clean { expired_only } => {
                 self.handle_clean_command(handler, *expired_only).await
-            },
+            }
             WorkspaceCommand::Refresh { workspace_id } => {
                 self.handle_refresh_command(handler, workspace_id).await
-            },
+            }
             WorkspaceCommand::Stats { workspace_id } => {
-                self.handle_stats_command(handler, workspace_id.clone()).await
-            },
-            WorkspaceCommand::SetTtl { days } => {
-                self.handle_set_ttl_command(handler, *days).await
-            },
+                self.handle_stats_command(handler, workspace_id.clone())
+                    .await
+            }
+            WorkspaceCommand::SetTtl { days } => self.handle_set_ttl_command(handler, *days).await,
             WorkspaceCommand::SetLimit { max_size_mb } => {
                 self.handle_set_limit_command(handler, *max_size_mb).await
-            },
+            }
         }
     }
 
@@ -126,7 +138,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         path: Option<String>,
-        force: bool
+        force: bool,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
 
@@ -144,7 +156,12 @@ impl ManageWorkspaceTool {
         }
 
         // Initialize or load workspace in handler (with force if requested)
-        handler.initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), force_reindex).await?;
+        handler
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                force_reindex,
+            )
+            .await?;
 
         // Check if already indexed and not forcing reindex
         if !force_reindex {
@@ -157,12 +174,17 @@ impl ManageWorkspaceTool {
                     💡 Use force: true to re-index",
                     symbol_count
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         }
 
         // Perform indexing
-        match self.index_workspace_files(handler, &workspace_path, force_reindex).await {
+        match self
+            .index_workspace_files(handler, &workspace_path, force_reindex)
+            .await
+        {
             Ok((symbol_count, file_count, relationship_count)) => {
                 // Mark as indexed
                 *handler.is_indexed.write().await = true;
@@ -172,10 +194,13 @@ impl ManageWorkspaceTool {
                     let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
                     let workspace_path_str = workspace.root.to_string_lossy().to_string();
 
-                    match registry_service.register_workspace(workspace_path_str, WorkspaceType::Primary).await {
+                    match registry_service
+                        .register_workspace(workspace_path_str, WorkspaceType::Primary)
+                        .await
+                    {
                         Ok(entry) => {
                             info!("✅ Registered primary workspace: {}", entry.id);
-                        },
+                        }
                         Err(e) => {
                             debug!("Primary workspace registration: {}", e);
                         }
@@ -190,8 +215,10 @@ impl ManageWorkspaceTool {
                     ⚡ Ready for search and navigation!",
                     file_count, symbol_count, relationship_count
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
             Err(e) => {
                 error!("Failed to index workspace: {}", e);
                 let message = format!(
@@ -199,7 +226,9 @@ impl ManageWorkspaceTool {
                     💡 Check that the path exists and contains source files",
                     e
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -209,7 +238,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         path: &str,
-        name: Option<String>
+        name: Option<String>,
     ) -> Result<CallToolResult> {
         info!("➕ Adding reference workspace: {}", path);
 
@@ -218,14 +247,19 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found. Please run 'index' command first.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
         // Register the reference workspace
-        match registry_service.register_workspace(path.to_string(), WorkspaceType::Reference).await {
+        match registry_service
+            .register_workspace(path.to_string(), WorkspaceType::Reference)
+            .await
+        {
             Ok(entry) => {
                 let display_name = name.unwrap_or_else(|| entry.display_name.clone());
 
@@ -239,18 +273,27 @@ impl ManageWorkspaceTool {
                     🏷️ Name: {}\n\
                     ⏰ Expires: {} days\n\
                     💡 Use 'refresh {}' to index its content",
-                    entry.id, entry.original_path, display_name,
-                    entry.expires_at.map(|exp| {
-                        let days = (exp - entry.created_at) / (24 * 60 * 60);
-                        format!("{}", days)
-                    }).unwrap_or("never".to_string()),
+                    entry.id,
+                    entry.original_path,
+                    display_name,
+                    entry
+                        .expires_at
+                        .map(|exp| {
+                            let days = (exp - entry.created_at) / (24 * 60 * 60);
+                            format!("{}", days)
+                        })
+                        .unwrap_or("never".to_string()),
                     entry.id
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
             Err(e) => {
                 let message = format!("❌ Failed to add workspace: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -259,7 +302,7 @@ impl ManageWorkspaceTool {
     async fn handle_remove_command(
         &self,
         handler: &JulieServerHandler,
-        workspace_id: &str
+        workspace_id: &str,
     ) -> Result<CallToolResult> {
         info!("🗑️ Removing workspace: {}", workspace_id);
 
@@ -267,7 +310,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -282,9 +327,12 @@ impl ManageWorkspaceTool {
                     Ok(stats) => {
                         info!("Cleaned database data for workspace {}: {} symbols, {} files, {} relationships",
                               workspace_id, stats.symbols_deleted, stats.files_deleted, stats.relationships_deleted);
-                    },
+                    }
                     Err(e) => {
-                        warn!("Failed to clean database data for workspace {}: {}", workspace_id, e);
+                        warn!(
+                            "Failed to clean database data for workspace {}: {}",
+                            workspace_id, e
+                        );
                     }
                 }
             }
@@ -299,20 +347,28 @@ impl ManageWorkspaceTool {
                         💡 All associated symbols, files, and relationships have been removed.",
                         workspace_id
                     );
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-                },
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
+                }
                 Ok(false) => {
                     let message = format!("⚠️ Workspace not found in registry: {}", workspace_id);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-                },
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
+                }
                 Err(e) => {
                     let message = format!("❌ Failed to remove workspace from registry: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
                 }
             }
         } else {
             let message = format!("⚠️ Workspace not found: {}", workspace_id);
-            Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+            Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]))
         }
     }
 
@@ -324,7 +380,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found. Use 'index' command to create one.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -334,15 +392,21 @@ impl ManageWorkspaceTool {
             Ok(workspaces) => {
                 if workspaces.is_empty() {
                     let message = "📭 No workspaces registered.";
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]));
                 }
 
                 let mut output = String::from("📋 Registered Workspaces:\n\n");
 
                 for workspace in workspaces {
-                    let status = if workspace.is_expired() { "⏰ EXPIRED" }
-                               else if !workspace.path_exists() { "❌ MISSING" }
-                               else { "✅ ACTIVE" };
+                    let status = if workspace.is_expired() {
+                        "⏰ EXPIRED"
+                    } else if !workspace.path_exists() {
+                        "❌ MISSING"
+                    } else {
+                        "✅ ACTIVE"
+                    };
 
                     let expires = match workspace.expires_at {
                         Some(exp_time) => {
@@ -353,7 +417,7 @@ impl ManageWorkspaceTool {
                             } else {
                                 "expired".to_string()
                             }
-                        },
+                        }
                         None => "never".to_string(),
                     };
 
@@ -375,11 +439,15 @@ impl ManageWorkspaceTool {
                     ));
                 }
 
-                Ok(CallToolResult::text_content(vec![TextContent::from(output)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    output,
+                )]))
+            }
             Err(e) => {
                 let message = format!("❌ Failed to list workspaces: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -388,7 +456,7 @@ impl ManageWorkspaceTool {
     async fn handle_clean_command(
         &self,
         handler: &JulieServerHandler,
-        expired_only: bool
+        expired_only: bool,
     ) -> Result<CallToolResult> {
         info!("🧹 Cleaning workspaces (expired_only: {})", expired_only);
 
@@ -396,7 +464,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -404,7 +474,10 @@ impl ManageWorkspaceTool {
 
         if expired_only {
             // Only clean expired workspaces with full database cleanup
-            match registry_service.cleanup_expired_workspaces_with_data(primary_workspace.db.as_ref()).await {
+            match registry_service
+                .cleanup_expired_workspaces_with_data(primary_workspace.db.as_ref())
+                .await
+            {
                 Ok(report) => {
                     let message = if report.workspaces_removed.is_empty() {
                         "✨ No expired workspaces to clean.".to_string()
@@ -416,41 +489,62 @@ impl ManageWorkspaceTool {
                             • {} files deleted\n\
                             • {} relationships deleted",
                             report.workspaces_removed.len(),
-                            report.workspaces_removed.iter().map(|id| format!("  - {}", id)).collect::<Vec<_>>().join("\n"),
+                            report
+                                .workspaces_removed
+                                .iter()
+                                .map(|id| format!("  - {}", id))
+                                .collect::<Vec<_>>()
+                                .join("\n"),
                             report.total_symbols_deleted,
                             report.total_files_deleted,
                             report.total_relationships_deleted
                         )
                     };
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-                },
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
+                }
                 Err(e) => {
                     let message = format!("❌ Failed to clean expired workspaces: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
                 }
             }
         } else {
             // Comprehensive cleanup: TTL + Size Limits + Orphans
-            match registry_service.comprehensive_cleanup(primary_workspace.db.as_ref()).await {
+            match registry_service
+                .comprehensive_cleanup(primary_workspace.db.as_ref())
+                .await
+            {
                 Ok(report) => {
                     let ttl_count = report.ttl_cleanup.workspaces_removed.len();
                     let size_count = report.size_cleanup.workspaces_removed.len();
                     let orphan_count = report.orphaned_cleaned.len();
-                    let total_symbols = report.ttl_cleanup.total_symbols_deleted + report.size_cleanup.total_symbols_deleted;
-                    let total_files = report.ttl_cleanup.total_files_deleted + report.size_cleanup.total_files_deleted;
+                    let total_symbols = report.ttl_cleanup.total_symbols_deleted
+                        + report.size_cleanup.total_symbols_deleted;
+                    let total_files = report.ttl_cleanup.total_files_deleted
+                        + report.size_cleanup.total_files_deleted;
 
                     let mut message_parts = Vec::new();
 
                     if ttl_count > 0 {
-                        message_parts.push(format!("⏰ TTL Cleanup: {} expired workspaces", ttl_count));
+                        message_parts
+                            .push(format!("⏰ TTL Cleanup: {} expired workspaces", ttl_count));
                     }
 
                     if size_count > 0 {
-                        message_parts.push(format!("💾 Size Cleanup: {} workspaces (LRU eviction)", size_count));
+                        message_parts.push(format!(
+                            "💾 Size Cleanup: {} workspaces (LRU eviction)",
+                            size_count
+                        ));
                     }
 
                     if orphan_count > 0 {
-                        message_parts.push(format!("🗑️ Orphan Cleanup: {} abandoned indexes", orphan_count));
+                        message_parts.push(format!(
+                            "🗑️ Orphan Cleanup: {} abandoned indexes",
+                            orphan_count
+                        ));
                     }
 
                     let message = if message_parts.is_empty() {
@@ -466,15 +560,20 @@ impl ManageWorkspaceTool {
                             message_parts.join("\n"),
                             total_symbols,
                             total_files,
-                            report.ttl_cleanup.total_relationships_deleted + report.size_cleanup.total_relationships_deleted
+                            report.ttl_cleanup.total_relationships_deleted
+                                + report.size_cleanup.total_relationships_deleted
                         )
                     };
 
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-                },
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
+                }
                 Err(e) => {
                     let message = format!("❌ Failed to perform comprehensive cleanup: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]))
                 }
             }
         }
@@ -484,7 +583,7 @@ impl ManageWorkspaceTool {
     async fn handle_refresh_command(
         &self,
         handler: &JulieServerHandler,
-        workspace_id: &str
+        workspace_id: &str,
     ) -> Result<CallToolResult> {
         info!("🔄 Refreshing workspace: {}", workspace_id);
 
@@ -492,7 +591,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -509,14 +610,17 @@ impl ManageWorkspaceTool {
                     "🔄 Workspace refresh queued: {}\n\
                     📁 Path: {}\n\
                     💡 Full re-indexing will be implemented in Phase 4",
-                    workspace_entry.display_name,
-                    workspace_entry.original_path
+                    workspace_entry.display_name, workspace_entry.original_path
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-            },
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
             None => {
                 let message = format!("❌ Workspace not found: {}", workspace_id);
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -525,7 +629,7 @@ impl ManageWorkspaceTool {
     async fn handle_stats_command(
         &self,
         handler: &JulieServerHandler,
-        workspace_id: Option<String>
+        workspace_id: Option<String>,
     ) -> Result<CallToolResult> {
         info!("📊 Showing workspace statistics");
 
@@ -533,7 +637,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -563,16 +669,23 @@ impl ManageWorkspaceTool {
                             workspace.index_size_bytes as f64 / (1024.0 * 1024.0),
                             workspace.created_at,
                             workspace.last_accessed,
-                            workspace.expires_at.map(|t| t.to_string()).unwrap_or("never".to_string())
+                            workspace
+                                .expires_at
+                                .map(|t| t.to_string())
+                                .unwrap_or("never".to_string())
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
-                    },
+                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                            message,
+                        )]))
+                    }
                     None => {
                         let message = format!("❌ Workspace not found: {}", id);
-                        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                            message,
+                        )]))
                     }
                 }
-            },
+            }
             None => {
                 // Show overall statistics
                 let registry = registry_service.load_registry().await?;
@@ -593,7 +706,11 @@ impl ManageWorkspaceTool {
                     📏 Max Size Limit: {} MB\n\
                     🧹 Auto Cleanup: {}",
                     registry.statistics.total_workspaces,
-                    if registry.primary_workspace.is_some() { "Yes" } else { "No" },
+                    if registry.primary_workspace.is_some() {
+                        "Yes"
+                    } else {
+                        "No"
+                    },
                     registry.reference_workspaces.len(),
                     registry.statistics.total_orphans,
                     registry.statistics.total_documents,
@@ -601,9 +718,15 @@ impl ManageWorkspaceTool {
                     registry.last_updated,
                     registry.config.default_ttl_seconds / (24 * 60 * 60), // Convert to days
                     registry.config.max_total_size_bytes / (1024 * 1024), // Convert to MB
-                    if registry.config.auto_cleanup_enabled { "Enabled" } else { "Disabled" }
+                    if registry.config.auto_cleanup_enabled {
+                        "Enabled"
+                    } else {
+                        "Disabled"
+                    }
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -612,7 +735,7 @@ impl ManageWorkspaceTool {
     async fn handle_set_ttl_command(
         &self,
         handler: &JulieServerHandler,
-        days: u32
+        days: u32,
     ) -> Result<CallToolResult> {
         info!("⏰ Setting TTL to {} days", days);
 
@@ -620,7 +743,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -638,14 +763,16 @@ impl ManageWorkspaceTool {
             🔄 Existing workspaces keep their current expiration dates.",
             days
         );
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     /// Handle set limit command - configure storage limits
     async fn handle_set_limit_command(
         &self,
         handler: &JulieServerHandler,
-        max_size_mb: u64
+        max_size_mb: u64,
     ) -> Result<CallToolResult> {
         info!("💾 Setting storage limit to {} MB", max_size_mb);
 
@@ -653,7 +780,9 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "❌ No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -664,7 +793,8 @@ impl ManageWorkspaceTool {
         registry.config.max_total_size_bytes = max_size_mb * 1024 * 1024; // Convert MB to bytes
 
         // Capture current usage before moving registry
-        let current_usage_mb = registry.statistics.total_index_size_bytes as f64 / (1024.0 * 1024.0);
+        let current_usage_mb =
+            registry.statistics.total_index_size_bytes as f64 / (1024.0 * 1024.0);
 
         registry_service.save_registry(registry).await?;
 
@@ -672,10 +802,11 @@ impl ManageWorkspaceTool {
             "✅ Storage limit updated to {} MB\n\
             💡 Current usage: {:.2} MB\n\
             🧹 Auto-cleanup will enforce this limit.",
-            max_size_mb,
-            current_usage_mb
+            max_size_mb, current_usage_mb
         );
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     // ============================================================
@@ -688,18 +819,22 @@ impl ManageWorkspaceTool {
             Some(path) => {
                 let expanded_path = shellexpand::tilde(&path).to_string();
                 PathBuf::from(expanded_path)
-            },
+            }
             None => std::env::current_dir()?,
         };
 
         // Ensure path exists
         if !target_path.exists() {
-            return Err(anyhow::anyhow!("Path does not exist: {}", target_path.display()));
+            return Err(anyhow::anyhow!(
+                "Path does not exist: {}",
+                target_path.display()
+            ));
         }
 
         // If it's a file, get its directory
         let workspace_candidate = if target_path.is_file() {
-            target_path.parent()
+            target_path
+                .parent()
                 .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory"))?
                 .to_path_buf()
         } else {
@@ -712,7 +847,14 @@ impl ManageWorkspaceTool {
 
     /// Find workspace root by looking for common workspace markers
     fn find_workspace_root(&self, start_path: &Path) -> Result<PathBuf> {
-        let workspace_markers = [".git", ".julie", ".vscode", "Cargo.toml", "package.json", ".project"];
+        let workspace_markers = [
+            ".git",
+            ".julie",
+            ".vscode",
+            "Cargo.toml",
+            "package.json",
+            ".project",
+        ];
 
         let mut current_path = start_path.to_path_buf();
 
@@ -721,7 +863,11 @@ impl ManageWorkspaceTool {
             for marker in &workspace_markers {
                 let marker_path = current_path.join(marker);
                 if marker_path.exists() {
-                    info!("🎯 Found workspace marker '{}' at: {}", marker, current_path.display());
+                    info!(
+                        "🎯 Found workspace marker '{}' at: {}",
+                        marker,
+                        current_path.display()
+                    );
                     return Ok(current_path);
                 }
             }
@@ -733,11 +879,19 @@ impl ManageWorkspaceTool {
         }
 
         // No markers found, use the original path as workspace root
-        info!("🎯 No workspace markers found, using directory as root: {}", start_path.display());
+        info!(
+            "🎯 No workspace markers found, using directory as root: {}",
+            start_path.display()
+        );
         Ok(start_path.to_path_buf())
     }
 
-    async fn index_workspace_files(&self, handler: &JulieServerHandler, workspace_path: &Path, force_reindex: bool) -> Result<(usize, usize, usize)> {
+    async fn index_workspace_files(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_path: &Path,
+        force_reindex: bool,
+    ) -> Result<(usize, usize, usize)> {
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
         // Clear existing data if force reindex
@@ -751,7 +905,10 @@ impl ManageWorkspaceTool {
         // Use blacklist-based file discovery
         let files_to_index = self.discover_indexable_files(workspace_path)?;
 
-        info!("📊 Found {} files to index after filtering", files_to_index.len());
+        info!(
+            "📊 Found {} files to index after filtering",
+            files_to_index.len()
+        );
 
         for file_path in files_to_index {
             match self.process_file(handler, &file_path).await {
@@ -773,12 +930,16 @@ impl ManageWorkspaceTool {
 
         // CRITICAL FIX: Feed symbols to SearchEngine for fast indexed search
         if total_symbols > 0 {
-            info!("⚡ Populating SearchEngine with {} symbols...", total_symbols);
+            info!(
+                "⚡ Populating SearchEngine with {} symbols...",
+                total_symbols
+            );
             let symbols = handler.symbols.read().await;
             let symbol_vec: Vec<Symbol> = symbols.clone();
             drop(symbols); // Release the read lock
 
-            let mut search_engine = handler.search_engine.write().await;
+            let search_engine = handler.active_search_engine().await;
+            let mut search_engine = search_engine.write().await;
 
             // Index all symbols in SearchEngine
             search_engine.index_symbols(symbol_vec).await.map_err(|e| {
@@ -795,8 +956,10 @@ impl ManageWorkspaceTool {
             info!("🚀 SearchEngine populated and committed - searches will now be fast!");
         }
 
-        info!("✅ Indexing complete: {} files, {} symbols, {} relationships",
-              total_files, total_symbols, total_relationships);
+        info!(
+            "✅ Indexing complete: {} files, {} symbols, {} relationships",
+            total_files, total_symbols, total_relationships
+        );
 
         Ok((total_symbols, total_files, total_relationships))
     }
@@ -808,7 +971,10 @@ impl ManageWorkspaceTool {
         let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
         let max_file_size = 1024 * 1024; // 1MB limit for files
 
-        debug!("🔍 Starting recursive file discovery from: {}", workspace_path.display());
+        debug!(
+            "🔍 Starting recursive file discovery from: {}",
+            workspace_path.display()
+        );
 
         self.walk_directory_recursive(
             workspace_path,
@@ -837,7 +1003,8 @@ impl ManageWorkspaceTool {
             .map_err(|e| anyhow::anyhow!("Failed to read directory {:?}: {}", dir_path, e))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| anyhow::anyhow!("Failed to read directory entry: {}", e))?;
+            let entry =
+                entry.map_err(|e| anyhow::anyhow!("Failed to read directory entry: {}", e))?;
             let path = entry.path();
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
@@ -854,7 +1021,13 @@ impl ManageWorkspaceTool {
                 }
 
                 // Recursively process subdirectory
-                self.walk_directory_recursive(&path, blacklisted_dirs, blacklisted_exts, max_file_size, indexable_files)?;
+                self.walk_directory_recursive(
+                    &path,
+                    blacklisted_dirs,
+                    blacklisted_exts,
+                    max_file_size,
+                    indexable_files,
+                )?;
             } else if path.is_file() {
                 // Check file extension and size
                 if self.should_index_file(&path, blacklisted_exts, max_file_size)? {
@@ -867,7 +1040,12 @@ impl ManageWorkspaceTool {
     }
 
     /// Check if a file should be indexed based on blacklist and size limits
-    fn should_index_file(&self, file_path: &Path, blacklisted_exts: &HashSet<&str>, max_file_size: u64) -> Result<bool> {
+    fn should_index_file(
+        &self,
+        file_path: &Path,
+        blacklisted_exts: &HashSet<&str>,
+        max_file_size: u64,
+    ) -> Result<bool> {
         // Get file extension
         let extension = file_path
             .extension()
@@ -885,7 +1063,11 @@ impl ManageWorkspaceTool {
             .map_err(|e| anyhow::anyhow!("Failed to get metadata for {:?}: {}", file_path, e))?;
 
         if metadata.len() > max_file_size {
-            debug!("⏭️  Skipping large file ({} bytes): {}", metadata.len(), file_path.display());
+            debug!(
+                "⏭️  Skipping large file ({} bytes): {}",
+                metadata.len(),
+                file_path.display()
+            );
             return Ok(false);
         }
 
@@ -902,10 +1084,19 @@ impl ManageWorkspaceTool {
     fn is_known_dotfile(&self, path: &Path) -> bool {
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-        matches!(file_name,
-            ".gitignore" | ".gitattributes" | ".editorconfig" | ".eslintrc" |
-            ".prettierrc" | ".babelrc" | ".tsconfig" | ".jsconfig" |
-            ".cargo" | ".env" | ".npmrc"
+        matches!(
+            file_name,
+            ".gitignore"
+                | ".gitattributes"
+                | ".editorconfig"
+                | ".eslintrc"
+                | ".prettierrc"
+                | ".babelrc"
+                | ".tsconfig"
+                | ".jsconfig"
+                | ".cargo"
+                | ".env"
+                | ".npmrc"
         )
     }
 
@@ -955,7 +1146,8 @@ impl ManageWorkspaceTool {
         let language = self.detect_language(file_path);
         let file_path_str = file_path.to_string_lossy().to_string();
 
-        self.extract_symbols_for_language(handler, &file_path_str, &content, &language).await
+        self.extract_symbols_for_language(handler, &file_path_str, &content, &language)
+            .await
     }
 
     /// Extract symbols using the appropriate extractor for the detected language
@@ -964,16 +1156,20 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         file_path: &str,
         content: &str,
-        language: &str
+        language: &str,
     ) -> Result<()> {
         // Only process languages that we have both tree-sitter support and extractors for
         match language {
             "rust" | "typescript" | "javascript" | "python" => {
-                self.extract_symbols_with_parser(handler, file_path, content, language).await
-            },
+                self.extract_symbols_with_parser(handler, file_path, content, language)
+                    .await
+            }
             _ => {
                 // For unsupported languages, just skip extraction but log it
-                debug!("No extractor available for language: {} (file: {})", language, file_path);
+                debug!(
+                    "No extractor available for language: {} (file: {})",
+                    language, file_path
+                );
                 Ok(())
             }
         }
@@ -985,57 +1181,77 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         file_path: &str,
         content: &str,
-        language: &str
+        language: &str,
     ) -> Result<()> {
         // Create parser for the language
         let mut parser = tree_sitter::Parser::new();
         let tree_sitter_language = self.get_tree_sitter_language(language)?;
 
-        parser.set_language(&tree_sitter_language)
-            .map_err(|e| anyhow::anyhow!("Failed to set parser language for {}: {}", language, e))?;
+        parser.set_language(&tree_sitter_language).map_err(|e| {
+            anyhow::anyhow!("Failed to set parser language for {}: {}", language, e)
+        })?;
 
         // Parse the file
-        let tree = parser.parse(content, None)
+        let tree = parser
+            .parse(content, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
 
         // Extract symbols and relationships using language-specific extractor
         let (symbols, relationships) = match language {
             "rust" => {
                 let mut extractor = crate::extractors::rust::RustExtractor::new(
-                    language.to_string(), file_path.to_string(), content.to_string());
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
                 let symbols = extractor.extract_symbols(&tree);
                 let relationships = extractor.extract_relationships(&tree, &symbols);
                 (symbols, relationships)
-            },
+            }
             "typescript" => {
                 let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
-                    language.to_string(), file_path.to_string(), content.to_string());
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
                 let symbols = extractor.extract_symbols(&tree);
                 let relationships = extractor.extract_relationships(&tree, &symbols);
                 (symbols, relationships)
-            },
+            }
             "javascript" => {
                 let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
-                    language.to_string(), file_path.to_string(), content.to_string());
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
                 let symbols = extractor.extract_symbols(&tree);
                 let relationships = extractor.extract_relationships(&tree, &symbols);
                 (symbols, relationships)
-            },
+            }
             "python" => {
                 let mut extractor = crate::extractors::python::PythonExtractor::new(
-                    file_path.to_string(), content.to_string());
+                    file_path.to_string(),
+                    content.to_string(),
+                );
                 let symbols = extractor.extract_symbols(&tree);
                 let relationships = extractor.extract_relationships(&tree, &symbols);
                 (symbols, relationships)
-            },
+            }
             _ => {
-                debug!("Language '{}' supported for parsing but no extractor available", language);
+                debug!(
+                    "Language '{}' supported for parsing but no extractor available",
+                    language
+                );
                 (Vec::new(), Vec::new())
             }
         };
 
-        debug!("📊 Extracted {} symbols and {} relationships from {}",
-               symbols.len(), relationships.len(), file_path);
+        debug!(
+            "📊 Extracted {} symbols and {} relationships from {}",
+            symbols.len(),
+            relationships.len(),
+            file_path
+        );
 
         // Store in persistent database and search index if workspace is available
         if let Some(workspace) = handler.get_workspace().await? {
@@ -1059,8 +1275,11 @@ impl ManageWorkspaceTool {
                     warn!("Failed to store relationships in database: {}", e);
                 }
 
-                debug!("✅ Stored {} symbols and {} relationships in database",
-                       symbols.len(), relationships.len());
+                debug!(
+                    "✅ Stored {} symbols and {} relationships in database",
+                    symbols.len(),
+                    relationships.len()
+                );
             }
 
             // Also add symbols to search index for fast retrieval
@@ -1095,17 +1314,22 @@ impl ManageWorkspaceTool {
             "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
             "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
             "python" => Ok(tree_sitter_python::LANGUAGE.into()),
-            _ => Err(anyhow::anyhow!("No tree-sitter language available for: {}", language))
+            _ => Err(anyhow::anyhow!(
+                "No tree-sitter language available for: {}",
+                language
+            )),
         }
     }
 
     /// Detect programming language from file extension
     fn detect_language(&self, file_path: &Path) -> String {
-        let extension = file_path.extension()
+        let extension = file_path
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("");
 
@@ -1151,13 +1375,14 @@ impl ManageWorkspaceTool {
             "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" => "cpp".to_string(),
             "h" => {
                 // Could be C or C++ header, default to C
-                if file_path.to_string_lossy().contains("cpp") ||
-                   file_path.to_string_lossy().contains("c++") {
+                if file_path.to_string_lossy().contains("cpp")
+                    || file_path.to_string_lossy().contains("c++")
+                {
                     "cpp".to_string()
                 } else {
                     "c".to_string()
                 }
-            },
+            }
 
             // Lua
             "lua" => "lua".to_string(),
@@ -1206,7 +1431,12 @@ impl ManageWorkspaceTool {
                     "package.json" | "tsconfig.json" | "jsconfig.json" => "json".to_string(),
 
                     // Shell scripts
-                    name if name.starts_with("bash") || name.contains("bashrc") || name.contains("bash_") => "bash".to_string(),
+                    name if name.starts_with("bash")
+                        || name.contains("bashrc")
+                        || name.contains("bash_") =>
+                    {
+                        "bash".to_string()
+                    }
 
                     // Default to unknown
                     _ => "text".to_string(),

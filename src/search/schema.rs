@@ -4,11 +4,11 @@
 // and tokenized search across different types of code elements.
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tantivy::schema::{Field, Schema, TextOptions, TextFieldIndexing, IndexRecordOption};
-use tantivy::Index;
-use std::collections::HashMap;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
+use tantivy::Index;
 
 /// The complete search schema for code intelligence
 #[derive(Debug, Clone)]
@@ -55,9 +55,9 @@ pub struct SearchFields {
     pub confidence: Field,
 
     // Search optimization fields
-    pub all_text: Field,        // Combined searchable text
-    pub exact_matches: Field,   // For exact phrase matching
-    pub language_boost: Field,  // Language-specific boosting
+    pub all_text: Field,       // Combined searchable text
+    pub exact_matches: Field,  // For exact phrase matching
+    pub language_boost: Field, // Language-specific boosting
 }
 
 impl CodeSearchSchema {
@@ -67,40 +67,65 @@ impl CodeSearchSchema {
 
         // Core symbol identification
         let text_options = TextOptions::default()
-            .set_indexing_options(TextFieldIndexing::default()
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions))
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
             .set_stored();
 
         let stored_only = TextOptions::default().set_stored();
 
         // Exact match fields use raw tokenizer for precise matching
         let exact_options = TextOptions::default()
-            .set_indexing_options(TextFieldIndexing::default()
-                .set_tokenizer("raw")  // Use raw tokenizer for exact matches
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions))
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("raw") // Use raw tokenizer for exact matches
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
             .set_stored();
 
         let symbol_id = schema_builder.add_text_field("symbol_id", stored_only.clone());
         let symbol_name = schema_builder.add_text_field("symbol_name", text_options.clone());
-        let symbol_name_exact = schema_builder.add_text_field("symbol_name_exact", exact_options.clone());
+        let symbol_name_exact =
+            schema_builder.add_text_field("symbol_name_exact", exact_options.clone());
         let symbol_kind = schema_builder.add_text_field("symbol_kind", text_options.clone());
         let language = schema_builder.add_text_field("language", text_options.clone());
         let file_path = schema_builder.add_text_field("file_path", text_options.clone());
-        let file_path_exact = schema_builder.add_text_field("file_path_exact", exact_options.clone());
+        let file_path_exact =
+            schema_builder.add_text_field("file_path_exact", exact_options.clone());
 
         // Content for searching
         let signature = schema_builder.add_text_field("signature", text_options.clone());
-        let signature_exact = schema_builder.add_text_field("signature_exact", exact_options.clone());
+        let signature_exact =
+            schema_builder.add_text_field("signature_exact", exact_options.clone());
         let doc_comment = schema_builder.add_text_field("doc_comment", text_options.clone());
         let code_context = schema_builder.add_text_field("code_context", text_options.clone());
 
         // Location information (numeric fields use different options)
-        let start_line = schema_builder.add_u64_field("start_line", tantivy::schema::INDEXED | tantivy::schema::STORED);
-        let end_line = schema_builder.add_u64_field("end_line", tantivy::schema::INDEXED | tantivy::schema::STORED);
-        let start_column = schema_builder.add_u64_field("start_column", tantivy::schema::INDEXED | tantivy::schema::STORED);
-        let end_column = schema_builder.add_u64_field("end_column", tantivy::schema::INDEXED | tantivy::schema::STORED);
-        let start_byte = schema_builder.add_u64_field("start_byte", tantivy::schema::INDEXED | tantivy::schema::STORED);
-        let end_byte = schema_builder.add_u64_field("end_byte", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let start_line = schema_builder.add_u64_field(
+            "start_line",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
+        let end_line = schema_builder.add_u64_field(
+            "end_line",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
+        let start_column = schema_builder.add_u64_field(
+            "start_column",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
+        let end_column = schema_builder.add_u64_field(
+            "end_column",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
+        let start_byte = schema_builder.add_u64_field(
+            "start_byte",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
+        let end_byte = schema_builder.add_u64_field(
+            "end_byte",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
 
         // Symbol relationship fields
         let visibility = schema_builder.add_text_field("visibility", text_options.clone());
@@ -109,15 +134,19 @@ impl CodeSearchSchema {
         // Metadata and semantic information
         let metadata = schema_builder.add_text_field("metadata", text_options.clone());
         let semantic_group = schema_builder.add_text_field("semantic_group", text_options.clone());
-        let confidence = schema_builder.add_f64_field("confidence", tantivy::schema::INDEXED | tantivy::schema::STORED);
+        let confidence = schema_builder.add_f64_field(
+            "confidence",
+            tantivy::schema::INDEXED | tantivy::schema::STORED,
+        );
 
         // Search optimization (index-only for search)
-        let index_only = TextOptions::default()
-            .set_indexing_options(TextFieldIndexing::default()
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions));
+        let index_only = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default().set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
         let all_text = schema_builder.add_text_field("all_text", index_only.clone());
         let exact_matches = schema_builder.add_text_field("exact_matches", index_only);
-        let language_boost = schema_builder.add_f64_field("language_boost", tantivy::schema::INDEXED);
+        let language_boost =
+            schema_builder.add_f64_field("language_boost", tantivy::schema::INDEXED);
 
         let schema = schema_builder.build();
         let fields = SearchFields {
@@ -222,9 +251,7 @@ impl SearchDocument {
 
     /// Generate exact match text for precise queries
     pub fn generate_exact_matches(&self) -> String {
-        let mut exact_parts = vec![
-            self.symbol_name.clone(),
-        ];
+        let mut exact_parts = vec![self.symbol_name.clone()];
 
         if let Some(sig) = &self.signature {
             exact_parts.push(sig.clone());
@@ -285,10 +312,10 @@ impl QueryProcessor {
         let generic_patterns = vec![
             Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*<[^>]+>$")?, // Generic<Type>
             Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*<[^,<>]+,[^,<>]+>$")?, // Generic<T,U>
-            Regex::new(r"^Array<[^>]+>$")?,           // Array<Type>
-            Regex::new(r"^Promise<[^>]+>$")?,         // Promise<Type>
-            Regex::new(r"^List<[^>]+>$")?,            // List<Type>
-            Regex::new(r"^Map<[^,<>]+,[^,<>]+>$")?,   // Map<K,V>
+            Regex::new(r"^Array<[^>]+>$")?,                  // Array<Type>
+            Regex::new(r"^Promise<[^>]+>$")?,                // Promise<Type>
+            Regex::new(r"^List<[^>]+>$")?,                   // List<Type>
+            Regex::new(r"^Map<[^,<>]+,[^,<>]+>$")?,          // Map<K,V>
         ];
         patterns.insert(QueryIntent::GenericType, generic_patterns);
 
@@ -315,8 +342,8 @@ impl QueryProcessor {
 
         // Type Signature patterns - function(...): ReturnType
         let signature_patterns = vec![
-            Regex::new(r"^function\s*\(.*\)\s*:")?,     // function(params): Type
-            Regex::new(r"^\(.*\)\s*=>")?,               // (params) => Type
+            Regex::new(r"^function\s*\(.*\)\s*:")?, // function(params): Type
+            Regex::new(r"^\(.*\)\s*=>")?,           // (params) => Type
             Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*\s*\(.*\)\s*:")?, // methodName(params): Type
         ];
         patterns.insert(QueryIntent::TypeSignature, signature_patterns);
@@ -352,12 +379,15 @@ impl QueryProcessor {
         let mut detected_intents = Vec::new();
 
         // Check if query contains file path hints
-        if words.iter().any(|w| w.starts_with("src/") || w.starts_with("lib/") || w.contains(".ts") || w.contains(".rs")) {
+        if words.iter().any(|w| {
+            w.starts_with("src/") || w.starts_with("lib/") || w.contains(".ts") || w.contains(".rs")
+        }) {
             detected_intents.push(QueryIntent::FilePath);
         }
 
         // Check if query contains exact symbols (single identifier-like words)
-        let identifier_words: Vec<&str> = words.iter()
+        let identifier_words: Vec<&str> = words
+            .iter()
             .filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '_') && w.len() > 2)
             .cloned()
             .collect();
@@ -500,7 +530,10 @@ mod tests {
         assert!(fields.language_boost.field_id() < u32::MAX);
 
         // Verify fields exist in the schema by name
-        let field_names: Vec<_> = schema.fields().map(|(_, field_entry)| field_entry.name()).collect();
+        let field_names: Vec<_> = schema
+            .fields()
+            .map(|(_, field_entry)| field_entry.name())
+            .collect();
 
         // Core symbol fields
         assert!(field_names.contains(&"symbol_id"));
@@ -532,7 +565,12 @@ mod tests {
         assert!(field_names.contains(&"language_boost"));
 
         // Total field count should match expected number
-        assert_eq!(field_names.len(), 25, "Expected 25 fields in schema, found: {:?}", field_names);
+        assert_eq!(
+            field_names.len(),
+            25,
+            "Expected 25 fields in schema, found: {:?}",
+            field_names
+        );
     }
 
     #[test]
@@ -603,7 +641,10 @@ mod tests {
         assert!(exact_matches.contains("function getUserById(id: string): Promise<User>"));
 
         // Should join with " | " separator
-        assert_eq!(exact_matches, "getUserById | function getUserById(id: string): Promise<User>");
+        assert_eq!(
+            exact_matches,
+            "getUserById | function getUserById(id: string): Promise<User>"
+        );
 
         // Test document without signature
         let doc_without_signature = SearchDocument {
@@ -723,7 +764,10 @@ mod tests {
 
         // Test with single preferred language
         let single_preferred = &["java"];
-        assert_eq!(typescript_doc.calculate_language_boost(single_preferred), 1.0);
+        assert_eq!(
+            typescript_doc.calculate_language_boost(single_preferred),
+            1.0
+        );
         assert_eq!(rust_doc.calculate_language_boost(single_preferred), 1.0);
         assert_eq!(java_doc.calculate_language_boost(single_preferred), 1.5);
     }
@@ -753,8 +797,11 @@ mod tests {
 
         // Multi-word queries should be Mixed or SemanticConcept, not ExactSymbol
         let result = processor.detect_intent("get user by id");
-        assert!(!matches!(result, QueryIntent::ExactSymbol),
-                "Multi-word queries should not be detected as ExactSymbol, got: {:?}", result);
+        assert!(
+            !matches!(result, QueryIntent::ExactSymbol),
+            "Multi-word queries should not be detected as ExactSymbol, got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -893,7 +940,10 @@ mod tests {
         assert_eq!(boosting.get_field_boost("unknown", "signature"), 1.0);
 
         // Test non-existent fields return default boost
-        assert_eq!(boosting.get_field_boost("typescript", "nonexistent_field"), 1.0);
+        assert_eq!(
+            boosting.get_field_boost("typescript", "nonexistent_field"),
+            1.0
+        );
         assert_eq!(boosting.get_field_boost("rust", "nonexistent_field"), 1.0);
     }
 

@@ -1,6 +1,8 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// Rust extractor that handles Rust-specific constructs including:
 /// - Structs and enums
@@ -116,7 +118,8 @@ impl RustExtractor {
         let derived_traits = self.extract_derived_traits(&attributes);
 
         // Extract generic type parameters
-        let type_params = node.children(&mut node.walk())
+        let type_params = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
@@ -158,7 +161,8 @@ impl RustExtractor {
         let derived_traits = self.extract_derived_traits(&attributes);
 
         // Extract generic type parameters
-        let type_params = node.children(&mut node.walk())
+        let type_params = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
@@ -197,20 +201,23 @@ impl RustExtractor {
         let visibility = self.extract_visibility(node);
 
         // Extract generic type parameters
-        let type_params = node.children(&mut node.walk())
+        let type_params = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
 
         // Extract trait bounds
-        let trait_bounds = node.children(&mut node.walk())
+        let trait_bounds = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "trait_bounds")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
 
         // Extract associated types from declaration_list
         let mut associated_types = Vec::new();
-        if let Some(declaration_list) = node.children(&mut node.walk())
+        if let Some(declaration_list) = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "declaration_list")
         {
             for child in declaration_list.children(&mut declaration_list.walk()) {
@@ -222,7 +229,10 @@ impl RustExtractor {
         }
 
         // Build signature
-        let mut signature = format!("{}trait {}{}{}", visibility, name, type_params, trait_bounds);
+        let mut signature = format!(
+            "{}trait {}{}{}",
+            visibility, name, type_params, trait_bounds
+        );
         if !associated_types.is_empty() {
             signature = format!("{} {{ {} }}", signature, associated_types.join("; "));
         }
@@ -249,7 +259,8 @@ impl RustExtractor {
 
     fn extract_impl(&mut self, node: Node, parent_id: Option<String>) {
         // Store impl block info for phase 2 processing
-        let type_node = node.children(&mut node.walk())
+        let type_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let type_name = type_node
             .map(|n| self.base.get_node_text(&n))
@@ -270,20 +281,24 @@ impl RustExtractor {
 
         for impl_block in impl_blocks {
             // Find the struct/enum this impl is for
-            let struct_symbol = symbols.iter()
-                .find(|s| s.name == impl_block.type_name &&
-                     (s.kind == SymbolKind::Class || s.kind == SymbolKind::Interface));
+            let struct_symbol = symbols.iter().find(|s| {
+                s.name == impl_block.type_name
+                    && (s.kind == SymbolKind::Class || s.kind == SymbolKind::Interface)
+            });
 
             if let Some(struct_symbol) = struct_symbol {
                 let parent_id = struct_symbol.id.clone();
 
                 // Extract methods with correct parent_id
-                if let Some(declaration_list) = impl_block.node.children(&mut impl_block.node.walk())
+                if let Some(declaration_list) = impl_block
+                    .node
+                    .children(&mut impl_block.node.walk())
                     .find(|c| c.kind() == "declaration_list")
                 {
                     for child in declaration_list.children(&mut declaration_list.walk()) {
                         if child.kind() == "function_item" {
-                            let mut method_symbol = self.extract_function(child, Some(parent_id.clone()));
+                            let mut method_symbol =
+                                self.extract_function(child, Some(parent_id.clone()));
                             method_symbol.kind = SymbolKind::Method;
                             symbols.push(method_symbol);
                         }
@@ -301,7 +316,11 @@ impl RustExtractor {
 
         // Determine if this is a method (inside impl block) or standalone function
         let is_method = self.is_inside_impl(node);
-        let kind = if is_method { SymbolKind::Method } else { SymbolKind::Function };
+        let kind = if is_method {
+            SymbolKind::Method
+        } else {
+            SymbolKind::Function
+        };
 
         // Extract function signature components
         let visibility = self.extract_visibility(node);
@@ -312,13 +331,15 @@ impl RustExtractor {
         let return_type = self.extract_return_type(node);
 
         // Extract generic type parameters
-        let type_params = node.children(&mut node.walk())
+        let type_params = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
 
         // Extract where clause
-        let where_clause = node.children(&mut node.walk())
+        let where_clause = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "where_clause")
             .map(|c| format!(" {}", self.base.get_node_text(&c)))
             .unwrap_or_default();
@@ -438,7 +459,8 @@ impl RustExtractor {
             .unwrap_or_else(|| "anonymous".to_string());
 
         let visibility = self.extract_visibility(node);
-        let is_mutable = node.children(&mut node.walk())
+        let is_mutable = node
+            .children(&mut node.walk())
             .any(|c| c.kind() == "mutable_specifier");
         let type_node = node.child_by_field_name("type");
         let value_node = node.child_by_field_name("value");
@@ -498,7 +520,8 @@ impl RustExtractor {
     }
 
     fn extract_type_alias(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -507,7 +530,8 @@ impl RustExtractor {
         let visibility = self.extract_visibility(node);
 
         // Extract generic type parameters
-        let type_params = node.children(&mut node.walk())
+        let type_params = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
@@ -548,7 +572,8 @@ impl RustExtractor {
     }
 
     fn extract_union(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -626,8 +651,13 @@ impl RustExtractor {
         None
     }
 
-    fn extract_macro_invocation(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
-        let macro_name_node = node.children(&mut node.walk())
+    fn extract_macro_invocation(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
+        let macro_name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier");
         let macro_name = macro_name_node
             .map(|n| self.base.get_node_text(&n))
@@ -635,11 +665,13 @@ impl RustExtractor {
 
         // Look for struct-generating macros or known patterns
         if macro_name.contains("struct") || macro_name.contains("generate") {
-            let token_tree_node = node.children(&mut node.walk())
+            let token_tree_node = node
+                .children(&mut node.walk())
                 .find(|c| c.kind() == "token_tree");
             if let Some(token_tree) = token_tree_node {
                 // Extract the first identifier from the token tree as the struct name
-                let struct_name_node = token_tree.children(&mut token_tree.walk())
+                let struct_name_node = token_tree
+                    .children(&mut token_tree.walk())
                     .find(|c| c.kind() == "identifier");
                 if let Some(struct_name_node) = struct_name_node {
                     let struct_name = self.base.get_node_text(&struct_name_node);
@@ -665,14 +697,16 @@ impl RustExtractor {
     }
 
     fn extract_function_signature(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "anonymous".to_string());
 
         // Extract parameters
-        let params_node = node.children(&mut node.walk())
+        let params_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "parameters");
         let params = params_node
             .map(|n| self.base.get_node_text(&n))
@@ -708,14 +742,16 @@ impl RustExtractor {
     }
 
     fn extract_associated_type(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "anonymous".to_string());
 
         // Extract trait bounds (: Debug + Clone, etc.)
-        let trait_bounds = node.children(&mut node.walk())
+        let trait_bounds = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "trait_bounds")
             .map(|c| self.base.get_node_text(&c))
             .unwrap_or_default();
@@ -739,7 +775,8 @@ impl RustExtractor {
     // Helper methods for Rust-specific parsing
 
     fn extract_visibility(&self, node: Node) -> String {
-        let visibility_node = node.children(&mut node.walk())
+        let visibility_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "visibility_modifier");
 
         if let Some(vis_node) = visibility_node {
@@ -782,17 +819,20 @@ impl RustExtractor {
 
         for attr in attributes {
             // Look for derive attribute
-            let attribute_node = attr.children(&mut attr.walk())
+            let attribute_node = attr
+                .children(&mut attr.walk())
                 .find(|c| c.kind() == "attribute");
 
             if let Some(attr_node) = attribute_node {
-                let identifier_node = attr_node.children(&mut attr_node.walk())
+                let identifier_node = attr_node
+                    .children(&mut attr_node.walk())
                     .find(|c| c.kind() == "identifier");
 
                 if let Some(ident) = identifier_node {
                     if self.base.get_node_text(&ident) == "derive" {
                         // Find the token tree with the trait list
-                        let token_tree = attr_node.children(&mut attr_node.walk())
+                        let token_tree = attr_node
+                            .children(&mut attr_node.walk())
                             .find(|c| c.kind() == "token_tree");
 
                         if let Some(tree) = token_tree {
@@ -832,11 +872,13 @@ impl RustExtractor {
     }
 
     fn extract_extern_modifier(&self, node: Node) -> String {
-        let function_modifiers_node = node.children(&mut node.walk())
+        let function_modifiers_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "function_modifiers");
 
         if let Some(modifiers) = function_modifiers_node {
-            let extern_modifier_node = modifiers.children(&mut modifiers.walk())
+            let extern_modifier_node = modifiers
+                .children(&mut modifiers.walk())
                 .find(|c| c.kind() == "extern_modifier");
 
             if let Some(extern_node) = extern_modifier_node {
@@ -872,12 +914,14 @@ impl RustExtractor {
 
         if let Some(ret_type) = return_type_node {
             // Skip the -> token and get the actual type
-            let type_nodes: Vec<_> = ret_type.children(&mut ret_type.walk())
+            let type_nodes: Vec<_> = ret_type
+                .children(&mut ret_type.walk())
                 .filter(|c| c.kind() != "->" && self.base.get_node_text(c) != "->")
                 .collect();
 
             if !type_nodes.is_empty() {
-                return type_nodes.iter()
+                return type_nodes
+                    .iter()
                     .map(|n| self.base.get_node_text(n))
                     .collect::<Vec<_>>()
                     .join("");
@@ -932,9 +976,8 @@ impl RustExtractor {
     /// Extract relationships between Rust symbols
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter()
-            .map(|s| (s.name.clone(), s))
-            .collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.name.clone(), s)).collect();
 
         self.walk_tree_for_relationships(tree.root_node(), &symbol_map, &mut relationships);
         relationships
@@ -997,7 +1040,13 @@ impl RustExtractor {
                 (symbol_map.get(&trait_name), symbol_map.get(&type_name))
             {
                 relationships.push(Relationship {
-                    id: format!("{}_{}_{:?}_{}", type_symbol.id, trait_symbol.id, RelationshipKind::Implements, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        type_symbol.id,
+                        trait_symbol.id,
+                        RelationshipKind::Implements,
+                        node.start_position().row
+                    ),
                     from_symbol_id: type_symbol.id.clone(),
                     to_symbol_id: trait_symbol.id.clone(),
                     kind: RelationshipKind::Implements,
@@ -1021,13 +1070,19 @@ impl RustExtractor {
             let type_name = self.base.get_node_text(&name_node);
             if let Some(type_symbol) = symbol_map.get(&type_name) {
                 // Look for field types that reference other symbols
-                let declaration_list = node.children(&mut node.walk())
-                    .find(|c| c.kind() == "field_declaration_list" || c.kind() == "enum_variant_list");
+                let declaration_list = node.children(&mut node.walk()).find(|c| {
+                    c.kind() == "field_declaration_list" || c.kind() == "enum_variant_list"
+                });
 
                 if let Some(decl_list) = declaration_list {
                     for field in decl_list.children(&mut decl_list.walk()) {
                         if field.kind() == "field_declaration" || field.kind() == "enum_variant" {
-                            self.extract_field_type_references(field, type_symbol, symbol_map, relationships);
+                            self.extract_field_type_references(
+                                field,
+                                type_symbol,
+                                symbol_map,
+                                relationships,
+                            );
                         }
                     }
                 }
@@ -1049,7 +1104,13 @@ impl RustExtractor {
                 if let Some(referenced_symbol) = symbol_map.get(&referenced_type_name) {
                     if referenced_symbol.id != container_symbol.id {
                         relationships.push(Relationship {
-                            id: format!("{}_{}_{:?}_{}", container_symbol.id, referenced_symbol.id, RelationshipKind::Uses, field_node.start_position().row),
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                container_symbol.id,
+                                referenced_symbol.id,
+                                RelationshipKind::Uses,
+                                field_node.start_position().row
+                            ),
                             from_symbol_id: container_symbol.id.clone(),
                             to_symbol_id: referenced_symbol.id.clone(),
                             kind: RelationshipKind::Uses,
@@ -1083,7 +1144,13 @@ impl RustExtractor {
                         if let Some(calling_function) = self.find_containing_function(node) {
                             if let Some(caller_symbol) = symbol_map.get(&calling_function) {
                                 relationships.push(Relationship {
-                                    id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
+                                    id: format!(
+                                        "{}_{}_{:?}_{}",
+                                        caller_symbol.id,
+                                        called_symbol.id,
+                                        RelationshipKind::Calls,
+                                        node.start_position().row
+                                    ),
                                     from_symbol_id: caller_symbol.id.clone(),
                                     to_symbol_id: called_symbol.id.clone(),
                                     kind: RelationshipKind::Calls,
@@ -1104,7 +1171,13 @@ impl RustExtractor {
                     if let Some(calling_function) = self.find_containing_function(node) {
                         if let Some(caller_symbol) = symbol_map.get(&calling_function) {
                             relationships.push(Relationship {
-                                id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
+                                id: format!(
+                                    "{}_{}_{:?}_{}",
+                                    caller_symbol.id,
+                                    called_symbol.id,
+                                    RelationshipKind::Calls,
+                                    node.start_position().row
+                                ),
                                 from_symbol_id: caller_symbol.id.clone(),
                                 to_symbol_id: called_symbol.id.clone(),
                                 kind: RelationshipKind::Calls,

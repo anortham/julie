@@ -11,14 +11,14 @@
 //! 2. GREEN: Enhance FastEditTool to make tests pass
 //! 3. REFACTOR: Improve code while keeping tests green
 
+use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::Result;
 use tempfile::TempDir;
 
 // Import enhanced FastEditTool for testing
-use crate::tools::editing::FastEditTool;
 use crate::handler::JulieServerHandler;
+use crate::tools::editing::FastEditTool;
 
 /// Test fixture for enhanced FastEditTool tests
 struct FastEditTestFixture {
@@ -65,7 +65,7 @@ mod backwards_compatibility_tests {
             find_text: "Hello".to_string(),
             replace_text: "Hi".to_string(),
             // Enhanced fields should have sensible defaults
-            mode: None,  // None = original single-file mode
+            mode: None, // None = original single-file mode
             language: None,
             file_pattern: None,
             limit: None,
@@ -93,16 +93,22 @@ mod search_and_replace_mode_tests {
     #[tokio::test]
     async fn test_search_and_replace_across_multiple_files() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let file1 = fixture.create_test_file("src/file1.js", "const userName = 'test';").unwrap();
-        let file2 = fixture.create_test_file("src/file2.js", "function getUserName() {}").unwrap();
-        let file3 = fixture.create_test_file("test.py", "user_name = 'test'").unwrap();
+        let file1 = fixture
+            .create_test_file("src/file1.js", "const userName = 'test';")
+            .unwrap();
+        let file2 = fixture
+            .create_test_file("src/file2.js", "function getUserName() {}")
+            .unwrap();
+        let file3 = fixture
+            .create_test_file("test.py", "user_name = 'test'")
+            .unwrap();
 
         // New search_and_replace mode
         let tool = FastEditTool {
-            file_path: "".to_string(),  // Empty for search mode
+            file_path: "".to_string(), // Empty for search mode
             find_text: "userName".to_string(),
             replace_text: "accountName".to_string(),
-            mode: Some("search_and_replace".to_string()),  // New mode
+            mode: Some("search_and_replace".to_string()), // New mode
             language: Some("javascript".to_string()),
             file_pattern: Some("src/**".to_string()),
             limit: Some(50),
@@ -131,8 +137,12 @@ mod search_and_replace_mode_tests {
     #[tokio::test]
     async fn test_search_and_replace_dry_run() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let file1 = fixture.create_test_file("test1.js", "const hello = 'world';").unwrap();
-        let file2 = fixture.create_test_file("test2.js", "function hello() {}").unwrap();
+        let file1 = fixture
+            .create_test_file("test1.js", "const hello = 'world';")
+            .unwrap();
+        let file2 = fixture
+            .create_test_file("test2.js", "function hello() {}")
+            .unwrap();
 
         let tool = FastEditTool {
             file_path: "".to_string(),
@@ -144,7 +154,7 @@ mod search_and_replace_mode_tests {
             limit: Some(50),
             validate: true,
             backup: true,
-            dry_run: true,  // Should not modify files
+            dry_run: true, // Should not modify files
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -167,8 +177,12 @@ mod search_and_replace_mode_tests {
     #[tokio::test]
     async fn test_search_and_replace_with_file_pattern() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let test_file = fixture.create_test_file("component.test.js", "const value = 'test';").unwrap();
-        let src_file = fixture.create_test_file("component.js", "const value = 'production';").unwrap();
+        let test_file = fixture
+            .create_test_file("component.test.js", "const value = 'test';")
+            .unwrap();
+        let src_file = fixture
+            .create_test_file("component.js", "const value = 'production';")
+            .unwrap();
 
         let tool = FastEditTool {
             file_path: "".to_string(),
@@ -176,7 +190,7 @@ mod search_and_replace_mode_tests {
             replace_text: "data".to_string(),
             mode: Some("search_and_replace".to_string()),
             language: None,
-            file_pattern: Some("*.test.js".to_string()),  // Only test files
+            file_pattern: Some("*.test.js".to_string()), // Only test files
             limit: Some(50),
             validate: true,
             backup: true,
@@ -203,21 +217,27 @@ mod delegation_behavior_tests {
     #[tokio::test]
     async fn test_delegates_to_fast_search_for_file_discovery() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let _file1 = fixture.create_test_file("utils/helper.ts", "export const API_URL = 'old';").unwrap();
-        let _file2 = fixture.create_test_file("components/Button.tsx", "const API_URL = 'old';").unwrap();
-        let _file3 = fixture.create_test_file("tests/api.test.js", "const API_URL = 'old';").unwrap();
+        let _file1 = fixture
+            .create_test_file("utils/helper.ts", "export const API_URL = 'old';")
+            .unwrap();
+        let _file2 = fixture
+            .create_test_file("components/Button.tsx", "const API_URL = 'old';")
+            .unwrap();
+        let _file3 = fixture
+            .create_test_file("tests/api.test.js", "const API_URL = 'old';")
+            .unwrap();
 
         let tool = FastEditTool {
             file_path: "".to_string(),
             find_text: "API_URL".to_string(),
             replace_text: "API_ENDPOINT".to_string(),
             mode: Some("search_and_replace".to_string()),
-            language: Some("typescript".to_string()),  // Should delegate to fast_search
+            language: Some("typescript".to_string()), // Should delegate to fast_search
             file_pattern: None,
             limit: Some(50),
             validate: true,
             backup: true,
-            dry_run: true,  // Just test discovery
+            dry_run: true, // Just test discovery
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -232,8 +252,12 @@ mod delegation_behavior_tests {
     #[tokio::test]
     async fn test_delegates_to_fast_edit_logic_for_replacements() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let file_path = fixture.create_test_file("test.js",
-            "function test() {\n  if (condition) {\n    return 'hello';\n  }\n}").unwrap();
+        let file_path = fixture
+            .create_test_file(
+                "test.js",
+                "function test() {\n  if (condition) {\n    return 'hello';\n  }\n}",
+            )
+            .unwrap();
 
         let tool = FastEditTool {
             file_path: "".to_string(),
@@ -243,8 +267,8 @@ mod delegation_behavior_tests {
             language: None,
             file_pattern: Some("*.js".to_string()),
             limit: Some(50),
-            validate: true,  // Should use fast_edit validation logic
-            backup: true,    // Should use fast_edit backup logic
+            validate: true, // Should use fast_edit validation logic
+            backup: true,   // Should use fast_edit backup logic
             dry_run: false,
         };
 
@@ -274,7 +298,7 @@ mod error_handling_tests {
         let _fixture = FastEditTestFixture::new().unwrap();
 
         let tool = FastEditTool {
-            file_path: "/some/specific/file.js".to_string(),  // Should be empty for search mode
+            file_path: "/some/specific/file.js".to_string(), // Should be empty for search mode
             find_text: "test".to_string(),
             replace_text: "demo".to_string(),
             mode: Some("search_and_replace".to_string()),
@@ -299,10 +323,10 @@ mod error_handling_tests {
         let _fixture = FastEditTestFixture::new().unwrap();
 
         let tool = FastEditTool {
-            file_path: "".to_string(),  // Empty for single file mode is invalid
+            file_path: "".to_string(), // Empty for single file mode is invalid
             find_text: "test".to_string(),
             replace_text: "demo".to_string(),
-            mode: None,  // Single file mode
+            mode: None, // Single file mode
             language: None,
             file_pattern: None,
             limit: None,
@@ -322,14 +346,16 @@ mod error_handling_tests {
     #[tokio::test]
     async fn test_no_files_found_in_search_mode() {
         let fixture = FastEditTestFixture::new().unwrap();
-        let _file = fixture.create_test_file("test.py", "print('hello')").unwrap();
+        let _file = fixture
+            .create_test_file("test.py", "print('hello')")
+            .unwrap();
 
         let tool = FastEditTool {
             file_path: "".to_string(),
             find_text: "hello".to_string(),
             replace_text: "world".to_string(),
             mode: Some("search_and_replace".to_string()),
-            language: Some("javascript".to_string()),  // No JS files exist
+            language: Some("javascript".to_string()), // No JS files exist
             file_pattern: None,
             limit: Some(50),
             validate: true,

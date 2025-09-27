@@ -34,10 +34,21 @@ impl<T> OptimizedResponse<T> {
             max
         } else {
             // Dynamic limiting based on confidence
-            if self.confidence > 0.9 { 3 }        // High confidence = fewer results needed
-            else if self.confidence > 0.7 { 5 }   // Medium confidence
-            else if self.confidence > 0.5 { 8 }   // Lower confidence
-            else { 12 }                          // Very low confidence = more results
+            if self.confidence > 0.9 {
+                3
+            }
+            // High confidence = fewer results needed
+            else if self.confidence > 0.7 {
+                5
+            }
+            // Medium confidence
+            else if self.confidence > 0.5 {
+                8
+            }
+            // Lower confidence
+            else {
+                12
+            } // Very low confidence = more results
         };
 
         if self.results.len() > limit {
@@ -61,54 +72,132 @@ pub const BLACKLISTED_EXTENSIONS: &[&str] = &[
     // Binary files
     ".dll", ".exe", ".pdb", ".so", ".dylib", ".lib", ".a", ".o", ".obj", ".bin",
     // Media files
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff",
-    ".mp3", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".wav",
-    // Archives
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff", ".mp3", ".mp4",
+    ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".wav", // Archives
     ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".dmg", ".pkg",
     // Database files
-    ".db", ".sqlite", ".sqlite3", ".mdf", ".ldf", ".bak",
-    // Temporary files
+    ".db", ".sqlite", ".sqlite3", ".mdf", ".ldf", ".bak", // Temporary files
     ".tmp", ".temp", ".cache", ".swp", ".swo", ".lock", ".pid",
     // Logs and other large files
-    ".log", ".dump", ".core",
-    // Font files
-    ".ttf", ".otf", ".woff", ".woff2", ".eot",
-    // Other binary formats
+    ".log", ".dump", ".core", // Font files
+    ".ttf", ".otf", ".woff", ".woff2", ".eot", // Other binary formats
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 ];
 
 /// Blacklisted directory names - directories to exclude from indexing
 pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     // Version control
-    ".git", ".svn", ".hg", ".bzr",
+    ".git",
+    ".svn",
+    ".hg",
+    ".bzr",
     // IDE and editor directories
-    ".vs", ".vscode", ".idea", ".eclipse",
+    ".vs",
+    ".vscode",
+    ".idea",
+    ".eclipse",
     // Build and output directories
-    "bin", "obj", "build", "dist", "out", "target", "Debug", "Release",
+    "bin",
+    "obj",
+    "build",
+    "dist",
+    "out",
+    "target",
+    "Debug",
+    "Release",
     // Package managers
-    "node_modules", "packages", ".npm", "bower_components", "vendor",
+    "node_modules",
+    "packages",
+    ".npm",
+    "bower_components",
+    "vendor",
     // Test and coverage
-    "TestResults", "coverage", "__pycache__", ".pytest_cache", ".coverage",
+    "TestResults",
+    "coverage",
+    "__pycache__",
+    ".pytest_cache",
+    ".coverage",
     // Temporary and cache
-    ".cache", ".temp", ".tmp", "tmp", "temp",
+    ".cache",
+    ".temp",
+    ".tmp",
+    "tmp",
+    "temp",
     // Our own directories
-    ".julie", ".coa", ".codenav",
+    ".julie",
+    ".coa",
+    ".codenav",
     // Other common exclusions
-    ".sass-cache", ".nuxt", ".next", "Pods", "DerivedData",
+    ".sass-cache",
+    ".nuxt",
+    ".next",
+    "Pods",
+    "DerivedData",
 ];
 
 /// File extensions that are likely to contain code and should be indexed
 #[allow(dead_code)]
 pub const KNOWN_CODE_EXTENSIONS: &[&str] = &[
     // Core languages (supported by extractors)
-    ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cs", ".php",
-    ".rb", ".swift", ".kt", ".go", ".cpp", ".cc", ".cxx", ".c", ".h",
-    ".hpp", ".lua", ".sql", ".html", ".css", ".vue", ".razor", ".bash",
-    ".sh", ".ps1", ".zig", ".dart",
+    ".rs",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".py",
+    ".java",
+    ".cs",
+    ".php",
+    ".rb",
+    ".swift",
+    ".kt",
+    ".go",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".c",
+    ".h",
+    ".hpp",
+    ".lua",
+    ".sql",
+    ".html",
+    ".css",
+    ".vue",
+    ".razor",
+    ".bash",
+    ".sh",
+    ".ps1",
+    ".zig",
+    ".dart",
     // Additional text-based formats worth indexing
-    ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-    ".md", ".txt", ".rst", ".asciidoc", ".tex", ".org",
-    ".dockerfile", ".gitignore", ".gitattributes", ".editorconfig",
-    ".eslintrc", ".prettierrc", ".babelrc", ".tsconfig", ".jsconfig",
-    ".cargo", ".gradle", ".maven", ".sbt", ".mix", ".cabal", ".stack",
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".md",
+    ".txt",
+    ".rst",
+    ".asciidoc",
+    ".tex",
+    ".org",
+    ".dockerfile",
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+    ".eslintrc",
+    ".prettierrc",
+    ".babelrc",
+    ".tsconfig",
+    ".jsconfig",
+    ".cargo",
+    ".gradle",
+    ".maven",
+    ".sbt",
+    ".mix",
+    ".cabal",
+    ".stack",
 ];

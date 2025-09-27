@@ -89,16 +89,16 @@ mod tests {
         // count = std::cmp::max(1, (items.len() * percentage) / 100)
 
         assert_eq!(reducer.calculate_count(100, 100), 100); // 100%
-        assert_eq!(reducer.calculate_count(100, 75), 75);   // 75%
-        assert_eq!(reducer.calculate_count(100, 50), 50);   // 50%
-        assert_eq!(reducer.calculate_count(100, 30), 30);   // 30%
-        assert_eq!(reducer.calculate_count(100, 20), 20);   // 20%
-        assert_eq!(reducer.calculate_count(100, 10), 10);   // 10%
-        assert_eq!(reducer.calculate_count(100, 5), 5);     // 5%
+        assert_eq!(reducer.calculate_count(100, 75), 75); // 75%
+        assert_eq!(reducer.calculate_count(100, 50), 50); // 50%
+        assert_eq!(reducer.calculate_count(100, 30), 30); // 30%
+        assert_eq!(reducer.calculate_count(100, 20), 20); // 20%
+        assert_eq!(reducer.calculate_count(100, 10), 10); // 10%
+        assert_eq!(reducer.calculate_count(100, 5), 5); // 5%
 
         // Edge case: always returns at least 1
-        assert_eq!(reducer.calculate_count(10, 5), 1);      // 0.5 -> 1
-        assert_eq!(reducer.calculate_count(1, 50), 1);      // 0.5 -> 1
+        assert_eq!(reducer.calculate_count(10, 5), 1); // 0.5 -> 1
+        assert_eq!(reducer.calculate_count(1, 50), 1); // 0.5 -> 1
     }
 
     #[test]

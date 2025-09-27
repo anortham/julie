@@ -3,9 +3,9 @@
 // This module provides efficient storage and similarity search for embedding vectors
 // using HNSW (Hierarchical Navigable Small World) algorithm for fast nearest neighbor search.
 
+use super::SimilarityResult;
 use anyhow::Result;
 use std::collections::HashMap;
-use super::SimilarityResult;
 
 /// High-performance vector store for embedding similarity search
 pub struct VectorStore {
@@ -58,7 +58,12 @@ impl VectorStore {
     }
 
     /// Search for similar vectors using cosine similarity
-    pub fn search_similar(&self, query_vector: &[f32], limit: usize, threshold: f32) -> Result<Vec<SimilarityResult>> {
+    pub fn search_similar(
+        &self,
+        query_vector: &[f32],
+        limit: usize,
+        threshold: f32,
+    ) -> Result<Vec<SimilarityResult>> {
         if query_vector.len() != self.dimensions {
             return Err(anyhow::anyhow!(
                 "Query vector dimensions {} do not match expected {}",
@@ -122,7 +127,9 @@ mod tests {
         let mut store = VectorStore::new(3).unwrap();
         let vector = vec![1.0, 0.0, 0.0];
 
-        store.store_vector("test-symbol".to_string(), vector.clone()).unwrap();
+        store
+            .store_vector("test-symbol".to_string(), vector.clone())
+            .unwrap();
 
         assert_eq!(store.len(), 1);
         assert_eq!(store.get_vector("test-symbol"), Some(&vector));
@@ -142,9 +149,15 @@ mod tests {
         let mut store = VectorStore::new(3).unwrap();
 
         // Store some test vectors
-        store.store_vector("similar1".to_string(), vec![1.0, 0.0, 0.0]).unwrap();
-        store.store_vector("similar2".to_string(), vec![0.9, 0.1, 0.0]).unwrap();
-        store.store_vector("different".to_string(), vec![0.0, 1.0, 0.0]).unwrap();
+        store
+            .store_vector("similar1".to_string(), vec![1.0, 0.0, 0.0])
+            .unwrap();
+        store
+            .store_vector("similar2".to_string(), vec![0.9, 0.1, 0.0])
+            .unwrap();
+        store
+            .store_vector("different".to_string(), vec![0.0, 1.0, 0.0])
+            .unwrap();
 
         // Search for similar vectors
         let query = vec![1.0, 0.0, 0.0];
@@ -160,7 +173,9 @@ mod tests {
     fn test_update_and_remove_vector() {
         let mut store = VectorStore::new(3).unwrap();
 
-        store.store_vector("test".to_string(), vec![1.0, 0.0, 0.0]).unwrap();
+        store
+            .store_vector("test".to_string(), vec![1.0, 0.0, 0.0])
+            .unwrap();
         assert_eq!(store.len(), 1);
 
         // Update the vector

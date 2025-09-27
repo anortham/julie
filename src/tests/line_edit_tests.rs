@@ -8,29 +8,26 @@
 //! 2. GREEN: Implement minimal code to make tests pass
 //! 3. REFACTOR: Improve code while keeping tests green
 
-use std::fs;
-use std::path::PathBuf;
 use anyhow::Result;
+use std::fs;
 use tempfile::TempDir;
 
 // Import the LineEditTool for testing
-use crate::tools::editing::LineEditTool;
 use crate::handler::JulieServerHandler;
+use crate::tools::editing::LineEditTool;
 use rust_mcp_sdk::schema::CallToolResult;
 
 /// Helper function to extract text content from CallToolResult properly
 /// Replaces the problematic Debug format fallback that was criticized in the review
 fn extract_text_from_call_tool_result(result: &CallToolResult) -> String {
-    result.content
+    result
+        .content
         .iter()
         .filter_map(|content_block| {
-            // Use the pattern from editing.rs for proper text extraction
-            match content_block {
-                rust_mcp_sdk::schema::ContentBlock::Text(text_content) => {
-                    Some(text_content.text.clone())
-                }
-                _ => None,
-            }
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|value| value.as_str().map(|s| s.to_string()))
+            })
         })
         .collect::<Vec<String>>()
         .join("\n")
@@ -50,14 +47,10 @@ impl EditingTestFixture {
         Ok(Self { temp_dir })
     }
 
-    fn create_test_file(&self, name: &str, content: &str) -> Result<PathBuf> {
+    fn create_test_file(&self, name: &str, content: &str) -> Result<String> {
         let file_path = self.temp_dir.path().join(name);
         fs::write(&file_path, content)?;
-        Ok(file_path)
-    }
-
-    fn read_file(&self, path: &PathBuf) -> Result<String> {
-        Ok(fs::read_to_string(path)?)
+        Ok(file_path.to_string_lossy().to_string())
     }
 
     async fn create_handler(&self) -> Result<JulieServerHandler> {
@@ -79,7 +72,7 @@ mod count_operation_tests {
         let file_path = fixture.create_test_file("empty.txt", "").unwrap();
 
         let tool = LineEditTool {
-            file_path: file_path.to_string_lossy().to_string(),
+            file_path: file_path.clone(),
             operation: "count".to_string(),
             start_line: None,
             end_line: None,
@@ -101,7 +94,9 @@ mod count_operation_tests {
     #[tokio::test]
     async fn test_count_single_line_file() {
         let fixture = EditingTestFixture::new().unwrap();
-        let file_path = fixture.create_test_file("single.txt", "single line").unwrap();
+        let file_path = fixture
+            .create_test_file("single.txt", "single line")
+            .unwrap();
 
         let tool = LineEditTool {
             file_path: file_path.clone(),
@@ -120,8 +115,16 @@ mod count_operation_tests {
 
         // Verify the result contains "1 line"
         let response_text = extract_text_from_call_tool_result(&result);
-        assert!(response_text.contains("1"), "Expected to find '1' in response: {}", response_text);
-        assert!(response_text.contains("line"), "Expected to find 'line' in response: {}", response_text);
+        assert!(
+            response_text.contains("1"),
+            "Expected to find '1' in response: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("line"),
+            "Expected to find 'line' in response: {}",
+            response_text
+        );
     }
 
     #[tokio::test]
@@ -147,9 +150,16 @@ mod count_operation_tests {
 
         // Verify the result contains "3 lines" (note: might be 4 due to trailing newline)
         let response_text = extract_text_from_call_tool_result(&result);
-        assert!(response_text.contains("3") || response_text.contains("4"),
-                "Expected to find '3' or '4' lines in response: {}", response_text);
-        assert!(response_text.contains("line"), "Expected to find 'line' in response: {}", response_text);
+        assert!(
+            response_text.contains("3") || response_text.contains("4"),
+            "Expected to find '3' or '4' lines in response: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("line"),
+            "Expected to find 'line' in response: {}",
+            response_text
+        );
     }
 
     #[tokio::test]
@@ -180,10 +190,13 @@ mod count_operation_tests {
             Ok(response) => {
                 // If it returns Ok, it should contain an error message
                 let response_text = extract_text_from_call_tool_result(&response);
-                assert!(response_text.to_lowercase().contains("error") ||
-                       response_text.to_lowercase().contains("not found") ||
-                       response_text.to_lowercase().contains("no such file"),
-                       "Expected error message for missing file, got: {}", response_text);
+                assert!(
+                    response_text.to_lowercase().contains("error")
+                        || response_text.to_lowercase().contains("not found")
+                        || response_text.to_lowercase().contains("no such file"),
+                    "Expected error message for missing file, got: {}",
+                    response_text
+                );
             }
         }
     }
@@ -220,11 +233,31 @@ mod read_operation_tests {
 
         // Verify the result contains lines 2, 3, and 4
         let response_text = extract_text_from_call_tool_result(&result);
-        assert!(response_text.contains("line 2"), "Expected to find 'line 2' in response: {}", response_text);
-        assert!(response_text.contains("line 3"), "Expected to find 'line 3' in response: {}", response_text);
-        assert!(response_text.contains("line 4"), "Expected to find 'line 4' in response: {}", response_text);
-        assert!(!response_text.contains("line 1"), "Should not contain 'line 1' in response: {}", response_text);
-        assert!(!response_text.contains("line 5"), "Should not contain 'line 5' in response: {}", response_text);
+        assert!(
+            response_text.contains("line 2"),
+            "Expected to find 'line 2' in response: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("line 3"),
+            "Expected to find 'line 3' in response: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("line 4"),
+            "Expected to find 'line 4' in response: {}",
+            response_text
+        );
+        assert!(
+            !response_text.contains("line 1"),
+            "Should not contain 'line 1' in response: {}",
+            response_text
+        );
+        assert!(
+            !response_text.contains("line 5"),
+            "Should not contain 'line 5' in response: {}",
+            response_text
+        );
     }
 
     #[tokio::test]
@@ -360,7 +393,9 @@ mod insert_operation_tests {
     async fn test_insert_dry_run_mode() {
         let fixture = EditingTestFixture::new().unwrap();
         let original_content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", original_content).unwrap();
+        let file_path = fixture
+            .create_test_file("test.txt", original_content)
+            .unwrap();
 
         // TODO: insert operation, dry_run=true
         // Expected: Shows preview, file unchanged
@@ -372,7 +407,9 @@ mod insert_operation_tests {
     async fn test_insert_with_backup() {
         let fixture = EditingTestFixture::new().unwrap();
         let original_content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", original_content).unwrap();
+        let file_path = fixture
+            .create_test_file("test.txt", original_content)
+            .unwrap();
 
         // TODO: insert operation, backup=true
         // Expected: Creates .backup file with original content
@@ -566,7 +603,9 @@ mod edge_cases_tests {
     async fn test_large_file_performance() {
         let fixture = EditingTestFixture::new().unwrap();
         let large_content = "line\n".repeat(10000); // 10K lines
-        let file_path = fixture.create_test_file("large.txt", &large_content).unwrap();
+        let file_path = fixture
+            .create_test_file("large.txt", &large_content)
+            .unwrap();
 
         // TODO: Operations on large files should complete in reasonable time
         // GREEN phase: Basic test placeholder - implementation exists

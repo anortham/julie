@@ -6,11 +6,11 @@
 // CRITICAL: This represents months of Miller development work. Any changes must maintain
 // 100% functional parity with Miller's extractors and pass all Miller's tests.
 
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use tree_sitter::Node;
-use tracing::{warn, debug};
 use md5;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tracing::{debug, warn};
+use tree_sitter::Node;
 
 /// Configuration for code context extraction
 #[derive(Debug, Clone)]
@@ -115,7 +115,7 @@ pub enum SymbolKind {
 
 impl SymbolKind {
     /// Convert from string representation (for database deserialization)
-    #[allow(dead_code)]  // TODO: Used for database deserialization
+    #[allow(dead_code)] // TODO: Used for database deserialization
     pub fn from_string(s: &str) -> Self {
         match s {
             "class" => SymbolKind::Class,
@@ -146,7 +146,7 @@ impl SymbolKind {
     }
 
     /// Convert to string representation (for database serialization)
-    #[allow(dead_code)]  // TODO: Used for database serialization
+    #[allow(dead_code)] // TODO: Used for database serialization
     pub fn to_string(&self) -> String {
         match self {
             SymbolKind::Class => "class",
@@ -172,7 +172,8 @@ impl SymbolKind {
             SymbolKind::Export => "export",
             SymbolKind::Event => "event",
             SymbolKind::Delegate => "delegate",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -263,7 +264,7 @@ impl std::fmt::Display for RelationshipKind {
 
 impl RelationshipKind {
     /// Convert from string representation (for database deserialization)
-    #[allow(dead_code)]  // TODO: Used for database deserialization
+    #[allow(dead_code)] // TODO: Used for database deserialization
     pub fn from_string(s: &str) -> Self {
         match s {
             "calls" => RelationshipKind::Calls,
@@ -284,7 +285,7 @@ impl RelationshipKind {
     }
 
     /// Convert to string representation (for database serialization)
-    #[allow(dead_code)]  // TODO: Used for database serialization
+    #[allow(dead_code)] // TODO: Used for database serialization
     pub fn to_string(&self) -> String {
         match self {
             RelationshipKind::Calls => "calls",
@@ -301,7 +302,8 @@ impl RelationshipKind {
             RelationshipKind::Contains => "contains",
             RelationshipKind::Joins => "joins",
             RelationshipKind::Composition => "composition",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -492,7 +494,7 @@ impl BaseExtractor {
             language: self.language.clone(),
             file_path: self.file_path.clone(),
             start_line: (start_pos.row + 1) as u32, // Miller uses 1-based line numbers
-            start_column: start_pos.column as u32, // Miller uses 0-based column numbers
+            start_column: start_pos.column as u32,  // Miller uses 0-based column numbers
             end_line: (end_pos.row + 1) as u32,
             end_column: end_pos.column as u32,
             start_byte: node.start_byte() as u32,
@@ -503,7 +505,7 @@ impl BaseExtractor {
             parent_id: options.parent_id,
             metadata: Some(options.metadata.unwrap_or_default()),
             semantic_group: None, // Will be populated during cross-language analysis
-            confidence: None, // Will be calculated based on parsing context
+            confidence: None,     // Will be calculated based on parsing context
             code_context,
         };
 
@@ -522,7 +524,13 @@ impl BaseExtractor {
         metadata: Option<HashMap<String, serde_json::Value>>,
     ) -> Relationship {
         Relationship {
-            id: format!("{}_{}_{:?}_{}", from_symbol_id, to_symbol_id, kind, node.start_position().row),
+            id: format!(
+                "{}_{}_{:?}_{}",
+                from_symbol_id,
+                to_symbol_id,
+                kind,
+                node.start_position().row
+            ),
             from_symbol_id,
             to_symbol_id,
             kind,
@@ -534,33 +542,40 @@ impl BaseExtractor {
     }
 
     /// Find containing symbol - exact port of Miller's findContainingSymbol
-    pub fn find_containing_symbol<'a>(&self, node: &Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+    pub fn find_containing_symbol<'a>(
+        &self,
+        node: &Node,
+        symbols: &'a [Symbol],
+    ) -> Option<&'a Symbol> {
         let position = node.start_position();
 
         // Find symbols that contain this position
-        let mut containing_symbols: Vec<&Symbol> = symbols.iter().filter(|s| {
-            let pos_line = (position.row + 1) as u32;
-            let pos_column = position.column as u32;
+        let mut containing_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| {
+                let pos_line = (position.row + 1) as u32;
+                let pos_column = position.column as u32;
 
-            let line_contains = s.start_line <= pos_line && s.end_line >= pos_line;
+                let line_contains = s.start_line <= pos_line && s.end_line >= pos_line;
 
-            // For column containment, handle multi-line spans exactly like Miller
-            let col_contains = if pos_line == s.start_line && pos_line == s.end_line {
-                // Single line span
-                s.start_column <= pos_column && s.end_column >= pos_column
-            } else if pos_line == s.start_line {
-                // First line of multi-line span
-                s.start_column <= pos_column
-            } else if pos_line == s.end_line {
-                // Last line of multi-line span
-                s.end_column >= pos_column
-            } else {
-                // Middle line of multi-line span
-                true
-            };
+                // For column containment, handle multi-line spans exactly like Miller
+                let col_contains = if pos_line == s.start_line && pos_line == s.end_line {
+                    // Single line span
+                    s.start_column <= pos_column && s.end_column >= pos_column
+                } else if pos_line == s.start_line {
+                    // First line of multi-line span
+                    s.start_column <= pos_column
+                } else if pos_line == s.end_line {
+                    // Last line of multi-line span
+                    s.end_column >= pos_column
+                } else {
+                    // Middle line of multi-line span
+                    true
+                };
 
-            line_contains && col_contains
-        }).collect();
+                line_contains && col_contains
+            })
+            .collect();
 
         if containing_symbols.is_empty() {
             return None;
@@ -640,7 +655,10 @@ impl BaseExtractor {
         // Fallback: extract from the node text using regex (exact Miller pattern)
         let node_text = self.get_node_text(node);
         let text = node_text.trim();
-        if let Some(captures) = regex::Regex::new(r"^[a-zA-Z_$][a-zA-Z0-9_$]*").unwrap().find(text) {
+        if let Some(captures) = regex::Regex::new(r"^[a-zA-Z_$][a-zA-Z0-9_$]*")
+            .unwrap()
+            .find(text)
+        {
             captures.as_str().to_string()
         } else {
             "Anonymous".to_string()
@@ -668,7 +686,12 @@ impl BaseExtractor {
         nodes
     }
 
-    fn find_nodes_by_type_recursive<'a>(&self, node: &Node<'a>, node_type: &str, nodes: &mut Vec<Node<'a>>) {
+    fn find_nodes_by_type_recursive<'a>(
+        &self,
+        node: &Node<'a>,
+        node_type: &str,
+        nodes: &mut Vec<Node<'a>>,
+    ) {
         if node.kind() == node_type {
             nodes.push(*node);
         }
@@ -730,7 +753,7 @@ impl BaseExtractor {
     {
         // Try to process current node
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(node))) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => {
                 warn!("Error processing node {}", node.kind());
                 return;
@@ -743,7 +766,7 @@ impl BaseExtractor {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     self.traverse_tree(&child, callback)
                 })) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(_) => {
                         debug!("Skipping problematic child node");
                         continue;
@@ -817,7 +840,7 @@ pub struct SymbolOptions {
 
 /// Extraction results - matches Miller's getResults return type
 #[derive(Debug, Clone)]
-#[allow(dead_code)]  // TODO: Return type for extraction operations
+#[allow(dead_code)] // TODO: Return type for extraction operations
 pub struct ExtractionResults {
     pub symbols: Vec<Symbol>,
     pub relationships: Vec<Relationship>,
@@ -833,7 +856,11 @@ mod tests {
     fn test_context_extraction_edge_cases() {
         // Test case 1: Symbol at the beginning of file (not enough lines before)
         let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8";
-        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+        let mut extractor = BaseExtractor::new(
+            "rust".to_string(),
+            "test.rs".to_string(),
+            content.to_string(),
+        );
 
         let context = extractor.extract_code_context(2, 4); // function on line 3-5 (0-indexed: 2-4)
         assert!(context.is_some());
@@ -877,7 +904,11 @@ mod tests {
     #[test]
     fn test_context_configuration() {
         let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 7\nline 8\nline 9\nline 10";
-        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+        let mut extractor = BaseExtractor::new(
+            "rust".to_string(),
+            "test.rs".to_string(),
+            content.to_string(),
+        );
 
         // Test custom context config (1 line before, 2 lines after)
         let custom_config = ContextConfig {
@@ -910,7 +941,11 @@ mod tests {
     fn test_line_truncation() {
         let very_long_line = "a".repeat(150); // 150 character line
         let content = format!("line 1\nline 2\n{}\nline 4", very_long_line);
-        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+        let mut extractor = BaseExtractor::new(
+            "rust".to_string(),
+            "test.rs".to_string(),
+            content.to_string(),
+        );
 
         // Set config with short max line length
         let config = ContextConfig {
@@ -934,7 +969,11 @@ mod tests {
     #[test]
     fn test_context_without_line_numbers() {
         let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6";
-        let mut extractor = BaseExtractor::new("rust".to_string(), "test.rs".to_string(), content.to_string());
+        let mut extractor = BaseExtractor::new(
+            "rust".to_string(),
+            "test.rs".to_string(),
+            content.to_string(),
+        );
 
         // Disable line numbers
         let config = ContextConfig {

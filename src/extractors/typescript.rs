@@ -2,9 +2,9 @@
 //
 // This is the minimal implementation to make tests compile but fail initially (RED phase)
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship};
-use tree_sitter::Tree;
+use crate::extractors::base::{BaseExtractor, Relationship, Symbol, SymbolKind};
 use std::collections::HashMap;
+use tree_sitter::Tree;
 
 pub struct TypeScriptExtractor {
     base: BaseExtractor,
@@ -124,9 +124,11 @@ impl TypeScriptExtractor {
         let visibility = self.base.extract_visibility(&node);
 
         // Check for modifiers (Miller logic)
-        let is_async = node.children(&mut node.walk())
+        let is_async = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "async");
-        let is_generator = node.children(&mut node.walk())
+        let is_generator = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "*");
 
         let parameters = self.extract_parameters(&node);
@@ -140,7 +142,10 @@ impl TypeScriptExtractor {
         if let Some(return_type) = return_type {
             metadata.insert("returnType".to_string(), serde_json::json!(return_type));
         }
-        metadata.insert("typeParameters".to_string(), serde_json::json!(type_parameters));
+        metadata.insert(
+            "typeParameters".to_string(),
+            serde_json::json!(type_parameters),
+        );
 
         use crate::extractors::base::SymbolOptions;
         self.base.create_symbol(
@@ -176,7 +181,8 @@ impl TypeScriptExtractor {
         }
 
         // Check for abstract modifier
-        let is_abstract = node.children(&mut node.walk())
+        let is_abstract = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "abstract");
         metadata.insert("isAbstract".to_string(), serde_json::json!(is_abstract));
 
@@ -198,7 +204,8 @@ impl TypeScriptExtractor {
     fn extract_interface(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "Anonymous".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Interface, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Interface, SymbolOptions::default())
     }
 
     // Port of Miller's extractMethod method
@@ -221,11 +228,14 @@ impl TypeScriptExtractor {
         let visibility = self.base.extract_visibility(&node);
 
         // Check for modifiers
-        let is_async = node.children(&mut node.walk())
+        let is_async = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "async");
-        let is_static = node.children(&mut node.walk())
+        let is_static = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "static");
-        let is_generator = node.children(&mut node.walk())
+        let is_generator = node
+            .children(&mut node.walk())
             .any(|child| child.kind() == "*");
 
         let parameters = self.extract_parameters(&node);
@@ -240,7 +250,10 @@ impl TypeScriptExtractor {
         if let Some(return_type) = return_type {
             metadata.insert("returnType".to_string(), serde_json::json!(return_type));
         }
-        metadata.insert("typeParameters".to_string(), serde_json::json!(type_parameters));
+        metadata.insert(
+            "typeParameters".to_string(),
+            serde_json::json!(type_parameters),
+        );
 
         // Find parent class if this method is inside a class
         let parent_id = self.find_parent_class_id(&node);
@@ -277,43 +290,50 @@ impl TypeScriptExtractor {
         }
 
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Variable, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Variable, SymbolOptions::default())
     }
 
     fn extract_type_alias(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "Anonymous".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Type, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Type, SymbolOptions::default())
     }
 
     fn extract_enum(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "Anonymous".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Enum, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Enum, SymbolOptions::default())
     }
 
     fn extract_import(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "import".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Import, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Import, SymbolOptions::default())
     }
 
     fn extract_export(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "export".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Export, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Export, SymbolOptions::default())
     }
 
     fn extract_namespace(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "Anonymous".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Namespace, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Namespace, SymbolOptions::default())
     }
 
     fn extract_property(&mut self, node: tree_sitter::Node) -> Symbol {
         let name = "Anonymous".to_string(); // TODO: implement
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(&node, name, SymbolKind::Property, SymbolOptions::default())
+        self.base
+            .create_symbol(&node, name, SymbolKind::Property, SymbolOptions::default())
     }
 
     // Helper method to find parent class for method symbols
@@ -339,7 +359,9 @@ impl TypeScriptExtractor {
 
     // Helper methods (port from Miller)
     fn build_function_signature(&self, node: &tree_sitter::Node, name: &str) -> String {
-        let params = self.base.get_field_text(node, "parameters")
+        let params = self
+            .base
+            .get_field_text(node, "parameters")
             .or_else(|| self.base.get_field_text(node, "formal_parameters"))
             .unwrap_or_else(|| "()".to_string());
         let return_type = self.base.get_field_text(node, "return_type");
@@ -391,7 +413,12 @@ impl TypeScriptExtractor {
     }
 
     // Extract function call relationships
-    fn extract_call_relationships(&self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_call_relationships(
+        &self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Look for call expressions
         if node.kind() == "call_expression" {
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -400,12 +427,19 @@ impl TypeScriptExtractor {
                 // Find the calling function (containing function)
                 if let Some(caller_symbol) = self.find_containing_function(node, symbols) {
                     // Find the called function symbol
-                    if let Some(called_symbol) = symbols.iter()
-                        .find(|s| s.name == function_name && matches!(s.kind, SymbolKind::Function)) {
-
+                    if let Some(called_symbol) = symbols
+                        .iter()
+                        .find(|s| s.name == function_name && matches!(s.kind, SymbolKind::Function))
+                    {
                         use crate::extractors::base::RelationshipKind;
                         let relationship = Relationship {
-                            id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
                             from_symbol_id: caller_symbol.id.clone(),
                             to_symbol_id: called_symbol.id.clone(),
                             kind: RelationshipKind::Calls,
@@ -428,7 +462,12 @@ impl TypeScriptExtractor {
     }
 
     // Extract inheritance relationships (extends, implements)
-    fn extract_inheritance_relationships(&self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_inheritance_relationships(
+        &self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Look for extends_clause or class_heritage nodes (Miller's approach)
         match node.kind() {
             "extends_clause" | "class_heritage" => {
@@ -439,27 +478,37 @@ impl TypeScriptExtractor {
                             let class_name = self.base.get_node_text(&class_name_node);
 
                             // Find the class symbol
-                            if let Some(class_symbol) = symbols.iter()
-                                .find(|s| s.name == class_name && s.kind == SymbolKind::Class) {
-
+                            if let Some(class_symbol) = symbols
+                                .iter()
+                                .find(|s| s.name == class_name && s.kind == SymbolKind::Class)
+                            {
                                 // Look for identifier or type_identifier children to get superclass name
                                 let mut cursor = node.walk();
                                 for child in node.children(&mut cursor) {
-                                    if child.kind() == "identifier" || child.kind() == "type_identifier" {
+                                    if child.kind() == "identifier"
+                                        || child.kind() == "type_identifier"
+                                    {
                                         let superclass_name = self.base.get_node_text(&child);
 
                                         // Find the superclass symbol
-                                        if let Some(superclass_symbol) = symbols.iter()
-                                            .find(|s| s.name == superclass_name && s.kind == SymbolKind::Class) {
-
+                                        if let Some(superclass_symbol) = symbols.iter().find(|s| {
+                                            s.name == superclass_name && s.kind == SymbolKind::Class
+                                        }) {
                                             use crate::extractors::base::RelationshipKind;
                                             let relationship = Relationship {
-                                                id: format!("{}_{}_{:?}_{}", class_symbol.id, superclass_symbol.id, RelationshipKind::Extends, child.start_position().row),
+                                                id: format!(
+                                                    "{}_{}_{:?}_{}",
+                                                    class_symbol.id,
+                                                    superclass_symbol.id,
+                                                    RelationshipKind::Extends,
+                                                    child.start_position().row
+                                                ),
                                                 from_symbol_id: class_symbol.id.clone(),
                                                 to_symbol_id: superclass_symbol.id.clone(),
                                                 kind: RelationshipKind::Extends,
                                                 file_path: self.base.file_path.clone(),
-                                                line_number: (child.start_position().row + 1) as u32,
+                                                line_number: (child.start_position().row + 1)
+                                                    as u32,
                                                 confidence: 1.0,
                                                 metadata: None,
                                             };
@@ -483,7 +532,11 @@ impl TypeScriptExtractor {
     }
 
     // Helper to find the function that contains a given node
-    fn find_containing_function<'a>(&self, node: tree_sitter::Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+    fn find_containing_function<'a>(
+        &self,
+        node: tree_sitter::Node,
+        symbols: &'a [Symbol],
+    ) -> Option<&'a Symbol> {
         let mut current = Some(node);
 
         while let Some(current_node) = current {
@@ -493,8 +546,10 @@ impl TypeScriptExtractor {
 
             // Find function symbols that contain this position
             for symbol in symbols {
-                if matches!(symbol.kind, SymbolKind::Function) &&
-                   symbol.start_line <= pos_line && symbol.end_line >= pos_line {
+                if matches!(symbol.kind, SymbolKind::Function)
+                    && symbol.start_line <= pos_line
+                    && symbol.end_line >= pos_line
+                {
                     return Some(symbol);
                 }
             }
@@ -520,12 +575,18 @@ impl TypeScriptExtractor {
     fn parse_content(&self) -> Result<tree_sitter::Tree, Box<dyn std::error::Error>> {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_javascript::LANGUAGE.into())?;
-        let tree = parser.parse(&self.base.content, None)
+        let tree = parser
+            .parse(&self.base.content, None)
             .ok_or("Failed to parse content")?;
         Ok(tree)
     }
 
-    fn infer_types_from_tree(&self, node: tree_sitter::Node, symbols: &[Symbol], types: &mut HashMap<String, String>) {
+    fn infer_types_from_tree(
+        &self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        types: &mut HashMap<String, String>,
+    ) {
         // Look for variable declarations and assignments
         if node.kind() == "variable_declarator" {
             if let Some(name_node) = node.child_by_field_name("name") {
@@ -542,12 +603,18 @@ impl TypeScriptExtractor {
             }
         }
         // Look for function declarations
-        else if node.kind() == "function_declaration" || node.kind() == "arrow_function" || node.kind() == "function_expression" {
+        else if node.kind() == "function_declaration"
+            || node.kind() == "arrow_function"
+            || node.kind() == "function_expression"
+        {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let func_name = self.base.get_node_text(&name_node);
 
                 // Find the function symbol
-                if let Some(symbol) = symbols.iter().find(|s| s.name == func_name && s.kind == SymbolKind::Function) {
+                if let Some(symbol) = symbols
+                    .iter()
+                    .find(|s| s.name == func_name && s.kind == SymbolKind::Function)
+                {
                     // For functions, try to infer return type or just use "function"
                     let return_type = self.infer_function_return_type(&node);
                     types.insert(symbol.id.clone(), return_type);
@@ -593,7 +660,8 @@ impl TypeScriptExtractor {
 
     fn infer_function_return_type(&self, func_node: &tree_sitter::Node) -> String {
         // Check for async functions
-        let is_async = func_node.children(&mut func_node.walk())
+        let is_async = func_node
+            .children(&mut func_node.walk())
             .any(|child| child.kind() == "async");
 
         if is_async {

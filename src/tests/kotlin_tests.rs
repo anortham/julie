@@ -10,7 +10,9 @@ use tree_sitter::Parser;
 /// Initialize Kotlin parser
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_kotlin_ng::LANGUAGE.into()).expect("Error loading Kotlin grammar");
+    parser
+        .set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())
+        .expect("Error loading Kotlin grammar");
     parser
 }
 
@@ -23,16 +25,27 @@ fn debug_tree_structure(tree: &tree_sitter::Tree, target_name: &str, source: &st
         } else {
             node_text.to_string()
         };
-        println!("{}[{}] {}", indent, node.kind(), display_text.replace('\n', "\\n"));
+        println!(
+            "{}[{}] {}",
+            indent,
+            node.kind(),
+            display_text.replace('\n', "\\n")
+        );
 
         // Check if this is our target (class_declaration or object_declaration)
         if matches!(node.kind(), "class_declaration" | "object_declaration") {
-            let name_node = node.children(&mut node.walk())
+            let name_node = node
+                .children(&mut node.walk())
                 .find(|n| n.kind() == "identifier");
             if let Some(name_node) = name_node {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("");
                 if name == target_name {
-                    println!("{}*** FOUND TARGET {}: {} ***", indent, node.kind(), target_name);
+                    println!(
+                        "{}*** FOUND TARGET {}: {} ***",
+                        indent,
+                        node.kind(),
+                        target_name
+                    );
                     // Print all children in detail
                     for child in node.children(&mut node.walk()) {
                         walk_node(child, target_name, depth + 1, source);
@@ -54,7 +67,6 @@ fn debug_tree_structure(tree: &tree_sitter::Tree, target_name: &str, source: &st
 #[cfg(test)]
 mod kotlin_extractor_tests {
     use super::*;
-
 
     #[test]
     fn test_extract_classes_and_data_classes() {
@@ -87,10 +99,18 @@ class Vehicle(
 
         // Primary constructor parameters as properties
         let brand = symbols.iter().find(|s| s.name == "brand");
-        assert!(brand.is_some(), "Expected to find 'brand' symbol from constructor parameter");
+        assert!(
+            brand.is_some(),
+            "Expected to find 'brand' symbol from constructor parameter"
+        );
 
-        let speed = symbols.iter().find(|s| s.name == "speed" && s.parent_id == Some(vehicle.unwrap().id.clone()));
-        assert!(speed.is_some(), "Expected to find 'speed' symbol from constructor parameter");
+        let speed = symbols
+            .iter()
+            .find(|s| s.name == "speed" && s.parent_id == Some(vehicle.unwrap().id.clone()));
+        assert!(
+            speed.is_some(),
+            "Expected to find 'speed' symbol from constructor parameter"
+        );
     }
 
     #[test]
@@ -166,22 +186,42 @@ enum class Color(val rgb: Int) {
         // Object declaration
         let database_config = symbols.iter().find(|s| s.name == "DatabaseConfig");
         assert!(database_config.is_some());
-        assert!(database_config.unwrap().signature.as_ref().unwrap().contains("object DatabaseConfig"));
+        assert!(database_config
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("object DatabaseConfig"));
 
         // Object with inheritance
         let utils = symbols.iter().find(|s| s.name == "Utils");
         assert!(utils.is_some());
-        assert!(utils.unwrap().signature.as_ref().unwrap().contains("object Utils : Serializable"));
+        assert!(utils
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("object Utils : Serializable"));
 
         // Sealed class
         let result_symbol = symbols.iter().find(|s| s.name == "Result");
         assert!(result_symbol.is_some());
-        assert!(result_symbol.unwrap().signature.as_ref().unwrap().contains("sealed class Result<out T>"));
+        assert!(result_symbol
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("sealed class Result<out T>"));
 
         // Object inside sealed class
         let loading = symbols.iter().find(|s| s.name == "Loading");
         assert!(loading.is_some());
-        assert!(loading.unwrap().signature.as_ref().unwrap().contains("object Loading : Result<Nothing>()"));
+        assert!(loading
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("object Loading : Result<Nothing>()"));
 
         // Data class extending sealed class
         let success = symbols.iter().find(|s| s.name == "Success");
@@ -192,7 +232,12 @@ enum class Color(val rgb: Int) {
         // Sealed interface
         let command = symbols.iter().find(|s| s.name == "Command");
         assert!(command.is_some());
-        assert!(command.unwrap().signature.as_ref().unwrap().contains("sealed interface Command"));
+        assert!(command
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("sealed interface Command"));
 
         // Simple enum
         let direction = symbols.iter().find(|s| s.name == "Direction");
@@ -206,14 +251,26 @@ enum class Color(val rgb: Int) {
         // Enum with constructor
         let color = symbols.iter().find(|s| s.name == "Color");
         assert!(color.is_some());
-        assert!(color.unwrap().signature.as_ref().unwrap().contains("enum class Color(val rgb: Int)"));
+        assert!(color
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("enum class Color(val rgb: Int)"));
 
         let red = symbols.iter().find(|s| s.name == "RED");
         assert!(red.is_some());
-        assert!(red.unwrap().signature.as_ref().unwrap().contains("RED(0xFF0000)"));
+        assert!(red
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("RED(0xFF0000)"));
 
         // Companion object in enum
-        let color_companion = symbols.iter().find(|s| s.name == "Companion" && s.parent_id == Some(color.unwrap().id.clone()));
+        let color_companion = symbols
+            .iter()
+            .find(|s| s.name == "Companion" && s.parent_id == Some(color.unwrap().id.clone()));
         assert!(color_companion.is_some());
     }
 
@@ -285,65 +342,135 @@ operator fun Point.plus(other: Point): Point {
         let greet = symbols.iter().find(|s| s.name == "greet");
         assert!(greet.is_some());
         assert_eq!(greet.unwrap().kind, SymbolKind::Function);
-        assert!(greet.unwrap().signature.as_ref().unwrap().contains("fun greet(name: String): String"));
+        assert!(greet
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun greet(name: String): String"));
 
         // Vararg function with expression body
         let calculate_sum = symbols.iter().find(|s| s.name == "calculateSum");
         assert!(calculate_sum.is_some());
-        assert!(calculate_sum.unwrap().signature.as_ref().unwrap().contains("vararg numbers: Int"));
-        assert!(calculate_sum.unwrap().signature.as_ref().unwrap().contains("= numbers.sum()"));
+        assert!(calculate_sum
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("vararg numbers: Int"));
+        assert!(calculate_sum
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("= numbers.sum()"));
 
         // Inline reified function
         let is_instance_of = symbols.iter().find(|s| s.name == "isInstanceOf");
         assert!(is_instance_of.is_some());
-        assert!(is_instance_of.unwrap().signature.as_ref().unwrap().contains("inline fun <reified T>"));
+        assert!(is_instance_of
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("inline fun <reified T>"));
 
         // Suspend function
         let fetch_data = symbols.iter().find(|s| s.name == "fetchData");
         assert!(fetch_data.is_some());
-        assert!(fetch_data.unwrap().signature.as_ref().unwrap().contains("suspend fun fetchData"));
+        assert!(fetch_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("suspend fun fetchData"));
 
         // Extension function on String
         let is_valid_email = symbols.iter().find(|s| s.name == "isValidEmail");
         assert!(is_valid_email.is_some());
-        assert!(is_valid_email.unwrap().signature.as_ref().unwrap().contains("fun String.isValidEmail()"));
+        assert!(is_valid_email
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun String.isValidEmail()"));
 
         // Extension function on generic type
         let join_with_commas = symbols.iter().find(|s| s.name == "joinWithCommas");
         assert!(join_with_commas.is_some());
-        assert!(join_with_commas.unwrap().signature.as_ref().unwrap().contains("fun List<String>.joinWithCommas()"));
+        assert!(join_with_commas
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun List<String>.joinWithCommas()"));
 
         // Generic extension function
         let safe_get = symbols.iter().find(|s| s.name == "safeGet");
         assert!(safe_get.is_some());
-        assert!(safe_get.unwrap().signature.as_ref().unwrap().contains("fun <T> Collection<T>.safeGet"));
+        assert!(safe_get
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun <T> Collection<T>.safeGet"));
 
         // Higher-order function
         let process_data = symbols.iter().find(|s| s.name == "processData");
         assert!(process_data.is_some());
-        assert!(process_data.unwrap().signature.as_ref().unwrap().contains("filter: (String) -> Boolean"));
-        assert!(process_data.unwrap().signature.as_ref().unwrap().contains("transform: (String) -> String"));
+        assert!(process_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("filter: (String) -> Boolean"));
+        assert!(process_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("transform: (String) -> String"));
 
         // Function returning function
         let create_processor = symbols.iter().find(|s| s.name == "createProcessor");
         assert!(create_processor.is_some());
-        assert!(create_processor.unwrap().signature.as_ref().unwrap().contains("(): (String) -> String"));
+        assert!(create_processor
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("(): (String) -> String"));
 
         // Tailrec function
         let factorial = symbols.iter().find(|s| s.name == "factorial");
         assert!(factorial.is_some());
-        assert!(factorial.unwrap().signature.as_ref().unwrap().contains("tailrec fun factorial"));
+        assert!(factorial
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("tailrec fun factorial"));
 
         // Infix function
         let should_contain = symbols.iter().find(|s| s.name == "shouldContain");
         assert!(should_contain.is_some());
-        assert!(should_contain.unwrap().signature.as_ref().unwrap().contains("infix fun String.shouldContain"));
+        assert!(should_contain
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("infix fun String.shouldContain"));
 
         // Operator function
         let plus = symbols.iter().find(|s| s.name == "plus");
         assert!(plus.is_some());
         assert_eq!(plus.unwrap().kind, SymbolKind::Operator);
-        assert!(plus.unwrap().signature.as_ref().unwrap().contains("operator fun Point.plus"));
+        assert!(plus
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("operator fun Point.plus"));
     }
 
     #[test]
@@ -422,49 +549,95 @@ class ProcessorImpl : StringProcessor {
         assert_eq!(drawable.unwrap().kind, SymbolKind::Interface);
 
         // Abstract property in interface
-        let color = symbols.iter().find(|s| s.name == "color" && s.parent_id == Some(drawable.unwrap().id.clone()));
+        let color = symbols
+            .iter()
+            .find(|s| s.name == "color" && s.parent_id == Some(drawable.unwrap().id.clone()));
         assert!(color.is_some());
-        assert!(color.unwrap().signature.as_ref().unwrap().contains("val color: String"));
+        assert!(color
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("val color: String"));
 
         // Abstract method in interface
-        let draw = symbols.iter().find(|s| s.name == "draw" && s.parent_id == Some(drawable.unwrap().id.clone()));
+        let draw = symbols
+            .iter()
+            .find(|s| s.name == "draw" && s.parent_id == Some(drawable.unwrap().id.clone()));
         assert!(draw.is_some());
         assert_eq!(draw.unwrap().kind, SymbolKind::Method);
 
         // Method with default implementation
-        let describe = symbols.iter().find(|s| s.name == "describe" && s.parent_id == Some(drawable.unwrap().id.clone()));
+        let describe = symbols
+            .iter()
+            .find(|s| s.name == "describe" && s.parent_id == Some(drawable.unwrap().id.clone()));
         assert!(describe.is_some());
-        assert!(describe.unwrap().signature.as_ref().unwrap().contains("fun describe(): String"));
+        assert!(describe
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun describe(): String"));
 
         // Class with delegation
         let button = symbols.iter().find(|s| s.name == "Button");
         assert!(button.is_some());
-        assert!(button.unwrap().signature.as_ref().unwrap().contains("Drawable by drawable, Clickable by clickable"));
+        assert!(button
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("Drawable by drawable, Clickable by clickable"));
 
         // Lazy delegation
         let expensive_value = symbols.iter().find(|s| s.name == "expensiveValue");
         assert!(expensive_value.is_some());
-        assert!(expensive_value.unwrap().signature.as_ref().unwrap().contains("by lazy"));
+        assert!(expensive_value
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("by lazy"));
 
         // Observable delegation
         let observable_property = symbols.iter().find(|s| s.name == "observableProperty");
         assert!(observable_property.is_some());
-        assert!(observable_property.unwrap().signature.as_ref().unwrap().contains("by Delegates.observable"));
+        assert!(observable_property
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("by Delegates.observable"));
 
         // NotNull delegation
         let not_null_property = symbols.iter().find(|s| s.name == "notNullProperty");
         assert!(not_null_property.is_some());
-        assert!(not_null_property.unwrap().signature.as_ref().unwrap().contains("by Delegates.notNull()"));
+        assert!(not_null_property
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("by Delegates.notNull()"));
 
         // Fun interface (SAM interface)
         let string_processor = symbols.iter().find(|s| s.name == "StringProcessor");
         assert!(string_processor.is_some());
-        assert!(string_processor.unwrap().signature.as_ref().unwrap().contains("fun interface StringProcessor"));
+        assert!(string_processor
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun interface StringProcessor"));
 
         // Generic fun interface
         let predicate = symbols.iter().find(|s| s.name == "Predicate");
         assert!(predicate.is_some());
-        assert!(predicate.unwrap().signature.as_ref().unwrap().contains("fun interface Predicate<T>"));
+        assert!(predicate
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun interface Predicate<T>"));
     }
 
     #[test]
@@ -535,51 +708,128 @@ import kotlin.jvm.JvmStatic
         // Annotation class
         let my_annotation = symbols.iter().find(|s| s.name == "MyAnnotation");
         assert!(my_annotation.is_some());
-        assert!(my_annotation.unwrap().signature.as_ref().unwrap().contains("annotation class MyAnnotation"));
-        assert!(my_annotation.unwrap().signature.as_ref().unwrap().contains("@Target"));
-        assert!(my_annotation.unwrap().signature.as_ref().unwrap().contains("@Retention"));
+        assert!(my_annotation
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("annotation class MyAnnotation"));
+        assert!(my_annotation
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@Target"));
+        assert!(my_annotation
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@Retention"));
 
         // Repeatable annotation
         let author = symbols.iter().find(|s| s.name == "Author");
         assert!(author.is_some());
-        assert!(author.unwrap().signature.as_ref().unwrap().contains("@Repeatable"));
+        assert!(author
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@Repeatable"));
 
         // Type aliases
-        let string_processor = symbols.iter().find(|s| s.name == "StringProcessor" && s.kind == SymbolKind::Type);
+        let string_processor = symbols
+            .iter()
+            .find(|s| s.name == "StringProcessor" && s.kind == SymbolKind::Type);
         assert!(string_processor.is_some());
-        assert!(string_processor.unwrap().signature.as_ref().unwrap().contains("typealias StringProcessor = (String) -> String"));
+        assert!(string_processor
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("typealias StringProcessor = (String) -> String"));
 
         let user_map = symbols.iter().find(|s| s.name == "UserMap");
         assert!(user_map.is_some());
-        assert!(user_map.unwrap().signature.as_ref().unwrap().contains("typealias UserMap = Map<String, User>"));
+        assert!(user_map
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("typealias UserMap = Map<String, User>"));
 
         let handler = symbols.iter().find(|s| s.name == "Handler");
         assert!(handler.is_some());
-        assert!(handler.unwrap().signature.as_ref().unwrap().contains("typealias Handler<T> = suspend (T) -> Unit"));
+        assert!(handler
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("typealias Handler<T> = suspend (T) -> Unit"));
 
         // Method with multiple annotations
         let process_data = symbols.iter().find(|s| s.name == "processData");
         assert!(process_data.is_some());
-        assert!(process_data.unwrap().signature.as_ref().unwrap().contains("@MyAnnotation"));
-        assert!(process_data.unwrap().signature.as_ref().unwrap().contains("@Author(\"John Doe\")"));
-        assert!(process_data.unwrap().signature.as_ref().unwrap().contains("@Author(\"Jane Smith\")"));
+        assert!(process_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@MyAnnotation"));
+        assert!(process_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@Author(\"John Doe\")"));
+        assert!(process_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@Author(\"Jane Smith\")"));
 
         // JVM annotations
         let create_default = symbols.iter().find(|s| s.name == "createDefault");
         assert!(create_default.is_some());
-        assert!(create_default.unwrap().signature.as_ref().unwrap().contains("@JvmStatic"));
-        assert!(create_default.unwrap().signature.as_ref().unwrap().contains("@JvmOverloads"));
+        assert!(create_default
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@JvmStatic"));
+        assert!(create_default
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@JvmOverloads"));
 
         // Inline value class
         let user_id = symbols.iter().find(|s| s.name == "UserId");
         assert!(user_id.is_some());
-        assert!(user_id.unwrap().signature.as_ref().unwrap().contains("@JvmInline"));
-        assert!(user_id.unwrap().signature.as_ref().unwrap().contains("value class UserId"));
+        assert!(user_id
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("@JvmInline"));
+        assert!(user_id
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("value class UserId"));
 
         // Value class with validation
         let email = symbols.iter().find(|s| s.name == "Email");
         assert!(email.is_some());
-        assert!(email.unwrap().signature.as_ref().unwrap().contains("value class Email"));
+        assert!(email
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("value class Email"));
     }
 
     #[test]
@@ -654,42 +904,82 @@ fun <K, V> Map<K, V>.getValueOrDefault(key: K, default: () -> V): V {
         // Covariant interface
         let producer = symbols.iter().find(|s| s.name == "Producer");
         assert!(producer.is_some());
-        assert!(producer.unwrap().signature.as_ref().unwrap().contains("interface Producer<out T>"));
+        assert!(producer
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("interface Producer<out T>"));
 
         // Contravariant interface
         let consumer = symbols.iter().find(|s| s.name == "Consumer");
         assert!(consumer.is_some());
-        assert!(consumer.unwrap().signature.as_ref().unwrap().contains("interface Consumer<in T>"));
+        assert!(consumer
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("interface Consumer<in T>"));
 
         // Invariant generic class
         let r#box = symbols.iter().find(|s| s.name == "Box");
         assert!(r#box.is_some());
-        assert!(r#box.unwrap().signature.as_ref().unwrap().contains("class Box<T>"));
+        assert!(r#box
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("class Box<T>"));
 
         // Function with type bounds
         let find_max = symbols.iter().find(|s| s.name == "findMax");
         assert!(find_max.is_some());
-        assert!(find_max.unwrap().signature.as_ref().unwrap().contains("<T : Comparable<T>>"));
+        assert!(find_max
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<T : Comparable<T>>"));
 
         // Function with multiple type constraints
         let copy_when_greater = symbols.iter().find(|s| s.name == "copyWhenGreater");
         assert!(copy_when_greater.is_some());
-        assert!(copy_when_greater.unwrap().signature.as_ref().unwrap().contains("where T : Comparable<T>, T : Number"));
+        assert!(copy_when_greater
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("where T : Comparable<T>, T : Number"));
 
         // Reified generic function
         let create_array = symbols.iter().find(|s| s.name == "createArray");
         assert!(create_array.is_some());
-        assert!(create_array.unwrap().signature.as_ref().unwrap().contains("inline fun <reified T>"));
+        assert!(create_array
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("inline fun <reified T>"));
 
         // Generic class with bounds
         let repository = symbols.iter().find(|s| s.name == "Repository");
         assert!(repository.is_some());
-        assert!(repository.unwrap().signature.as_ref().unwrap().contains("class Repository<T : Any>"));
+        assert!(repository
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("class Repository<T : Any>"));
 
         // Extension function on generic type
         let get_value_or_default = symbols.iter().find(|s| s.name == "getValueOrDefault");
         assert!(get_value_or_default.is_some());
-        assert!(get_value_or_default.unwrap().signature.as_ref().unwrap().contains("fun <K, V> Map<K, V>.getValueOrDefault"));
+        assert!(get_value_or_default
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("fun <K, V> Map<K, V>.getValueOrDefault"));
     }
 
     #[test]
@@ -748,7 +1038,10 @@ class UserRepository : Repository<User> {
         // Property types
         let cache = symbols.iter().find(|s| s.name == "cache");
         assert!(cache.is_some());
-        assert_eq!(types.get(&cache.unwrap().id).unwrap(), "MutableMap<String, Any>");
+        assert_eq!(
+            types.get(&cache.unwrap().id).unwrap(),
+            "MutableMap<String, Any>"
+        );
 
         let is_enabled = symbols.iter().find(|s| s.name == "isEnabled");
         assert!(is_enabled.is_some());
@@ -804,10 +1097,25 @@ sealed class State {
         // Debug: print actual relationships found
         println!("Found {} relationships:", relationships.len());
         for (i, rel) in relationships.iter().enumerate() {
-            println!("  Relationship {}: {} -> {} ({})", i + 1,
-                symbols.iter().find(|s| s.id == rel.from_symbol_id).map(|s| s.name.as_str()).unwrap_or("?"),
-                symbols.iter().find(|s| s.id == rel.to_symbol_id).map(|s| s.name.as_str()).unwrap_or("?"),
-                match rel.kind { crate::extractors::base::RelationshipKind::Extends => "extends", crate::extractors::base::RelationshipKind::Implements => "implements", _ => "other" });
+            println!(
+                "  Relationship {}: {} -> {} ({})",
+                i + 1,
+                symbols
+                    .iter()
+                    .find(|s| s.id == rel.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("?"),
+                symbols
+                    .iter()
+                    .find(|s| s.id == rel.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("?"),
+                match rel.kind {
+                    crate::extractors::base::RelationshipKind::Extends => "extends",
+                    crate::extractors::base::RelationshipKind::Implements => "implements",
+                    _ => "other",
+                }
+            );
         }
 
         // Should find inheritance and interface implementation relationships
@@ -815,33 +1123,65 @@ sealed class State {
 
         // Widget implements Drawable
         let widget_drawable = relationships.iter().find(|r| {
-            r.kind.to_string() == "implements" &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Widget") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Drawable")
+            r.kind.to_string() == "implements"
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Widget")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Drawable")
         });
         assert!(widget_drawable.is_some());
 
         // Button extends Widget
         let button_widget = relationships.iter().find(|r| {
-            r.kind.to_string() == "extends" &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Button") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Widget")
+            r.kind.to_string() == "extends"
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Button")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Widget")
         });
         assert!(button_widget.is_some());
 
         // Button implements Clickable
         let button_clickable = relationships.iter().find(|r| {
-            r.kind.to_string() == "implements" &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Button") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("Clickable")
+            r.kind.to_string() == "implements"
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Button")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Clickable")
         });
         assert!(button_clickable.is_some());
 
         // Success extends State
         let success_state = relationships.iter().find(|r| {
-            r.kind.to_string() == "extends" &&
-            symbols.iter().find(|s| s.id == r.from_symbol_id).map(|s| s.name.as_str()) == Some("Success") &&
-            symbols.iter().find(|s| s.id == r.to_symbol_id).map(|s| s.name.as_str()) == Some("State")
+            r.kind.to_string() == "extends"
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.from_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("Success")
+                && symbols
+                    .iter()
+                    .find(|s| s.id == r.to_symbol_id)
+                    .map(|s| s.name.as_str())
+                    == Some("State")
         });
         assert!(success_state.is_some());
     }

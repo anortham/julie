@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod navigation_tools_tests {
-    use crate::tools::navigation::{FastRefsTool, FastGotoTool};
-    use crate::extractors::base::{Symbol, SymbolKind, Visibility, Relationship, RelationshipKind};
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::tools::navigation::{FastGotoTool, FastRefsTool};
     use std::collections::HashMap;
 
     #[test]
@@ -13,6 +13,7 @@ mod navigation_tools_tests {
             symbol: "test".to_string(),
             include_definition: true,
             limit: 10,
+            workspace: Some("primary".to_string()),
         };
 
         // Create a small number of symbols and relationships
@@ -80,6 +81,7 @@ mod navigation_tools_tests {
             symbol: "popular_function".to_string(),
             include_definition: true,
             limit: 200, // Large limit to test token optimization
+            workspace: Some("primary".to_string()),
         };
 
         // Create many symbols and relationships to trigger token optimization
@@ -128,11 +130,18 @@ mod navigation_tools_tests {
         let result = refs_tool.format_optimized_results(&symbols, &relationships);
 
         // Should contain progressive reduction notice for large responses
-        assert!(result.contains("Applied progressive reduction") || result.contains("Response truncated to stay within token limits"));
+        assert!(
+            result.contains("Applied progressive reduction")
+                || result.contains("Response truncated to stay within token limits")
+        );
 
         // Should contain early references but not all 400
-        assert!(result.contains("very_long_caller_function_with_detailed_name_describing_complex_functionality_1"));
-        assert!(!result.contains("very_long_caller_function_with_detailed_name_describing_complex_functionality_400")); // Last function should be excluded
+        assert!(result.contains(
+            "very_long_caller_function_with_detailed_name_describing_complex_functionality_1"
+        ));
+        assert!(!result.contains(
+            "very_long_caller_function_with_detailed_name_describing_complex_functionality_400"
+        )); // Last function should be excluded
 
         // Should show accurate count (not showing all 400)
         assert!(!result.contains("Showing 400 of 400"));
@@ -144,6 +153,7 @@ mod navigation_tools_tests {
             symbol: "test_symbol".to_string(),
             include_definition: true,
             limit: 50,
+            workspace: Some("primary".to_string()),
         };
 
         // Create 300 references with extremely long file paths and names to trigger token limits
@@ -191,11 +201,14 @@ mod navigation_tools_tests {
 
         // Should apply token optimization - either progressive reduction or early termination
         let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination = result.contains("Response truncated to stay within token limits");
+        let has_early_termination =
+            result.contains("Response truncated to stay within token limits");
         assert!(has_progressive_reduction || has_early_termination);
 
         // Should include first references but may exclude later ones due to token limits
-        assert!(result.contains("extremely_long_reference_symbol_with_very_detailed_descriptive_naming_convention_1"));
+        assert!(result.contains(
+            "extremely_long_reference_symbol_with_very_detailed_descriptive_naming_convention_1"
+        ));
         // Depending on token optimization, may or may not contain the last symbol
     }
 
@@ -206,6 +219,7 @@ mod navigation_tools_tests {
             symbol: "UserService".to_string(),
             context_file: None,
             line_number: None,
+            workspace: Some("primary".to_string()),
         };
 
         // Create a small number of definitions for the symbol
@@ -225,7 +239,10 @@ mod navigation_tools_tests {
                 end_column: 0,
                 start_byte: 0,
                 end_byte: 500,
-                signature: Some(format!("pub struct UserService {{ // Module {} implementation }}", i)),
+                signature: Some(format!(
+                    "pub struct UserService {{ // Module {} implementation }}",
+                    i
+                )),
                 doc_comment: Some(format!("User service for module {}", i)),
                 visibility: Some(Visibility::Public),
                 parent_id: None,
@@ -257,6 +274,7 @@ mod navigation_tools_tests {
             symbol: "CommonUtility".to_string(),
             context_file: None,
             line_number: None,
+            workspace: Some("primary".to_string()),
         };
 
         // Create many definitions across a large codebase to trigger progressive reduction
@@ -294,7 +312,10 @@ mod navigation_tools_tests {
         let result = goto_tool.format_optimized_results(&symbols);
 
         // Should contain progressive reduction notice for large responses
-        assert!(result.contains("Applied progressive reduction") || result.contains("Response truncated to stay within token limits"));
+        assert!(
+            result.contains("Applied progressive reduction")
+                || result.contains("Response truncated to stay within token limits")
+        );
 
         // Should contain early definitions but not all 200
         assert!(result.contains("CommonUtility"));
@@ -311,6 +332,7 @@ mod navigation_tools_tests {
             symbol: "ProcessorInterface".to_string(),
             context_file: Some("src/main.rs".to_string()),
             line_number: Some(42),
+            workspace: Some("primary".to_string()),
         };
 
         // Create 100 definitions with extensive signatures and documentation
@@ -345,7 +367,8 @@ mod navigation_tools_tests {
 
         // Should apply token optimization for large content
         let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination = result.contains("Response truncated to stay within token limits");
+        let has_early_termination =
+            result.contains("Response truncated to stay within token limits");
         assert!(has_progressive_reduction || has_early_termination);
 
         // Should contain some definitions but with context information

@@ -10,7 +10,9 @@ use tree_sitter::Parser;
 /// Initialize JavaScript parser for TypeScript files (Miller used JavaScript parser for TS)
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).expect("Error loading JavaScript grammar");
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .expect("Error loading JavaScript grammar");
     parser
 }
 
@@ -46,11 +48,17 @@ mod typescript_extractor_tests {
         assert!(symbols.len() >= 3);
 
         // Check function declaration
-        let get_user_data_func = symbols.iter()
+        let get_user_data_func = symbols
+            .iter()
             .find(|s| s.name == "getUserDataAsyncAsyncAsyncAsyncAsyncAsync");
         assert!(get_user_data_func.is_some());
         assert_eq!(get_user_data_func.unwrap().kind, SymbolKind::Function);
-        assert!(get_user_data_func.unwrap().signature.as_ref().unwrap().contains("getUserDataAsyncAsyncAsyncAsyncAsyncAsync(id)"));
+        assert!(get_user_data_func
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("getUserDataAsyncAsyncAsyncAsyncAsyncAsync(id)"));
 
         // Check arrow function
         let arrow = symbols.iter().find(|s| s.name == "arrow");
@@ -193,7 +201,8 @@ mod typescript_extractor_tests {
         let relationships = extractor.extract_relationships(&tree, &symbols);
 
         // Should find call relationships
-        let call_relationships: Vec<_> = relationships.iter()
+        let call_relationships: Vec<_> = relationships
+            .iter()
             .filter(|r| r.kind.to_string() == "calls")
             .collect();
         assert!(call_relationships.len() > 0);
@@ -251,7 +260,8 @@ mod typescript_extractor_tests {
         let relationships = extractor.extract_relationships(&tree, &symbols);
 
         // Check extends relationship
-        let extends_rel = relationships.iter()
+        let extends_rel = relationships
+            .iter()
             .find(|r| r.kind.to_string() == "extends");
         assert!(extends_rel.is_some());
     }

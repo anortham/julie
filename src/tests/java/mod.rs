@@ -5,8 +5,8 @@
 //
 // Split into focused test modules for better maintainability:
 
-pub mod package_import_tests;
 pub mod class_tests;
+pub mod package_import_tests;
 // TODO: Add more modules as they are extracted from the large java_tests.rs file
 // pub mod interface_tests;
 // pub mod method_tests;
@@ -31,6 +31,8 @@ use tree_sitter::Parser;
 /// Initialize Java parser (shared across all test modules)
 pub fn init_parser() -> Parser {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_java::LANGUAGE.into()).expect("Error loading Java grammar");
+    parser
+        .set_language(&tree_sitter_java::LANGUAGE.into())
+        .expect("Error loading Java grammar");
     parser
 }

@@ -3,28 +3,27 @@
 // This module provides real-time file monitoring and incremental updates
 // to all three pillars: SQLite database, Tantivy search index, and FastEmbed vectors
 
-use notify::{Watcher, RecursiveMode, Event, EventKind};
-use std::collections::{VecDeque, HashSet};
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-use std::sync::Arc;
+use anyhow::{Context, Result};
 use hex;
+use notify::{Event, EventKind, RecursiveMode, Watcher};
+use std::collections::{HashSet, VecDeque};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::{mpsc, Mutex, RwLock};
-use anyhow::{Result, Context};
-use tracing::{info, debug, warn, error};
+use tracing::{debug, error, info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::search::SearchEngine;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
+use crate::search::SearchEngine;
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<Mutex<SymbolDatabase>>,
     search_index: Arc<RwLock<SearchEngine>>,
-    #[allow(dead_code)]
-    embedding_engine: Arc<EmbeddingEngine>,
+    embedding_engine: Arc<Mutex<EmbeddingEngine>>,
     extractor_manager: Arc<ExtractorManager>,
 
     // Processing queues
@@ -71,7 +70,7 @@ impl IncrementalIndexer {
         workspace_root: PathBuf,
         db: Arc<Mutex<SymbolDatabase>>,
         search_index: Arc<RwLock<SearchEngine>>,
-        embedding_engine: Arc<EmbeddingEngine>,
+        embedding_engine: Arc<Mutex<EmbeddingEngine>>,
         extractor_manager: Arc<ExtractorManager>,
     ) -> Result<Self> {
         let supported_extensions = Self::build_supported_extensions();
@@ -92,7 +91,10 @@ impl IncrementalIndexer {
 
     /// Start watching the workspace for file changes
     pub async fn start_watching(&mut self) -> Result<()> {
-        info!("Starting file watcher for workspace: {}", self.workspace_root.display());
+        info!(
+            "Starting file watcher for workspace: {}",
+            self.workspace_root.display()
+        );
 
         let (tx, mut rx) = mpsc::unbounded_channel::<notify::Result<Event>>();
 
@@ -104,7 +106,8 @@ impl IncrementalIndexer {
         })?;
 
         // Start watching the workspace
-        watcher.watch(&self.workspace_root, RecursiveMode::Recursive)
+        watcher
+            .watch(&self.workspace_root, RecursiveMode::Recursive)
             .context("Failed to start watching workspace")?;
 
         self.watcher = Some(watcher);
@@ -123,8 +126,10 @@ impl IncrementalIndexer {
                             &supported_extensions,
                             &ignore_patterns,
                             index_queue.clone(),
-                            event
-                        ).await {
+                            event,
+                        )
+                        .await
+                        {
                             error!("Error processing file system event: {}", e);
                         }
                     }
@@ -154,7 +159,8 @@ impl IncrementalIndexer {
         match event.kind {
             EventKind::Create(_) => {
                 for path in event.paths {
-                    if Self::should_index_file_static(&path, supported_extensions, ignore_patterns) {
+                    if Self::should_index_file_static(&path, supported_extensions, ignore_patterns)
+                    {
                         let change_event = FileChangeEvent {
                             path: path.clone(),
                             change_type: FileChangeType::Created,
@@ -166,7 +172,8 @@ impl IncrementalIndexer {
             }
             EventKind::Modify(_) => {
                 for path in event.paths {
-                    if Self::should_index_file_static(&path, supported_extensions, ignore_patterns) {
+                    if Self::should_index_file_static(&path, supported_extensions, ignore_patterns)
+                    {
                         let change_event = FileChangeEvent {
                             path: path.clone(),
                             change_type: FileChangeType::Modified,
@@ -199,7 +206,7 @@ impl IncrementalIndexer {
     fn should_index_file_static(
         path: &Path,
         supported_extensions: &HashSet<String>,
-        ignore_patterns: &[glob::Pattern]
+        ignore_patterns: &[glob::Pattern],
     ) -> bool {
         // Check if it's a file
         if !path.is_file() {
@@ -229,7 +236,7 @@ impl IncrementalIndexer {
     /// Static version of queue_file_change for thread safety
     async fn queue_file_change_static(
         index_queue: Arc<Mutex<VecDeque<FileChangeEvent>>>,
-        event: FileChangeEvent
+        event: FileChangeEvent,
     ) {
         debug!("Queueing file change: {:?}", event);
 
@@ -296,7 +303,8 @@ impl IncrementalIndexer {
         info!("Processing file: {}", path.display());
 
         // 1. Read file content and calculate hash
-        let content = tokio::fs::read(&path).await
+        let content = tokio::fs::read(&path)
+            .await
             .context("Failed to read file content")?;
 
         let new_hash = blake3::hash(&content);
@@ -307,7 +315,10 @@ impl IncrementalIndexer {
         if let Some(old_hash_str) = db.get_file_hash(&path_str)? {
             let new_hash_str = hex::encode(new_hash.as_bytes());
             if new_hash_str == old_hash_str {
-                debug!("File {} unchanged (Blake3 hash match), skipping", path.display());
+                debug!(
+                    "File {} unchanged (Blake3 hash match), skipping",
+                    path.display()
+                );
                 return Ok(());
             }
         }
@@ -317,11 +328,16 @@ impl IncrementalIndexer {
         let _language = self.detect_language(&path)?;
         let content_str = String::from_utf8_lossy(&content);
 
-        let symbols = self.extractor_manager
+        let symbols = self
+            .extractor_manager
             .extract_symbols(&path_str, &content_str)
             .await?;
 
-        info!("Extracted {} symbols from {}", symbols.len(), path.display());
+        info!(
+            "Extracted {} symbols from {}",
+            symbols.len(),
+            path.display()
+        );
 
         // 4. Update SQLite database (transactionally) with safeguard against symbol erasure
         let mut db = self.db.lock().await;
@@ -359,11 +375,19 @@ impl IncrementalIndexer {
         search.commit().await?;
         drop(search);
 
-        // 6. Update embeddings
-        // Note: EmbeddingEngine requires &mut self, but we have Arc<EmbeddingEngine>
-        // For now, we'll skip embedding updates to avoid thread safety issues
-        // TODO: Restructure EmbeddingEngine to support concurrent access
-        debug!("Skipping embedding updates for {} symbols from {} (requires architectural changes)", symbols.len(), path_str);
+        // 6. Update embeddings using mutex-protected engine
+        {
+            let mut embedding_engine = self.embedding_engine.lock().await;
+            if let Err(e) = embedding_engine.upsert_file_embeddings(path_str.as_ref(), &symbols) {
+                warn!("Failed to update embeddings for {}: {}", path_str, e);
+            } else {
+                debug!(
+                    "Updated cached embeddings for {} symbol(s) in {}",
+                    symbols.len(),
+                    path_str
+                );
+            }
+        }
 
         info!("Successfully updated all indexes for {}", path.display());
         Ok(())
@@ -388,9 +412,12 @@ impl IncrementalIndexer {
         drop(search);
 
         // Remove from embeddings
-        // Note: Same issue as with updates - EmbeddingEngine requires &mut self
-        // TODO: Restructure EmbeddingEngine to support concurrent access
-        debug!("Skipping embedding removal for {} (requires architectural changes)", path_str);
+        {
+            let mut embedding_engine = self.embedding_engine.lock().await;
+            if let Err(e) = embedding_engine.remove_embeddings_for_file(path_str.as_ref()) {
+                warn!("Failed to remove embeddings for {}: {}", path_str, e);
+            }
+        }
 
         info!("Successfully removed all indexes for {}", path.display());
         Ok(())
@@ -398,7 +425,11 @@ impl IncrementalIndexer {
 
     /// Handle file rename
     async fn handle_file_renamed(&self, from: PathBuf, to: PathBuf) -> Result<()> {
-        info!("Handling file rename: {} -> {}", from.display(), to.display());
+        info!(
+            "Handling file rename: {} -> {}",
+            from.display(),
+            to.display()
+        );
 
         // This is equivalent to delete + create
         self.handle_file_deleted(from).await?;
@@ -437,7 +468,8 @@ impl IncrementalIndexer {
 
     /// Detect programming language from file extension
     fn detect_language(&self, path: &Path) -> Result<String> {
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
 
@@ -474,7 +506,8 @@ impl IncrementalIndexer {
 
     /// Detect language by file extension (static version for testing)
     pub fn detect_language_by_extension(path: &Path) -> Result<String> {
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
 
@@ -510,23 +543,26 @@ impl IncrementalIndexer {
     }
 
     /// Build set of supported file extensions
-    fn build_supported_extensions() -> HashSet<String> {
+    pub(crate) fn build_supported_extensions() -> HashSet<String> {
         [
-            "rs", "ts", "tsx", "js", "jsx", "py", "java", "cs", "cpp", "cxx", "cc", "c", "h",
-            "go", "php", "rb", "swift", "kt", "lua", "gd", "sql", "html", "htm", "css",
-            "vue", "razor", "ps1", "sh", "bash", "zig", "dart"
-        ].iter().map(|s| s.to_string()).collect()
+            "rs", "ts", "tsx", "js", "jsx", "py", "java", "cs", "cpp", "cxx", "cc", "c", "h", "go",
+            "php", "rb", "swift", "kt", "lua", "gd", "sql", "html", "htm", "css", "vue", "razor",
+            "ps1", "sh", "bash", "zig", "dart",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     /// Build ignore patterns for files/directories to skip
-    fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
+    pub(crate) fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
         let patterns = [
             "**/node_modules/**",
             "**/target/**",
             "**/build/**",
             "**/dist/**",
             "**/.git/**",
-            "**/.julie/**",  // Don't watch our own data directory
+            "**/.julie/**", // Don't watch our own data directory
             "**/*.min.js",
             "**/*.bundle.js",
             "**/*.map",
@@ -540,8 +576,12 @@ impl IncrementalIndexer {
             "**/node_modules.nosync/**",
         ];
 
-        patterns.iter()
-            .map(|p| glob::Pattern::new(p).map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e)))
+        patterns
+            .iter()
+            .map(|p| {
+                glob::Pattern::new(p)
+                    .map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e))
+            })
             .collect()
     }
 
@@ -569,83 +609,4 @@ impl IncrementalIndexer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-    use std::fs;
-
-    #[test]
-    fn test_supported_extensions() {
-        let extensions = IncrementalIndexer::build_supported_extensions();
-
-        // Test some key extensions
-        assert!(extensions.contains("rs"));
-        assert!(extensions.contains("ts"));
-        assert!(extensions.contains("py"));
-        assert!(extensions.contains("java"));
-
-        // Test that unsupported extensions are not included
-        assert!(!extensions.contains("txt"));
-        assert!(!extensions.contains("pdf"));
-    }
-
-    #[test]
-    fn test_ignore_patterns() {
-        let patterns = IncrementalIndexer::build_ignore_patterns().unwrap();
-
-        // Test that patterns are created successfully
-        assert!(!patterns.is_empty());
-
-        // Test some key patterns work
-        let node_modules_pattern = patterns.iter()
-            .find(|p| p.as_str().contains("node_modules"))
-            .expect("Should have node_modules pattern");
-
-        assert!(node_modules_pattern.matches("src/node_modules/package.json"));
-        assert!(node_modules_pattern.matches("frontend/node_modules/react/index.js"));
-    }
-
-    #[test]
-    fn test_language_detection() {
-        let temp_dir = TempDir::new().unwrap();
-        let workspace_root = temp_dir.path().to_path_buf();
-
-        // Mock dependencies for test
-        // TODO: Create proper mock objects for dependencies
-
-        let test_files = vec![
-            ("test.rs", "rust"),
-            ("app.ts", "typescript"),
-            ("script.js", "javascript"),
-            ("main.py", "python"),
-            ("App.java", "java"),
-            ("Program.cs", "csharp"),
-        ];
-
-        for (filename, expected_lang) in test_files {
-            let file_path = workspace_root.join(filename);
-            fs::write(&file_path, "// test content").unwrap();
-
-            // Simple test for language detection using just file extensions
-            let result = IncrementalIndexer::detect_language_by_extension(&file_path);
-
-            match result {
-                Ok(lang) => assert_eq!(lang, expected_lang),
-                Err(_) => {} // Skip for now due to missing dependencies
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_file_change_queue() {
-        // This test will verify that file changes are queued and processed correctly
-        // TODO: Implement with proper mocking of dependencies
-    }
-
-    #[tokio::test]
-    async fn test_blake3_change_detection() {
-        // This test will verify that Blake3 hashing correctly detects file changes
-        // TODO: Implement with proper database mocking
-    }
-}
+// Tests moved to `src/tests/watcher_tests.rs`

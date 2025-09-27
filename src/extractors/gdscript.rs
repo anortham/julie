@@ -1,13 +1,15 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
-use std::collections::{HashMap, HashSet};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use serde_json::Value;
+use std::collections::{HashMap, HashSet};
+use tree_sitter::{Node, Tree};
 
 pub struct GDScriptExtractor {
     base: BaseExtractor,
     pending_inheritance: HashMap<String, String>, // className -> baseClassName
-    processed_positions: HashSet<String>, // Track processed node positions
-    current_class_context: Option<String>, // Current class ID for scope tracking
+    processed_positions: HashSet<String>,         // Track processed node positions
+    current_class_context: Option<String>,        // Current class ID for scope tracking
 }
 
 impl GDScriptExtractor {
@@ -39,14 +41,19 @@ impl GDScriptExtractor {
                         let base_class_name = self.base.get_node_text(&type_node);
 
                         // Create implicit class based on file name
-                        let file_name = self.base.file_path
+                        let file_name = self
+                            .base
+                            .file_path
                             .split('/')
                             .last()
                             .unwrap_or("ImplicitClass")
                             .replace(".gd", "");
 
                         let mut metadata = HashMap::new();
-                        metadata.insert("baseClass".to_string(), Value::String(base_class_name.clone()));
+                        metadata.insert(
+                            "baseClass".to_string(),
+                            Value::String(base_class_name.clone()),
+                        );
 
                         let implicit_class = self.base.create_symbol(
                             &child,
@@ -75,7 +82,11 @@ impl GDScriptExtractor {
         symbols
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: &Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         // For now, return empty relationships - this can be extended later
         Vec::new()
     }
@@ -85,13 +96,17 @@ impl GDScriptExtractor {
         for i in 0..node.child_count() {
             if let (Some(current_child), Some(next_child)) = (node.child(i), node.child(i + 1)) {
                 // Check for class_name followed by extends
-                if current_child.kind() == "class_name_statement" && next_child.kind() == "extends_statement" {
+                if current_child.kind() == "class_name_statement"
+                    && next_child.kind() == "extends_statement"
+                {
                     if let (Some(name_node), Some(type_node)) = (
                         self.find_child_by_type(current_child, "name"),
-                        self.find_child_by_type(next_child, "type")
+                        self.find_child_by_type(next_child, "type"),
                     ) {
                         let class_name = self.base.get_node_text(&name_node);
-                        if let Some(identifier_node) = self.find_child_by_type(type_node, "identifier") {
+                        if let Some(identifier_node) =
+                            self.find_child_by_type(type_node, "identifier")
+                        {
                             let base_class_name = self.base.get_node_text(&identifier_node);
                             self.pending_inheritance.insert(class_name, base_class_name);
                         }
@@ -99,13 +114,17 @@ impl GDScriptExtractor {
                 }
 
                 // Check for extends followed by class_name (reverse order)
-                if current_child.kind() == "extends_statement" && next_child.kind() == "class_name_statement" {
+                if current_child.kind() == "extends_statement"
+                    && next_child.kind() == "class_name_statement"
+                {
                     if let (Some(type_node), Some(name_node)) = (
                         self.find_child_by_type(current_child, "type"),
-                        self.find_child_by_type(next_child, "name")
+                        self.find_child_by_type(next_child, "name"),
                     ) {
                         let class_name = self.base.get_node_text(&name_node);
-                        if let Some(identifier_node) = self.find_child_by_type(type_node, "identifier") {
+                        if let Some(identifier_node) =
+                            self.find_child_by_type(type_node, "identifier")
+                        {
                             let base_class_name = self.base.get_node_text(&identifier_node);
                             self.pending_inheritance.insert(class_name, base_class_name);
                         }
@@ -124,7 +143,12 @@ impl GDScriptExtractor {
 
     fn traverse_node(&mut self, node: Node, parent_id: Option<&String>, symbols: &mut Vec<Symbol>) {
         // Create position-based key to prevent double processing
-        let position_key = format!("{}:{}:{}", node.start_position().row, node.start_position().column, node.kind());
+        let position_key = format!(
+            "{}:{}:{}",
+            node.start_position().row,
+            node.start_position().column,
+            node.kind()
+        );
 
         if self.processed_positions.contains(&position_key) {
             return;
@@ -150,8 +174,11 @@ impl GDScriptExtractor {
             }
             "function_definition" => {
                 // Check if we should use the current class context as parent
-                let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
-                if let Some(symbol) = self.extract_function_definition(node, effective_parent_id.as_ref(), symbols) {
+                let effective_parent_id =
+                    self.determine_effective_parent_id(node, parent_id, symbols);
+                if let Some(symbol) =
+                    self.extract_function_definition(node, effective_parent_id.as_ref(), symbols)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -159,16 +186,24 @@ impl GDScriptExtractor {
                 // Skip if this func node is part of a function_definition
                 if let Some(parent) = node.parent() {
                     if parent.kind() != "function_definition" {
-                        let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
-                        if let Some(symbol) = self.extract_function_definition(node, effective_parent_id.as_ref(), symbols) {
+                        let effective_parent_id =
+                            self.determine_effective_parent_id(node, parent_id, symbols);
+                        if let Some(symbol) = self.extract_function_definition(
+                            node,
+                            effective_parent_id.as_ref(),
+                            symbols,
+                        ) {
                             extracted_symbol = Some(symbol);
                         }
                     }
                 }
             }
             "constructor_definition" => {
-                let effective_parent_id = self.determine_effective_parent_id(node, parent_id, symbols);
-                if let Some(symbol) = self.extract_constructor_definition(node, effective_parent_id.as_ref()) {
+                let effective_parent_id =
+                    self.determine_effective_parent_id(node, parent_id, symbols);
+                if let Some(symbol) =
+                    self.extract_constructor_definition(node, effective_parent_id.as_ref())
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -183,7 +218,8 @@ impl GDScriptExtractor {
                 }
             }
             "variable_statement" => {
-                if let Some(symbol) = self.extract_variable_from_statement(node, parent_id, symbols) {
+                if let Some(symbol) = self.extract_variable_from_statement(node, parent_id, symbols)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -231,7 +267,11 @@ impl GDScriptExtractor {
         }
     }
 
-    fn extract_class_name_statement(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_class_name_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         let name_node = self.find_child_by_type(node, "name")?;
         let name = self.base.get_node_text(&name_node);
 
@@ -241,8 +281,9 @@ impl GDScriptExtractor {
             // Look for annotations before this class_name_statement
             for i in 0..parent.child_count() {
                 if let Some(child) = parent.child(i) {
-                    if child.kind() == "class_name_statement" &&
-                       self.base.get_node_text(&child) == self.base.get_node_text(&node) {
+                    if child.kind() == "class_name_statement"
+                        && self.base.get_node_text(&child) == self.base.get_node_text(&node)
+                    {
                         // Found our node, now look backwards for annotations
                         if i > 0 {
                             for j in (0..i).rev() {
@@ -266,7 +307,10 @@ impl GDScriptExtractor {
 
         let mut metadata = HashMap::new();
         if let Some(base_class_name) = self.pending_inheritance.get(&name) {
-            metadata.insert("baseClass".to_string(), Value::String(base_class_name.clone()));
+            metadata.insert(
+                "baseClass".to_string(),
+                Value::String(base_class_name.clone()),
+            );
         }
 
         Some(self.base.create_symbol(
@@ -277,13 +321,21 @@ impl GDScriptExtractor {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.cloned(),
-                metadata: if metadata.is_empty() { None } else { Some(metadata) },
+                metadata: if metadata.is_empty() {
+                    None
+                } else {
+                    Some(metadata)
+                },
                 doc_comment: None,
             },
         ))
     }
 
-    fn extract_class_definition(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_class_definition(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         // For `class` nodes, look for the name node in the parent's children
         let parent_node = node.parent()?;
         let mut name_node: Option<Node> = None;
@@ -329,7 +381,12 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_function_definition(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
+    fn extract_function_definition(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+        symbols: &[Symbol],
+    ) -> Option<Symbol> {
         let (name_node, _func_node, parent_node) = if node.kind() == "function_definition" {
             // Processing function_definition node - find child nodes
             let children = node.children(&mut node.walk()).collect::<Vec<_>>();
@@ -382,26 +439,49 @@ impl GDScriptExtractor {
             // Find the parent symbol to determine context
             if let Some(parent_symbol) = symbols.iter().find(|s| &s.id == parent_id) {
                 if parent_symbol.kind == SymbolKind::Class {
-                    let is_implicit_class = parent_symbol.signature.as_ref()
-                        .map(|s| s.contains("extends") && !s.contains("class_name") && !s.contains("class "))
+                    let is_implicit_class = parent_symbol
+                        .signature
+                        .as_ref()
+                        .map(|s| {
+                            s.contains("extends")
+                                && !s.contains("class_name")
+                                && !s.contains("class ")
+                        })
                         .unwrap_or(false);
 
-                    let is_explicit_class = parent_symbol.signature.as_ref()
+                    let is_explicit_class = parent_symbol
+                        .signature
+                        .as_ref()
                         .map(|s| s.contains("class_name"))
                         .unwrap_or(false);
 
-                    let is_inner_class = parent_symbol.signature.as_ref()
+                    let is_inner_class = parent_symbol
+                        .signature
+                        .as_ref()
                         .map(|s| s.contains("class ") && !s.contains("class_name"))
                         .unwrap_or(false);
 
                     if is_implicit_class {
                         // In implicit classes, only lifecycle callbacks and setget functions are methods
-                        let lifecycle_prefixes = ["_ready", "_enter_tree", "_exit_tree", "_process", "_physics_process",
-                                                "_input", "_unhandled_input", "_unhandled_key_input", "_notification",
-                                                "_draw", "_on_", "_handle_"];
+                        let lifecycle_prefixes = [
+                            "_ready",
+                            "_enter_tree",
+                            "_exit_tree",
+                            "_process",
+                            "_physics_process",
+                            "_input",
+                            "_unhandled_input",
+                            "_unhandled_key_input",
+                            "_notification",
+                            "_draw",
+                            "_on_",
+                            "_handle_",
+                        ];
 
-                        let is_lifecycle_callback = name.starts_with('_') &&
-                            lifecycle_prefixes.iter().any(|prefix| name.starts_with(prefix));
+                        let is_lifecycle_callback = name.starts_with('_')
+                            && lifecycle_prefixes
+                                .iter()
+                                .any(|prefix| name.starts_with(prefix));
 
                         // Check if this function is associated with a property (setget)
                         let is_setget_function = self.is_setget_function(&name, symbols);
@@ -441,7 +521,11 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_constructor_definition(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_constructor_definition(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         let signature = self.base.get_node_text(&node);
 
         Some(self.base.create_symbol(
@@ -458,7 +542,11 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_variable_statement(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_variable_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         let parent_node = node.parent()?;
         let mut name_node = None;
 
@@ -485,12 +573,15 @@ impl GDScriptExtractor {
         let signature = self.base.get_node_text(&parent_node);
 
         // Extract annotations and determine properties
-        let (annotations, full_signature) = self.extract_variable_annotations(parent_node, &signature);
+        let (annotations, full_signature) =
+            self.extract_variable_annotations(parent_node, &signature);
         let is_exported = annotations.iter().any(|a| a.starts_with("@export"));
         let is_onready = annotations.iter().any(|a| a.starts_with("@onready"));
 
         // Determine data type
-        let data_type = self.extract_variable_type(parent_node, &name_node).unwrap_or_else(|| "unknown".to_string());
+        let data_type = self
+            .extract_variable_type(parent_node, &name_node)
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Determine visibility
         let visibility = if is_exported {
@@ -502,7 +593,10 @@ impl GDScriptExtractor {
         let mut metadata = HashMap::new();
         metadata.insert("dataType".to_string(), Value::String(data_type));
         if !annotations.is_empty() {
-            let annotations_json = annotations.iter().map(|a| Value::String(a.clone())).collect::<Vec<_>>();
+            let annotations_json = annotations
+                .iter()
+                .map(|a| Value::String(a.clone()))
+                .collect::<Vec<_>>();
             metadata.insert("annotations".to_string(), Value::Array(annotations_json));
         }
         metadata.insert("isExported".to_string(), Value::Bool(is_exported));
@@ -522,7 +616,11 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_constant_statement(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_constant_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         let parent_node = node.parent()?;
         let mut name_node = None;
 
@@ -549,7 +647,9 @@ impl GDScriptExtractor {
         let signature = self.base.get_node_text(&parent_node);
 
         // Get type annotation
-        let data_type = self.extract_variable_type(parent_node, &name_node).unwrap_or_else(|| "unknown".to_string());
+        let data_type = self
+            .extract_variable_type(parent_node, &name_node)
+            .unwrap_or_else(|| "unknown".to_string());
 
         let mut metadata = HashMap::new();
         metadata.insert("dataType".to_string(), Value::String(data_type));
@@ -568,7 +668,11 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_signal_statement(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_signal_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         let name_node = self.find_child_by_type(node, "name")?;
         let name = self.base.get_node_text(&name_node);
         let signature = self.base.get_node_text(&node);
@@ -587,14 +691,21 @@ impl GDScriptExtractor {
         ))
     }
 
-    fn extract_enum_definition(&mut self, node: Node, parent_id: Option<&String>) -> Option<Symbol> {
+    fn extract_enum_definition(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+    ) -> Option<Symbol> {
         // For enum_definition nodes, find the identifier child directly
         let name = if let Some(name_node) = self.find_child_by_type(node, "identifier") {
             self.base.get_node_text(&name_node)
         } else {
             // Try to extract name from the text pattern: "enum Name { ... }"
             let text = self.base.get_node_text(&node);
-            if let Some(captures) = regex::Regex::new(r"enum\s+(\w+)\s*\{").unwrap().captures(&text) {
+            if let Some(captures) = regex::Regex::new(r"enum\s+(\w+)\s*\{")
+                .unwrap()
+                .captures(&text)
+            {
                 captures.get(1)?.as_str().to_string()
             } else {
                 return None;
@@ -620,7 +731,12 @@ impl GDScriptExtractor {
         Some(enum_symbol)
     }
 
-    fn extract_enum_member(&mut self, node: Node, _parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
+    fn extract_enum_member(
+        &mut self,
+        node: Node,
+        _parent_id: Option<&String>,
+        symbols: &[Symbol],
+    ) -> Option<Symbol> {
         // Check if this identifier is inside an enum by checking the parent chain
         let enum_parent = self.find_enum_parent(node, symbols)?;
 
@@ -654,9 +770,9 @@ impl GDScriptExtractor {
                 // Find the corresponding enum symbol
                 let enum_position = current.start_position();
                 return symbols.iter().find(|s| {
-                    s.kind == SymbolKind::Enum &&
-                    s.start_line == (enum_position.row + 1) as u32 &&
-                    s.start_column == enum_position.column as u32
+                    s.kind == SymbolKind::Enum
+                        && s.start_line == (enum_position.row + 1) as u32
+                        && s.start_column == enum_position.column as u32
                 });
             }
             current = parent;
@@ -664,7 +780,12 @@ impl GDScriptExtractor {
         None
     }
 
-    fn extract_variable_from_statement(&mut self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<Symbol> {
+    fn extract_variable_from_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&String>,
+        symbols: &[Symbol],
+    ) -> Option<Symbol> {
         // For variable_statement nodes, find the var child and extract from there
         let var_node = self.find_child_by_type(node, "var")?;
 
@@ -684,12 +805,23 @@ impl GDScriptExtractor {
         self.extract_variable_statement(var_node, Some(&actual_parent_id))
     }
 
-    fn find_closest_class_name_parent(&self, node: Node, default_parent: Option<&String>, symbols: &[Symbol]) -> Option<String> {
+    fn find_closest_class_name_parent(
+        &self,
+        node: Node,
+        default_parent: Option<&String>,
+        symbols: &[Symbol],
+    ) -> Option<String> {
         let source_parent = node.parent()?;
-        let class_name_classes: Vec<_> = symbols.iter()
-            .filter(|s| s.kind == SymbolKind::Class &&
-                        s.signature.as_ref().map(|sig| sig.contains("class_name")).unwrap_or(false) &&
-                        s.parent_id == default_parent.map(|s| s.clone()))
+        let class_name_classes: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Class
+                    && s.signature
+                        .as_ref()
+                        .map(|sig| sig.contains("class_name"))
+                        .unwrap_or(false)
+                    && s.parent_id == default_parent.map(|s| s.clone())
+            })
             .collect();
 
         if class_name_classes.is_empty() {
@@ -700,9 +832,10 @@ impl GDScriptExtractor {
         let mut var_index = None;
         for i in 0..source_parent.child_count() {
             if let Some(child) = source_parent.child(i) {
-                if child.kind() == "variable_statement" &&
-                   child.start_position().row == node.start_position().row &&
-                   child.start_position().column == node.start_position().column {
+                if child.kind() == "variable_statement"
+                    && child.start_position().row == node.start_position().row
+                    && child.start_position().column == node.start_position().column
+                {
                     var_index = Some(i);
                     break;
                 }
@@ -717,7 +850,9 @@ impl GDScriptExtractor {
                 if child.kind() == "class_name_statement" {
                     if let Some(name_node) = self.find_child_by_type(child, "name") {
                         let class_name = self.base.get_node_text(&name_node);
-                        if let Some(matching_class) = class_name_classes.iter().find(|c| c.name == class_name) {
+                        if let Some(matching_class) =
+                            class_name_classes.iter().find(|c| c.name == class_name)
+                        {
                             return Some(matching_class.id.clone());
                         }
                     }
@@ -728,7 +863,11 @@ impl GDScriptExtractor {
         None
     }
 
-    fn extract_variable_annotations(&self, parent_node: Node, signature: &str) -> (Vec<String>, String) {
+    fn extract_variable_annotations(
+        &self,
+        parent_node: Node,
+        signature: &str,
+    ) -> (Vec<String>, String) {
         let mut annotations = Vec::new();
         let mut full_signature = signature.to_string();
 
@@ -771,7 +910,8 @@ impl GDScriptExtractor {
                             for j in 0..child.child_count() {
                                 if let Some(annotation_child) = child.child(j) {
                                     if annotation_child.kind() == "annotation" {
-                                        let annotation_text = self.base.get_node_text(&annotation_child);
+                                        let annotation_text =
+                                            self.base.get_node_text(&annotation_child);
                                         annotations.push(annotation_text.clone());
                                         annotation_texts.insert(0, annotation_text);
                                     }
@@ -858,7 +998,9 @@ impl GDScriptExtractor {
                 if let Some(callee_node) = self.find_child_by_type(node, "identifier") {
                     let callee_text = self.base.get_node_text(&callee_node);
                     // Common Godot constructors
-                    if ["Vector2", "Vector3", "Color", "Rect2", "Transform2D"].contains(&callee_text.as_str()) {
+                    if ["Vector2", "Vector3", "Color", "Rect2", "Transform2D"]
+                        .contains(&callee_text.as_str())
+                    {
                         return callee_text;
                     }
                 }
@@ -868,7 +1010,12 @@ impl GDScriptExtractor {
         }
     }
 
-    fn determine_effective_parent_id(&self, node: Node, parent_id: Option<&String>, symbols: &[Symbol]) -> Option<String> {
+    fn determine_effective_parent_id(
+        &self,
+        node: Node,
+        parent_id: Option<&String>,
+        symbols: &[Symbol],
+    ) -> Option<String> {
         // If we have a current class context, check if this function should belong to it
         if let Some(class_id) = &self.current_class_context {
             // Find the class symbol to get its context
@@ -877,12 +1024,16 @@ impl GDScriptExtractor {
                 let func_start_col = node.start_position().column as u32;
 
                 // For class_name classes, functions at the same level or slightly indented belong to the class
-                let is_class_name_class = class_symbol.signature.as_ref()
+                let is_class_name_class = class_symbol
+                    .signature
+                    .as_ref()
                     .map(|s| s.contains("class_name"))
                     .unwrap_or(false);
 
                 // For inner classes, functions must be indented more than the class
-                let is_inner_class = class_symbol.signature.as_ref()
+                let is_inner_class = class_symbol
+                    .signature
+                    .as_ref()
                     .map(|s| s.contains("class ") && !s.contains("class_name"))
                     .unwrap_or(false);
 
@@ -918,14 +1069,13 @@ impl GDScriptExtractor {
     fn is_setget_function(&self, function_name: &str, symbols: &[Symbol]) -> bool {
         // Check if this function name appears in any setget property signature
         symbols.iter().any(|s| {
-            s.kind == SymbolKind::Field &&
-            s.signature.as_ref().map_or(false, |sig| {
-                sig.contains("setget") && (
-                    sig.contains(&format!("setget {}", function_name)) ||
-                    sig.contains(&format!(", {}", function_name)) ||
-                    sig.contains(&format!("{}, ", function_name))
-                )
-            })
+            s.kind == SymbolKind::Field
+                && s.signature.as_ref().map_or(false, |sig| {
+                    sig.contains("setget")
+                        && (sig.contains(&format!("setget {}", function_name))
+                            || sig.contains(&format!(", {}", function_name))
+                            || sig.contains(&format!("{}, ", function_name)))
+                })
         })
     }
 }

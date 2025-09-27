@@ -10,12 +10,12 @@
 //! - Efficient indexes for sub-100ms query performance
 
 use anyhow::{anyhow, Result};
-use rusqlite::{Connection, params, Row};
+use rusqlite::{params, Connection, Row};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
-use serde::{Serialize, Deserialize};
 
-use crate::extractors::{Symbol, Relationship, SymbolKind, RelationshipKind};
+use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// The main database connection and operations
 pub struct SymbolDatabase {
@@ -28,10 +28,10 @@ pub struct SymbolDatabase {
 pub struct FileInfo {
     pub path: String,
     pub language: String,
-    pub hash: String,  // Blake3 hash
+    pub hash: String, // Blake3 hash
     pub size: i64,
-    pub last_modified: i64,  // Unix timestamp
-    pub last_indexed: i64,   // Unix timestamp
+    pub last_modified: i64, // Unix timestamp
+    pub last_indexed: i64,  // Unix timestamp
     pub symbol_count: i32,
 }
 
@@ -63,8 +63,8 @@ impl SymbolDatabase {
 
         info!("Initializing SQLite database at: {}", file_path.display());
 
-        let conn = Connection::open(&file_path)
-            .map_err(|e| anyhow!("Failed to open database: {}", e))?;
+        let conn =
+            Connection::open(&file_path).map_err(|e| anyhow!("Failed to open database: {}", e))?;
 
         let mut db = Self { conn, file_path };
         db.initialize_schema()?;
@@ -81,7 +81,9 @@ impl SymbolDatabase {
         self.conn.execute("PRAGMA foreign_keys = ON", [])?;
 
         // Set WAL mode for better concurrency (this returns results, so ignore them)
-        let _ = self.conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        let _ = self
+            .conn
+            .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
 
         // Create tables in dependency order
         self.create_workspaces_table()?;
@@ -332,13 +334,11 @@ impl SymbolDatabase {
 
     /// Get file hash for change detection
     pub fn get_file_hash(&self, file_path: &str) -> Result<Option<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT hash FROM files WHERE path = ?1"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM files WHERE path = ?1")?;
 
-        let result = stmt.query_row(params![file_path], |row| {
-            Ok(row.get::<_, String>(0)?)
-        });
+        let result = stmt.query_row(params![file_path], |row| Ok(row.get::<_, String>(0)?));
 
         match result {
             Ok(hash) => Ok(Some(hash)),
@@ -366,12 +366,14 @@ impl SymbolDatabase {
     /// Delete file record and associated symbols
     pub fn delete_file_record(&self, file_path: &str) -> Result<()> {
         // Symbols will be cascade-deleted due to foreign key constraint
-        let count = self.conn.execute(
-            "DELETE FROM files WHERE path = ?1",
-            params![file_path],
-        )?;
+        let count = self
+            .conn
+            .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
-        debug!("Deleted file record for: {} ({} rows affected)", file_path, count);
+        debug!(
+            "Deleted file record for: {} ({} rows affected)",
+            file_path, count
+        );
         Ok(())
     }
 
@@ -386,7 +388,9 @@ impl SymbolDatabase {
         let tx = self.conn.unchecked_transaction()?;
 
         for symbol in symbols {
-            let metadata_json = symbol.metadata.as_ref()
+            let metadata_json = symbol
+                .metadata
+                .as_ref()
                 .map(|m| serde_json::to_string(m))
                 .transpose()?;
 
@@ -405,7 +409,7 @@ impl SymbolDatabase {
                     symbol.start_line,
                     symbol.start_column, // This matches start_col in table
                     symbol.end_line,
-                    symbol.end_column,   // This matches end_col in table
+                    symbol.end_column, // This matches end_col in table
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
@@ -421,7 +425,11 @@ impl SymbolDatabase {
     }
 
     /// Store relationships in a transaction
-    pub fn store_relationships(&self, relationships: &[Relationship], workspace_id: &str) -> Result<()> {
+    pub fn store_relationships(
+        &self,
+        relationships: &[Relationship],
+        workspace_id: &str,
+    ) -> Result<()> {
         if relationships.is_empty() {
             return Ok(());
         }
@@ -431,7 +439,9 @@ impl SymbolDatabase {
         let tx = self.conn.unchecked_transaction()?;
 
         for rel in relationships {
-            let metadata_json = rel.metadata.as_ref()
+            let metadata_json = rel
+                .metadata
+                .as_ref()
                 .map(|m| serde_json::to_string(m))
                 .transpose()?;
 
@@ -461,12 +471,10 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
-             FROM symbols WHERE id = ?1"
+             FROM symbols WHERE id = ?1",
         )?;
 
-        let result = stmt.query_row(params![id], |row| {
-            self.row_to_symbol(row)
-        });
+        let result = stmt.query_row(params![id], |row| self.row_to_symbol(row));
 
         match result {
             Ok(symbol) => Ok(Some(symbol)),
@@ -482,12 +490,10 @@ impl SymbolDatabase {
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE name = ?1
-             ORDER BY language, file_path"
+             ORDER BY language, file_path",
         )?;
 
-        let symbol_iter = stmt.query_map(params![name], |row| {
-            self.row_to_symbol(row)
-        })?;
+        let symbol_iter = stmt.query_map(params![name], |row| self.row_to_symbol(row))?;
 
         let mut symbols = Vec::new();
         for symbol_result in symbol_iter {
@@ -499,13 +505,19 @@ impl SymbolDatabase {
     }
 
     /// Find symbols by name pattern with workspace filtering
-    pub fn find_symbols_by_pattern(&self, pattern: &str, workspace_ids: Option<Vec<String>>) -> Result<Vec<Symbol>> {
+    pub fn find_symbols_by_pattern(
+        &self,
+        pattern: &str,
+        workspace_ids: Option<Vec<String>>,
+    ) -> Result<Vec<Symbol>> {
         let (query, params) = if let Some(ws_ids) = workspace_ids {
             if ws_ids.is_empty() {
                 return Ok(Vec::new());
             }
 
-            let placeholders = ws_ids.iter().enumerate()
+            let placeholders = ws_ids
+                .iter()
+                .enumerate()
                 .map(|(i, _)| format!("?{}", i + 2))
                 .collect::<Vec<_>>()
                 .join(",");
@@ -535,8 +547,12 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(&query)?;
 
         let symbol_iter = stmt.query_map(
-            params.iter().map(|p| p as &dyn rusqlite::ToSql).collect::<Vec<_>>().as_slice(),
-            |row| self.row_to_symbol(row)
+            params
+                .iter()
+                .map(|p| p as &dyn rusqlite::ToSql)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            |row| self.row_to_symbol(row),
         )?;
 
         let mut symbols = Vec::new();
@@ -544,7 +560,11 @@ impl SymbolDatabase {
             symbols.push(symbol_result?);
         }
 
-        debug!("Found {} symbols matching pattern '{}' with workspace filter", symbols.len(), pattern);
+        debug!(
+            "Found {} symbols matching pattern '{}' with workspace filter",
+            symbols.len(),
+            pattern
+        );
         Ok(symbols)
     }
 
@@ -555,12 +575,10 @@ impl SymbolDatabase {
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE file_path = ?1
-             ORDER BY start_line, start_col"
+             ORDER BY start_line, start_col",
         )?;
 
-        let symbol_iter = stmt.query_map(params![file_path], |row| {
-            self.row_to_symbol(row)
-        })?;
+        let symbol_iter = stmt.query_map(params![file_path], |row| self.row_to_symbol(row))?;
 
         let mut symbols = Vec::new();
         for symbol_result in symbol_iter {
@@ -587,19 +605,21 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
              FROM relationships
-             WHERE from_symbol_id = ?1"
+             WHERE from_symbol_id = ?1",
         )?;
 
-        let rel_iter = stmt.query_map(params![symbol_id], |row| {
-            self.row_to_relationship(row)
-        })?;
+        let rel_iter = stmt.query_map(params![symbol_id], |row| self.row_to_relationship(row))?;
 
         let mut relationships = Vec::new();
         for rel_result in rel_iter {
             relationships.push(rel_result?);
         }
 
-        debug!("Found {} outgoing relationships from symbol '{}'", relationships.len(), symbol_id);
+        debug!(
+            "Found {} outgoing relationships from symbol '{}'",
+            relationships.len(),
+            symbol_id
+        );
         Ok(relationships)
     }
 
@@ -623,38 +643,28 @@ impl SymbolDatabase {
 
     /// Get database statistics
     pub fn get_stats(&self) -> Result<DatabaseStats> {
-        let total_symbols: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols",
-            [],
-            |row| row.get(0)
-        )?;
+        let total_symbols: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
-        let total_relationships: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM relationships",
-            [],
-            |row| row.get(0)
-        )?;
+        let total_relationships: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
 
-        let total_files: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0)
-        )?;
+        let total_files: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
-        let total_embeddings: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM embeddings",
-            [],
-            |row| row.get(0)
-        )?;
+        let total_embeddings: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))?;
 
         // Get unique languages
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT language FROM files ORDER BY language"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT language FROM files ORDER BY language")?;
 
-        let language_iter = stmt.query_map([], |row| {
-            Ok(row.get::<_, String>(0)?)
-        })?;
+        let language_iter = stmt.query_map([], |row| Ok(row.get::<_, String>(0)?))?;
 
         let mut languages = Vec::new();
         for lang_result in language_iter {
@@ -684,8 +694,7 @@ impl SymbolDatabase {
         let kind = SymbolKind::from_string(&kind_str);
 
         let metadata_json: Option<String> = row.get("metadata")?;
-        let metadata = metadata_json
-            .and_then(|json| serde_json::from_str(&json).ok());
+        let metadata = metadata_json.and_then(|json| serde_json::from_str(&json).ok());
 
         Ok(Symbol {
             id: row.get("id")?,
@@ -698,10 +707,10 @@ impl SymbolDatabase {
             start_column: row.get("start_col")?,
             end_line: row.get("end_line")?,
             end_column: row.get("end_col")?,
-            start_byte: 0, // TODO: Add start_byte to database
-            end_byte: 0, // TODO: Add end_byte to database
+            start_byte: 0,     // TODO: Add start_byte to database
+            end_byte: 0,       // TODO: Add end_byte to database
             doc_comment: None, // TODO: Add doc_comment to database
-            visibility: None, // TODO: Add visibility to database
+            visibility: None,  // TODO: Add visibility to database
             parent_id: row.get("parent_id")?,
             metadata,
             semantic_group: row.get("semantic_group")?,
@@ -716,8 +725,7 @@ impl SymbolDatabase {
         let kind = RelationshipKind::from_string(&kind_str);
 
         let metadata_json: Option<String> = row.get("metadata")?;
-        let metadata = metadata_json
-            .and_then(|json| serde_json::from_str(&json).ok());
+        let metadata = metadata_json.and_then(|json| serde_json::from_str(&json).ok());
 
         Ok(Relationship {
             id: row.get("id")?,
@@ -725,7 +733,7 @@ impl SymbolDatabase {
             to_symbol_id: row.get("to_symbol_id")?,
             kind,
             file_path: String::new(), // TODO: Add file_path to relationship storage
-            line_number: 0, // TODO: Add line_number to relationship storage
+            line_number: 0,           // TODO: Add line_number to relationship storage
             confidence: row.get("confidence").unwrap_or(1.0),
             metadata,
         })
@@ -733,15 +741,15 @@ impl SymbolDatabase {
 
     /// Get relationships where the specified symbol is the source (from_symbol_id)
     pub fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
-        let mut stmt = self.conn.prepare("
+        let mut stmt = self.conn.prepare(
+            "
             SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
             FROM relationships
             WHERE from_symbol_id = ?1
-        ")?;
+        ",
+        )?;
 
-        let rows = stmt.query_map([symbol_id], |row| {
-            self.row_to_relationship(row)
-        })?;
+        let rows = stmt.query_map([symbol_id], |row| self.row_to_relationship(row))?;
 
         let mut relationships = Vec::new();
         for row_result in rows {
@@ -753,17 +761,17 @@ impl SymbolDatabase {
 
     /// Get symbols grouped by semantic_group field
     pub fn get_symbols_by_semantic_group(&self, semantic_group: &str) -> Result<Vec<Symbol>> {
-        let mut stmt = self.conn.prepare("
+        let mut stmt = self.conn.prepare(
+            "
             SELECT id, name, kind, language, file_path, signature,
                    start_line, start_col, end_line, end_col, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             WHERE semantic_group = ?1
-        ")?;
+        ",
+        )?;
 
-        let rows = stmt.query_map([semantic_group], |row| {
-            self.row_to_symbol(row)
-        })?;
+        let rows = stmt.query_map([semantic_group], |row| self.row_to_symbol(row))?;
 
         let mut symbols = Vec::new();
         for row_result in rows {
@@ -781,19 +789,19 @@ impl SymbolDatabase {
         let symbols_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM symbols WHERE workspace_id = ?1",
             params![workspace_id],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
 
         let relationships_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM relationships WHERE workspace_id = ?1",
             params![workspace_id],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
 
         let files_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM files WHERE workspace_id = ?1",
             params![workspace_id],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
 
         // Delete all workspace data in proper order (relationships first due to foreign keys)
@@ -823,8 +831,10 @@ impl SymbolDatabase {
             files_deleted: files_count,
         };
 
-        info!("Deleted workspace '{}' data: {} symbols, {} relationships, {} files",
-              workspace_id, symbols_count, relationships_count, files_count);
+        info!(
+            "Deleted workspace '{}' data: {} symbols, {} relationships, {} files",
+            workspace_id, symbols_count, relationships_count, files_count
+        );
 
         Ok(stats)
     }
@@ -840,7 +850,7 @@ impl SymbolDatabase {
              FROM symbols s
              FULL OUTER JOIN files f ON s.workspace_id = f.workspace_id
              GROUP BY COALESCE(s.workspace_id, f.workspace_id)
-             ORDER BY workspace_id"
+             ORDER BY workspace_id",
         )?;
 
         let stats_iter = stmt.query_map([], |row| {
@@ -868,12 +878,10 @@ impl SymbolDatabase {
             "SELECT workspace_id, MAX(last_modified) as last_activity
              FROM files
              GROUP BY workspace_id
-             ORDER BY last_activity ASC"
+             ORDER BY last_activity ASC",
         )?;
 
-        let workspace_iter = stmt.query_map([], |row| {
-            Ok(row.get::<_, String>("workspace_id")?)
-        })?;
+        let workspace_iter = stmt.query_map([], |row| Ok(row.get::<_, String>("workspace_id")?))?;
 
         let mut workspaces = Vec::new();
         for workspace_result in workspace_iter {
@@ -909,10 +917,7 @@ pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
 }
 
 /// Create FileInfo from a file path
-pub fn create_file_info<P: AsRef<Path>>(
-    file_path: P,
-    language: &str,
-) -> Result<FileInfo> {
+pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<FileInfo> {
     let path = file_path.as_ref();
     let metadata = std::fs::metadata(path)?;
     let hash = calculate_file_hash(path)?;
@@ -936,9 +941,9 @@ pub fn create_file_info<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::extractors::SymbolKind;
     use std::collections::HashMap;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_database_creation() {
@@ -962,19 +967,13 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         // Test a simple table creation
-        let result = conn.execute(
-            "CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)",
-            []
-        );
+        let result = conn.execute("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)", []);
 
         // This should work without "Execute returned results" error
         assert!(result.is_ok());
 
         // Test a simple insert
-        let insert_result = conn.execute(
-            "INSERT INTO test VALUES ('1', 'test')",
-            []
-        );
+        let insert_result = conn.execute("INSERT INTO test VALUES ('1', 'test')", []);
         assert!(insert_result.is_ok());
     }
 
@@ -1021,7 +1020,11 @@ mod tests {
 
         // This should work without foreign key constraint error
         let result = db.store_symbols(&[symbol], "test");
-        assert!(result.is_ok(), "Foreign key constraint failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Foreign key constraint failed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1031,23 +1034,42 @@ mod tests {
 
         // Create a SymbolDatabase instance manually to test each table individually
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        let db = SymbolDatabase { conn, file_path: db_path };
+        let db = SymbolDatabase {
+            conn,
+            file_path: db_path,
+        };
 
         // Test files table creation
         let files_result = db.create_files_table();
-        assert!(files_result.is_ok(), "Files table creation failed: {:?}", files_result);
+        assert!(
+            files_result.is_ok(),
+            "Files table creation failed: {:?}",
+            files_result
+        );
 
         // Test symbols table creation
         let symbols_result = db.create_symbols_table();
-        assert!(symbols_result.is_ok(), "Symbols table creation failed: {:?}", symbols_result);
+        assert!(
+            symbols_result.is_ok(),
+            "Symbols table creation failed: {:?}",
+            symbols_result
+        );
 
         // Test relationships table creation
         let relationships_result = db.create_relationships_table();
-        assert!(relationships_result.is_ok(), "Relationships table creation failed: {:?}", relationships_result);
+        assert!(
+            relationships_result.is_ok(),
+            "Relationships table creation failed: {:?}",
+            relationships_result
+        );
 
         // Test embeddings table creation
         let embeddings_result = db.create_embeddings_table();
-        assert!(embeddings_result.is_ok(), "Embeddings table creation failed: {:?}", embeddings_result);
+        assert!(
+            embeddings_result.is_ok(),
+            "Embeddings table creation failed: {:?}",
+            embeddings_result
+        );
     }
 
     #[tokio::test]
@@ -1135,7 +1157,10 @@ mod tests {
         // Create symbol with all new fields populated
         let mut metadata = HashMap::new();
         metadata.insert("isAsync".to_string(), serde_json::Value::Bool(true));
-        metadata.insert("returnType".to_string(), serde_json::Value::String("Promise<User>".to_string()));
+        metadata.insert(
+            "returnType".to_string(),
+            serde_json::Value::String("Promise<User>".to_string()),
+        );
 
         let symbol = Symbol {
             id: "test-symbol-complex".to_string(),
@@ -1172,13 +1197,30 @@ mod tests {
         let retrieved = db.get_symbol_by_id("test-symbol-complex").unwrap().unwrap();
 
         assert_eq!(retrieved.name, "getUserAsync");
-        assert_eq!(retrieved.semantic_group, Some("user-data-access".to_string()));
+        assert_eq!(
+            retrieved.semantic_group,
+            Some("user-data-access".to_string())
+        );
         assert_eq!(retrieved.confidence, Some(0.95));
 
         // Verify metadata is properly stored and retrieved
         let retrieved_metadata = retrieved.metadata.unwrap();
-        assert_eq!(retrieved_metadata.get("isAsync").unwrap().as_bool().unwrap(), true);
-        assert_eq!(retrieved_metadata.get("returnType").unwrap().as_str().unwrap(), "Promise<User>");
+        assert_eq!(
+            retrieved_metadata
+                .get("isAsync")
+                .unwrap()
+                .as_bool()
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            retrieved_metadata
+                .get("returnType")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "Promise<User>"
+        );
     }
 
     #[tokio::test]
@@ -1243,7 +1285,8 @@ mod tests {
             code_context: None,
         };
 
-        db.store_symbols(&[caller_symbol, called_symbol], "test").unwrap();
+        db.store_symbols(&[caller_symbol, called_symbol], "test")
+            .unwrap();
 
         // Create relationship with generated id
         let relationship = crate::extractors::base::Relationship {
@@ -1258,7 +1301,8 @@ mod tests {
         };
 
         // Store the relationship
-        db.store_relationships(&[relationship.clone()], "test").unwrap();
+        db.store_relationships(&[relationship.clone()], "test")
+            .unwrap();
 
         // Retrieve relationships for the from_symbol
         let relationships = db.get_relationships_for_symbol("caller_func").unwrap();
@@ -1346,14 +1390,16 @@ mod tests {
         db.store_file_info(&rust_file_info, "test").unwrap();
 
         // Store both symbols
-        db.store_symbols(&[ts_interface, rust_struct], "test").unwrap();
+        db.store_symbols(&[ts_interface, rust_struct], "test")
+            .unwrap();
 
         // Query symbols by semantic group (this will fail initially - need to implement)
         let grouped_symbols = db.get_symbols_by_semantic_group("user-entity").unwrap();
         assert_eq!(grouped_symbols.len(), 2);
 
         // Verify we have both TypeScript and Rust symbols
-        let languages: std::collections::HashSet<_> = grouped_symbols.iter()
+        let languages: std::collections::HashSet<_> = grouped_symbols
+            .iter()
             .map(|s| s.language.as_str())
             .collect();
         assert!(languages.contains("typescript"));
@@ -1377,12 +1423,19 @@ mod tests {
 
         // This test will initially fail - we need to verify extractors can create symbols
         // with the new field structure that work with the database
-        let base_extractor = BaseExtractor::new("typescript".to_string(), "test.ts".to_string(), source_code.to_string());
+        let base_extractor = BaseExtractor::new(
+            "typescript".to_string(),
+            "test.ts".to_string(),
+            source_code.to_string(),
+        );
 
         // Create a symbol like an extractor would
         let mut metadata = HashMap::new();
         metadata.insert("isAsync".to_string(), serde_json::Value::Bool(false));
-        metadata.insert("returnType".to_string(), serde_json::Value::String("Promise<User>".to_string()));
+        metadata.insert(
+            "returnType".to_string(),
+            serde_json::Value::String("Promise<User>".to_string()),
+        );
 
         let symbol = Symbol {
             id: base_extractor.generate_id("getUserById", 2, 8),
@@ -1402,7 +1455,7 @@ mod tests {
             parent_id: None,
             metadata: Some(metadata),
             semantic_group: None, // Will be populated during cross-language analysis
-            confidence: None, // Will be calculated based on parsing context
+            confidence: None,     // Will be calculated based on parsing context
             code_context: None,
         };
 
@@ -1426,6 +1479,9 @@ mod tests {
         assert!(retrieved.metadata.is_some());
 
         let metadata = retrieved.metadata.unwrap();
-        assert_eq!(metadata.get("returnType").unwrap().as_str().unwrap(), "Promise<User>");
+        assert_eq!(
+            metadata.get("returnType").unwrap().as_str().unwrap(),
+            "Promise<User>"
+        );
     }
 }

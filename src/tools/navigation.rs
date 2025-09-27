@@ -1,13 +1,13 @@
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use rust_mcp_sdk::{macros::mcp_tool};
-use rust_mcp_sdk::macros::JsonSchema;
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use rust_mcp_sdk::macros::mcp_tool;
+use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use crate::extractors::{Relationship, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::extractors::{Symbol, SymbolKind, Relationship};
-use crate::utils::{token_estimation::TokenEstimator, progressive_reduction::ProgressiveReducer};
+use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //*********************//
@@ -47,7 +47,9 @@ pub struct FastGotoTool {
     pub workspace: Option<String>,
 }
 
-fn default_workspace() -> Option<String> { Some("primary".to_string()) }
+fn default_workspace() -> Option<String> {
+    Some("primary".to_string())
+}
 
 impl FastGotoTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -57,7 +59,9 @@ impl FastGotoTool {
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Find symbol definitions
@@ -69,7 +73,9 @@ impl FastGotoTool {
                 💡 Check the symbol name and ensure it exists in the indexed files",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Format results
@@ -99,7 +105,9 @@ impl FastGotoTool {
             message.push('\n');
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -116,7 +124,8 @@ impl FastGotoTool {
 
         // For "all" workspaces, use the existing search engine approach
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
-        let search_engine = handler.search_engine.read().await;
+        let search_engine = handler.active_search_engine().await;
+        let search_engine = search_engine.read().await;
         let mut exact_matches = Vec::new();
 
         // Use indexed search for exact matches - MUCH faster than linear scan!
@@ -129,13 +138,17 @@ impl FastGotoTool {
                         exact_matches.push(search_result.symbol);
                     }
                 }
-                debug!("⚡ Indexed search found {} exact matches", exact_matches.len());
+                debug!(
+                    "⚡ Indexed search found {} exact matches",
+                    exact_matches.len()
+                );
             }
             Err(e) => {
                 debug!("Search engine failed, falling back to linear search: {}", e);
                 // Fallback to linear search only if indexed search fails
                 let symbols = handler.symbols.read().await;
-                exact_matches = symbols.iter()
+                exact_matches = symbols
+                    .iter()
                     .filter(|symbol| symbol.name == self.symbol)
                     .cloned()
                     .collect();
@@ -148,7 +161,8 @@ impl FastGotoTool {
         // Look for symbols that are referenced/imported with this name
         let symbols = handler.symbols.read().await; // Get symbols for relationship lookup
         for relationship in relationships.iter() {
-            if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
+            if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id)
+            {
                 // Check if this relationship represents a definition or import
                 match &relationship.kind {
                     crate::extractors::base::RelationshipKind::Imports => {
@@ -177,17 +191,21 @@ impl FastGotoTool {
 
         // Strategy 3: Cross-language resolution using additional indexed searches
         if exact_matches.is_empty() {
-            debug!("🌍 Attempting cross-language resolution for '{}'", self.symbol);
+            debug!(
+                "🌍 Attempting cross-language resolution for '{}'",
+                self.symbol
+            );
 
             // Use indexed search for naming convention variants instead of O(n) linear scan
             let variants = vec![
                 self.to_snake_case(&self.symbol),
                 self.to_camel_case(&self.symbol),
-                self.to_pascal_case(&self.symbol)
+                self.to_pascal_case(&self.symbol),
             ];
 
             for variant in variants {
-                if variant != self.symbol {  // Avoid duplicate searches
+                if variant != self.symbol {
+                    // Avoid duplicate searches
                     match search_engine.search(&variant).await {
                         Ok(search_results) => {
                             for search_result in search_results {
@@ -208,7 +226,8 @@ impl FastGotoTool {
         // Strategy 4: Semantic matching if still no results
         // TODO: DISABLED - This AI embedding computation on all 2458 symbols was causing UI hangs
         // The expensive O(n) AI processing needs to be optimized or made optional
-        if false && exact_matches.is_empty() { // Disabled for performance
+        if false && exact_matches.is_empty() {
+            // Disabled for performance
             debug!("🧠 Semantic matching temporarily disabled for performance");
             if let Ok(()) = handler.ensure_embedding_engine().await {
                 let mut embedding_guard = handler.embedding_engine.write().await;
@@ -217,9 +236,14 @@ impl FastGotoTool {
                         let symbols = handler.symbols.read().await;
                         for symbol in symbols.iter() {
                             let symbol_text = format!("{} {:?}", symbol.name, symbol.kind);
-                            if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text) {
-                                let similarity = crate::embeddings::cosine_similarity(&query_embedding, &symbol_embedding);
-                                if similarity > 0.7 { // High similarity threshold for definitions
+                            if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text)
+                            {
+                                let similarity = crate::embeddings::cosine_similarity(
+                                    &query_embedding,
+                                    &symbol_embedding,
+                                );
+                                if similarity > 0.7 {
+                                    // High similarity threshold for definitions
                                     exact_matches.push(symbol.clone());
                                 }
                             }
@@ -232,7 +256,9 @@ impl FastGotoTool {
         // Prioritize results
         exact_matches.sort_by(|a, b| {
             // First by definition priority (classes > functions > variables)
-            let priority_cmp = self.definition_priority(&a.kind).cmp(&self.definition_priority(&b.kind));
+            let priority_cmp = self
+                .definition_priority(&a.kind)
+                .cmp(&self.definition_priority(&b.kind));
             if priority_cmp != std::cmp::Ordering::Equal {
                 return priority_cmp;
             }
@@ -258,7 +284,11 @@ impl FastGotoTool {
             std::cmp::Ordering::Equal
         });
 
-        debug!("✅ Found {} definitions for '{}'", exact_matches.len(), self.symbol);
+        debug!(
+            "✅ Found {} definitions for '{}'",
+            exact_matches.len(),
+            self.symbol
+        );
         Ok(exact_matches)
     }
 
@@ -323,12 +353,10 @@ impl FastGotoTool {
 
     /// Format optimized results with token optimization for FastGotoTool
     pub fn format_optimized_results(&self, symbols: &[Symbol]) -> String {
-        use crate::utils::token_estimation::TokenEstimator;
         use crate::utils::progressive_reduction::ProgressiveReducer;
+        use crate::utils::token_estimation::TokenEstimator;
 
-        let mut lines = vec![
-            format!("🎯 Go to Definition: {}", self.symbol),
-        ];
+        let mut lines = vec![format!("🎯 Go to Definition: {}", self.symbol)];
 
         // Add context information if provided
         if let Some(context_file) = &self.context_file {
@@ -340,7 +368,11 @@ impl FastGotoTool {
         }
 
         let count_line_index = lines.len(); // Remember where the count line will be
-        lines.push(format!("📊 Showing {} of {} definitions", symbols.len(), symbols.len()));
+        lines.push(format!(
+            "📊 Showing {} of {} definitions",
+            symbols.len(),
+            symbols.len()
+        ));
         lines.push(String::new());
 
         // Token optimization: apply progressive reduction first, then early termination if needed
@@ -357,9 +389,16 @@ impl FastGotoTool {
         let mut all_items = Vec::new();
         for symbol in symbols {
             let mut item_lines = vec![
-                format!("📍 {} [{}]", symbol.name, format!("{:?}", symbol.kind).to_lowercase()),
+                format!(
+                    "📍 {} [{}]",
+                    symbol.name,
+                    format!("{:?}", symbol.kind).to_lowercase()
+                ),
                 format!("   📄 File: {}", symbol.file_path),
-                format!("   📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+                format!(
+                    "   📍 Location: {}:{}",
+                    symbol.start_line, symbol.start_column
+                ),
             ];
 
             if let Some(signature) = &symbol.signature {
@@ -414,12 +453,16 @@ impl FastGotoTool {
 
         // Try progressive reduction first
         let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+        let reduced_item_refs =
+            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
 
         let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
             // Progressive reduction was applied - update the count line using the correct index
-            lines[count_line_index] = format!("📊 Showing {} of {} definitions - Applied progressive reduction",
-                reduced_item_refs.len(), symbols.len());
+            lines[count_line_index] = format!(
+                "📊 Showing {} of {} definitions - Applied progressive reduction",
+                reduced_item_refs.len(),
+                symbols.len()
+            );
             let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
             (items, true)
         } else {
@@ -454,17 +497,26 @@ impl FastGotoTool {
     }
 
     /// Find definitions using database search with workspace filtering
-    async fn database_find_definitions(&self, handler: &JulieServerHandler, workspace_ids: Vec<String>) -> Result<Vec<Symbol>> {
-        let workspace = handler.get_workspace().await?
+    async fn database_find_definitions(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_ids: Vec<String>,
+    ) -> Result<Vec<Symbol>> {
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
         let db_lock = db.lock().await;
 
         // Find exact matches by name with workspace filtering
-        let mut exact_matches = db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids))?;
+        let mut exact_matches =
+            db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids))?;
 
         // Filter for exact name matches (find_symbols_by_pattern uses LIKE)
         exact_matches.retain(|symbol| symbol.name == self.symbol);
@@ -472,7 +524,9 @@ impl FastGotoTool {
         // Prioritize results
         exact_matches.sort_by(|a, b| {
             // First by definition priority (classes > functions > variables)
-            let priority_cmp = self.definition_priority(&a.kind).cmp(&self.definition_priority(&b.kind));
+            let priority_cmp = self
+                .definition_priority(&a.kind)
+                .cmp(&self.definition_priority(&b.kind));
             if priority_cmp != std::cmp::Ordering::Equal {
                 return priority_cmp;
             }
@@ -492,27 +546,34 @@ impl FastGotoTool {
             a.file_path.cmp(&b.file_path)
         });
 
-        debug!("🗄️ Database find definitions returned {} results", exact_matches.len());
+        debug!(
+            "🗄️ Database find definitions returned {} results",
+            exact_matches.len()
+        );
         Ok(exact_matches)
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs
-    async fn resolve_workspace_filter(&self, handler: &JulieServerHandler) -> Result<Option<Vec<String>>> {
+    async fn resolve_workspace_filter(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Option<Vec<String>>> {
         let workspace_param = self.workspace.as_deref().unwrap_or("primary");
 
         match workspace_param {
             "all" => {
                 // Search across all workspaces - return None to indicate no filtering
                 Ok(None)
-            },
+            }
             "primary" => {
                 // Search only primary workspace
                 Ok(Some(vec!["primary".to_string()]))
-            },
+            }
             workspace_id => {
                 // Validate the workspace ID exists
                 if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+                    let registry_service =
+                        WorkspaceRegistryService::new(primary_workspace.root.clone());
 
                     // Check if it's a valid workspace ID
                     match registry_service.get_workspace(workspace_id).await? {
@@ -526,7 +587,9 @@ impl FastGotoTool {
                         }
                     }
                 } else {
-                    return Err(anyhow::anyhow!("No primary workspace found. Initialize workspace first."));
+                    return Err(anyhow::anyhow!(
+                        "No primary workspace found. Initialize workspace first."
+                    ));
                 }
             }
         }
@@ -566,9 +629,15 @@ pub struct FastRefsTool {
     pub workspace: Option<String>,
 }
 
-fn default_true() -> bool { true }
-fn default_limit() -> u32 { 50 }
-fn default_workspace_refs() -> Option<String> { Some("primary".to_string()) }
+fn default_true() -> bool {
+    true
+}
+fn default_limit() -> u32 {
+    50
+}
+fn default_workspace_refs() -> Option<String> {
+    Some("primary".to_string())
+}
 
 impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -578,7 +647,9 @@ impl FastRefsTool {
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Find references
@@ -590,22 +661,33 @@ impl FastRefsTool {
                 💡 Check the symbol name and ensure it exists in the indexed files",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Use token-optimized formatting
         let message = self.format_optimized_results(&definitions, &references);
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
-    async fn find_references_and_definitions(&self, handler: &JulieServerHandler) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-        debug!("🔍 Searching for references to '{}' using indexed search", self.symbol);
+    async fn find_references_and_definitions(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
+        debug!(
+            "🔍 Searching for references to '{}' using indexed search",
+            self.symbol
+        );
 
         // Get required data from handler
         let relationships = handler.relationships.read().await;
 
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
-        let search_engine = handler.search_engine.read().await;
+        let search_engine = handler.active_search_engine().await;
+        let search_engine = search_engine.read().await;
         let mut definitions = Vec::new();
 
         // Use indexed search for exact matches - MUCH faster than linear scan!
@@ -618,7 +700,10 @@ impl FastRefsTool {
                         definitions.push(search_result.symbol);
                     }
                 }
-                debug!("⚡ Indexed search found {} exact matches", definitions.len());
+                debug!(
+                    "⚡ Indexed search found {} exact matches",
+                    definitions.len()
+                );
             }
             Err(e) => {
                 debug!("Search engine failed, falling back to linear search: {}", e);
@@ -636,11 +721,12 @@ impl FastRefsTool {
         let variants = vec![
             self.to_snake_case(&self.symbol),
             self.to_camel_case(&self.symbol),
-            self.to_pascal_case(&self.symbol)
+            self.to_pascal_case(&self.symbol),
         ];
 
         for variant in variants {
-            if variant != self.symbol {  // Avoid duplicate searches
+            if variant != self.symbol {
+                // Avoid duplicate searches
                 match search_engine.search(&variant).await {
                     Ok(search_results) => {
                         for search_result in search_results {
@@ -663,7 +749,8 @@ impl FastRefsTool {
 
         // Strategy 2: Find direct relationships - REFERENCES TO this symbol (not FROM it)
         let symbol_ids: Vec<String> = definitions.iter().map(|s| s.id.clone()).collect();
-        let mut references: Vec<Relationship> = relationships.iter()
+        let mut references: Vec<Relationship> = relationships
+            .iter()
             .filter(|rel| {
                 // INFLATION FIX: Only count relationships where target is REFERENCED (to_symbol_id)
                 // NOT where target does the referencing (from_symbol_id)
@@ -679,7 +766,10 @@ impl FastRefsTool {
         // Sort references by confidence and location
         references.sort_by(|a, b| {
             // First by confidence (descending)
-            let conf_cmp = b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal);
+            let conf_cmp = b
+                .confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal);
             if conf_cmp != std::cmp::Ordering::Equal {
                 return conf_cmp;
             }
@@ -692,7 +782,12 @@ impl FastRefsTool {
             a.line_number.cmp(&b.line_number)
         });
 
-        debug!("✅ Found {} definitions and {} references for '{}'", definitions.len(), references.len(), self.symbol);
+        debug!(
+            "✅ Found {} definitions and {} references for '{}'",
+            definitions.len(),
+            references.len(),
+            self.symbol
+        );
 
         Ok((definitions, references))
     }
@@ -747,10 +842,12 @@ impl FastRefsTool {
     }
 
     /// Format optimized results with token optimization for FastRefsTool
-    pub fn format_optimized_results(&self, symbols: &[Symbol], relationships: &[Relationship]) -> String {
-        let mut lines = vec![
-            format!("🔗 References for: '{}'", self.symbol),
-        ];
+    pub fn format_optimized_results(
+        &self,
+        symbols: &[Symbol],
+        relationships: &[Relationship],
+    ) -> String {
+        let mut lines = vec![format!("🔗 References for: '{}'", self.symbol)];
 
         // Token optimization: apply progressive reduction first, then early termination if needed
         let token_estimator = TokenEstimator::new();
@@ -768,7 +865,8 @@ impl FastRefsTool {
         // Add definitions if included
         if self.include_definition && !symbols.is_empty() {
             for symbol in symbols {
-                all_items.push(format!("📍 Definition: {} [{}] - {}:{}:{}",
+                all_items.push(format!(
+                    "📍 Definition: {} [{}] - {}:{}:{}",
                     symbol.name,
                     format!("{:?}", symbol.kind).to_lowercase(),
                     symbol.file_path,
@@ -780,7 +878,8 @@ impl FastRefsTool {
 
         // Add references
         for relationship in relationships {
-            all_items.push(format!("🔗 Reference: {} - {}:{} (confidence: {:.2})",
+            all_items.push(format!(
+                "🔗 Reference: {} - {}:{} (confidence: {:.2})",
                 self.symbol,
                 relationship.file_path,
                 relationship.line_number,
@@ -799,20 +898,25 @@ impl FastRefsTool {
 
         // Try progressive reduction first
         let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+        let reduced_item_refs =
+            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
 
         let (items_to_show, reduction_message) = if reduced_item_refs.len() < all_items.len() {
             // Progressive reduction was applied
             let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
             let total_items = symbols.len() + relationships.len();
-            let message = format!("📊 Showing {} of {} results - Applied progressive reduction {} → {}",
-                    items.len(), total_items, all_items.len(), items.len());
+            let message = format!(
+                "📊 Showing {} of {} results - Applied progressive reduction {} → {}",
+                items.len(),
+                total_items,
+                all_items.len(),
+                items.len()
+            );
             (items, message)
         } else {
             // No reduction needed
             let total_items = symbols.len() + relationships.len();
-            let message = format!("📊 Showing {} of {} results",
-                    all_items.len(), total_items);
+            let message = format!("📊 Showing {} of {} results", all_items.len(), total_items);
             (all_items, message)
         };
 

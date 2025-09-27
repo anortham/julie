@@ -3,10 +3,10 @@
 //! This module contains bulletproof tests to ensure FastEditTool never corrupts files.
 //! Uses control/target/test pattern with diffmatchpatch verification for safety.
 
+use crate::tools::FastEditTool;
+use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
-use crate::tools::FastEditTool;
 // use crate::handler::JulieServerHandler;  // Currently unused
 
 /// Test case structure for comprehensive editing verification
@@ -53,8 +53,10 @@ fn setup_test_environment() -> Result<PathBuf> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // Create unique temp directory for each test run to avoid conflicts
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
-        .unwrap_or_default().as_nanos();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let temp_dir = std::env::temp_dir().join(format!("julie_editing_tests_{}", timestamp));
 
     if temp_dir.exists() {
@@ -88,7 +90,10 @@ fn load_target_file(target_file: &str) -> Result<String> {
 /// Verify edit result matches target exactly using diffy
 fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &str) -> Result<()> {
     if result_content == expected_content {
-        println!("✅ PERFECT MATCH: {} - Edit result matches target exactly", test_name);
+        println!(
+            "✅ PERFECT MATCH: {} - Edit result matches target exactly",
+            test_name
+        );
         return Ok(());
     }
 
@@ -100,7 +105,8 @@ fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &
         🚨 FILE CORRUPTION DETECTED! Edit result does not match expected target.\n\
         \n📊 Detailed Diff:\n{}\n\
         \n⚠️ This is a CRITICAL safety failure - FastEditTool would have corrupted the file!",
-        test_name, patch
+        test_name,
+        patch
     ));
 }
 
@@ -113,18 +119,27 @@ mod comprehensive_editing_tests {
     #[tokio::test]
     async fn test_all_editing_scenarios_comprehensive() -> Result<()> {
         println!("🧪 Starting comprehensive editing safety tests...");
-        println!("🛡️ Testing {} scenarios for file corruption prevention", EDITING_TEST_CASES.len());
+        println!(
+            "🛡️ Testing {} scenarios for file corruption prevention",
+            EDITING_TEST_CASES.len()
+        );
 
         let temp_dir = setup_test_environment()?;
         let mut passed_tests = 0;
-        let failed_tests = 0;  // TODO: Implement proper error counting
+        let failed_tests = 0; // TODO: Implement proper error counting
 
         for test_case in EDITING_TEST_CASES {
-            println!("\n🎯 Testing: {} - {}", test_case.name, test_case.description);
+            println!(
+                "\n🎯 Testing: {} - {}",
+                test_case.name, test_case.description
+            );
 
             match run_single_editing_test(test_case, &temp_dir).await {
                 Ok(_) => {
-                    println!("✅ PASSED: {} - No file corruption detected", test_case.name);
+                    println!(
+                        "✅ PASSED: {} - No file corruption detected",
+                        test_case.name
+                    );
                     passed_tests += 1;
                 }
                 Err(e) => {
@@ -135,7 +150,9 @@ mod comprehensive_editing_tests {
                     return Err(anyhow::anyhow!(
                         "🚨 CRITICAL EDITING FAILURE: Test '{}' detected file corruption!\n\
                         This is unacceptable for a production editing tool.\n\
-                        Error: {}", test_case.name, e
+                        Error: {}",
+                        test_case.name,
+                        e
                     ));
                 }
             }
@@ -168,7 +185,7 @@ mod comprehensive_editing_tests {
             file_path: test_file_path.to_string_lossy().to_string(),
             find_text: test_case.find_text.to_string(),
             replace_text: test_case.replace_text.to_string(),
-            mode: None,  // Single file mode (original behavior)
+            mode: None, // Single file mode (original behavior)
             language: None,
             file_pattern: None,
             limit: None,
@@ -184,10 +201,14 @@ mod comprehensive_editing_tests {
 
         // Perform the replacement (same logic as FastEditTool)
         if !original_content.contains(&edit_tool.find_text) {
-            return Err(anyhow::anyhow!("Find text '{}' not found in control file", edit_tool.find_text));
+            return Err(anyhow::anyhow!(
+                "Find text '{}' not found in control file",
+                edit_tool.find_text
+            ));
         }
 
-        let modified_content = original_content.replace(&edit_tool.find_text, &edit_tool.replace_text);
+        let modified_content =
+            original_content.replace(&edit_tool.find_text, &edit_tool.replace_text);
 
         // Write the result
         fs::write(&test_file_path, &modified_content)?;
@@ -269,9 +290,15 @@ mod comprehensive_editing_tests {
         fs::write(&backup_path, original_content)?;
 
         // Verify backup exists and matches original
-        assert!(Path::new(&backup_path).exists(), "Backup file should be created");
+        assert!(
+            Path::new(&backup_path).exists(),
+            "Backup file should be created"
+        );
         let backup_content = fs::read_to_string(&backup_path)?;
-        assert_eq!(backup_content, original_content, "Backup should match original exactly");
+        assert_eq!(
+            backup_content, original_content,
+            "Backup should match original exactly"
+        );
 
         println!("✅ Backup creation safety verified");
         Ok(())
@@ -314,7 +341,10 @@ fn main() {
         let modified = rust_content.replace("}", "");
         let validation_result = validate_brace_balance(&modified);
 
-        assert!(validation_result.is_err(), "Validation should catch brace imbalance");
+        assert!(
+            validation_result.is_err(),
+            "Validation should catch brace imbalance"
+        );
 
         println!("✅ Validation correctly prevents corruption");
         Ok(())

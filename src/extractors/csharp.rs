@@ -14,10 +14,10 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Relationship, RelationshipKind, Visibility
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
-use tree_sitter::{Tree, Node};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// C# extractor using tree-sitter-c-sharp parser
 pub struct CSharpExtractor {
@@ -84,7 +84,8 @@ impl CSharpExtractor {
     /// Extract namespace - port of Miller's extractNamespace
     fn extract_namespace(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor)
+        let name_node = node
+            .children(&mut cursor)
             .find(|c| c.kind() == "qualified_name" || c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
@@ -97,14 +98,20 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Namespace, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Namespace, options),
+        )
     }
 
     /// Extract using statement - port of Miller's extractUsing
     fn extract_using(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
         let name_node = node.children(&mut cursor).find(|c| {
-            matches!(c.kind(), "qualified_name" | "identifier" | "member_access_expression")
+            matches!(
+                c.kind(),
+                "qualified_name" | "identifier" | "member_access_expression"
+            )
         })?;
 
         let full_using_path = self.base.get_node_text(&name_node);
@@ -114,11 +121,14 @@ impl CSharpExtractor {
 
         // Check for alias (using alias = namespace)
         let mut cursor2 = node.walk();
-        let alias_node = node.children(&mut cursor2).find(|c| c.kind() == "name_equals");
+        let alias_node = node
+            .children(&mut cursor2)
+            .find(|c| c.kind() == "name_equals");
         let name = if let Some(alias_node) = alias_node {
             // Extract alias name
             let mut alias_cursor = alias_node.walk();
-            let alias_identifier = alias_node.children(&mut alias_cursor)
+            let alias_identifier = alias_node
+                .children(&mut alias_cursor)
                 .find(|c| c.kind() == "identifier");
             if let Some(alias_identifier) = alias_identifier {
                 self.base.get_node_text(&alias_identifier)
@@ -127,7 +137,11 @@ impl CSharpExtractor {
             }
         } else {
             // Extract the last part of the namespace for the symbol name
-            full_using_path.split('.').last().unwrap_or(&full_using_path).to_string()
+            full_using_path
+                .split('.')
+                .last()
+                .unwrap_or(&full_using_path)
+                .to_string()
         };
 
         let signature = if is_static {
@@ -143,13 +157,18 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Import, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Import, options),
+        )
     }
 
     /// Extract class - port of Miller's extractClass
     fn extract_class(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
@@ -164,7 +183,10 @@ impl CSharpExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(&node) {
-            signature = signature.replace(&format!("class {}", name), &format!("class {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("class {}", name),
+                &format!("class {}{}", name, type_params),
+            );
         }
 
         // Check for inheritance and implementations
@@ -175,7 +197,8 @@ impl CSharpExtractor {
 
         // Handle where clauses (type parameter constraints)
         let mut node_cursor = node.walk();
-        let where_clauses: Vec<String> = node.children(&mut node_cursor)
+        let where_clauses: Vec<String> = node
+            .children(&mut node_cursor)
             .filter(|c| c.kind() == "type_parameter_constraints_clause")
             .map(|clause| self.base.get_node_text(&clause))
             .collect();
@@ -187,7 +210,10 @@ impl CSharpExtractor {
         // Store actual C# visibility in metadata for internal classes
         let mut metadata = std::collections::HashMap::new();
         let csharp_visibility = self.get_csharp_visibility_string(&modifiers);
-        metadata.insert("csharp_visibility".to_string(), serde_json::Value::String(csharp_visibility));
+        metadata.insert(
+            "csharp_visibility".to_string(),
+            serde_json::Value::String(csharp_visibility),
+        );
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -197,13 +223,18 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
     /// Extract interface - port of Miller's extractInterface
     fn extract_interface(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
@@ -218,7 +249,10 @@ impl CSharpExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(&node) {
-            signature = signature.replace(&format!("interface {}", name), &format!("interface {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("interface {}", name),
+                &format!("interface {}{}", name, type_params),
+            );
         }
 
         // Check for interface inheritance
@@ -229,7 +263,8 @@ impl CSharpExtractor {
 
         // Handle where clauses (type parameter constraints)
         let mut node_cursor = node.walk();
-        let where_clauses: Vec<String> = node.children(&mut node_cursor)
+        let where_clauses: Vec<String> = node
+            .children(&mut node_cursor)
             .filter(|c| c.kind() == "type_parameter_constraints_clause")
             .map(|clause| self.base.get_node_text(&clause))
             .collect();
@@ -245,13 +280,18 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Interface, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Interface, options),
+        )
     }
 
     /// Extract struct - port of Miller's extractStruct
     fn extract_struct(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
@@ -266,7 +306,10 @@ impl CSharpExtractor {
 
         // Handle generic type parameters
         if let Some(type_params) = self.extract_type_parameters(&node) {
-            signature = signature.replace(&format!("struct {}", name), &format!("struct {}{}", name, type_params));
+            signature = signature.replace(
+                &format!("struct {}", name),
+                &format!("struct {}{}", name, type_params),
+            );
         }
 
         // Check for interface implementations
@@ -282,13 +325,18 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Struct, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Struct, options),
+        )
     }
 
     /// Extract enum - port of Miller's extractEnum
     fn extract_enum(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
@@ -314,13 +362,18 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Enum, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Enum, options),
+        )
     }
 
     /// Extract enum member - port of Miller's extractEnumMember
     fn extract_enum_member(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
 
@@ -347,7 +400,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::EnumMember, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::EnumMember, options),
+        )
     }
 
     /// Extract method - port of Miller's extractMethod
@@ -368,7 +424,9 @@ impl CSharpExtractor {
         let visibility = self.determine_visibility(&modifiers, None);
 
         // Get return type
-        let return_type = self.extract_return_type(&node).unwrap_or_else(|| "void".to_string());
+        let return_type = self
+            .extract_return_type(&node)
+            .unwrap_or_else(|| "void".to_string());
 
         // Get parameters
         let param_list = children.iter().find(|c| c.kind() == "parameter_list");
@@ -385,19 +443,26 @@ impl CSharpExtractor {
         } else {
             format!("{} ", modifiers.join(" "))
         };
-        let type_param_str = type_params.as_ref()
+        let type_param_str = type_params
+            .as_ref()
             .map(|tp| format!("{} ", tp))
             .unwrap_or_default();
-        let mut signature = format!("{}{}{} {}{}", modifier_str, type_param_str, return_type, name, params);
+        let mut signature = format!(
+            "{}{}{} {}{}",
+            modifier_str, type_param_str, return_type, name, params
+        );
 
         // Handle expression-bodied method (=> expression)
-        let arrow_clause = children.iter().find(|c| c.kind() == "arrow_expression_clause");
+        let arrow_clause = children
+            .iter()
+            .find(|c| c.kind() == "arrow_expression_clause");
         if let Some(arrow_clause) = arrow_clause {
             signature += &format!(" {}", self.base.get_node_text(arrow_clause));
         }
 
         // Handle where clauses (type parameter constraints)
-        let where_clauses: Vec<String> = children.iter()
+        let where_clauses: Vec<String> = children
+            .iter()
             .filter(|c| c.kind() == "type_parameter_constraints_clause")
             .map(|clause| self.base.get_node_text(clause))
             .collect();
@@ -413,20 +478,27 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     /// Extract constructor - port of Miller's extractConstructor
     fn extract_constructor(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
         let visibility = self.determine_visibility(&modifiers, Some("constructor_declaration"));
 
         // Get parameters
-        let param_list = node.children(&mut cursor).find(|c| c.kind() == "parameter_list");
+        let param_list = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "parameter_list");
         let params = param_list
             .map(|p| self.base.get_node_text(&p))
             .unwrap_or_else(|| "()".to_string());
@@ -445,28 +517,39 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Constructor, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Constructor, options),
+        )
     }
 
     /// Extract property - port of Miller's extractProperty
     fn extract_property(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
         let visibility = self.determine_visibility(&modifiers, None);
 
         // Get property type
-        let prop_type = self.extract_property_type(&node).unwrap_or_else(|| "var".to_string());
+        let prop_type = self
+            .extract_property_type(&node)
+            .unwrap_or_else(|| "var".to_string());
 
         // Get accessor list (get/set)
-        let accessor_list = node.children(&mut cursor).find(|c| c.kind() == "accessor_list");
+        let accessor_list = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "accessor_list");
         let accessors = if let Some(accessor_list) = accessor_list {
             format!(" {}", self.base.get_node_text(&accessor_list))
         } else {
             // Expression-bodied property
-            let arrow_clause = node.children(&mut cursor).find(|c| c.kind() == "arrow_expression_clause");
+            let arrow_clause = node
+                .children(&mut cursor)
+                .find(|c| c.kind() == "arrow_expression_clause");
             if let Some(arrow_clause) = arrow_clause {
                 format!(" {}", self.base.get_node_text(&arrow_clause))
             } else {
@@ -478,7 +561,13 @@ impl CSharpExtractor {
         let signature = if modifiers.is_empty() {
             format!("{} {}{}", prop_type, name, accessors)
         } else {
-            format!("{} {} {}{}", modifiers.join(" "), prop_type, name, accessors)
+            format!(
+                "{} {} {}{}",
+                modifiers.join(" "),
+                prop_type,
+                name,
+                accessors
+            )
         };
 
         let options = SymbolOptions {
@@ -488,7 +577,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Property, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Property, options),
+        )
     }
 
     /// Extract field - port of Miller's extractField
@@ -497,27 +589,35 @@ impl CSharpExtractor {
         let visibility = self.determine_visibility(&modifiers, None);
 
         // Get field type
-        let field_type = self.extract_field_type(&node).unwrap_or_else(|| "var".to_string());
+        let field_type = self
+            .extract_field_type(&node)
+            .unwrap_or_else(|| "var".to_string());
 
         // Get variable declaration and then variable declarator(s)
         let mut cursor = node.walk();
-        let var_declaration = node.children(&mut cursor).find(|c| c.kind() == "variable_declaration")?;
+        let var_declaration = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "variable_declaration")?;
 
         let mut var_cursor = var_declaration.walk();
-        let declarators: Vec<Node> = var_declaration.children(&mut var_cursor)
+        let declarators: Vec<Node> = var_declaration
+            .children(&mut var_cursor)
             .filter(|c| c.kind() == "variable_declarator")
             .collect();
 
         // For now, handle the first declarator (we could extend to handle multiple)
         let declarator = declarators.first()?;
         let mut decl_cursor = declarator.walk();
-        let name_node = declarator.children(&mut decl_cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = declarator
+            .children(&mut decl_cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
 
         // Check if it's a constant (const or static readonly)
-        let is_constant = modifiers.contains(&"const".to_string()) ||
-            (modifiers.contains(&"static".to_string()) && modifiers.contains(&"readonly".to_string()));
+        let is_constant = modifiers.contains(&"const".to_string())
+            || (modifiers.contains(&"static".to_string())
+                && modifiers.contains(&"readonly".to_string()));
         let symbol_kind = if is_constant {
             SymbolKind::Constant
         } else {
@@ -526,7 +626,8 @@ impl CSharpExtractor {
 
         // Get initializer if present
         let children: Vec<Node> = declarator.children(&mut decl_cursor).collect();
-        let initializer = if let Some(equals_index) = children.iter().position(|c| c.kind() == "=") {
+        let initializer = if let Some(equals_index) = children.iter().position(|c| c.kind() == "=")
+        {
             if equals_index + 1 < children.len() {
                 let init_nodes: Vec<String> = children[equals_index + 1..]
                     .iter()
@@ -549,7 +650,13 @@ impl CSharpExtractor {
         let signature = if modifiers.is_empty() {
             format!("{} {}{}", field_type, name, initializer)
         } else {
-            format!("{} {} {}{}", modifiers.join(" "), field_type, name, initializer)
+            format!(
+                "{} {} {}{}",
+                modifiers.join(" "),
+                field_type,
+                name,
+                initializer
+            )
         };
 
         let options = SymbolOptions {
@@ -567,20 +674,27 @@ impl CSharpExtractor {
         // For event_field_declaration, the structure is:
         // modifier* event variable_declaration
         let mut cursor = node.walk();
-        let var_declaration = node.children(&mut cursor).find(|c| c.kind() == "variable_declaration")?;
+        let var_declaration = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "variable_declaration")?;
 
         let mut var_cursor = var_declaration.walk();
-        let var_declarator = var_declaration.children(&mut var_cursor).find(|c| c.kind() == "variable_declarator")?;
+        let var_declarator = var_declaration
+            .children(&mut var_cursor)
+            .find(|c| c.kind() == "variable_declarator")?;
 
         let mut decl_cursor = var_declarator.walk();
-        let name_node = var_declarator.children(&mut decl_cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = var_declarator
+            .children(&mut decl_cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
         let visibility = self.determine_visibility(&modifiers, None);
 
         // Get event type (first child of variable_declaration that's not variable_declarator)
-        let type_node = var_declaration.children(&mut var_cursor)
+        let type_node = var_declaration
+            .children(&mut var_cursor)
             .find(|c| c.kind() != "variable_declarator");
         let event_type = type_node
             .map(|node| self.base.get_node_text(&node))
@@ -600,7 +714,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Event, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Event, options),
+        )
     }
 
     /// Extract delegate - port of Miller's extractDelegate
@@ -639,7 +756,10 @@ impl CSharpExtractor {
         // Get return type - for delegates, it's the first type-like node after 'delegate'
         let mut return_type = "void".to_string();
         for child in &children[delegate_index + 1..] {
-            if matches!(child.kind(), "predefined_type" | "identifier" | "qualified_name" | "generic_name") {
+            if matches!(
+                child.kind(),
+                "predefined_type" | "identifier" | "qualified_name" | "generic_name"
+            ) {
                 return_type = self.base.get_node_text(child);
                 break;
             }
@@ -663,7 +783,10 @@ impl CSharpExtractor {
         let name_with_type_params = type_params
             .map(|tp| format!("{}{}", name, tp))
             .unwrap_or_else(|| name.clone());
-        let signature = format!("{}delegate {} {}{}", modifier_str, return_type, name_with_type_params, params);
+        let signature = format!(
+            "{}delegate {} {}{}",
+            modifier_str, return_type, name_with_type_params, params
+        );
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -672,21 +795,26 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Delegate, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Delegate, options),
+        )
     }
 
     /// Extract record - port of Miller's extractRecord
     fn extract_record(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let name = self.base.get_node_text(&name_node);
         let modifiers = self.extract_modifiers(&node);
         let visibility = self.determine_visibility(&modifiers, None);
 
         // Determine if it's a record struct
-        let is_struct = modifiers.contains(&"struct".to_string()) ||
-            node.children(&mut cursor).any(|c| c.kind() == "struct");
+        let is_struct = modifiers.contains(&"struct".to_string())
+            || node.children(&mut cursor).any(|c| c.kind() == "struct");
 
         // Build signature
         let record_type = if is_struct { "record struct" } else { "record" };
@@ -697,7 +825,10 @@ impl CSharpExtractor {
         };
 
         // Handle record parameters
-        if let Some(param_list) = node.children(&mut cursor).find(|c| c.kind() == "parameter_list") {
+        if let Some(param_list) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "parameter_list")
+        {
             signature += &self.base.get_node_text(&param_list);
         }
 
@@ -706,7 +837,11 @@ impl CSharpExtractor {
             signature += &format!(" {}", self.base.get_node_text(&base_list));
         }
 
-        let symbol_kind = if is_struct { SymbolKind::Struct } else { SymbolKind::Class };
+        let symbol_kind = if is_struct {
+            SymbolKind::Struct
+        } else {
+            SymbolKind::Class
+        };
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -722,13 +857,17 @@ impl CSharpExtractor {
     fn extract_destructor(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         // Find class name identifier (Child 1)
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier")?;
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier")?;
 
         let class_name = self.base.get_node_text(&name_node);
         let name = format!("~{}", class_name);
 
         // Get parameters
-        let param_list = node.children(&mut cursor).find(|c| c.kind() == "parameter_list");
+        let param_list = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "parameter_list");
         let params = param_list
             .map(|p| self.base.get_node_text(&p))
             .unwrap_or_else(|| "()".to_string());
@@ -743,7 +882,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     /// Extract operator - port of Miller's extractOperator
@@ -751,10 +893,29 @@ impl CSharpExtractor {
         // Find operator symbol
         let mut cursor = node.walk();
         let operator_symbol = node.children(&mut cursor).find(|c| {
-            matches!(c.kind(),
-                "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">=" |
-                "!" | "~" | "++" | "--" | "%" | "&" | "|" | "^" | "<<" | ">>" |
-                "true" | "false"
+            matches!(
+                c.kind(),
+                "+" | "-"
+                    | "*"
+                    | "/"
+                    | "=="
+                    | "!="
+                    | "<"
+                    | ">"
+                    | "<="
+                    | ">="
+                    | "!"
+                    | "~"
+                    | "++"
+                    | "--"
+                    | "%"
+                    | "&"
+                    | "|"
+                    | "^"
+                    | "<<"
+                    | ">>"
+                    | "true"
+                    | "false"
             )
         })?;
 
@@ -765,12 +926,13 @@ impl CSharpExtractor {
 
         // Find return type (before 'operator' keyword)
         let children: Vec<Node> = node.children(&mut cursor).collect();
-        let operator_keyword_index = children.iter()
+        let operator_keyword_index = children
+            .iter()
             .position(|c| self.base.get_node_text(c) == "operator")?;
 
-        let return_type_node = children[..operator_keyword_index].iter().find(|c| {
-            matches!(c.kind(), "predefined_type" | "identifier" | "generic_name")
-        });
+        let return_type_node = children[..operator_keyword_index]
+            .iter()
+            .find(|c| matches!(c.kind(), "predefined_type" | "identifier" | "generic_name"));
         let return_type = return_type_node
             .map(|node| self.base.get_node_text(node))
             .unwrap_or_else(|| "void".to_string());
@@ -785,11 +947,20 @@ impl CSharpExtractor {
         let mut signature = if modifiers.is_empty() {
             format!("{} operator {}{}", return_type, operator_text, params)
         } else {
-            format!("{} {} operator {}{}", modifiers.join(" "), return_type, operator_text, params)
+            format!(
+                "{} {} operator {}{}",
+                modifiers.join(" "),
+                return_type,
+                operator_text,
+                params
+            )
         };
 
         // Handle expression-bodied operator
-        if let Some(arrow_clause) = children.iter().find(|c| c.kind() == "arrow_expression_clause") {
+        if let Some(arrow_clause) = children
+            .iter()
+            .find(|c| c.kind() == "arrow_expression_clause")
+        {
             signature += &format!(" {}", self.base.get_node_text(arrow_clause));
         }
 
@@ -800,15 +971,23 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     /// Extract conversion operator - port of Miller's extractConversionOperator
-    fn extract_conversion_operator(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+    fn extract_conversion_operator(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         // Find conversion type (implicit/explicit)
         let mut cursor = node.walk();
-        let conversion_type = node.children(&mut cursor)
-            .find(|c| self.base.get_node_text(c) == "implicit" || self.base.get_node_text(c) == "explicit")?;
+        let conversion_type = node.children(&mut cursor).find(|c| {
+            self.base.get_node_text(c) == "implicit" || self.base.get_node_text(c) == "explicit"
+        })?;
         let conversion_text = self.base.get_node_text(&conversion_type);
 
         let modifiers = self.extract_modifiers(&node);
@@ -816,7 +995,8 @@ impl CSharpExtractor {
 
         // Find target type (after 'operator' keyword)
         let children: Vec<Node> = node.children(&mut cursor).collect();
-        let operator_keyword_index = children.iter()
+        let operator_keyword_index = children
+            .iter()
             .position(|c| self.base.get_node_text(c) == "operator")?;
 
         let target_type_node = children[operator_keyword_index + 1..]
@@ -838,11 +1018,20 @@ impl CSharpExtractor {
         let mut signature = if modifiers.is_empty() {
             format!("{} operator {}{}", conversion_text, target_type, params)
         } else {
-            format!("{} {} operator {}{}", modifiers.join(" "), conversion_text, target_type, params)
+            format!(
+                "{} {} operator {}{}",
+                modifiers.join(" "),
+                conversion_text,
+                target_type,
+                params
+            )
         };
 
         // Handle expression-bodied operator
-        if let Some(arrow_clause) = children.iter().find(|c| c.kind() == "arrow_expression_clause") {
+        if let Some(arrow_clause) = children
+            .iter()
+            .find(|c| c.kind() == "arrow_expression_clause")
+        {
             signature += &format!(" {}", self.base.get_node_text(arrow_clause));
         }
 
@@ -853,7 +1042,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     /// Extract indexer - port of Miller's extractIndexer
@@ -863,15 +1055,17 @@ impl CSharpExtractor {
 
         // Find return type
         let mut cursor = node.walk();
-        let return_type_node = node.children(&mut cursor).find(|c| {
-            matches!(c.kind(), "predefined_type" | "identifier" | "generic_name")
-        });
+        let return_type_node = node
+            .children(&mut cursor)
+            .find(|c| matches!(c.kind(), "predefined_type" | "identifier" | "generic_name"));
         let return_type = return_type_node
             .map(|node| self.base.get_node_text(&node))
             .unwrap_or_else(|| "object".to_string());
 
         // Get bracketed parameters
-        let bracketed_params = node.children(&mut cursor).find(|c| c.kind() == "bracketed_parameter_list");
+        let bracketed_params = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "bracketed_parameter_list");
         let params = bracketed_params
             .map(|p| self.base.get_node_text(&p))
             .unwrap_or_else(|| "[object index]".to_string());
@@ -892,7 +1086,10 @@ impl CSharpExtractor {
             ..Default::default()
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Property, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Property, options),
+        )
     }
 
     /// Extract relationships - port of Miller's extractRelationships
@@ -903,7 +1100,12 @@ impl CSharpExtractor {
     }
 
     /// Visit node for relationships - port of Miller's visitNode
-    fn visit_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn visit_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "class_declaration" | "interface_declaration" | "struct_declaration" => {
                 self.extract_inheritance_relationships(node, symbols, relationships);
@@ -926,11 +1128,15 @@ impl CSharpExtractor {
     ) {
         // Find the current symbol (class/interface/struct)
         let mut cursor = node.walk();
-        let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier");
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier");
         let Some(name_node) = name_node else { return };
 
         let current_symbol_name = self.base.get_node_text(&name_node);
-        let Some(current_symbol) = symbols.iter().find(|s| s.name == current_symbol_name) else { return };
+        let Some(current_symbol) = symbols.iter().find(|s| s.name == current_symbol_name) else {
+            return;
+        };
 
         // Find base_list (inheritance/implementation)
         let base_list = node.children(&mut cursor).find(|c| c.kind() == "base_list");
@@ -938,7 +1144,8 @@ impl CSharpExtractor {
 
         // Extract base types
         let mut base_cursor = base_list.walk();
-        let base_types: Vec<String> = base_list.children(&mut base_cursor)
+        let base_types: Vec<String> = base_list
+            .children(&mut base_cursor)
             .filter(|c| c.kind() != ":" && c.kind() != ",")
             .map(|c| self.base.get_node_text(&c))
             .collect();
@@ -953,7 +1160,13 @@ impl CSharpExtractor {
                 };
 
                 let relationship = Relationship {
-                    id: format!("{}_{}_{:?}_{}", current_symbol.id, base_symbol.id, relationship_kind, node.start_position().row),
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        current_symbol.id,
+                        base_symbol.id,
+                        relationship_kind,
+                        node.start_position().row
+                    ),
                     from_symbol_id: current_symbol.id.clone(),
                     to_symbol_id: base_symbol.id.clone(),
                     kind: relationship_kind,
@@ -995,7 +1208,18 @@ impl CSharpExtractor {
 
         // Parse method signature to extract return type
         let parts: Vec<&str> = signature.split_whitespace().collect();
-        let modifiers = ["public", "private", "protected", "internal", "static", "virtual", "override", "abstract", "async", "sealed"];
+        let modifiers = [
+            "public",
+            "private",
+            "protected",
+            "internal",
+            "static",
+            "virtual",
+            "override",
+            "abstract",
+            "async",
+            "sealed",
+        ];
 
         // Find the method name position
         let method_name_index = parts.iter().position(|part| part.contains(&symbol.name))?;
@@ -1020,7 +1244,16 @@ impl CSharpExtractor {
 
         // Parse property signature to extract type
         let parts: Vec<&str> = signature.split_whitespace().collect();
-        let modifiers = ["public", "private", "protected", "internal", "static", "virtual", "override", "abstract"];
+        let modifiers = [
+            "public",
+            "private",
+            "protected",
+            "internal",
+            "static",
+            "virtual",
+            "override",
+            "abstract",
+        ];
 
         // Find the first non-modifier part which should be the type
         for part in &parts {
@@ -1038,7 +1271,16 @@ impl CSharpExtractor {
 
         // Parse field signature to extract type
         let parts: Vec<&str> = signature.split_whitespace().collect();
-        let modifiers = ["public", "private", "protected", "internal", "static", "readonly", "const", "volatile"];
+        let modifiers = [
+            "public",
+            "private",
+            "protected",
+            "internal",
+            "static",
+            "readonly",
+            "const",
+            "volatile",
+        ];
 
         // Find the first non-modifier part which should be the type
         for part in &parts {
@@ -1130,7 +1372,8 @@ impl CSharpExtractor {
 
         if let Some(base_list) = base_list {
             let mut base_cursor = base_list.walk();
-            base_list.children(&mut base_cursor)
+            base_list
+                .children(&mut base_cursor)
                 .filter(|c| c.kind() != ":" && c.kind() != ",")
                 .map(|c| self.base.get_node_text(&c))
                 .collect()
@@ -1142,7 +1385,9 @@ impl CSharpExtractor {
     /// Extract type parameters - port of Miller's extractTypeParameters
     fn extract_type_parameters(&self, node: &Node) -> Option<String> {
         let mut cursor = node.walk();
-        let type_params = node.children(&mut cursor).find(|c| c.kind() == "type_parameter_list");
+        let type_params = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_parameter_list");
         type_params.map(|tp| self.base.get_node_text(&tp))
     }
 
@@ -1162,9 +1407,15 @@ impl CSharpExtractor {
         let name_index = children.iter().position(|c| std::ptr::eq(c, name_node))?;
         // Look for return type, but exclude modifiers
         let return_type_node = children[..name_index].iter().find(|c| {
-            matches!(c.kind(),
-                "predefined_type" | "identifier" | "qualified_name" | "generic_name" |
-                "array_type" | "nullable_type" | "tuple_type"
+            matches!(
+                c.kind(),
+                "predefined_type"
+                    | "identifier"
+                    | "qualified_name"
+                    | "generic_name"
+                    | "array_type"
+                    | "nullable_type"
+                    | "tuple_type"
             )
         });
 
@@ -1178,7 +1429,16 @@ impl CSharpExtractor {
         let children: Vec<Node> = node.children(&mut cursor).collect();
 
         // Skip modifiers and find the type node
-        let modifiers = ["public", "private", "protected", "internal", "static", "virtual", "override", "abstract"];
+        let modifiers = [
+            "public",
+            "private",
+            "protected",
+            "internal",
+            "static",
+            "virtual",
+            "override",
+            "abstract",
+        ];
 
         for child in &children {
             let child_text = self.base.get_node_text(child);
@@ -1189,9 +1449,15 @@ impl CSharpExtractor {
             }
 
             // Look for type nodes
-            if matches!(child.kind(),
-                "predefined_type" | "identifier" | "qualified_name" | "generic_name" |
-                "array_type" | "nullable_type" | "tuple_type"
+            if matches!(
+                child.kind(),
+                "predefined_type"
+                    | "identifier"
+                    | "qualified_name"
+                    | "generic_name"
+                    | "array_type"
+                    | "nullable_type"
+                    | "tuple_type"
             ) {
                 return Some(child_text);
             }
@@ -1204,13 +1470,20 @@ impl CSharpExtractor {
     fn extract_field_type(&self, node: &Node) -> Option<String> {
         // Field type is the first child of variable_declaration
         let mut cursor = node.walk();
-        let var_declaration = node.children(&mut cursor).find(|c| c.kind() == "variable_declaration")?;
+        let var_declaration = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "variable_declaration")?;
 
         let mut var_cursor = var_declaration.walk();
         let type_node = var_declaration.children(&mut var_cursor).find(|c| {
-            matches!(c.kind(),
-                "predefined_type" | "identifier" | "qualified_name" | "generic_name" |
-                "array_type" | "nullable_type"
+            matches!(
+                c.kind(),
+                "predefined_type"
+                    | "identifier"
+                    | "qualified_name"
+                    | "generic_name"
+                    | "array_type"
+                    | "nullable_type"
             )
         });
 

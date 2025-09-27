@@ -13,10 +13,32 @@ pub mod file_utils {
     /// Check if a file has a supported language extension
     pub fn is_supported_file(path: &Path) -> bool {
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            matches!(ext,
-                "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "go" | "java" | "c" | "cpp" |
-                "h" | "hpp" | "cs" | "php" | "rb" | "swift" | "kt" | "lua" | "gd" |
-                "vue" | "html" | "css" | "sql" | "sh" | "bash"
+            matches!(
+                ext,
+                "rs" | "py"
+                    | "js"
+                    | "ts"
+                    | "tsx"
+                    | "jsx"
+                    | "go"
+                    | "java"
+                    | "c"
+                    | "cpp"
+                    | "h"
+                    | "hpp"
+                    | "cs"
+                    | "php"
+                    | "rb"
+                    | "swift"
+                    | "kt"
+                    | "lua"
+                    | "gd"
+                    | "vue"
+                    | "html"
+                    | "css"
+                    | "sql"
+                    | "sh"
+                    | "bash"
             )
         } else {
             false

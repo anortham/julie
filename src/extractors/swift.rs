@@ -1,7 +1,9 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, Visibility, SymbolOptions};
-use tree_sitter::{Tree, Node};
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use serde_json;
+use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// Swift extractor for extracting symbols and relationships from Swift source code
 /// Port of Miller's comprehensive Swift extractor with full Swift language support
@@ -107,7 +109,8 @@ impl SwiftExtractor {
     // Port of Miller's extractClass method with full Swift class support
     fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         // Swift parser uses class_declaration for classes
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier" || c.kind() == "user_type");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -115,8 +118,12 @@ impl SwiftExtractor {
 
         // Check what type this actually is
         let is_enum = node.children(&mut node.walk()).any(|c| c.kind() == "enum");
-        let is_struct = node.children(&mut node.walk()).any(|c| c.kind() == "struct");
-        let is_extension = node.children(&mut node.walk()).any(|c| c.kind() == "extension");
+        let is_struct = node
+            .children(&mut node.walk())
+            .any(|c| c.kind() == "struct");
+        let is_extension = node
+            .children(&mut node.walk())
+            .any(|c| c.kind() == "extension");
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);
@@ -125,7 +132,9 @@ impl SwiftExtractor {
         // Determine the correct keyword and symbol kind
         let (keyword, symbol_kind) = if is_enum {
             // Check for indirect modifier for enums
-            let is_indirect = node.children(&mut node.walk()).any(|c| c.kind() == "indirect");
+            let is_indirect = node
+                .children(&mut node.walk())
+                .any(|c| c.kind() == "indirect");
             if is_indirect {
                 ("indirect enum", SymbolKind::Enum)
             } else {
@@ -161,8 +170,14 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("class".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("class".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -181,7 +196,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractStruct method
     fn extract_struct(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -206,8 +222,14 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("struct".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("struct".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -226,7 +248,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractProtocol method
     fn extract_protocol(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -246,8 +269,14 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("protocol".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("protocol".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -266,7 +295,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractEnum method
     fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -291,8 +321,14 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("enum".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("enum".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -310,14 +346,21 @@ impl SwiftExtractor {
     }
 
     // Port of Miller's extractEnumCases method
-    fn extract_enum_cases(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_enum_cases(
+        &mut self,
+        node: Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         for child in node.children(&mut node.walk()) {
             if child.kind() == "enum_case_element" {
-                let name_node = child.children(&mut child.walk())
+                let name_node = child
+                    .children(&mut child.walk())
                     .find(|c| c.kind() == "pattern" || c.kind() == "type_identifier");
                 if let Some(name_node) = name_node {
                     let name = self.base.get_node_text(&name_node);
-                    let associated_values = child.children(&mut child.walk())
+                    let associated_values = child
+                        .children(&mut child.walk())
                         .find(|c| c.kind() == "enum_case_parameters");
 
                     let mut signature = name.clone();
@@ -325,9 +368,10 @@ impl SwiftExtractor {
                         signature.push_str(&self.base.get_node_text(&associated_values));
                     }
 
-                    let metadata = HashMap::from([
-                        ("type".to_string(), serde_json::Value::String("enum-case".to_string())),
-                    ]);
+                    let metadata = HashMap::from([(
+                        "type".to_string(),
+                        serde_json::Value::String("enum-case".to_string()),
+                    )]);
 
                     let symbol = self.base.create_symbol(
                         &child,
@@ -349,7 +393,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractEnumCase method
     fn extract_enum_case(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -358,8 +403,10 @@ impl SwiftExtractor {
         let mut signature = name.clone();
 
         // Check for associated values
-        if let Some(associated_values) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "enum_type_parameters") {
+        if let Some(associated_values) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "enum_type_parameters")
+        {
             signature.push_str(&self.base.get_node_text(&associated_values));
         }
 
@@ -371,9 +418,10 @@ impl SwiftExtractor {
             }
         }
 
-        let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("enum-case".to_string())),
-        ]);
+        let metadata = HashMap::from([(
+            "type".to_string(),
+            serde_json::Value::String("enum-case".to_string()),
+        )]);
 
         self.base.create_symbol(
             &node,
@@ -391,7 +439,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractFunction method
     fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -429,10 +478,22 @@ impl SwiftExtractor {
         };
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("function".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
-            ("parameters".to_string(), serde_json::Value::String(params_str)),
-            ("returnType".to_string(), serde_json::Value::String(return_str)),
+            (
+                "type".to_string(),
+                serde_json::Value::String("function".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
+            (
+                "parameters".to_string(),
+                serde_json::Value::String(params_str),
+            ),
+            (
+                "returnType".to_string(),
+                serde_json::Value::String(return_str),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -463,9 +524,18 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("initializer".to_string())),
-            ("parameters".to_string(), serde_json::Value::String(params_str)),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("initializer".to_string()),
+            ),
+            (
+                "parameters".to_string(),
+                serde_json::Value::String(params_str),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -487,9 +557,10 @@ impl SwiftExtractor {
         let name = "deinit".to_string();
         let signature = "deinit".to_string();
 
-        let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("deinitializer".to_string())),
-        ]);
+        let metadata = HashMap::from([(
+            "type".to_string(),
+            serde_json::Value::String("deinitializer".to_string()),
+        )]);
 
         self.base.create_symbol(
             &node,
@@ -507,11 +578,13 @@ impl SwiftExtractor {
 
     // Port of Miller's extractVariable method
     fn extract_variable(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let binding_node = node.children(&mut node.walk())
+        let binding_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "property_binding_pattern" || c.kind() == "pattern_binding");
 
         if let Some(binding_node) = binding_node {
-            let name_node = binding_node.children(&mut binding_node.walk())
+            let name_node = binding_node
+                .children(&mut binding_node.walk())
                 .find(|c| c.kind() == "simple_identifier" || c.kind() == "pattern");
             let name = name_node
                 .map(|n| self.base.get_node_text(&n))
@@ -539,11 +612,26 @@ impl SwiftExtractor {
             }
 
             let metadata = HashMap::from([
-                ("type".to_string(), serde_json::Value::String("variable".to_string())),
-                ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
-                ("variableType".to_string(), serde_json::Value::String(var_type.unwrap_or_else(|| "Any".to_string()))),
-                ("isLet".to_string(), serde_json::Value::String(is_let.to_string())),
-                ("isVar".to_string(), serde_json::Value::String(is_var.to_string())),
+                (
+                    "type".to_string(),
+                    serde_json::Value::String("variable".to_string()),
+                ),
+                (
+                    "modifiers".to_string(),
+                    serde_json::Value::String(modifiers.join(", ")),
+                ),
+                (
+                    "variableType".to_string(),
+                    serde_json::Value::String(var_type.unwrap_or_else(|| "Any".to_string())),
+                ),
+                (
+                    "isLet".to_string(),
+                    serde_json::Value::String(is_let.to_string()),
+                ),
+                (
+                    "isVar".to_string(),
+                    serde_json::Value::String(is_var.to_string()),
+                ),
             ]);
 
             Some(self.base.create_symbol(
@@ -565,7 +653,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractProperty method
     fn extract_property(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "pattern");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -575,10 +664,12 @@ impl SwiftExtractor {
         let property_type = self.extract_property_type(node);
 
         // Extract the property keyword (var or let)
-        let binding_pattern = node.children(&mut node.walk())
+        let binding_pattern = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "value_binding_pattern");
         let keyword = if let Some(binding_pattern) = binding_pattern {
-            binding_pattern.children(&mut binding_pattern.walk())
+            binding_pattern
+                .children(&mut binding_pattern.walk())
                 .find(|c| c.kind() == "var" || c.kind() == "let")
                 .map(|n| self.base.get_node_text(&n))
                 .unwrap_or_else(|| "var".to_string())
@@ -587,13 +678,21 @@ impl SwiftExtractor {
         };
 
         // Build signature with non-visibility modifiers
-        let non_visibility_modifiers: Vec<_> = modifiers.iter()
-            .filter(|m| !["public", "private", "internal", "fileprivate", "open"].contains(&m.as_str()))
+        let non_visibility_modifiers: Vec<_> = modifiers
+            .iter()
+            .filter(|m| {
+                !["public", "private", "internal", "fileprivate", "open"].contains(&m.as_str())
+            })
             .cloned()
             .collect();
 
         let mut signature = if !non_visibility_modifiers.is_empty() {
-            format!("{} {} {}", non_visibility_modifiers.join(" "), keyword, name)
+            format!(
+                "{} {} {}",
+                non_visibility_modifiers.join(" "),
+                keyword,
+                name
+            )
         } else {
             format!("{} {}", keyword, name)
         };
@@ -603,9 +702,18 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("property".to_string())),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
-            ("propertyType".to_string(), serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string()))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("property".to_string()),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
+            (
+                "propertyType".to_string(),
+                serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string())),
+            ),
             ("keyword".to_string(), serde_json::Value::String(keyword)),
         ]);
 
@@ -625,7 +733,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractProtocolFunction method
     fn extract_protocol_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -645,9 +754,18 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("protocol-requirement".to_string())),
-            ("parameters".to_string(), serde_json::Value::String(params_str)),
-            ("returnType".to_string(), serde_json::Value::String(return_str)),
+            (
+                "type".to_string(),
+                serde_json::Value::String("protocol-requirement".to_string()),
+            ),
+            (
+                "parameters".to_string(),
+                serde_json::Value::String(params_str),
+            ),
+            (
+                "returnType".to_string(),
+                serde_json::Value::String(return_str),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -666,10 +784,12 @@ impl SwiftExtractor {
 
     // Port of Miller's extractProtocolProperty method
     fn extract_protocol_property(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let pattern_node = node.children(&mut node.walk())
+        let pattern_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "pattern");
         let name = if let Some(pattern_node) = pattern_node {
-            pattern_node.children(&mut pattern_node.walk())
+            pattern_node
+                .children(&mut pattern_node.walk())
                 .find(|c| c.kind() == "simple_identifier")
                 .map(|n| self.base.get_node_text(&n))
                 .unwrap_or_else(|| "unknownProperty".to_string())
@@ -678,19 +798,24 @@ impl SwiftExtractor {
         };
 
         // Check for static modifier
-        let modifiers_node = node.children(&mut node.walk())
+        let modifiers_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "modifiers");
         let is_static = modifiers_node
             .map(|modifiers_node| {
-                modifiers_node.children(&mut modifiers_node.walk())
-                    .any(|c| c.kind() == "property_modifier" && self.base.get_node_text(&c) == "static")
+                modifiers_node
+                    .children(&mut modifiers_node.walk())
+                    .any(|c| {
+                        c.kind() == "property_modifier" && self.base.get_node_text(&c) == "static"
+                    })
             })
             .unwrap_or(false);
 
         let property_type = self.extract_property_type(node);
 
         // Extract getter/setter requirements
-        let protocol_requirements = node.children(&mut node.walk())
+        let protocol_requirements = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "protocol_property_requirements");
         let accessors = protocol_requirements
             .map(|req| format!(" {}", self.base.get_node_text(&req)))
@@ -711,10 +836,22 @@ impl SwiftExtractor {
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("protocol-requirement".to_string())),
-            ("propertyType".to_string(), serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string()))),
-            ("accessors".to_string(), serde_json::Value::String(accessors)),
-            ("isStatic".to_string(), serde_json::Value::String(is_static.to_string())),
+            (
+                "type".to_string(),
+                serde_json::Value::String("protocol-requirement".to_string()),
+            ),
+            (
+                "propertyType".to_string(),
+                serde_json::Value::String(property_type.unwrap_or_else(|| "Any".to_string())),
+            ),
+            (
+                "accessors".to_string(),
+                serde_json::Value::String(accessors),
+            ),
+            (
+                "isStatic".to_string(),
+                serde_json::Value::String(is_static.to_string()),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -733,7 +870,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractAssociatedType method
     fn extract_associated_type(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier" || c.kind() == "simple_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -746,9 +884,10 @@ impl SwiftExtractor {
             signature.push_str(&format!(": {}", inheritance));
         }
 
-        let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("associatedtype".to_string())),
-        ]);
+        let metadata = HashMap::from([(
+            "type".to_string(),
+            serde_json::Value::String("associatedtype".to_string()),
+        )]);
 
         self.base.create_symbol(
             &node,
@@ -767,7 +906,9 @@ impl SwiftExtractor {
     // Port of Miller's extractSubscript method
     fn extract_subscript(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "subscript".to_string();
-        let parameters = self.extract_parameters(node).unwrap_or_else(|| "()".to_string());
+        let parameters = self
+            .extract_parameters(node)
+            .unwrap_or_else(|| "()".to_string());
         let return_type = self.extract_return_type(node);
         let modifiers = self.extract_modifiers(node);
 
@@ -784,16 +925,29 @@ impl SwiftExtractor {
         }
 
         // Check for accessor requirements
-        if let Some(accessor_reqs) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "getter_setter_block" || c.kind() == "protocol_property_requirements") {
+        if let Some(accessor_reqs) = node.children(&mut node.walk()).find(|c| {
+            c.kind() == "getter_setter_block" || c.kind() == "protocol_property_requirements"
+        }) {
             signature.push_str(&format!(" {}", self.base.get_node_text(&accessor_reqs)));
         }
 
         let metadata = HashMap::from([
-            ("type".to_string(), serde_json::Value::String("subscript".to_string())),
-            ("parameters".to_string(), serde_json::Value::String(parameters)),
-            ("returnType".to_string(), serde_json::Value::String(return_type.unwrap_or_else(|| "Any".to_string()))),
-            ("modifiers".to_string(), serde_json::Value::String(modifiers.join(", "))),
+            (
+                "type".to_string(),
+                serde_json::Value::String("subscript".to_string()),
+            ),
+            (
+                "parameters".to_string(),
+                serde_json::Value::String(parameters),
+            ),
+            (
+                "returnType".to_string(),
+                serde_json::Value::String(return_type.unwrap_or_else(|| "Any".to_string())),
+            ),
+            (
+                "modifiers".to_string(),
+                serde_json::Value::String(modifiers.join(", ")),
+            ),
         ]);
 
         self.base.create_symbol(
@@ -812,7 +966,8 @@ impl SwiftExtractor {
 
     // Port of Miller's extractExtension method
     fn extract_extension(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let type_node = node.children(&mut node.walk())
+        let type_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = type_node
             .map(|n| self.base.get_node_text(&n))
@@ -845,20 +1000,20 @@ impl SwiftExtractor {
             None,
         );
 
-        self.base.create_symbol(&node, name, SymbolKind::Class, options)
+        self.base
+            .create_symbol(&node, name, SymbolKind::Class, options)
     }
 
     // Port of Miller's extractImport method
     fn extract_import(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "UnknownImport".to_string());
 
-        let metadata = HashMap::from([
-            ("type".to_string(), "import".to_string()),
-        ]);
+        let metadata = HashMap::from([("type".to_string(), "import".to_string())]);
 
         let options = self.create_symbol_options(
             Some(format!("import {}", name)),
@@ -868,12 +1023,14 @@ impl SwiftExtractor {
             None,
         );
 
-        self.base.create_symbol(&node, name, SymbolKind::Import, options)
+        self.base
+            .create_symbol(&node, name, SymbolKind::Import, options)
     }
 
     // Port of Miller's extractTypeAlias method
     fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node.children(&mut node.walk())
+        let name_node = node
+            .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
@@ -881,8 +1038,12 @@ impl SwiftExtractor {
 
         // Find the type that the alias refers to
         let children: Vec<_> = node.children(&mut node.walk()).collect();
-        let aliased_type = if let Some(equal_index) = children.iter().position(|c| self.base.get_node_text(c) == "=") {
-            children.get(equal_index + 1)
+        let aliased_type = if let Some(equal_index) = children
+            .iter()
+            .position(|c| self.base.get_node_text(c) == "=")
+        {
+            children
+                .get(equal_index + 1)
                 .map(|type_node| self.base.get_node_text(type_node))
                 .unwrap_or_else(|| String::new())
         } else {
@@ -920,7 +1081,8 @@ impl SwiftExtractor {
             None,
         );
 
-        self.base.create_symbol(&node, name, SymbolKind::Type, options)
+        self.base
+            .create_symbol(&node, name, SymbolKind::Type, options)
     }
 
     // Helper method to create SymbolOptions with proper serde_json::Value metadata
@@ -930,7 +1092,7 @@ impl SwiftExtractor {
         visibility: Option<Visibility>,
         parent_id: Option<String>,
         metadata: HashMap<String, String>,
-        doc_comment: Option<String>
+        doc_comment: Option<String>,
     ) -> SymbolOptions {
         let json_metadata: HashMap<String, serde_json::Value> = metadata
             .into_iter()
@@ -950,18 +1112,38 @@ impl SwiftExtractor {
     fn extract_modifiers(&self, node: Node) -> Vec<String> {
         let mut modifiers = Vec::new();
 
-        if let Some(modifiers_list) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "modifiers") {
+        if let Some(modifiers_list) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "modifiers")
+        {
             for child in modifiers_list.children(&mut modifiers_list.walk()) {
-                if matches!(child.kind(),
-                    "visibility_modifier" | "mutation_modifier" | "declaration_modifier" |
-                    "access_level_modifier" | "property_modifier" | "member_modifier"
+                if matches!(
+                    child.kind(),
+                    "visibility_modifier"
+                        | "mutation_modifier"
+                        | "declaration_modifier"
+                        | "access_level_modifier"
+                        | "property_modifier"
+                        | "member_modifier"
                 ) {
                     modifiers.push(self.base.get_node_text(&child));
-                } else if matches!(child.kind(),
-                    "public" | "private" | "internal" | "fileprivate" | "open" | "final" |
-                    "static" | "class" | "override" | "lazy" | "weak" | "unowned" |
-                    "required" | "convenience" | "dynamic"
+                } else if matches!(
+                    child.kind(),
+                    "public"
+                        | "private"
+                        | "internal"
+                        | "fileprivate"
+                        | "open"
+                        | "final"
+                        | "static"
+                        | "class"
+                        | "override"
+                        | "lazy"
+                        | "weak"
+                        | "unowned"
+                        | "required"
+                        | "convenience"
+                        | "dynamic"
                 ) {
                     modifiers.push(self.base.get_node_text(&child));
                 } else if child.kind() == "attribute" {
@@ -992,9 +1174,12 @@ impl SwiftExtractor {
     // Port of Miller's extractInheritance method
     fn extract_inheritance(&self, node: Node) -> Option<String> {
         // First try the standard type_inheritance_clause
-        if let Some(inheritance) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "type_inheritance_clause") {
-            let types: Vec<_> = inheritance.children(&mut inheritance.walk())
+        if let Some(inheritance) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "type_inheritance_clause")
+        {
+            let types: Vec<_> = inheritance
+                .children(&mut inheritance.walk())
                 .filter(|c| c.kind() == "type_identifier" || c.kind() == "type")
                 .map(|t| self.base.get_node_text(&t))
                 .collect();
@@ -1004,11 +1189,13 @@ impl SwiftExtractor {
         }
 
         // For Swift enums, inheritance is represented as direct inheritance_specifier nodes
-        let inheritance_specifiers: Vec<_> = node.children(&mut node.walk())
+        let inheritance_specifiers: Vec<_> = node
+            .children(&mut node.walk())
             .filter(|c| c.kind() == "inheritance_specifier")
             .collect();
         if !inheritance_specifiers.is_empty() {
-            let types: Vec<_> = inheritance_specifiers.iter()
+            let types: Vec<_> = inheritance_specifiers
+                .iter()
                 .filter_map(|spec| {
                     spec.children(&mut spec.walk())
                         .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type"))
@@ -1026,10 +1213,12 @@ impl SwiftExtractor {
     // Port of Miller's extractWhereClause method
     fn extract_where_clause(&self, node: Node) -> Option<String> {
         // Look for where clause in class/function declarations
-        if let Some(where_clause) = node.children(&mut node.walk())
-            .find(|c| matches!(c.kind(),
+        if let Some(where_clause) = node.children(&mut node.walk()).find(|c| {
+            matches!(
+                c.kind(),
                 "where_clause" | "generic_where_clause" | "type_constraints"
-            ) || self.base.get_node_text(c).starts_with("where")) {
+            ) || self.base.get_node_text(c).starts_with("where")
+        }) {
             return Some(self.base.get_node_text(&where_clause));
         }
 
@@ -1054,13 +1243,16 @@ impl SwiftExtractor {
     // Port of Miller's extractParameters method
     fn extract_parameters(&self, node: Node) -> Option<String> {
         // First try parameter_clause
-        if let Some(param_clause) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "parameter_clause") {
+        if let Some(param_clause) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "parameter_clause")
+        {
             return Some(self.base.get_node_text(&param_clause));
         }
 
         // For Swift functions, parameters are individual nodes between ( and )
-        let parameters: Vec<_> = node.children(&mut node.walk())
+        let parameters: Vec<_> = node
+            .children(&mut node.walk())
             .filter(|c| c.kind() == "parameter")
             .map(|p| self.base.get_node_text(&p))
             .collect();
@@ -1080,8 +1272,10 @@ impl SwiftExtractor {
     // Port of Miller's extractInitializerParameters method
     fn extract_initializer_parameters(&self, node: Node) -> Option<String> {
         // Look for parameter nodes
-        if let Some(parameter_node) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "parameter") {
+        if let Some(parameter_node) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "parameter")
+        {
             return Some(format!("({})", self.base.get_node_text(&parameter_node)));
         }
 
@@ -1096,28 +1290,41 @@ impl SwiftExtractor {
     // Port of Miller's extractReturnType method
     fn extract_return_type(&self, node: Node) -> Option<String> {
         // Try function_type first
-        if let Some(return_clause) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "function_type") {
-            if let Some(type_node) = return_clause.children(&mut return_clause.walk())
-                .find(|c| c.kind() == "type") {
+        if let Some(return_clause) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "function_type")
+        {
+            if let Some(type_node) = return_clause
+                .children(&mut return_clause.walk())
+                .find(|c| c.kind() == "type")
+            {
                 return Some(self.base.get_node_text(&type_node));
             }
         }
 
         // Try type_annotation
-        if let Some(type_annotation) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "type_annotation") {
-            if let Some(type_node) = type_annotation.children(&mut type_annotation.walk())
-                .find(|c| matches!(c.kind(), "type" | "type_identifier" | "user_type")) {
+        if let Some(type_annotation) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "type_annotation")
+        {
+            if let Some(type_node) = type_annotation
+                .children(&mut type_annotation.walk())
+                .find(|c| matches!(c.kind(), "type" | "type_identifier" | "user_type"))
+            {
                 return Some(self.base.get_node_text(&type_node));
             }
         }
 
         // Try direct type nodes (for simple cases)
         let children: Vec<_> = node.children(&mut node.walk()).collect();
-        if let Some((node_index, direct_type)) = children.iter().enumerate()
-            .find(|(_, c)| matches!(c.kind(), "type" | "type_identifier" | "user_type")) {
-            let has_arrow = children.iter().take(node_index)
+        if let Some((node_index, direct_type)) = children
+            .iter()
+            .enumerate()
+            .find(|(_, c)| matches!(c.kind(), "type" | "type_identifier" | "user_type"))
+        {
+            let has_arrow = children
+                .iter()
+                .take(node_index)
                 .any(|child| self.base.get_node_text(child).contains("->"));
             if has_arrow {
                 return Some(self.base.get_node_text(direct_type));
@@ -1129,13 +1336,27 @@ impl SwiftExtractor {
 
     // Port of Miller's extractVariableType method
     fn extract_variable_type(&self, node: Node) -> Option<String> {
-        if let Some(type_annotation) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "type_annotation") {
-            if let Some(type_node) = type_annotation.children(&mut type_annotation.walk())
-                .find(|c| matches!(c.kind(),
-                    "type" | "user_type" | "primitive_type" | "optional_type" |
-                    "function_type" | "tuple_type" | "dictionary_type" | "array_type"
-                )) {
+        if let Some(type_annotation) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "type_annotation")
+        {
+            if let Some(type_node) =
+                type_annotation
+                    .children(&mut type_annotation.walk())
+                    .find(|c| {
+                        matches!(
+                            c.kind(),
+                            "type"
+                                | "user_type"
+                                | "primitive_type"
+                                | "optional_type"
+                                | "function_type"
+                                | "tuple_type"
+                                | "dictionary_type"
+                                | "array_type"
+                        )
+                    })
+            {
                 return Some(self.base.get_node_text(&type_node));
             }
         }
@@ -1149,7 +1370,10 @@ impl SwiftExtractor {
 
     // Port of Miller's determineVisibility method
     fn determine_visibility(&self, modifiers: &[String]) -> Visibility {
-        if modifiers.iter().any(|m| m == "private" || m == "fileprivate") {
+        if modifiers
+            .iter()
+            .any(|m| m == "private" || m == "fileprivate")
+        {
             Visibility::Private
         } else if modifiers.iter().any(|m| m == "internal") {
             Visibility::Protected
@@ -1166,7 +1390,12 @@ impl SwiftExtractor {
         relationships
     }
 
-    fn visit_node_for_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn visit_node_for_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "class_declaration" | "struct_declaration" | "extension_declaration" => {
                 self.extract_inheritance_relationships(node, symbols, relationships);
@@ -1190,24 +1419,38 @@ impl SwiftExtractor {
     ) {
         if let Some(type_symbol) = self.find_type_symbol(node, symbols) {
             // Try type_inheritance_clause first
-            if let Some(inheritance) = node.children(&mut node.walk())
-                .find(|c| c.kind() == "type_inheritance_clause") {
+            if let Some(inheritance) = node
+                .children(&mut node.walk())
+                .find(|c| c.kind() == "type_inheritance_clause")
+            {
                 for child in inheritance.children(&mut inheritance.walk()) {
                     if matches!(child.kind(), "type_identifier" | "type") {
                         let base_type_name = self.base.get_node_text(&child);
-                        self.add_inheritance_relationship(&type_symbol, &base_type_name, symbols, relationships, node);
+                        self.add_inheritance_relationship(
+                            &type_symbol,
+                            &base_type_name,
+                            symbols,
+                            relationships,
+                            node,
+                        );
                     }
                 }
             }
 
             // Also handle direct inheritance_specifier nodes
-            for spec in node.children(&mut node.walk())
-                .filter(|c| c.kind() == "inheritance_specifier") {
-                if let Some(type_node) = spec.children(&mut spec.walk())
-                    .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type")) {
+            for spec in node
+                .children(&mut node.walk())
+                .filter(|c| c.kind() == "inheritance_specifier")
+            {
+                if let Some(type_node) = spec
+                    .children(&mut spec.walk())
+                    .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type"))
+                {
                     let base_type_name = if type_node.kind() == "user_type" {
-                        if let Some(inner_type_node) = type_node.children(&mut type_node.walk())
-                            .find(|c| c.kind() == "type_identifier") {
+                        if let Some(inner_type_node) = type_node
+                            .children(&mut type_node.walk())
+                            .find(|c| c.kind() == "type_identifier")
+                        {
                             self.base.get_node_text(&inner_type_node)
                         } else {
                             self.base.get_node_text(&type_node)
@@ -1215,7 +1458,13 @@ impl SwiftExtractor {
                     } else {
                         self.base.get_node_text(&type_node)
                     };
-                    self.add_inheritance_relationship(&type_symbol, &base_type_name, symbols, relationships, node);
+                    self.add_inheritance_relationship(
+                        &type_symbol,
+                        &base_type_name,
+                        symbols,
+                        relationships,
+                        node,
+                    );
                 }
             }
         }
@@ -1232,8 +1481,11 @@ impl SwiftExtractor {
     ) {
         // Find the actual base type symbol
         if let Some(base_type_symbol) = symbols.iter().find(|s| {
-            s.name == base_type_name &&
-            matches!(s.kind, SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct)
+            s.name == base_type_name
+                && matches!(
+                    s.kind,
+                    SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct
+                )
         }) {
             // Determine relationship kind: classes extend, protocols implement
             let relationship_kind = if base_type_symbol.kind == SymbolKind::Interface {
@@ -1242,12 +1494,19 @@ impl SwiftExtractor {
                 RelationshipKind::Extends
             };
 
-            let metadata = HashMap::from([
-                ("baseType".to_string(), serde_json::Value::String(base_type_name.to_string())),
-            ]);
+            let metadata = HashMap::from([(
+                "baseType".to_string(),
+                serde_json::Value::String(base_type_name.to_string()),
+            )]);
 
             relationships.push(Relationship {
-                id: format!("{}_{}_{:?}_{}", type_symbol.id, base_type_symbol.id, relationship_kind, node.start_position().row),
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    type_symbol.id,
+                    base_type_symbol.id,
+                    relationship_kind,
+                    node.start_position().row
+                ),
                 from_symbol_id: type_symbol.id.clone(),
                 to_symbol_id: base_type_symbol.id.clone(),
                 kind: relationship_kind,
@@ -1265,7 +1524,9 @@ impl SwiftExtractor {
         for symbol in symbols {
             // For functions/methods, prefer returnType over generic type
             if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
-                if let Some(return_type) = symbol.metadata.as_ref().and_then(|m| m.get("returnType")) {
+                if let Some(return_type) =
+                    symbol.metadata.as_ref().and_then(|m| m.get("returnType"))
+                {
                     if let Some(return_type_str) = return_type.as_str() {
                         types.insert(symbol.id.clone(), return_type_str.to_string());
                         continue;
@@ -1274,13 +1535,17 @@ impl SwiftExtractor {
             }
             // For properties/variables, prefer propertyType or variableType
             else if matches!(symbol.kind, SymbolKind::Property | SymbolKind::Variable) {
-                if let Some(property_type) = symbol.metadata.as_ref().and_then(|m| m.get("propertyType")) {
+                if let Some(property_type) =
+                    symbol.metadata.as_ref().and_then(|m| m.get("propertyType"))
+                {
                     if let Some(property_type_str) = property_type.as_str() {
                         types.insert(symbol.id.clone(), property_type_str.to_string());
                         continue;
                     }
                 }
-                if let Some(variable_type) = symbol.metadata.as_ref().and_then(|m| m.get("variableType")) {
+                if let Some(variable_type) =
+                    symbol.metadata.as_ref().and_then(|m| m.get("variableType"))
+                {
                     if let Some(variable_type_str) = variable_type.as_str() {
                         types.insert(symbol.id.clone(), variable_type_str.to_string());
                         continue;
@@ -1293,7 +1558,9 @@ impl SwiftExtractor {
                 if let Some(symbol_type_str) = symbol_type.as_str() {
                     types.insert(symbol.id.clone(), symbol_type_str.to_string());
                 }
-            } else if let Some(return_type) = symbol.metadata.as_ref().and_then(|m| m.get("returnType")) {
+            } else if let Some(return_type) =
+                symbol.metadata.as_ref().and_then(|m| m.get("returnType"))
+            {
                 if let Some(return_type_str) = return_type.as_str() {
                     types.insert(symbol.id.clone(), return_type_str.to_string());
                 }
@@ -1304,14 +1571,20 @@ impl SwiftExtractor {
 
     // Port of Miller's findTypeSymbol method
     fn find_type_symbol(&self, node: Node, symbols: &[Symbol]) -> Option<Symbol> {
-        if let Some(name_node) = node.children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier") {
+        if let Some(name_node) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "type_identifier")
+        {
             let type_name = self.base.get_node_text(&name_node);
-            symbols.iter()
+            symbols
+                .iter()
                 .find(|s| {
-                    s.name == type_name &&
-                    matches!(s.kind, SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface) &&
-                    s.file_path == self.base.file_path
+                    s.name == type_name
+                        && matches!(
+                            s.kind,
+                            SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface
+                        )
+                        && s.file_path == self.base.file_path
                 })
                 .cloned()
         } else {

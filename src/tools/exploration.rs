@@ -1,14 +1,14 @@
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use rust_mcp_sdk::{macros::mcp_tool};
-use rust_mcp_sdk::macros::JsonSchema;
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
-use tracing::debug;
+use rust_mcp_sdk::macros::mcp_tool;
+use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::debug;
 
+use crate::extractors::base::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::extractors::base::{Symbol, Relationship};
-use crate::utils::{token_estimation::TokenEstimator, progressive_reduction::ProgressiveReducer};
+use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
 //********************//
 // Exploration Tools  //
@@ -28,17 +28,24 @@ pub struct FastExploreTool {
     pub focus: Option<String>,
 }
 
-fn default_medium() -> String { "medium".to_string() }
+fn default_medium() -> String {
+    "medium".to_string()
+}
 
 impl FastExploreTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🧭 Exploring codebase: mode={}, focus={:?}", self.mode, self.focus);
+        debug!(
+            "🧭 Exploring codebase: mode={}, focus={:?}",
+            self.mode, self.focus
+        );
 
         // Check if workspace is indexed
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable exploration.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Get symbols and relationships for token-optimized exploration
@@ -49,7 +56,7 @@ impl FastExploreTool {
         let message = match self.mode.as_str() {
             "overview" | "dependencies" | "hotspots" | "trace" => {
                 self.format_optimized_results(&symbols, &relationships)
-            },
+            }
             _ => format!(
                 "❌ Unknown exploration mode: '{}'\n\
                 💡 Supported modes: overview, dependencies, hotspots, trace",
@@ -57,7 +64,9 @@ impl FastExploreTool {
             ),
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     #[allow(dead_code)]
@@ -128,12 +137,16 @@ impl FastExploreTool {
         let relationships = handler.relationships.read().await;
 
         // Create HashMap for O(1) symbol lookups instead of O(n) linear search
-        let search_engine = handler.search_engine.read().await;
-        let all_symbols = search_engine.search("*").await.map_err(|e| {
-            anyhow::anyhow!("Failed to search for symbols: {}", e)
-        })?;
-        let symbol_map: HashMap<String, &crate::extractors::Symbol> =
-            all_symbols.iter().map(|sr| (sr.symbol.id.clone(), &sr.symbol)).collect();
+        let search_engine = handler.active_search_engine().await;
+        let search_engine = search_engine.read().await;
+        let all_symbols = search_engine
+            .search("*")
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?;
+        let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
+            .iter()
+            .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
+            .collect();
 
         let mut relationship_counts = HashMap::new();
         let mut symbol_references = HashMap::new();
@@ -166,7 +179,12 @@ impl FastExploreTool {
 
             for (symbol_id, count) in sorted_refs.iter().take(10) {
                 if let Some(symbol) = symbol_map.get(&***symbol_id) {
-                    message.push_str(&format!("  {} [{}]: {} references\n", symbol.name, format!("{:?}", symbol.kind).to_lowercase(), count));
+                    message.push_str(&format!(
+                        "  {} [{}]: {} references\n",
+                        symbol.name,
+                        format!("{:?}", symbol.kind).to_lowercase(),
+                        count
+                    ));
                 }
             }
         }
@@ -179,10 +197,12 @@ impl FastExploreTool {
         let relationships = handler.relationships.read().await;
 
         // Use SearchEngine instead of O(n) iteration through all symbols
-        let search_engine = handler.search_engine.read().await;
-        let all_symbols = search_engine.search("*").await.map_err(|e| {
-            anyhow::anyhow!("Failed to search for symbols: {}", e)
-        })?;
+        let search_engine = handler.active_search_engine().await;
+        let search_engine = search_engine.read().await;
+        let all_symbols = search_engine
+            .search("*")
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?;
 
         // Find files with most symbols (complexity hotspots)
         let mut file_symbol_counts = HashMap::new();
@@ -232,10 +252,12 @@ impl FastExploreTool {
 
         if let Some(focus) = &self.focus {
             // Use SearchEngine to find the focused symbol instead of O(n) linear search
-            let search_engine = handler.search_engine.read().await;
-            let focus_results = search_engine.search(focus).await.map_err(|e| {
-                anyhow::anyhow!("Failed to search for focus symbol: {}", e)
-            })?;
+            let search_engine = handler.active_search_engine().await;
+            let search_engine = search_engine.read().await;
+            let focus_results = search_engine
+                .search(focus)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to search for focus symbol: {}", e))?;
 
             // Find exact match for the focused symbol
             if let Some(target_result) = focus_results.iter().find(|sr| sr.symbol.name == *focus) {
@@ -243,33 +265,45 @@ impl FastExploreTool {
                 message.push_str(&format!("Tracing relationships for: {}\n\n", focus));
 
                 // Create HashMap for O(1) symbol lookups instead of O(n) for each relationship
-                let all_symbols = search_engine.search("*").await.map_err(|e| {
-                    anyhow::anyhow!("Failed to get all symbols: {}", e)
-                })?;
-                let symbol_map: HashMap<String, &crate::extractors::Symbol> =
-                    all_symbols.iter().map(|sr| (sr.symbol.id.clone(), &sr.symbol)).collect();
+                let all_symbols = search_engine
+                    .search("*")
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to get all symbols: {}", e))?;
+                let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
+                    .iter()
+                    .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
+                    .collect();
 
                 // Find incoming relationships (what references this symbol)
-                let incoming: Vec<_> = relationships.iter()
+                let incoming: Vec<_> = relationships
+                    .iter()
                     .filter(|rel| rel.to_symbol_id == target_symbol.id)
                     .collect();
 
                 // Find outgoing relationships (what this symbol references)
-                let outgoing: Vec<_> = relationships.iter()
+                let outgoing: Vec<_> = relationships
+                    .iter()
                     .filter(|rel| rel.from_symbol_id == target_symbol.id)
                     .collect();
 
                 message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
                 for rel in incoming.iter().take(10) {
                     if let Some(from_symbol) = symbol_map.get(&rel.from_symbol_id) {
-                        message.push_str(&format!("  {} {} this symbol\n", from_symbol.name, rel.kind));
+                        message.push_str(&format!(
+                            "  {} {} this symbol\n",
+                            from_symbol.name, rel.kind
+                        ));
                     }
                 }
 
-                message.push_str(&format!("\n→ Outgoing ({} relationships):\n", outgoing.len()));
+                message.push_str(&format!(
+                    "\n→ Outgoing ({} relationships):\n",
+                    outgoing.len()
+                ));
                 for rel in outgoing.iter().take(10) {
                     if let Some(to_symbol) = symbol_map.get(&rel.to_symbol_id) {
-                        message.push_str(&format!("  This symbol {} {}\n", rel.kind, to_symbol.name));
+                        message
+                            .push_str(&format!("  This symbol {} {}\n", rel.kind, to_symbol.name));
                     }
                 }
             } else {
@@ -284,10 +318,12 @@ impl FastExploreTool {
     }
 
     /// Format optimized results with token optimization for FastExploreTool
-    pub fn format_optimized_results(&self, symbols: &[Symbol], relationships: &[Relationship]) -> String {
-        let mut lines = vec![
-            format!("🧭 Codebase Exploration: {} mode", self.mode),
-        ];
+    pub fn format_optimized_results(
+        &self,
+        symbols: &[Symbol],
+        relationships: &[Relationship],
+    ) -> String {
+        let mut lines = vec![format!("🧭 Codebase Exploration: {} mode", self.mode)];
 
         // Token optimization: apply progressive reduction first, then early termination if needed
         let token_estimator = TokenEstimator::new();
@@ -307,7 +343,14 @@ impl FastExploreTool {
             all_content_items.push("🧭 Codebase Overview".to_string());
             all_content_items.push("========================".to_string());
             all_content_items.push(format!("📊 Total Symbols: {}", symbols.len()));
-            all_content_items.push(format!("📁 Total Files: {}", symbols.iter().map(|s| &s.file_path).collect::<std::collections::HashSet<_>>().len()));
+            all_content_items.push(format!(
+                "📁 Total Files: {}",
+                symbols
+                    .iter()
+                    .map(|s| &s.file_path)
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+            ));
             all_content_items.push(format!("🔗 Total Relationships: {}", relationships.len()));
 
             // Symbol type breakdown
@@ -319,7 +362,10 @@ impl FastExploreTool {
             let mut sorted_types: Vec<_> = type_counts.iter().collect();
             sorted_types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
             for (kind, count) in sorted_types.iter().take(20) {
-                all_content_items.push(format!("  {:?}: {} symbols - detailed breakdown and analysis", kind, count));
+                all_content_items.push(format!(
+                    "  {:?}: {} symbols - detailed breakdown and analysis",
+                    kind, count
+                ));
             }
 
             // Language breakdown
@@ -339,16 +385,21 @@ impl FastExploreTool {
                 all_content_items.push("📋 Symbol Details:".to_string());
                 let symbols_to_show = if symbols.len() > 100 { 100 } else { 20 }; // Show more symbols for large datasets
                 for (i, symbol) in symbols.iter().take(symbols_to_show).enumerate() {
-                    let mut symbol_details = vec![
-                        format!("  {}. {} [{}] in {} - line {}",
-                            i + 1, symbol.name, format!("{:?}", symbol.kind).to_lowercase(), symbol.file_path, symbol.start_line)
-                    ];
+                    let mut symbol_details = vec![format!(
+                        "  {}. {} [{}] in {} - line {}",
+                        i + 1,
+                        symbol.name,
+                        format!("{:?}", symbol.kind).to_lowercase(),
+                        symbol.file_path,
+                        symbol.start_line
+                    )];
 
                     // Include code_context if available (this is what triggers token optimization like other tools)
                     if let Some(context) = &symbol.code_context {
                         use crate::utils::context_truncation::ContextTruncator;
                         symbol_details.push("     📄 Context:".to_string());
-                        let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                        let context_lines: Vec<String> =
+                            context.lines().map(|s| s.to_string()).collect();
                         let truncator = ContextTruncator::new();
                         let max_lines = 50; // Increased limit to ensure token optimization triggers for test cases
                         let final_lines = if context_lines.len() > max_lines {
@@ -384,10 +435,14 @@ impl FastExploreTool {
                 all_content_items.push("📋 Dependency Symbol Details:".to_string());
                 let symbols_to_show = if symbols.len() > 100 { 100 } else { 20 }; // Show more symbols for large datasets
                 for (i, symbol) in symbols.iter().take(symbols_to_show).enumerate() {
-                    let mut symbol_details = vec![
-                        format!("  {}. {} [{}] in {} - line {} (dependency analysis)",
-                            i + 1, symbol.name, format!("{:?}", symbol.kind).to_lowercase(), symbol.file_path, symbol.start_line)
-                    ];
+                    let mut symbol_details = vec![format!(
+                        "  {}. {} [{}] in {} - line {} (dependency analysis)",
+                        i + 1,
+                        symbol.name,
+                        format!("{:?}", symbol.kind).to_lowercase(),
+                        symbol.file_path,
+                        symbol.start_line
+                    )];
 
                     // Add signature and doc_comment for dependencies mode to increase content
                     if let Some(signature) = &symbol.signature {
@@ -406,7 +461,8 @@ impl FastExploreTool {
                     if let Some(context) = &symbol.code_context {
                         use crate::utils::context_truncation::ContextTruncator;
                         symbol_details.push("     📄 Context:".to_string());
-                        let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                        let context_lines: Vec<String> =
+                            context.lines().map(|s| s.to_string()).collect();
                         let truncator = ContextTruncator::new();
                         let max_lines = 50; // Increased limit to ensure token optimization triggers for test cases
                         let final_lines = if context_lines.len() > max_lines {
@@ -446,16 +502,21 @@ impl FastExploreTool {
                 all_content_items.push("📋 Hotspot Symbol Details:".to_string());
                 let symbols_to_show = if symbols.len() > 100 { 100 } else { 20 }; // Show more symbols for large datasets
                 for (i, symbol) in symbols.iter().take(symbols_to_show).enumerate() {
-                    let mut symbol_details = vec![
-                        format!("  {}. {} [{}] in {} - line {} (hotspot analysis)",
-                            i + 1, symbol.name, format!("{:?}", symbol.kind).to_lowercase(), symbol.file_path, symbol.start_line)
-                    ];
+                    let mut symbol_details = vec![format!(
+                        "  {}. {} [{}] in {} - line {} (hotspot analysis)",
+                        i + 1,
+                        symbol.name,
+                        format!("{:?}", symbol.kind).to_lowercase(),
+                        symbol.file_path,
+                        symbol.start_line
+                    )];
 
                     // Include code_context if available (this triggers token optimization like other tools)
                     if let Some(context) = &symbol.code_context {
                         use crate::utils::context_truncation::ContextTruncator;
                         symbol_details.push("     📄 Context:".to_string());
-                        let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                        let context_lines: Vec<String> =
+                            context.lines().map(|s| s.to_string()).collect();
                         let truncator = ContextTruncator::new();
                         let max_lines = 50; // Increased limit to ensure token optimization triggers for test cases
                         let final_lines = if context_lines.len() > max_lines {
@@ -487,7 +548,8 @@ impl FastExploreTool {
                 if let Some(context) = &symbol.code_context {
                     use crate::utils::context_truncation::ContextTruncator;
                     symbol_details.push("     📄 Context:".to_string());
-                    let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                    let context_lines: Vec<String> =
+                        context.lines().map(|s| s.to_string()).collect();
                     let truncator = ContextTruncator::new();
                     let max_lines = 8; // Max 8 lines per symbol for token control
                     let final_lines = if context_lines.len() > max_lines {
@@ -524,20 +586,27 @@ impl FastExploreTool {
 
         // Try progressive reduction first
         let item_refs: Vec<&String> = all_content_items.iter().collect();
-        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+        let reduced_item_refs =
+            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
 
-        let (items_to_show, reduction_message) = if reduced_item_refs.len() < all_content_items.len() {
-            // Progressive reduction was applied
-            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
-            let message = format!("📊 Exploration content - Applied progressive reduction {} → {}",
-                    all_content_items.len(), items.len());
-            (items, message)
-        } else {
-            // No reduction needed
-            let message = format!("📊 Complete exploration content ({} items)",
-                    all_content_items.len());
-            (all_content_items, message)
-        };
+        let (items_to_show, reduction_message) =
+            if reduced_item_refs.len() < all_content_items.len() {
+                // Progressive reduction was applied
+                let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
+                let message = format!(
+                    "📊 Exploration content - Applied progressive reduction {} → {}",
+                    all_content_items.len(),
+                    items.len()
+                );
+                (items, message)
+            } else {
+                // No reduction needed
+                let message = format!(
+                    "📊 Complete exploration content ({} items)",
+                    all_content_items.len()
+                );
+                (all_content_items, message)
+            };
 
         lines.push(reduction_message);
         lines.push(String::new());
@@ -555,15 +624,15 @@ impl FastExploreTool {
                 "overview" => {
                     lines.push("   • Use dependencies mode for relationship analysis".to_string());
                     lines.push("   • Use hotspots mode for complexity analysis".to_string());
-                },
+                }
                 "dependencies" => {
                     lines.push("   • Use fast_refs on highly referenced symbols".to_string());
                     lines.push("   • Use trace mode for specific symbol analysis".to_string());
-                },
+                }
                 "hotspots" => {
                     lines.push("   • Investigate files with high symbol counts".to_string());
                     lines.push("   • Consider refactoring complex files".to_string());
-                },
+                }
                 _ => {
                     lines.push("   • Use fast_search to explore specific symbols".to_string());
                     lines.push("   • Use different exploration modes".to_string());
@@ -596,7 +665,9 @@ impl FindLogicTool {
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable business logic detection.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         let message = format!(
@@ -614,20 +685,23 @@ impl FindLogicTool {
             • Business process workflows\n\
             • Validation and business constraints\n\n\
             💡 Perfect for understanding what the code actually does!",
-            self.domain,
-            self.max_results,
-            self.group_by_layer,
-            self.min_business_score
+            self.domain, self.max_results, self.group_by_layer, self.min_business_score
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     /// Format optimized results with token optimization for FindLogicTool
-    pub fn format_optimized_results(&self, symbols: &[Symbol], relationships: &[Relationship]) -> String {
-        use crate::utils::token_estimation::TokenEstimator;
-        use crate::utils::progressive_reduction::ProgressiveReducer;
+    pub fn format_optimized_results(
+        &self,
+        symbols: &[Symbol],
+        relationships: &[Relationship],
+    ) -> String {
         use crate::utils::context_truncation::ContextTruncator;
+        use crate::utils::progressive_reduction::ProgressiveReducer;
+        use crate::utils::token_estimation::TokenEstimator;
 
         let mut lines = vec![
             format!("🏢 Business Logic Discovery"),
@@ -663,24 +737,38 @@ impl FindLogicTool {
             use std::collections::HashMap;
             let mut grouped_symbols: HashMap<String, Vec<&Symbol>> = HashMap::new();
             for symbol in symbols {
-                let layer = symbol.semantic_group.as_ref()
-                    .unwrap_or(&"unknown".to_string()).clone();
-                grouped_symbols.entry(layer).or_insert_with(Vec::new).push(symbol);
+                let layer = symbol
+                    .semantic_group
+                    .as_ref()
+                    .unwrap_or(&"unknown".to_string())
+                    .clone();
+                grouped_symbols
+                    .entry(layer)
+                    .or_insert_with(Vec::new)
+                    .push(symbol);
             }
 
             // Format grouped results
             for (layer, layer_symbols) in grouped_symbols {
-                all_items.push(format!("🏛️ {} Layer ({} components):", layer, layer_symbols.len()));
+                all_items.push(format!(
+                    "🏛️ {} Layer ({} components):",
+                    layer,
+                    layer_symbols.len()
+                ));
 
                 for symbol in layer_symbols {
                     let mut item_lines = vec![
-                        format!("  📍 {} [{}] (score: {:.2})",
+                        format!(
+                            "  📍 {} [{}] (score: {:.2})",
                             symbol.name,
                             format!("{:?}", symbol.kind).to_lowercase(),
                             symbol.confidence.unwrap_or(0.0)
                         ),
                         format!("     📄 File: {}", symbol.file_path),
-                        format!("     📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+                        format!(
+                            "     📍 Location: {}:{}",
+                            symbol.start_line, symbol.start_column
+                        ),
                     ];
 
                     if let Some(signature) = &symbol.signature {
@@ -695,7 +783,8 @@ impl FindLogicTool {
                     if let Some(context) = &symbol.code_context {
                         let truncator = ContextTruncator::new();
                         item_lines.push("     💼 Business Context:".to_string());
-                        let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                        let context_lines: Vec<String> =
+                            context.lines().map(|s| s.to_string()).collect();
                         let max_lines = 8; // Max 8 lines per business component for token control (FindLogicTool)
                         let final_lines = if context_lines.len() > max_lines {
                             truncator.truncate_lines(&context_lines, max_lines)
@@ -718,18 +807,24 @@ impl FindLogicTool {
             sorted_symbols.sort_by(|a, b| {
                 let score_a = a.confidence.unwrap_or(0.0);
                 let score_b = b.confidence.unwrap_or(0.0);
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             for symbol in sorted_symbols {
                 let mut item_lines = vec![
-                    format!("📍 {} [{}] (business score: {:.2})",
+                    format!(
+                        "📍 {} [{}] (business score: {:.2})",
                         symbol.name,
                         format!("{:?}", symbol.kind).to_lowercase(),
                         symbol.confidence.unwrap_or(0.0)
                     ),
                     format!("   📄 File: {}", symbol.file_path),
-                    format!("   📍 Location: {}:{}", symbol.start_line, symbol.start_column),
+                    format!(
+                        "   📍 Location: {}:{}",
+                        symbol.start_line, symbol.start_column
+                    ),
                 ];
 
                 if let Some(signature) = &symbol.signature {
@@ -748,7 +843,8 @@ impl FindLogicTool {
                 if let Some(context) = &symbol.code_context {
                     let truncator = ContextTruncator::new();
                     item_lines.push("   💼 Business Context:".to_string());
-                    let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                    let context_lines: Vec<String> =
+                        context.lines().map(|s| s.to_string()).collect();
                     let max_lines = 8; // Max 8 lines per business component for token control (FindLogicTool)
                     let final_lines = if context_lines.len() > max_lines {
                         truncator.truncate_lines(&context_lines, max_lines)
@@ -776,12 +872,15 @@ impl FindLogicTool {
 
         // Try progressive reduction first
         let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs = progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
+        let reduced_item_refs =
+            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
 
         let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
             // Progressive reduction was applied - update the count line using the correct index
-            lines[count_line_index] = format!("📊 {} business components found - Applied progressive reduction",
-                reduced_item_refs.len());
+            lines[count_line_index] = format!(
+                "📊 {} business components found - Applied progressive reduction",
+                reduced_item_refs.len()
+            );
             let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
             (items, true)
         } else {
@@ -799,7 +898,8 @@ impl FindLogicTool {
             lines.push("🔗 Business Process Relationships:".to_string());
             let relationship_count = relationships.len().min(5); // Show max 5 relationships
             for (i, relationship) in relationships.iter().take(relationship_count).enumerate() {
-                lines.push(format!("   {}. {} ↔ {} (confidence: {:.2})",
+                lines.push(format!(
+                    "   {}. {} ↔ {} (confidence: {:.2})",
                     i + 1,
                     relationship.from_symbol_id,
                     relationship.to_symbol_id,
@@ -807,7 +907,10 @@ impl FindLogicTool {
                 ));
             }
             if relationships.len() > 5 {
-                lines.push(format!("   ... and {} more relationships", relationships.len() - 5));
+                lines.push(format!(
+                    "   ... and {} more relationships",
+                    relationships.len() - 5
+                ));
             }
             lines.push(String::new());
         }

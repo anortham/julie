@@ -3,9 +3,11 @@
 // Port of Miller's Lua extractor with idiomatic Rust patterns
 // Original: /Users/murphy/Source/miller/src/extractors/lua-extractor.ts
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, SymbolOptions, Visibility};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 pub struct LuaExtractor {
     base: BaseExtractor,
@@ -35,20 +37,24 @@ impl LuaExtractor {
         self.symbols.clone()
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: &Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         self.relationships.clone()
     }
 
     fn traverse_node(&mut self, node: Node, parent_id: Option<String>) {
         let mut symbol: Option<Symbol> = None;
 
-
         match node.kind() {
             "function_definition_statement" | "function_declaration" => {
                 symbol = self.extract_function_definition_statement(node, parent_id.as_deref());
             }
             "local_function_definition_statement" | "local_function_declaration" => {
-                symbol = self.extract_local_function_definition_statement(node, parent_id.as_deref());
+                symbol =
+                    self.extract_local_function_definition_statement(node, parent_id.as_deref());
             }
             "local_variable_declaration" | "variable_declaration" => {
                 symbol = self.extract_local_variable_declaration(node, parent_id.as_deref());
@@ -75,7 +81,11 @@ impl LuaExtractor {
         }
     }
 
-    fn extract_function_definition_statement(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_function_definition_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Handle both regular functions and colon syntax methods
         let mut name_node = self.find_child_by_type(node, "identifier");
         let name: String;
@@ -84,9 +94,11 @@ impl LuaExtractor {
 
         if name_node.is_none() {
             // Check for colon syntax: function obj:method() or dot syntax: function obj.method()
-            if let Some(variable_node) = self.find_child_by_type(node, "variable")
+            if let Some(variable_node) = self
+                .find_child_by_type(node, "variable")
                 .or_else(|| self.find_child_by_type(node, "dot_index_expression"))
-                .or_else(|| self.find_child_by_type(node, "method_index_expression")) {
+                .or_else(|| self.find_child_by_type(node, "method_index_expression"))
+            {
                 let full_name = self.base.get_node_text(&variable_node);
 
                 // Handle colon syntax: function obj:method()
@@ -100,7 +112,9 @@ impl LuaExtractor {
                         kind = SymbolKind::Method;
 
                         // Try to find the object this method belongs to
-                        if let Some(object_symbol) = self.symbols.iter().find(|s| s.name == object_name) {
+                        if let Some(object_symbol) =
+                            self.symbols.iter().find(|s| s.name == object_name)
+                        {
                             method_parent_id = Some(object_symbol.id.clone());
                         }
                     } else {
@@ -118,7 +132,9 @@ impl LuaExtractor {
                         kind = SymbolKind::Method;
 
                         // Try to find the object this method belongs to
-                        if let Some(object_symbol) = self.symbols.iter().find(|s| s.name == object_name) {
+                        if let Some(object_symbol) =
+                            self.symbols.iter().find(|s| s.name == object_name)
+                        {
                             method_parent_id = Some(object_symbol.id.clone());
                         }
                     } else {
@@ -140,7 +156,11 @@ impl LuaExtractor {
         let node_text = self.base.get_node_text(&node);
         let is_local = node_text.trim_start().starts_with("local function");
         let has_underscore = name.starts_with('_');
-        let visibility = if is_local || has_underscore { Visibility::Private } else { Visibility::Public };
+        let visibility = if is_local || has_underscore {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        };
 
         let options = SymbolOptions {
             signature: Some(signature),
@@ -149,12 +169,18 @@ impl LuaExtractor {
             ..Default::default()
         };
 
-        let symbol = self.base.create_symbol(&name_node.unwrap_or(node), name, kind, options);
+        let symbol = self
+            .base
+            .create_symbol(&name_node.unwrap_or(node), name, kind, options);
         self.symbols.push(symbol.clone());
         Some(symbol)
     }
 
-    fn extract_local_function_definition_statement(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_local_function_definition_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name_node = self.find_child_by_type(node, "identifier")?;
         let name = self.base.get_node_text(&name_node);
         let signature = self.base.get_node_text(&node);
@@ -167,12 +193,18 @@ impl LuaExtractor {
             ..Default::default()
         };
 
-        let symbol = self.base.create_symbol(&name_node, name, SymbolKind::Function, options);
+        let symbol = self
+            .base
+            .create_symbol(&name_node, name, SymbolKind::Function, options);
         self.symbols.push(symbol.clone());
         Some(symbol)
     }
 
-    fn extract_local_variable_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_local_variable_declaration(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Get the assignment_statement child first
         let assignment_statement = self.find_child_by_type(node, "assignment_statement")?;
 
@@ -182,14 +214,16 @@ impl LuaExtractor {
 
         let signature = self.base.get_node_text(&node);
         let mut cursor = variable_list.walk();
-        let variables: Vec<Node> = variable_list.children(&mut cursor)
+        let variables: Vec<Node> = variable_list
+            .children(&mut cursor)
             .filter(|child| child.kind() == "variable" || child.kind() == "identifier")
             .collect();
 
         // Get the corresponding expressions if they exist
         let expressions: Vec<Node> = if let Some(expr_list) = expression_list {
             let mut expr_cursor = expr_list.walk();
-            expr_list.children(&mut expr_cursor)
+            expr_list
+                .children(&mut expr_cursor)
                 .filter(|child| child.kind() != ",") // Filter out commas
                 .collect()
         } else {
@@ -299,7 +333,11 @@ impl LuaExtractor {
         }
     }
 
-    fn extract_assignment_statement(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_assignment_statement(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
 
@@ -313,8 +351,13 @@ impl LuaExtractor {
         // Handle variable_list assignments
         if left.kind() == "variable_list" {
             let mut left_cursor = left.walk();
-            let variables: Vec<Node> = left.children(&mut left_cursor)
-                .filter(|child| child.kind() == "variable" || child.kind() == "identifier" || child.kind() == "dot_index_expression")
+            let variables: Vec<Node> = left
+                .children(&mut left_cursor)
+                .filter(|child| {
+                    child.kind() == "variable"
+                        || child.kind() == "identifier"
+                        || child.kind() == "dot_index_expression"
+                })
                 .collect();
 
             for (i, var_node) in variables.iter().enumerate() {
@@ -332,24 +375,31 @@ impl LuaExtractor {
                 let signature = self.base.get_node_text(&node);
 
                 // Handle dot notation assignments like M.PI = 3.14159
-                let (actual_name, parent_symbol_id, kind_override) = if var_node.kind() == "dot_index_expression" && name.contains('.') {
-                    let parts: Vec<&str> = name.split('.').collect();
-                    if parts.len() == 2 {
-                        let object_name = parts[0];
-                        let property_name = parts[1];
+                let (actual_name, parent_symbol_id, kind_override) =
+                    if var_node.kind() == "dot_index_expression" && name.contains('.') {
+                        let parts: Vec<&str> = name.split('.').collect();
+                        if parts.len() == 2 {
+                            let object_name = parts[0];
+                            let property_name = parts[1];
 
-                        // Find the parent object
-                        let parent_id = self.symbols.iter()
-                            .find(|s| s.name == object_name)
-                            .map(|s| s.id.clone());
+                            // Find the parent object
+                            let parent_id = self
+                                .symbols
+                                .iter()
+                                .find(|s| s.name == object_name)
+                                .map(|s| s.id.clone());
 
-                        (property_name.to_string(), parent_id, Some(SymbolKind::Field))
+                            (
+                                property_name.to_string(),
+                                parent_id,
+                                Some(SymbolKind::Field),
+                            )
+                        } else {
+                            (name, None, None)
+                        }
                     } else {
                         (name, None, None)
-                    }
-                } else {
-                    (name, None, None)
-                };
+                    };
 
                 // Determine kind and type based on the assignment
                 let is_field_assignment = matches!(kind_override, Some(SymbolKind::Field));
@@ -358,7 +408,8 @@ impl LuaExtractor {
 
                 if right.kind() == "expression_list" {
                     let mut right_cursor = right.walk();
-                    let expressions: Vec<Node> = right.children(&mut right_cursor)
+                    let expressions: Vec<Node> = right
+                        .children(&mut right_cursor)
                         .filter(|child| child.kind() != ",")
                         .collect();
 
@@ -397,7 +448,9 @@ impl LuaExtractor {
                     ..Default::default()
                 };
 
-                let symbol = self.base.create_symbol(&name_node, actual_name, kind, options);
+                let symbol = self
+                    .base
+                    .create_symbol(&name_node, actual_name, kind, options);
                 self.symbols.push(symbol);
             }
         }
@@ -423,7 +476,9 @@ impl LuaExtractor {
                     };
 
                     // Find the object this property belongs to
-                    let property_parent_id = self.symbols.iter()
+                    let property_parent_id = self
+                        .symbols
+                        .iter()
                         .find(|s| s.name == object_name)
                         .map(|s| s.id.clone())
                         .or_else(|| parent_id.map(|s| s.to_string()));
@@ -439,7 +494,9 @@ impl LuaExtractor {
                         ..Default::default()
                     };
 
-                    let symbol = self.base.create_symbol(&left, property_name.to_string(), kind, options);
+                    let symbol =
+                        self.base
+                            .create_symbol(&left, property_name.to_string(), kind, options);
                     self.symbols.push(symbol);
                 }
             }
@@ -478,21 +535,26 @@ impl LuaExtractor {
         None
     }
 
-
-    fn extract_variable_assignment(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_variable_assignment(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract global variable assignments like: PI = 3.14159
         let variable_list = self.find_child_by_type(node, "variable_list")?;
         let expression_list = self.find_child_by_type(node, "expression_list");
 
         let signature = self.base.get_node_text(&node);
         let mut var_cursor = variable_list.walk();
-        let variables: Vec<Node> = variable_list.children(&mut var_cursor)
+        let variables: Vec<Node> = variable_list
+            .children(&mut var_cursor)
             .filter(|child| child.kind() == "variable")
             .collect();
 
         let expressions: Vec<Node> = if let Some(expr_list) = expression_list {
             let mut expr_cursor = expr_list.walk();
-            expr_list.children(&mut expr_cursor)
+            expr_list
+                .children(&mut expr_cursor)
                 .filter(|child| child.kind() != ",") // Filter out commas
                 .collect()
         } else {
@@ -525,7 +587,9 @@ impl LuaExtractor {
                     }
 
                     // Find the object this property belongs to
-                    let property_parent_id = self.symbols.iter()
+                    let property_parent_id = self
+                        .symbols
+                        .iter()
                         .find(|s| s.name == object_name)
                         .map(|s| s.id.clone())
                         .or_else(|| parent_id.map(|s| s.to_string()));
@@ -541,12 +605,15 @@ impl LuaExtractor {
                         ..Default::default()
                     };
 
-                    let symbol = self.base.create_symbol(var_node, property_name.to_string(), kind, options);
+                    let symbol =
+                        self.base
+                            .create_symbol(var_node, property_name.to_string(), kind, options);
                     self.symbols.push(symbol);
 
                     // If this is a table, extract its fields with this symbol as parent
                     if let Some(expression) = expressions.get(i) {
-                        if expression.kind() == "table_constructor" || expression.kind() == "table" {
+                        if expression.kind() == "table_constructor" || expression.kind() == "table"
+                        {
                             let parent_id = self.symbols.last().unwrap().id.clone();
                             self.extract_table_fields(*expression, Some(&parent_id));
                         }
@@ -587,7 +654,8 @@ impl LuaExtractor {
 
                     // If this is a table, extract its fields with this symbol as parent
                     if let Some(expression) = expressions.get(i) {
-                        if expression.kind() == "table_constructor" || expression.kind() == "table" {
+                        if expression.kind() == "table_constructor" || expression.kind() == "table"
+                        {
                             let parent_id = self.symbols.last().unwrap().id.clone();
                             self.extract_table_fields(*expression, Some(&parent_id));
                         }
@@ -655,7 +723,11 @@ impl LuaExtractor {
         self.symbols.push(symbol);
     }
 
-    fn extract_table_field_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_table_field_symbol(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Handle field definitions like: field = value or field = function() end
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
@@ -706,7 +778,9 @@ impl LuaExtractor {
         if parent.kind() == "expression_list" {
             let grandparent = parent.parent();
             if let Some(grandparent) = grandparent {
-                if grandparent.kind() == "local_variable_declaration" || grandparent.kind() == "variable_assignment" {
+                if grandparent.kind() == "local_variable_declaration"
+                    || grandparent.kind() == "variable_assignment"
+                {
                     return true;
                 }
             }
@@ -724,13 +798,17 @@ impl LuaExtractor {
                 let class_name = &symbol.name;
 
                 // Pattern 1: Tables with metatable setup (local Class = {})
-                let is_table = symbol.metadata.as_ref()
+                let is_table = symbol
+                    .metadata
+                    .as_ref()
                     .and_then(|m| m.get("dataType"))
                     .map(|dt| dt.as_str() == Some("table"))
                     .unwrap_or(false);
 
                 // Pattern 2: Variables created with setmetatable (local Dog = setmetatable({}, Animal))
-                let is_setmetatable = symbol.signature.as_ref()
+                let is_setmetatable = symbol
+                    .signature
+                    .as_ref()
                     .map(|s| s.contains("setmetatable("))
                     .unwrap_or(false);
 
@@ -738,19 +816,33 @@ impl LuaExtractor {
                 if is_table || is_setmetatable {
                     // Look for metatable patterns that indicate this is a class
                     let has_index_pattern = self.symbols.iter().any(|s| {
-                        s.signature.as_ref().map(|sig| sig.contains(&format!("{}.__index = {}", class_name, class_name))).unwrap_or(false)
+                        s.signature
+                            .as_ref()
+                            .map(|sig| {
+                                sig.contains(&format!("{}.__index = {}", class_name, class_name))
+                            })
+                            .unwrap_or(false)
                     });
 
                     let has_new_method = self.symbols.iter().any(|s| {
-                        s.name == "new" && s.signature.as_ref().map(|sig| sig.contains(&format!("{}.new", class_name))).unwrap_or(false)
+                        s.name == "new"
+                            && s.signature
+                                .as_ref()
+                                .map(|sig| sig.contains(&format!("{}.new", class_name)))
+                                .unwrap_or(false)
                     });
 
                     let has_colon_methods = self.symbols.iter().any(|s| {
-                        s.kind == SymbolKind::Method && s.signature.as_ref().map(|sig| sig.contains(&format!("{}:", class_name))).unwrap_or(false)
+                        s.kind == SymbolKind::Method
+                            && s.signature
+                                .as_ref()
+                                .map(|sig| sig.contains(&format!("{}:", class_name)))
+                                .unwrap_or(false)
                     });
 
                     // If it has metatable patterns, upgrade to Class
-                    if has_index_pattern || (has_new_method && has_colon_methods) || is_setmetatable {
+                    if has_index_pattern || (has_new_method && has_colon_methods) || is_setmetatable
+                    {
                         class_upgrades.push((index, is_setmetatable, symbol.signature.clone()));
                     }
                 }
@@ -763,24 +855,28 @@ impl LuaExtractor {
 
             // Extract inheritance information from setmetatable pattern
             if is_setmetatable {
-                if let Some(captures) = regex::Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)")
-                    .ok()
-                    .and_then(|re| signature.as_ref().and_then(|s| re.captures(s)))
+                if let Some(captures) =
+                    regex::Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)")
+                        .ok()
+                        .and_then(|re| signature.as_ref().and_then(|s| re.captures(s)))
                 {
                     if let Some(parent_class_name) = captures.get(1) {
                         let parent_class_name = parent_class_name.as_str();
                         // Verify the parent class exists in our symbols
                         let parent_exists = self.symbols.iter().any(|s| {
-                            s.name == parent_class_name &&
-                            (s.kind == SymbolKind::Class ||
-                             s.metadata.as_ref()
-                                 .and_then(|m| m.get("dataType"))
-                                 .map(|dt| dt.as_str() == Some("table"))
-                                 .unwrap_or(false))
+                            s.name == parent_class_name
+                                && (s.kind == SymbolKind::Class
+                                    || s.metadata
+                                        .as_ref()
+                                        .and_then(|m| m.get("dataType"))
+                                        .map(|dt| dt.as_str() == Some("table"))
+                                        .unwrap_or(false))
                         });
 
                         if parent_exists {
-                            let metadata = self.symbols[index].metadata.get_or_insert_with(HashMap::new);
+                            let metadata = self.symbols[index]
+                                .metadata
+                                .get_or_insert_with(HashMap::new);
                             metadata.insert("baseClass".to_string(), parent_class_name.into());
                         }
                     }

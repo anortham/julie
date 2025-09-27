@@ -57,7 +57,11 @@ export default {
         assert!(component.is_some());
         let component = component.unwrap();
         assert_eq!(component.kind, SymbolKind::Class);
-        assert!(component.signature.as_ref().unwrap().contains("<HelloWorld />"));
+        assert!(component
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<HelloWorld />"));
     }
 
     #[test]

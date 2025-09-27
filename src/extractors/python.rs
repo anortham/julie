@@ -1,6 +1,6 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind};
-use tree_sitter::{Tree, Node};
+use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// Python extractor for extracting symbols and relationships from Python source code
 /// Port of Miller's Python extractor with comprehensive Python feature support
@@ -81,14 +81,26 @@ impl PythonExtractor {
             let all_args = self.extract_argument_list(&superclasses);
 
             // Separate regular base classes from keyword arguments
-            let bases: Vec<_> = all_args.iter().filter(|arg| !arg.contains('=')).cloned().collect();
-            let keyword_args: Vec<_> = all_args.iter().filter(|arg| arg.contains('=')).cloned().collect();
+            let bases: Vec<_> = all_args
+                .iter()
+                .filter(|arg| !arg.contains('='))
+                .cloned()
+                .collect();
+            let keyword_args: Vec<_> = all_args
+                .iter()
+                .filter(|arg| arg.contains('='))
+                .cloned()
+                .collect();
 
             // Check if this is an Enum class
-            is_enum = bases.iter().any(|base| base == "Enum" || base.contains("Enum"));
+            is_enum = bases
+                .iter()
+                .any(|base| base == "Enum" || base.contains("Enum"));
 
             // Check if this is a Protocol class (should be treated as Interface)
-            is_protocol = bases.iter().any(|base| base == "Protocol" || base.contains("Protocol"));
+            is_protocol = bases
+                .iter()
+                .any(|base| base == "Protocol" || base.contains("Protocol"));
 
             // Build extends information
             let mut extends_parts = Vec::new();
@@ -97,7 +109,10 @@ impl PythonExtractor {
             }
 
             // Add metaclass info if present
-            if let Some(metaclass_arg) = keyword_args.iter().find(|arg| arg.starts_with("metaclass=")) {
+            if let Some(metaclass_arg) = keyword_args
+                .iter()
+                .find(|arg| arg.starts_with("metaclass="))
+            {
                 extends_parts.push(metaclass_arg.clone());
             }
 
@@ -188,8 +203,14 @@ impl PythonExtractor {
 
         // Build signature
         let async_prefix = if is_async { "async " } else { "" };
-        let signature = format!("{}{}def {}({}){}", decorator_info, async_prefix, name, params.join(", "), return_type);
-
+        let signature = format!(
+            "{}{}def {}({}){}",
+            decorator_info,
+            async_prefix,
+            name,
+            params.join(", "),
+            return_type
+        );
 
         // Determine if it's a method or function based on context
         let (symbol_kind, parent_id) = self.determine_function_kind(&node, &name);
@@ -264,7 +285,10 @@ impl PythonExtractor {
             symbol_kind = SymbolKind::Property;
         }
         // Check if it's a constant (uppercase name)
-        else if symbol_kind == SymbolKind::Variable && name == name.to_uppercase() && name.len() > 1 {
+        else if symbol_kind == SymbolKind::Variable
+            && name == name.to_uppercase()
+            && name.len() > 1
+        {
             // Check if we're inside an enum class
             if self.is_inside_enum_class(&node) {
                 symbol_kind = SymbolKind::EnumMember;
@@ -296,7 +320,10 @@ impl PythonExtractor {
         let parent_id = None;
 
         let mut metadata = std::collections::HashMap::new();
-        metadata.insert("hasTypeAnnotation".to_string(), serde_json::json!(!type_annotation.is_empty()));
+        metadata.insert(
+            "hasTypeAnnotation".to_string(),
+            serde_json::json!(!type_annotation.is_empty()),
+        );
 
         use crate::extractors::base::SymbolOptions;
         Some(self.base.create_symbol(
@@ -343,14 +370,17 @@ impl PythonExtractor {
                                     // Simple import: from module import name
                                     let name = self.base.get_node_text(&child);
                                     let import_text = format!("from {} import {}", module, name);
-                                    let symbol = self.create_import_symbol(&node, name, import_text);
+                                    let symbol =
+                                        self.create_import_symbol(&node, name, import_text);
                                     imports.push(symbol);
                                 }
                                 "aliased_import" => {
                                     // Aliased import: from module import name as alias
                                     if let Some((name, alias)) = self.extract_alias(&child) {
-                                        let import_text = format!("from {} import {} as {}", module, name, alias);
-                                        let symbol = self.create_import_symbol(&node, alias, import_text);
+                                        let import_text =
+                                            format!("from {} import {} as {}", module, name, alias);
+                                        let symbol =
+                                            self.create_import_symbol(&node, alias, import_text);
                                         imports.push(symbol);
                                     }
                                 }
@@ -410,9 +440,8 @@ impl PythonExtractor {
         let mut relationships = Vec::new();
 
         // Create symbol map for fast lookups by name
-        let symbol_map: std::collections::HashMap<String, &Symbol> = symbols.iter()
-            .map(|s| (s.name.clone(), s))
-            .collect();
+        let symbol_map: std::collections::HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.name.clone(), s)).collect();
 
         // Recursively visit all nodes to extract relationships
         self.visit_node_for_relationships(tree.root_node(), &symbol_map, &mut relationships);
@@ -427,7 +456,8 @@ impl PythonExtractor {
         for symbol in symbols {
             // Infer types from Python-specific patterns
             if let Some(ref signature) = symbol.signature {
-                if let Some(inferred_type) = self.infer_type_from_signature(signature, &symbol.kind) {
+                if let Some(inferred_type) = self.infer_type_from_signature(signature, &symbol.kind)
+                {
                     type_map.insert(symbol.id.clone(), inferred_type);
                 }
             }
@@ -455,9 +485,17 @@ impl PythonExtractor {
                     // Handle keyword arguments like metaclass=SingletonMeta
                     let mut child_cursor = child.walk();
                     let children: Vec<_> = child.children(&mut child_cursor).collect();
-                    if let (Some(keyword_node), Some(value_node)) = (children.first(), children.last()) {
-                        if keyword_node.kind() == "identifier" && self.base.get_node_text(keyword_node) == "metaclass" {
-                            args.push(format!("{}={}", self.base.get_node_text(keyword_node), self.base.get_node_text(value_node)));
+                    if let (Some(keyword_node), Some(value_node)) =
+                        (children.first(), children.last())
+                    {
+                        if keyword_node.kind() == "identifier"
+                            && self.base.get_node_text(keyword_node) == "metaclass"
+                        {
+                            args.push(format!(
+                                "{}={}",
+                                self.base.get_node_text(keyword_node),
+                                self.base.get_node_text(value_node)
+                            ));
                         }
                     }
                 }
@@ -527,13 +565,13 @@ impl PythonExtractor {
 
                         // Remove quotes (single, double, or triple quotes)
                         if docstring.starts_with("\"\"\"") && docstring.ends_with("\"\"\"") {
-                            docstring = docstring[3..docstring.len()-3].to_string();
+                            docstring = docstring[3..docstring.len() - 3].to_string();
                         } else if docstring.starts_with("'''") && docstring.ends_with("'''") {
-                            docstring = docstring[3..docstring.len()-3].to_string();
+                            docstring = docstring[3..docstring.len() - 3].to_string();
                         } else if docstring.starts_with('"') && docstring.ends_with('"') {
-                            docstring = docstring[1..docstring.len()-1].to_string();
+                            docstring = docstring[1..docstring.len() - 1].to_string();
                         } else if docstring.starts_with('\'') && docstring.ends_with('\'') {
-                            docstring = docstring[1..docstring.len()-1].to_string();
+                            docstring = docstring[1..docstring.len() - 1].to_string();
                         }
 
                         return Some(docstring.trim().to_string());
@@ -546,13 +584,13 @@ impl PythonExtractor {
 
                 // Remove quotes (single, double, or triple quotes)
                 if docstring.starts_with("\"\"\"") && docstring.ends_with("\"\"\"") {
-                    docstring = docstring[3..docstring.len()-3].to_string();
+                    docstring = docstring[3..docstring.len() - 3].to_string();
                 } else if docstring.starts_with("'''") && docstring.ends_with("'''") {
-                    docstring = docstring[3..docstring.len()-3].to_string();
+                    docstring = docstring[3..docstring.len() - 3].to_string();
                 } else if docstring.starts_with('"') && docstring.ends_with('"') {
-                    docstring = docstring[1..docstring.len()-1].to_string();
+                    docstring = docstring[1..docstring.len() - 1].to_string();
                 } else if docstring.starts_with('\'') && docstring.ends_with('\'') {
-                    docstring = docstring[1..docstring.len()-1].to_string();
+                    docstring = docstring[1..docstring.len() - 1].to_string();
                 }
 
                 return Some(docstring.trim().to_string());
@@ -566,13 +604,19 @@ impl PythonExtractor {
         match kind {
             SymbolKind::Function | SymbolKind::Method => {
                 // Extract type hints from function signatures
-                if let Some(captures) = regex::Regex::new(r":\s*([^=\s]+)\s*$").unwrap().captures(signature) {
+                if let Some(captures) = regex::Regex::new(r":\s*([^=\s]+)\s*$")
+                    .unwrap()
+                    .captures(signature)
+                {
                     return Some(captures[1].to_string());
                 }
             }
             SymbolKind::Variable | SymbolKind::Property => {
                 // Extract type from variable annotations
-                if let Some(captures) = regex::Regex::new(r":\s*([^=]+)\s*=").unwrap().captures(signature) {
+                if let Some(captures) = regex::Regex::new(r":\s*([^=]+)\s*=")
+                    .unwrap()
+                    .captures(signature)
+                {
                     return Some(captures[1].trim().to_string());
                 }
             }
@@ -687,7 +731,11 @@ impl PythonExtractor {
 
                 // Create parent_id using the same pattern as BaseExtractor
                 let start_pos = parent.start_position();
-                let parent_id = self.base.generate_id(&class_name, start_pos.row as u32, start_pos.column as u32);
+                let parent_id = self.base.generate_id(
+                    &class_name,
+                    start_pos.row as u32,
+                    start_pos.column as u32,
+                );
 
                 // Determine method type
                 let symbol_kind = if name == "__init__" {
@@ -797,7 +845,9 @@ impl PythonExtractor {
                 if let Some(superclasses_node) = parent.child_by_field_name("superclasses") {
                     let superclasses = self.extract_argument_list(&superclasses_node);
                     // Check if any base class is "Enum"
-                    return superclasses.iter().any(|base| base == "Enum" || base.contains("Enum"));
+                    return superclasses
+                        .iter()
+                        .any(|base| base == "Enum" || base.contains("Enum"));
                 }
                 // If we found a class but it doesn't extend anything, it's not an enum
                 return false;
@@ -864,7 +914,13 @@ impl PythonExtractor {
                     };
 
                     let relationship = Relationship {
-                        id: format!("{}_{}_{:?}_{}", class_symbol.id, base_symbol.id, relationship_kind, node.start_position().row),
+                        id: format!(
+                            "{}_{}_{:?}_{}",
+                            class_symbol.id,
+                            base_symbol.id,
+                            relationship_kind,
+                            node.start_position().row
+                        ),
                         from_symbol_id: class_symbol.id.clone(),
                         to_symbol_id: base_symbol.id.clone(),
                         kind: relationship_kind,
@@ -895,7 +951,13 @@ impl PythonExtractor {
                     // Find the enclosing function/method that contains this call
                     if let Some(caller_symbol) = self.find_containing_function(node, symbol_map) {
                         let relationship = Relationship {
-                            id: format!("{}_{}_{:?}_{}", caller_symbol.id, called_symbol.id, RelationshipKind::Calls, node.start_position().row),
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
                             from_symbol_id: caller_symbol.id.clone(),
                             to_symbol_id: called_symbol.id.clone(),
                             kind: RelationshipKind::Calls,
@@ -938,7 +1000,9 @@ impl PythonExtractor {
         // Walk up the tree to find the containing function or method
         let mut current = node;
         while let Some(parent) = current.parent() {
-            if parent.kind() == "function_definition" || parent.kind() == "async_function_definition" {
+            if parent.kind() == "function_definition"
+                || parent.kind() == "async_function_definition"
+            {
                 // Found a function, extract its name
                 if let Some(name_node) = parent.child_by_field_name("name") {
                     let function_name = self.base.get_node_text(&name_node);

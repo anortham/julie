@@ -156,14 +156,16 @@ impl ExactMatchBoost {
         let symbol_words = Self::tokenize_symbol(symbol_name);
         let symbol_word_set: HashSet<&String> = symbol_words.iter().collect();
 
-        self.query_words.iter()
+        self.query_words
+            .iter()
             .filter(|word| symbol_word_set.contains(word))
             .count()
     }
 
     /// Tokenize query into words (split on spaces and normalize)
     fn tokenize_query(query: &str) -> Vec<String> {
-        query.split_whitespace()
+        query
+            .split_whitespace()
             .map(|word| word.to_lowercase())
             .filter(|word| !word.is_empty())
             .collect()
@@ -180,7 +182,11 @@ impl ExactMatchBoost {
                 let char_is_upper = ch.is_uppercase();
                 let _char_is_lower = ch.is_lowercase();
                 let prev_char = if i > 0 { Some(chars[i - 1]) } else { None };
-                let next_char = if i + 1 < chars.len() { Some(chars[i + 1]) } else { None };
+                let next_char = if i + 1 < chars.len() {
+                    Some(chars[i + 1])
+                } else {
+                    None
+                };
 
                 let should_split = if let Some(prev) = prev_char {
                     // Split camelCase: lowercase followed by uppercase
@@ -215,9 +221,7 @@ impl ExactMatchBoost {
             words.push(current_word.to_lowercase());
         }
 
-        words.into_iter()
-            .filter(|word| !word.is_empty())
-            .collect()
+        words.into_iter().filter(|word| !word.is_empty()).collect()
     }
 }
 

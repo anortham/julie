@@ -12,7 +12,9 @@
       "Read(//c/source/coa-codesearch-mcp/**)",
       "Bash(cargo test:*)",
       "Bash(cargo check:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "mcp__julie__manage_workspace",
+      "Bash(cargo clippy:*)"
     ],
     "deny": [],
     "ask": []

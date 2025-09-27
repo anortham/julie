@@ -1,7 +1,9 @@
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, Relationship, RelationshipKind, SymbolOptions};
-use tree_sitter::Tree;
-use std::collections::HashMap;
+use crate::extractors::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
+};
 use serde_json::Value;
+use std::collections::HashMap;
+use tree_sitter::Tree;
 
 /// SQL language extractor that handles SQL-specific constructs for cross-language tracing:
 /// - Table definitions (CREATE TABLE)
@@ -49,13 +51,31 @@ impl SqlExtractor {
             }
 
             // Use metadata for SQL-specific types
-            if symbol.metadata.as_ref().and_then(|m| m.get("isTable")).and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("isTable"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 types.insert(symbol.id.clone(), "TABLE".to_string());
             }
-            if symbol.metadata.as_ref().and_then(|m| m.get("isView")).and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("isView"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 types.insert(symbol.id.clone(), "VIEW".to_string());
             }
-            if symbol.metadata.as_ref().and_then(|m| m.get("isStoredProcedure")).and_then(|v| v.as_bool()).unwrap_or(false) {
+            if symbol
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("isStoredProcedure"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 types.insert(symbol.id.clone(), "PROCEDURE".to_string());
             }
         }
@@ -63,7 +83,12 @@ impl SqlExtractor {
         types
     }
 
-    fn visit_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn visit_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         let mut symbol: Option<Symbol> = None;
 
         match node.kind() {
@@ -125,11 +150,25 @@ impl SqlExtractor {
                 }
                 "ERROR" => {
                     let metadata = &symbol.metadata;
-                    if metadata.as_ref().and_then(|m| m.get("isView")).and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if metadata
+                        .as_ref()
+                        .and_then(|m| m.get("isView"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         self.extract_view_columns_from_error_node(node, symbols, &symbol.id);
                     }
-                    if metadata.as_ref().and_then(|m| m.get("isStoredProcedure")).and_then(|v| v.as_bool()).unwrap_or(false) ||
-                       metadata.as_ref().and_then(|m| m.get("isFunction")).and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if metadata
+                        .as_ref()
+                        .and_then(|m| m.get("isStoredProcedure"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                        || metadata
+                            .as_ref()
+                            .and_then(|m| m.get("isFunction"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                    {
                         self.extract_parameters_from_error_node(node, symbols, &symbol.id);
                     }
                 }
@@ -152,13 +191,18 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_table_definition(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_table_definition(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's exact logic: Look for table name inside object_reference node
         let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
         let table_name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "identifier")
+            self.base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "table_name"))
         };
 
@@ -180,7 +224,10 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, table_name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, table_name, SymbolKind::Class, options),
+        )
     }
 
     fn extract_table_signature(&self, node: tree_sitter::Node) -> String {
@@ -189,7 +236,8 @@ impl SqlExtractor {
         let name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "identifier")
+            self.base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "table_name"))
         };
 
@@ -210,20 +258,31 @@ impl SqlExtractor {
         format!("CREATE TABLE {} ({} columns)", table_name, column_count)
     }
 
-    fn extract_table_columns(&mut self, table_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_table_id: &str) {
+    fn extract_table_columns(
+        &mut self,
+        table_node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_table_id: &str,
+    ) {
         // Use find_nodes_by_type to avoid borrowing conflicts
-        let column_nodes = self.base.find_nodes_by_type(&table_node, "column_definition");
+        let column_nodes = self
+            .base
+            .find_nodes_by_type(&table_node, "column_definition");
 
         for node in column_nodes {
             // Find column name from identifier or column_name nodes
-            let column_name_node = self.base.find_child_by_type(&node, "identifier")
+            let column_name_node = self
+                .base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "column_name"));
 
             if let Some(name_node) = column_name_node {
                 let column_name = self.base.get_node_text(&name_node);
 
                 // Find SQL data type nodes (port Miller's comprehensive type search)
-                let data_type_node = self.base.find_child_by_type(&node, "data_type")
+                let data_type_node = self
+                    .base
+                    .find_child_by_type(&node, "data_type")
                     .or_else(|| self.base.find_child_by_type(&node, "type_name"))
                     .or_else(|| self.base.find_child_by_type(&node, "bigint"))
                     .or_else(|| self.base.find_child_by_type(&node, "varchar"))
@@ -265,7 +324,9 @@ impl SqlExtractor {
                 };
 
                 // Columns are fields within the table (Miller's strategy)
-                let column_symbol = self.base.create_symbol(&node, column_name, SymbolKind::Field, options);
+                let column_symbol =
+                    self.base
+                        .create_symbol(&node, column_name, SymbolKind::Field, options);
                 symbols.push(column_symbol);
             }
         }
@@ -332,7 +393,12 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_table_constraints(&mut self, table_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_table_id: &str) {
+    fn extract_table_constraints(
+        &mut self,
+        table_node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_table_id: &str,
+    ) {
         // Use find_nodes_by_type to avoid borrowing conflicts and node lifetime issues
         let constraint_nodes = self.base.find_nodes_by_type(&table_node, "constraint");
 
@@ -341,11 +407,26 @@ impl SqlExtractor {
             let mut constraint_name = format!("constraint_{}", node.start_position().row);
 
             // Determine constraint type based on child nodes (Miller's logic)
-            let has_check = self.base.find_child_by_type(&node, "keyword_check").is_some();
-            let has_primary = self.base.find_child_by_type(&node, "keyword_primary").is_some();
-            let has_foreign = self.base.find_child_by_type(&node, "keyword_foreign").is_some();
-            let has_unique = self.base.find_child_by_type(&node, "keyword_unique").is_some();
-            let has_index = self.base.find_child_by_type(&node, "keyword_index").is_some();
+            let has_check = self
+                .base
+                .find_child_by_type(&node, "keyword_check")
+                .is_some();
+            let has_primary = self
+                .base
+                .find_child_by_type(&node, "keyword_primary")
+                .is_some();
+            let has_foreign = self
+                .base
+                .find_child_by_type(&node, "keyword_foreign")
+                .is_some();
+            let has_unique = self
+                .base
+                .find_child_by_type(&node, "keyword_unique")
+                .is_some();
+            let has_index = self
+                .base
+                .find_child_by_type(&node, "keyword_index")
+                .is_some();
             let named_constraint = self.base.find_child_by_type(&node, "identifier");
 
             if let Some(name_node) = named_constraint {
@@ -366,12 +447,23 @@ impl SqlExtractor {
             }
 
             // Create constraint symbol like Miller
-            let constraint_symbol = self.create_constraint_symbol(&node, constraint_type, parent_table_id, &constraint_name);
+            let constraint_symbol = self.create_constraint_symbol(
+                &node,
+                constraint_type,
+                parent_table_id,
+                &constraint_name,
+            );
             symbols.push(constraint_symbol);
         }
     }
 
-    fn create_constraint_symbol(&mut self, node: &tree_sitter::Node, constraint_type: &str, parent_table_id: &str, constraint_name: &str) -> Symbol {
+    fn create_constraint_symbol(
+        &mut self,
+        node: &tree_sitter::Node,
+        constraint_type: &str,
+        parent_table_id: &str,
+        constraint_name: &str,
+    ) -> Symbol {
         // Port Miller's createConstraintSymbol logic
         let signature = if constraint_type == "index" {
             format!("INDEX {}", constraint_name)
@@ -390,17 +482,27 @@ impl SqlExtractor {
         };
 
         // Constraints as Interface symbols (Miller's strategy)
-        self.base.create_symbol(node, constraint_name.to_string(), SymbolKind::Interface, options)
+        self.base.create_symbol(
+            node,
+            constraint_name.to_string(),
+            SymbolKind::Interface,
+            options,
+        )
     }
 
-    fn extract_stored_procedure(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_stored_procedure(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's extractStoredProcedure logic for regular nodes (not just ERROR)
         // Look for function/procedure name - it may be inside an object_reference
         let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
         let name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "identifier")
+            self.base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "procedure_name"))
                 .or_else(|| self.base.find_child_by_type(&node, "function_name"))
         }?;
@@ -422,7 +524,11 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        let symbol_kind = if is_function { SymbolKind::Function } else { SymbolKind::Method };
+        let symbol_kind = if is_function {
+            SymbolKind::Function
+        } else {
+            SymbolKind::Method
+        };
         Some(self.base.create_symbol(&node, name, symbol_kind, options))
     }
 
@@ -432,7 +538,8 @@ impl SqlExtractor {
         let name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(node, "identifier")
+            self.base
+                .find_child_by_type(node, "identifier")
                 .or_else(|| self.base.find_child_by_type(node, "procedure_name"))
                 .or_else(|| self.base.find_child_by_type(node, "function_name"))
         };
@@ -446,9 +553,13 @@ impl SqlExtractor {
         let mut params: Vec<String> = Vec::new();
         self.base.traverse_tree(node, &mut |child_node| {
             if child_node.kind() == "parameter_declaration" || child_node.kind() == "parameter" {
-                let param_name_node = self.base.find_child_by_type(&child_node, "identifier")
+                let param_name_node = self
+                    .base
+                    .find_child_by_type(&child_node, "identifier")
                     .or_else(|| self.base.find_child_by_type(&child_node, "parameter_name"));
-                let type_node = self.base.find_child_by_type(&child_node, "data_type")
+                let type_node = self
+                    .base
+                    .find_child_by_type(&child_node, "data_type")
                     .or_else(|| self.base.find_child_by_type(&child_node, "type_name"));
 
                 if let Some(param_name_node) = param_name_node {
@@ -481,10 +592,21 @@ impl SqlExtractor {
                 return_clause = format!(" RETURNS {}", decimal_text);
             } else {
                 // Look for other return types as direct children
-                let return_type_nodes = ["keyword_boolean", "keyword_bigint", "keyword_int", "keyword_varchar", "keyword_text", "keyword_jsonb"];
+                let return_type_nodes = [
+                    "keyword_boolean",
+                    "keyword_bigint",
+                    "keyword_int",
+                    "keyword_varchar",
+                    "keyword_text",
+                    "keyword_jsonb",
+                ];
                 for type_str in &return_type_nodes {
                     if let Some(type_node) = self.base.find_child_by_type(node, type_str) {
-                        let type_text = self.base.get_node_text(&type_node).replace("keyword_", "").to_uppercase();
+                        let type_text = self
+                            .base
+                            .get_node_text(&type_node)
+                            .replace("keyword_", "")
+                            .to_uppercase();
                         return_clause = format!(" RETURNS {}", type_text);
                         break;
                     }
@@ -498,7 +620,14 @@ impl SqlExtractor {
             }
         }
 
-        format!("{} {}({}){}{}", keyword, name, params.join(", "), return_clause, language_clause)
+        format!(
+            "{} {}({}){}{}",
+            keyword,
+            name,
+            params.join(", "),
+            return_clause,
+            language_clause
+        )
     }
 
     fn extract_view(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -506,7 +635,8 @@ impl SqlExtractor {
         let node_text = self.base.get_node_text(&node);
 
         // Extract views from ERROR nodes
-        let view_regex = regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
+        let view_regex =
+            regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
 
         if let Some(captures) = view_regex.captures(&node_text) {
             if let Some(view_name) = captures.get(1) {
@@ -514,7 +644,10 @@ impl SqlExtractor {
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isView".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("CREATE VIEW {}", name)),
@@ -524,16 +657,25 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                return Some(self.base.create_symbol(&node, name, SymbolKind::Interface, options));
+                return Some(
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Interface, options),
+                );
             }
         }
 
         None
     }
 
-    fn extract_index(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_index(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's extractIndex logic
-        let name_node = self.base.find_child_by_type(&node, "identifier")
+        let name_node = self
+            .base
+            .find_child_by_type(&node, "identifier")
             .or_else(|| self.base.find_child_by_type(&node, "index_name"))?;
 
         let name = self.base.get_node_text(&name_node);
@@ -558,11 +700,17 @@ impl SqlExtractor {
         // Add USING clause if present (before columns)
         let using_regex = regex::Regex::new(r"USING\s+([A-Z]+)").unwrap();
         if let Some(using_captures) = using_regex.captures(&node_text) {
-            signature.push_str(&format!(" USING {}", using_captures.get(1).unwrap().as_str()));
+            signature.push_str(&format!(
+                " USING {}",
+                using_captures.get(1).unwrap().as_str()
+            ));
         }
 
         // Add column information if found
-        let column_regex = regex::Regex::new(r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))").unwrap();
+        let column_regex = regex::Regex::new(
+            r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))",
+        )
+        .unwrap();
         if let Some(column_captures) = column_regex.captures(&node_text) {
             signature.push_str(&format!(" {}", column_captures.get(1).unwrap().as_str()));
         }
@@ -570,13 +718,19 @@ impl SqlExtractor {
         // Add INCLUDE clause if present
         let include_regex = regex::Regex::new(r"INCLUDE\s*(\([^)]+\))").unwrap();
         if let Some(include_captures) = include_regex.captures(&node_text) {
-            signature.push_str(&format!(" INCLUDE {}", include_captures.get(1).unwrap().as_str()));
+            signature.push_str(&format!(
+                " INCLUDE {}",
+                include_captures.get(1).unwrap().as_str()
+            ));
         }
 
         // Add WHERE clause if present
         let where_regex = regex::Regex::new(r"WHERE\s+(.+?)(?:;|$)").unwrap();
         if let Some(where_captures) = where_regex.captures(&node_text) {
-            signature.push_str(&format!(" WHERE {}", where_captures.get(1).unwrap().as_str().trim()));
+            signature.push_str(&format!(
+                " WHERE {}",
+                where_captures.get(1).unwrap().as_str().trim()
+            ));
         }
 
         let mut metadata = HashMap::new();
@@ -591,12 +745,21 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Property, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Property, options),
+        )
     }
 
-    fn extract_trigger(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_trigger(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's extractTrigger logic
-        let name_node = self.base.find_child_by_type(&node, "identifier")
+        let name_node = self
+            .base
+            .find_child_by_type(&node, "identifier")
             .or_else(|| self.base.find_child_by_type(&node, "trigger_name"))?;
 
         let name = self.base.get_node_text(&name_node);
@@ -612,7 +775,10 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Method, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Method, options),
+        )
     }
 
     fn extract_cte(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -643,15 +809,23 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Interface, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Interface, options),
+        )
     }
 
-    fn extract_schema(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_schema(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port of Miller's schema extraction from error nodes
         let node_text = self.base.get_node_text(&node);
 
         // Extract schemas from ERROR nodes
-        let schema_regex = regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+        let schema_regex =
+            regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
 
         if let Some(captures) = schema_regex.captures(&node_text) {
             if let Some(schema_name) = captures.get(1) {
@@ -659,7 +833,10 @@ impl SqlExtractor {
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isSchema".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("CREATE SCHEMA {}", name)),
@@ -669,21 +846,29 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                return Some(self.base.create_symbol(&node, name, SymbolKind::Namespace, options));
+                return Some(
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Namespace, options),
+                );
             }
         }
 
         None
     }
 
-    fn extract_sequence(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_sequence(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's extractSequence logic
         // Look for sequence name - it may be inside an object_reference
         let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
         let name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "identifier")
+            self.base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "sequence_name"))
         }?;
 
@@ -696,23 +881,44 @@ impl SqlExtractor {
         // Add sequence options if present
         let mut options_vec = Vec::new();
 
-        if let Some(start_match) = regex::Regex::new(r"START\s+WITH\s+(\d+)").unwrap().captures(&node_text) {
-            options_vec.push(format!("START WITH {}", start_match.get(1).unwrap().as_str()));
+        if let Some(start_match) = regex::Regex::new(r"START\s+WITH\s+(\d+)")
+            .unwrap()
+            .captures(&node_text)
+        {
+            options_vec.push(format!(
+                "START WITH {}",
+                start_match.get(1).unwrap().as_str()
+            ));
         }
 
-        if let Some(inc_match) = regex::Regex::new(r"INCREMENT\s+BY\s+(\d+)").unwrap().captures(&node_text) {
-            options_vec.push(format!("INCREMENT BY {}", inc_match.get(1).unwrap().as_str()));
+        if let Some(inc_match) = regex::Regex::new(r"INCREMENT\s+BY\s+(\d+)")
+            .unwrap()
+            .captures(&node_text)
+        {
+            options_vec.push(format!(
+                "INCREMENT BY {}",
+                inc_match.get(1).unwrap().as_str()
+            ));
         }
 
-        if let Some(min_match) = regex::Regex::new(r"MINVALUE\s+(\d+)").unwrap().captures(&node_text) {
+        if let Some(min_match) = regex::Regex::new(r"MINVALUE\s+(\d+)")
+            .unwrap()
+            .captures(&node_text)
+        {
             options_vec.push(format!("MINVALUE {}", min_match.get(1).unwrap().as_str()));
         }
 
-        if let Some(max_match) = regex::Regex::new(r"MAXVALUE\s+(\d+)").unwrap().captures(&node_text) {
+        if let Some(max_match) = regex::Regex::new(r"MAXVALUE\s+(\d+)")
+            .unwrap()
+            .captures(&node_text)
+        {
             options_vec.push(format!("MAXVALUE {}", max_match.get(1).unwrap().as_str()));
         }
 
-        if let Some(cache_match) = regex::Regex::new(r"CACHE\s+(\d+)").unwrap().captures(&node_text) {
+        if let Some(cache_match) = regex::Regex::new(r"CACHE\s+(\d+)")
+            .unwrap()
+            .captures(&node_text)
+        {
             options_vec.push(format!("CACHE {}", cache_match.get(1).unwrap().as_str()));
         }
 
@@ -731,17 +937,25 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Variable, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Variable, options),
+        )
     }
 
-    fn extract_domain(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_domain(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Port Miller's extractDomain logic
         // Look for domain name - it may be inside an object_reference
         let object_ref_node = self.base.find_child_by_type(&node, "object_reference");
         let name_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "identifier")
+            self.base
+                .find_child_by_type(&node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&node, "domain_name"))
         }?;
 
@@ -752,13 +966,22 @@ impl SqlExtractor {
         let mut signature = format!("CREATE DOMAIN {}", name);
 
         // Extract the base type (AS datatype)
-        if let Some(as_match) = regex::Regex::new(r"AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap().captures(&node_text) {
+        if let Some(as_match) = regex::Regex::new(r"AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)")
+            .unwrap()
+            .captures(&node_text)
+        {
             signature.push_str(&format!(" AS {}", as_match.get(1).unwrap().as_str()));
         }
 
         // Add CHECK constraint if present
-        if let Some(check_match) = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap().captures(&node_text) {
-            signature.push_str(&format!(" CHECK ({})", check_match.get(1).unwrap().as_str().trim()));
+        if let Some(check_match) = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)")
+            .unwrap()
+            .captures(&node_text)
+        {
+            signature.push_str(&format!(
+                " CHECK ({})",
+                check_match.get(1).unwrap().as_str().trim()
+            ));
         }
 
         let mut metadata = HashMap::new();
@@ -772,7 +995,10 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
     fn extract_type(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -812,7 +1038,10 @@ impl SqlExtractor {
                 metadata: Some(metadata),
             };
 
-            return Some(self.base.create_symbol(&node, name, SymbolKind::Class, options));
+            return Some(
+                self.base
+                    .create_symbol(&node, name, SymbolKind::Class, options),
+            );
         }
 
         // Handle other types (non-enum)
@@ -829,10 +1058,18 @@ impl SqlExtractor {
             metadata: Some(metadata),
         };
 
-        Some(self.base.create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
-    fn extract_constraints_from_alter_table(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_constraints_from_alter_table(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         // Port Miller's extractConstraintsFromAlterTable logic
         let node_text = self.base.get_node_text(&node);
 
@@ -843,35 +1080,62 @@ impl SqlExtractor {
                 let name = constraint_name.as_str().to_string();
                 let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
 
-                let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+                let mut signature =
+                    format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
                 // Add more details based on constraint type
                 if constraint_type == "CHECK" {
-                    let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
+                    let check_regex =
+                        regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
                     if let Some(check_captures) = check_regex.captures(&node_text) {
-                        signature.push_str(&format!(" ({})", check_captures.get(1).unwrap().as_str().trim()));
+                        signature.push_str(&format!(
+                            " ({})",
+                            check_captures.get(1).unwrap().as_str().trim()
+                        ));
                     }
                 } else if constraint_type.contains("FOREIGN") {
-                    let fk_regex = regex::Regex::new(r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+                    let fk_regex = regex::Regex::new(
+                        r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                    )
+                    .unwrap();
                     if let Some(fk_captures) = fk_regex.captures(&node_text) {
-                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_captures.get(1).unwrap().as_str(), fk_captures.get(2).unwrap().as_str()));
+                        signature.push_str(&format!(
+                            " ({}) REFERENCES {}",
+                            fk_captures.get(1).unwrap().as_str(),
+                            fk_captures.get(2).unwrap().as_str()
+                        ));
                     }
 
                     // Add ON DELETE/UPDATE actions
-                    let on_delete_regex = regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    let on_delete_regex = regex::Regex::new(
+                        r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
+                    )
+                    .unwrap();
                     if let Some(on_delete_captures) = on_delete_regex.captures(&node_text) {
-                        signature.push_str(&format!(" ON DELETE {}", on_delete_captures.get(1).unwrap().as_str().to_uppercase()));
+                        signature.push_str(&format!(
+                            " ON DELETE {}",
+                            on_delete_captures.get(1).unwrap().as_str().to_uppercase()
+                        ));
                     }
 
-                    let on_update_regex = regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    let on_update_regex = regex::Regex::new(
+                        r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
+                    )
+                    .unwrap();
                     if let Some(on_update_captures) = on_update_regex.captures(&node_text) {
-                        signature.push_str(&format!(" ON UPDATE {}", on_update_captures.get(1).unwrap().as_str().to_uppercase()));
+                        signature.push_str(&format!(
+                            " ON UPDATE {}",
+                            on_update_captures.get(1).unwrap().as_str().to_uppercase()
+                        ));
                     }
                 }
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isConstraint".to_string(), Value::Bool(true));
-                metadata.insert("constraintType".to_string(), Value::String(constraint_type.clone()));
+                metadata.insert(
+                    "constraintType".to_string(),
+                    Value::String(constraint_type.clone()),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -881,13 +1145,20 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let constraint_symbol = self.base.create_symbol(&node, name, SymbolKind::Property, options);
+                let constraint_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Property, options);
                 symbols.push(constraint_symbol);
             }
         }
     }
 
-    fn extract_select_aliases(&mut self, select_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_select_aliases(
+        &mut self,
+        select_node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         // Port Miller's extractSelectAliases logic using iterative approach to avoid borrow checker issues
         // Find all 'term' nodes first to avoid borrowing conflicts
         let term_nodes = self.base.find_nodes_by_type(&select_node, "term");
@@ -904,7 +1175,9 @@ impl SqlExtractor {
             if children.len() >= 3 {
                 // Check if this term has the pattern [expression, keyword_as, identifier]
                 for i in 0..(children.len() - 2) {
-                    if children[i + 1].kind() == "keyword_as" && children[i + 2].kind() == "identifier" {
+                    if children[i + 1].kind() == "keyword_as"
+                        && children[i + 2].kind() == "identifier"
+                    {
                         let expr_node = children[i];
                         let _as_node = children[i + 1];
                         let alias_node = children[i + 2];
@@ -943,7 +1216,10 @@ impl SqlExtractor {
                                     } else {
                                         expr_text.clone()
                                     }
-                                } else if expr_text.contains("COUNT") || expr_text.contains("SUM") || expr_text.contains("AVG") {
+                                } else if expr_text.contains("COUNT")
+                                    || expr_text.contains("SUM")
+                                    || expr_text.contains("AVG")
+                                {
                                     "aggregate function".to_string()
                                 } else {
                                     if expr_text.len() > 30 {
@@ -959,7 +1235,8 @@ impl SqlExtractor {
 
                         let mut metadata = HashMap::new();
                         metadata.insert("isSelectAlias".to_string(), serde_json::Value::Bool(true));
-                        metadata.insert("isComputedField".to_string(), serde_json::Value::Bool(true));
+                        metadata
+                            .insert("isComputedField".to_string(), serde_json::Value::Bool(true));
 
                         let options = SymbolOptions {
                             signature: Some(signature),
@@ -969,7 +1246,12 @@ impl SqlExtractor {
                             metadata: Some(metadata),
                         };
 
-                        let alias_symbol = self.base.create_symbol(&alias_node, alias_name, SymbolKind::Field, options);
+                        let alias_symbol = self.base.create_symbol(
+                            &alias_node,
+                            alias_name,
+                            SymbolKind::Field,
+                            options,
+                        );
                         symbols.push(alias_symbol);
                         break; // Found the alias in this term, move to next term
                     }
@@ -978,19 +1260,31 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_multiple_from_error_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+    fn extract_multiple_from_error_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<&str>,
+    ) {
         // Port Miller's extractMultipleFromErrorNode logic
         let error_text = self.base.get_node_text(&node);
 
         // Extract stored procedures from DELIMITER syntax
-        let procedure_regex = regex::Regex::new(r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+        let procedure_regex =
+            regex::Regex::new(r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
         if let Some(captures) = procedure_regex.captures(&error_text) {
             if let Some(procedure_name) = captures.get(1) {
                 let name = procedure_name.as_str().to_string();
 
                 let mut metadata = HashMap::new();
-                metadata.insert("isStoredProcedure".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "isStoredProcedure".to_string(),
+                    serde_json::Value::Bool(true),
+                );
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("CREATE PROCEDURE {}(...)", name)),
@@ -1000,7 +1294,9 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let procedure_symbol = self.base.create_symbol(&node, name.clone(), SymbolKind::Function, options);
+                let procedure_symbol =
+                    self.base
+                        .create_symbol(&node, name.clone(), SymbolKind::Function, options);
                 symbols.push(procedure_symbol.clone());
                 // Extract parameters for this procedure
                 self.extract_parameters_from_error_node(node, symbols, &procedure_symbol.id);
@@ -1012,36 +1308,56 @@ impl SqlExtractor {
         if let Some(captures) = function_regex.captures(&error_text) {
             if let Some(function_name) = captures.get(1) {
                 let name = function_name.as_str().to_string();
-                let return_type = captures.get(2).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+                let return_type = captures
+                    .get(2)
+                    .map(|m| m.as_str().trim().to_string())
+                    .unwrap_or_default();
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isFunction".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("returnType".to_string(), serde_json::Value::String(return_type.clone()));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
+                metadata.insert(
+                    "returnType".to_string(),
+                    serde_json::Value::String(return_type.clone()),
+                );
 
                 let options = SymbolOptions {
-                    signature: Some(format!("CREATE FUNCTION {}(...) RETURNS {}", name, return_type)),
+                    signature: Some(format!(
+                        "CREATE FUNCTION {}(...) RETURNS {}",
+                        name, return_type
+                    )),
                     visibility: Some(crate::extractors::base::Visibility::Public),
                     parent_id: parent_id.map(|s| s.to_string()),
                     doc_comment: None,
                     metadata: Some(metadata),
                 };
 
-                let function_symbol = self.base.create_symbol(&node, name.clone(), SymbolKind::Function, options);
+                let function_symbol =
+                    self.base
+                        .create_symbol(&node, name.clone(), SymbolKind::Function, options);
                 symbols.push(function_symbol.clone());
                 // Extract DECLARE variables from function body
                 self.extract_declare_variables(node, symbols, &function_symbol.id);
             }
         } else {
             // Fallback: Extract any CREATE FUNCTION
-            let simple_function_regex = regex::Regex::new(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+            let simple_function_regex = regex::Regex::new(
+                r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+            )
+            .unwrap();
             if let Some(captures) = simple_function_regex.captures(&error_text) {
                 if let Some(function_name) = captures.get(1) {
                     let name = function_name.as_str().to_string();
 
                     let mut metadata = HashMap::new();
                     metadata.insert("isFunction".to_string(), serde_json::Value::Bool(true));
-                    metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                    metadata.insert(
+                        "extractedFromError".to_string(),
+                        serde_json::Value::Bool(true),
+                    );
 
                     let options = SymbolOptions {
                         signature: Some(format!("CREATE FUNCTION {}(...)", name)),
@@ -1051,7 +1367,9 @@ impl SqlExtractor {
                         metadata: Some(metadata),
                     };
 
-                    let function_symbol = self.base.create_symbol(&node, name.clone(), SymbolKind::Function, options);
+                    let function_symbol =
+                        self.base
+                            .create_symbol(&node, name.clone(), SymbolKind::Function, options);
                     symbols.push(function_symbol.clone());
                     // Extract DECLARE variables from function body
                     self.extract_declare_variables(node, symbols, &function_symbol.id);
@@ -1060,14 +1378,18 @@ impl SqlExtractor {
         }
 
         // Extract schemas from ERROR nodes
-        let schema_regex = regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+        let schema_regex =
+            regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
         if let Some(captures) = schema_regex.captures(&error_text) {
             if let Some(schema_name) = captures.get(1) {
                 let name = schema_name.as_str().to_string();
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isSchema".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("CREATE SCHEMA {}", name)),
@@ -1077,20 +1399,26 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let schema_symbol = self.base.create_symbol(&node, name, SymbolKind::Namespace, options);
+                let schema_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Namespace, options);
                 symbols.push(schema_symbol);
             }
         }
 
         // Extract views from ERROR nodes
-        let view_regex = regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
+        let view_regex =
+            regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
         if let Some(captures) = view_regex.captures(&error_text) {
             if let Some(view_name) = captures.get(1) {
                 let name = view_name.as_str().to_string();
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isView".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("CREATE VIEW {}", name)),
@@ -1100,7 +1428,9 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let view_symbol = self.base.create_symbol(&node, name.clone(), SymbolKind::Interface, options);
+                let view_symbol =
+                    self.base
+                        .create_symbol(&node, name.clone(), SymbolKind::Interface, options);
                 symbols.push(view_symbol.clone());
                 // Extract view columns from this ERROR node
                 self.extract_view_columns_from_error_node(node, symbols, &view_symbol.id);
@@ -1108,7 +1438,8 @@ impl SqlExtractor {
         }
 
         // Extract triggers from ERROR nodes
-        let trigger_regex = regex::Regex::new(r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+        let trigger_regex =
+            regex::Regex::new(r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
         if let Some(captures) = trigger_regex.captures(&error_text) {
             if let Some(trigger_name) = captures.get(1) {
                 let name = trigger_name.as_str().to_string();
@@ -1121,12 +1452,16 @@ impl SqlExtractor {
                     let timing = details_captures.get(1).unwrap().as_str();
                     let event = details_captures.get(2).unwrap().as_str();
                     let table = details_captures.get(3).unwrap().as_str();
-                    signature = format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
+                    signature =
+                        format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
                 }
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isTrigger".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -1136,7 +1471,9 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let trigger_symbol = self.base.create_symbol(&node, name, SymbolKind::Method, options);
+                let trigger_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Method, options);
                 symbols.push(trigger_symbol);
             }
         }
@@ -1148,36 +1485,66 @@ impl SqlExtractor {
                 let name = constraint_name.as_str().to_string();
                 let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
 
-                let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+                let mut signature =
+                    format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
                 // Add more details based on constraint type
                 if constraint_type == "CHECK" {
-                    let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
+                    let check_regex =
+                        regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
                     if let Some(check_captures) = check_regex.captures(&error_text) {
-                        signature.push_str(&format!(" ({})", check_captures.get(1).unwrap().as_str().trim()));
+                        signature.push_str(&format!(
+                            " ({})",
+                            check_captures.get(1).unwrap().as_str().trim()
+                        ));
                     }
                 } else if constraint_type.contains("FOREIGN") {
-                    let fk_regex = regex::Regex::new(r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+                    let fk_regex = regex::Regex::new(
+                        r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                    )
+                    .unwrap();
                     if let Some(fk_captures) = fk_regex.captures(&error_text) {
-                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_captures.get(1).unwrap().as_str(), fk_captures.get(2).unwrap().as_str()));
+                        signature.push_str(&format!(
+                            " ({}) REFERENCES {}",
+                            fk_captures.get(1).unwrap().as_str(),
+                            fk_captures.get(2).unwrap().as_str()
+                        ));
                     }
 
                     // Add ON DELETE/UPDATE actions
-                    let on_delete_regex = regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    let on_delete_regex = regex::Regex::new(
+                        r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
+                    )
+                    .unwrap();
                     if let Some(on_delete_captures) = on_delete_regex.captures(&error_text) {
-                        signature.push_str(&format!(" ON DELETE {}", on_delete_captures.get(1).unwrap().as_str().to_uppercase()));
+                        signature.push_str(&format!(
+                            " ON DELETE {}",
+                            on_delete_captures.get(1).unwrap().as_str().to_uppercase()
+                        ));
                     }
 
-                    let on_update_regex = regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap();
+                    let on_update_regex = regex::Regex::new(
+                        r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
+                    )
+                    .unwrap();
                     if let Some(on_update_captures) = on_update_regex.captures(&error_text) {
-                        signature.push_str(&format!(" ON UPDATE {}", on_update_captures.get(1).unwrap().as_str().to_uppercase()));
+                        signature.push_str(&format!(
+                            " ON UPDATE {}",
+                            on_update_captures.get(1).unwrap().as_str().to_uppercase()
+                        ));
                     }
                 }
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isConstraint".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("constraintType".to_string(), serde_json::Value::String(constraint_type.clone()));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "constraintType".to_string(),
+                    serde_json::Value::String(constraint_type.clone()),
+                );
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -1187,7 +1554,9 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let constraint_symbol = self.base.create_symbol(&node, name, SymbolKind::Property, options);
+                let constraint_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Property, options);
                 symbols.push(constraint_symbol);
             }
         }
@@ -1202,14 +1571,21 @@ impl SqlExtractor {
                 let mut signature = format!("CREATE DOMAIN {} AS {}", name, base_type);
 
                 // Add CHECK constraint if present
-                let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
+                let check_regex =
+                    regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
                 if let Some(check_captures) = check_regex.captures(&error_text) {
-                    signature.push_str(&format!(" CHECK ({})", check_captures.get(1).unwrap().as_str().trim()));
+                    signature.push_str(&format!(
+                        " CHECK ({})",
+                        check_captures.get(1).unwrap().as_str().trim()
+                    ));
                 }
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isDomain".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
                 metadata.insert("baseType".to_string(), serde_json::Value::String(base_type));
 
                 let options = SymbolOptions {
@@ -1220,13 +1596,18 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let domain_symbol = self.base.create_symbol(&node, name, SymbolKind::Class, options);
+                let domain_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Class, options);
                 symbols.push(domain_symbol);
             }
         }
 
         // Extract enum/custom types
-        let enum_regex = regex::Regex::new(r"CREATE\s+TYPE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+ENUM\s*\(([\s\S]*?)\)").unwrap();
+        let enum_regex = regex::Regex::new(
+            r"CREATE\s+TYPE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+ENUM\s*\(([\s\S]*?)\)",
+        )
+        .unwrap();
         if let Some(captures) = enum_regex.captures(&error_text) {
             if let Some(enum_name) = captures.get(1) {
                 let name = enum_name.as_str().to_string();
@@ -1236,7 +1617,10 @@ impl SqlExtractor {
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isEnum".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -1246,13 +1630,17 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let enum_symbol = self.base.create_symbol(&node, name, SymbolKind::Class, options);
+                let enum_symbol = self
+                    .base
+                    .create_symbol(&node, name, SymbolKind::Class, options);
                 symbols.push(enum_symbol);
             }
         }
 
         // Extract aggregate functions
-        let aggregate_regex = regex::Regex::new(r"CREATE\s+AGGREGATE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)").unwrap();
+        let aggregate_regex =
+            regex::Regex::new(r"CREATE\s+AGGREGATE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)")
+                .unwrap();
         if let Some(captures) = aggregate_regex.captures(&error_text) {
             if let Some(aggregate_name) = captures.get(1) {
                 let name = aggregate_name.as_str().to_string();
@@ -1262,7 +1650,10 @@ impl SqlExtractor {
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isAggregate".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -1272,13 +1663,20 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let aggregate_symbol = self.base.create_symbol(&node, name, SymbolKind::Function, options);
+                let aggregate_symbol =
+                    self.base
+                        .create_symbol(&node, name, SymbolKind::Function, options);
                 symbols.push(aggregate_symbol);
             }
         }
     }
 
-    fn extract_view_columns(&mut self, view_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_view_id: &str) {
+    fn extract_view_columns(
+        &mut self,
+        view_node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_view_id: &str,
+    ) {
         // Port Miller's extractViewColumns logic
         // Look for the SELECT statement inside the view and extract its aliases
         let nodes = self.base.find_nodes_by_type(&view_node, "select_statement");
@@ -1293,7 +1691,12 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_view_columns_from_error_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_view_id: &str) {
+    fn extract_view_columns_from_error_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_view_id: &str,
+    ) {
         // Port Miller's extractViewColumnsFromErrorNode logic
         let error_text = self.base.get_node_text(&node);
 
@@ -1335,27 +1738,41 @@ impl SqlExtractor {
 
         // Extract SELECT aliases using regex patterns - only within SELECT section
         // Pattern: any_expression AS alias_name (more flexible to catch complex expressions)
-        let alias_regex = regex::Regex::new(r"(?:^|,|\s)\s*(.+?)\s+(?:[Aa][Ss]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:,|$)").unwrap();
+        let alias_regex = regex::Regex::new(
+            r"(?:^|,|\s)\s*(.+?)\s+(?:[Aa][Ss]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:,|$)",
+        )
+        .unwrap();
 
         for captures in alias_regex.captures_iter(select_section) {
             let full_expression = captures.get(1).unwrap().as_str().trim();
             let alias_name = captures.get(2).unwrap().as_str();
 
             // Skip if this looks like a table alias or common SQL keywords
-            if ["u", "ae", "users", "analytics_events", "id", "username", "email"].contains(&alias_name) {
+            if [
+                "u",
+                "ae",
+                "users",
+                "analytics_events",
+                "id",
+                "username",
+                "email",
+            ]
+            .contains(&alias_name)
+            {
                 continue;
             }
 
             // Skip if the expression looks like a simple column reference (no functions/calculations)
-            if !full_expression.contains('(') &&
-               !full_expression.contains("COUNT") &&
-               !full_expression.contains("MIN") &&
-               !full_expression.contains("MAX") &&
-               !full_expression.contains("AVG") &&
-               !full_expression.contains("SUM") &&
-               !full_expression.contains("EXTRACT") &&
-               !full_expression.contains("CASE") &&
-               full_expression.split('.').count() <= 2 {
+            if !full_expression.contains('(')
+                && !full_expression.contains("COUNT")
+                && !full_expression.contains("MIN")
+                && !full_expression.contains("MAX")
+                && !full_expression.contains("AVG")
+                && !full_expression.contains("SUM")
+                && !full_expression.contains("EXTRACT")
+                && !full_expression.contains("CASE")
+                && full_expression.split('.').count() <= 2
+            {
                 continue;
             }
 
@@ -1364,7 +1781,10 @@ impl SqlExtractor {
             let mut metadata = HashMap::new();
             metadata.insert("isSelectAlias".to_string(), serde_json::Value::Bool(true));
             metadata.insert("isComputedField".to_string(), serde_json::Value::Bool(true));
-            metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+            metadata.insert(
+                "extractedFromError".to_string(),
+                serde_json::Value::Bool(true),
+            );
 
             let options = SymbolOptions {
                 signature: Some(signature),
@@ -1374,12 +1794,19 @@ impl SqlExtractor {
                 metadata: Some(metadata),
             };
 
-            let alias_symbol = self.base.create_symbol(&node, alias_name.to_string(), SymbolKind::Field, options);
+            let alias_symbol =
+                self.base
+                    .create_symbol(&node, alias_name.to_string(), SymbolKind::Field, options);
             symbols.push(alias_symbol);
         }
     }
 
-    fn extract_parameters_from_error_node(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: &str) {
+    fn extract_parameters_from_error_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: &str,
+    ) {
         // Port Miller's extractParametersFromErrorNode logic
         let error_text = self.base.get_node_text(&node);
 
@@ -1393,14 +1820,17 @@ impl SqlExtractor {
             let param_type = captures.get(3).unwrap().as_str();
 
             // Don't extract procedure/function names as parameters
-            if !error_text.contains(&format!("PROCEDURE {}", param_name)) &&
-               !error_text.contains(&format!("FUNCTION {}", param_name)) {
-
+            if !error_text.contains(&format!("PROCEDURE {}", param_name))
+                && !error_text.contains(&format!("FUNCTION {}", param_name))
+            {
                 let signature = format!("{} {} {}", direction, param_name, param_type);
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isParameter".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("extractedFromError".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "extractedFromError".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(signature),
@@ -1410,13 +1840,23 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let param_symbol = self.base.create_symbol(&node, param_name.to_string(), SymbolKind::Variable, options);
+                let param_symbol = self.base.create_symbol(
+                    &node,
+                    param_name.to_string(),
+                    SymbolKind::Variable,
+                    options,
+                );
                 symbols.push(param_symbol);
             }
         }
     }
 
-    fn extract_declare_variables(&mut self, function_node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: &str) {
+    fn extract_declare_variables(
+        &mut self,
+        function_node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: &str,
+    ) {
         // Port Miller's extractDeclareVariables logic
         let function_text = self.base.get_node_text(&function_node);
 
@@ -1434,15 +1874,25 @@ impl SqlExtractor {
                 let declaration_raw = self.base.get_node_text(&node);
                 let declaration_text = declaration_raw.trim();
                 // Match patterns like "v_current_prefs JSONB;" or "v_score DECIMAL(10,2) DEFAULT 0.0;"
-                let var_regex = regex::Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap();
+                let var_regex =
+                    regex::Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap();
 
                 if let Some(captures) = var_regex.captures(declaration_text) {
                     let variable_name = captures.get(1).unwrap().as_str();
-                    let variable_type = captures.get(2).unwrap().as_str().split_whitespace().next().unwrap_or("unknown"); // Get first word as type
+                    let variable_type = captures
+                        .get(2)
+                        .unwrap()
+                        .as_str()
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("unknown"); // Get first word as type
 
                     let mut metadata = HashMap::new();
                     metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
-                    metadata.insert("isDeclaredVariable".to_string(), serde_json::Value::Bool(true));
+                    metadata.insert(
+                        "isDeclaredVariable".to_string(),
+                        serde_json::Value::Bool(true),
+                    );
 
                     let options = SymbolOptions {
                         signature: Some(format!("DECLARE {} {}", variable_name, variable_type)),
@@ -1452,7 +1902,12 @@ impl SqlExtractor {
                         metadata: Some(metadata),
                     };
 
-                    let variable_symbol = self.base.create_symbol(&node, variable_name.to_string(), SymbolKind::Variable, options);
+                    let variable_symbol = self.base.create_symbol(
+                        &node,
+                        variable_name.to_string(),
+                        SymbolKind::Variable,
+                        options,
+                    );
                     symbols.push(variable_symbol);
                 }
             }
@@ -1470,8 +1925,12 @@ impl SqlExtractor {
                         let variable_type = captures.get(2).unwrap().as_str();
 
                         let mut metadata = HashMap::new();
-                        metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
-                        metadata.insert("isDeclaredVariable".to_string(), serde_json::Value::Bool(true));
+                        metadata
+                            .insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
+                        metadata.insert(
+                            "isDeclaredVariable".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
 
                         let options = SymbolOptions {
                             signature: Some(format!("DECLARE {} {}", variable_name, variable_type)),
@@ -1481,7 +1940,12 @@ impl SqlExtractor {
                             metadata: Some(metadata),
                         };
 
-                        let variable_symbol = self.base.create_symbol(&node, variable_name.to_string(), SymbolKind::Variable, options);
+                        let variable_symbol = self.base.create_symbol(
+                            &node,
+                            variable_name.to_string(),
+                            SymbolKind::Variable,
+                            options,
+                        );
                         symbols.push(variable_symbol);
                     }
                 }
@@ -1495,10 +1959,16 @@ impl SqlExtractor {
             let variable_type = captures.get(2).unwrap().as_str();
 
             // Only add if not already added from tree traversal
-            if !symbols.iter().any(|s| s.name == variable_name && s.parent_id.as_ref().map(|p| p.as_str()) == Some(parent_id)) {
+            if !symbols.iter().any(|s| {
+                s.name == variable_name
+                    && s.parent_id.as_ref().map(|p| p.as_str()) == Some(parent_id)
+            }) {
                 let mut metadata = HashMap::new();
                 metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
-                metadata.insert("isDeclaredVariable".to_string(), serde_json::Value::Bool(true));
+                metadata.insert(
+                    "isDeclaredVariable".to_string(),
+                    serde_json::Value::Bool(true),
+                );
 
                 let options = SymbolOptions {
                     signature: Some(format!("DECLARE {} {}", variable_name, variable_type)),
@@ -1508,13 +1978,23 @@ impl SqlExtractor {
                     metadata: Some(metadata),
                 };
 
-                let variable_symbol = self.base.create_symbol(&function_node, variable_name.to_string(), SymbolKind::Variable, options);
+                let variable_symbol = self.base.create_symbol(
+                    &function_node,
+                    variable_name.to_string(),
+                    SymbolKind::Variable,
+                    options,
+                );
                 symbols.push(variable_symbol);
             }
         }
     }
 
-    fn extract_relationships_internal(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_relationships_internal(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Port Miller's relationship extraction logic
         match node.kind() {
             "constraint" => {
@@ -1542,7 +2022,12 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_foreign_key_relationship(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_foreign_key_relationship(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Port Miller's extractForeignKeyRelationship logic
         // Extract foreign key relationships between tables
         // Look for object_reference after keyword_references
@@ -1555,7 +2040,8 @@ impl SqlExtractor {
         let referenced_table_node = if let Some(obj_ref) = object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&node, "table_name")
+            self.base
+                .find_child_by_type(&node, "table_name")
                 .or_else(|| self.base.find_child_by_type(&node, "identifier"))
         };
 
@@ -1581,11 +2067,14 @@ impl SqlExtractor {
         };
 
         // Look for table name in object_reference (same pattern as extractTableDefinition)
-        let source_object_ref_node = self.base.find_child_by_type(&current_node, "object_reference");
+        let source_object_ref_node = self
+            .base
+            .find_child_by_type(&current_node, "object_reference");
         let source_table_node = if let Some(obj_ref) = source_object_ref_node {
             self.base.find_child_by_type(&obj_ref, "identifier")
         } else {
-            self.base.find_child_by_type(&current_node, "identifier")
+            self.base
+                .find_child_by_type(&current_node, "identifier")
                 .or_else(|| self.base.find_child_by_type(&current_node, "table_name"))
         };
 
@@ -1597,22 +2086,45 @@ impl SqlExtractor {
         let source_table = self.base.get_node_text(&source_table_node);
 
         // Find corresponding symbols
-        let source_symbol = symbols.iter().find(|s| s.name == source_table && s.kind == SymbolKind::Class);
-        let target_symbol = symbols.iter().find(|s| s.name == referenced_table && s.kind == SymbolKind::Class);
+        let source_symbol = symbols
+            .iter()
+            .find(|s| s.name == source_table && s.kind == SymbolKind::Class);
+        let target_symbol = symbols
+            .iter()
+            .find(|s| s.name == referenced_table && s.kind == SymbolKind::Class);
 
         // Create relationship if we have at least the source symbol
         // Target symbol might not exist if referencing external table
         if let Some(source_symbol) = source_symbol {
             let mut metadata = HashMap::new();
-            metadata.insert("targetTable".to_string(), Value::String(referenced_table.clone()));
+            metadata.insert(
+                "targetTable".to_string(),
+                Value::String(referenced_table.clone()),
+            );
             metadata.insert("sourceTable".to_string(), Value::String(source_table));
-            metadata.insert("relationshipType".to_string(), Value::String("foreign_key".to_string()));
-            metadata.insert("isExternal".to_string(), Value::Bool(target_symbol.is_none()));
+            metadata.insert(
+                "relationshipType".to_string(),
+                Value::String("foreign_key".to_string()),
+            );
+            metadata.insert(
+                "isExternal".to_string(),
+                Value::Bool(target_symbol.is_none()),
+            );
 
             relationships.push(Relationship {
-                id: format!("{}_{}_{:?}_{}", source_symbol.id, target_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("external_{}", referenced_table)), RelationshipKind::References, node.start_position().row),
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    source_symbol.id,
+                    target_symbol
+                        .map(|s| s.id.clone())
+                        .unwrap_or_else(|| format!("external_{}", referenced_table)),
+                    RelationshipKind::References,
+                    node.start_position().row
+                ),
                 from_symbol_id: source_symbol.id.clone(),
-                to_symbol_id: target_symbol.map(|s| s.id.clone()).unwrap_or_else(|| format!("external_{}", referenced_table)),
+                to_symbol_id: target_symbol
+                    .map(|s| s.id.clone())
+                    .unwrap_or_else(|| format!("external_{}", referenced_table)),
                 kind: RelationshipKind::References, // Foreign key reference
                 file_path: self.base.file_path.clone(),
                 line_number: node.start_position().row as u32,
@@ -1622,16 +2134,25 @@ impl SqlExtractor {
         }
     }
 
-    fn extract_table_references(&mut self, node: tree_sitter::Node, symbols: &[Symbol], _relationships: &mut Vec<Relationship>) {
+    fn extract_table_references(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        _relationships: &mut Vec<Relationship>,
+    ) {
         // Port Miller's extractTableReferences logic
         // Extract table references in SELECT statements for query analysis
         self.base.traverse_tree(&node, &mut |child_node| {
-            if child_node.kind() == "table_name" ||
-               (child_node.kind() == "identifier" &&
-                child_node.parent().map_or(false, |p| p.kind() == "from_clause")) {
-
+            if child_node.kind() == "table_name"
+                || (child_node.kind() == "identifier"
+                    && child_node
+                        .parent()
+                        .map_or(false, |p| p.kind() == "from_clause"))
+            {
                 let table_name = self.base.get_node_text(&child_node);
-                let _table_symbol = symbols.iter().find(|s| s.name == table_name && s.kind == SymbolKind::Class);
+                let _table_symbol = symbols
+                    .iter()
+                    .find(|s| s.name == table_name && s.kind == SymbolKind::Class);
 
                 // This represents a query dependency - the query uses this table
                 // We could create a relationship to track which queries use which tables
@@ -1640,16 +2161,25 @@ impl SqlExtractor {
         });
     }
 
-    fn extract_join_relationships(&mut self, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_join_relationships(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Port Miller's extractJoinRelationships logic
         // Extract JOIN relationships from SQL queries
         self.base.traverse_tree(&node, &mut |child_node| {
-            if child_node.kind() == "table_name" ||
-               (child_node.kind() == "identifier" &&
-                child_node.parent().map_or(false, |p| p.kind() == "object_reference")) {
-
+            if child_node.kind() == "table_name"
+                || (child_node.kind() == "identifier"
+                    && child_node
+                        .parent()
+                        .map_or(false, |p| p.kind() == "object_reference"))
+            {
                 let table_name = self.base.get_node_text(&child_node);
-                let table_symbol = symbols.iter().find(|s| s.name == table_name && s.kind == SymbolKind::Class);
+                let table_symbol = symbols
+                    .iter()
+                    .find(|s| s.name == table_name && s.kind == SymbolKind::Class);
 
                 if let Some(table_symbol) = table_symbol {
                     // Create a join relationship
@@ -1658,7 +2188,13 @@ impl SqlExtractor {
                     metadata.insert("tableName".to_string(), Value::String(table_name.clone()));
 
                     relationships.push(Relationship {
-                        id: format!("{}_{}_{:?}_{}", table_symbol.id, table_symbol.id, RelationshipKind::Joins, node.start_position().row),
+                        id: format!(
+                            "{}_{}_{:?}_{}",
+                            table_symbol.id,
+                            table_symbol.id,
+                            RelationshipKind::Joins,
+                            node.start_position().row
+                        ),
                         from_symbol_id: table_symbol.id.clone(),
                         to_symbol_id: table_symbol.id.clone(), // Self-reference for joins
                         kind: RelationshipKind::Joins,

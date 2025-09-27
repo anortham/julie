@@ -1,17 +1,21 @@
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use anyhow::Result;
 use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use tracing::{debug, warn};
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
-use crate::handler::JulieServerHandler;
-use crate::extractors::{Symbol, SymbolKind};
-use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer, exact_match_boost::ExactMatchBoost};
-use crate::workspace::registry_service::WorkspaceRegistryService;
-use crate::embeddings::cosine_similarity;
 use super::shared::OptimizedResponse;
+use crate::embeddings::cosine_similarity;
+use crate::extractors::{Symbol, SymbolKind};
+use crate::handler::JulieServerHandler;
+use crate::utils::{
+    context_truncation::ContextTruncator, exact_match_boost::ExactMatchBoost,
+    path_relevance::PathRelevanceScorer, progressive_reduction::ProgressiveReducer,
+    token_estimation::TokenEstimator,
+};
+use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //******************//
 //   Search Tools   //
@@ -60,9 +64,15 @@ pub struct FastSearchTool {
     pub workspace: Option<String>,
 }
 
-fn default_limit() -> u32 { 50 }
-fn default_text() -> String { "text".to_string() }
-fn default_workspace() -> Option<String> { Some("primary".to_string()) }
+fn default_limit() -> u32 {
+    50
+}
+fn default_text() -> String {
+    "text".to_string()
+}
+fn default_workspace() -> Option<String> {
+    Some("primary".to_string())
+}
 
 impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -72,7 +82,9 @@ impl FastSearchTool {
         let is_indexed = *handler.is_indexed.read().await;
         if !is_indexed {
             let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Perform search based on mode
@@ -104,12 +116,16 @@ impl FastSearchTool {
                 💡 Try a broader search term, different mode, or check spelling",
                 self.query
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // Format optimized results
         let message = self.format_optimized_results(&optimized);
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -118,8 +134,13 @@ impl FastSearchTool {
 
         // If workspace filtering is specified, use database search for precise workspace isolation
         if let Some(workspace_ids) = workspace_filter {
-            debug!("🎯 Using workspace-filtered database search for workspace IDs: {:?}", workspace_ids);
-            return self.database_search_with_workspace_filter(handler, workspace_ids).await;
+            debug!(
+                "🎯 Using workspace-filtered database search for workspace IDs: {:?}",
+                workspace_ids
+            );
+            return self
+                .database_search_with_workspace_filter(handler, workspace_ids)
+                .await;
         }
 
         // For "all" workspaces, use the existing Tantivy search engine approach
@@ -134,7 +155,8 @@ impl FastSearchTool {
                 })
             } else {
                 debug!("⚠️  No persistent search engine, using handler fallback");
-                let search_engine = handler.search_engine.read().await;
+                let search_engine = handler.active_search_engine().await;
+                let search_engine = search_engine.read().await;
                 search_engine.search(&self.query).await.map_err(|e| {
                     debug!("Handler search failed: {}", e);
                     anyhow::anyhow!("Handler search failed: {}", e)
@@ -142,7 +164,8 @@ impl FastSearchTool {
             }
         } else {
             debug!("⚠️  No workspace initialized, using handler fallback");
-            let search_engine = handler.search_engine.read().await;
+            let search_engine = handler.active_search_engine().await;
+            let search_engine = search_engine.read().await;
             search_engine.search(&self.query).await.map_err(|e| {
                 debug!("Handler search failed: {}", e);
                 anyhow::anyhow!("Handler search failed: {}", e)
@@ -173,7 +196,9 @@ impl FastSearchTool {
                     let combined_score_b = path_score_b * exact_boost_b;
 
                     // Sort in descending order (higher combined scores first)
-                    combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    combined_score_b
+                        .partial_cmp(&combined_score_a)
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
                 debug!("🚀 Indexed search returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", matched_symbols.len());
@@ -185,10 +210,13 @@ impl FastSearchTool {
                 let symbols = handler.symbols.read().await;
                 let query_lower = self.query.to_lowercase();
 
-                let mut results: Vec<Symbol> = symbols.iter()
+                let mut results: Vec<Symbol> = symbols
+                    .iter()
                     .filter(|symbol| {
                         let name_match = symbol.name.to_lowercase().contains(&query_lower);
-                        let language_match = self.language.as_ref()
+                        let language_match = self
+                            .language
+                            .as_ref()
                             .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
                             .unwrap_or(true);
                         name_match && language_match
@@ -210,7 +238,9 @@ impl FastSearchTool {
                     let combined_score_b = path_score_b * exact_boost_b;
 
                     // Sort in descending order (higher combined scores first)
-                    combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    combined_score_b
+                        .partial_cmp(&combined_score_a)
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
                 debug!("📝 Linear search fallback returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", results.len());
@@ -289,7 +319,11 @@ impl FastSearchTool {
                     Err(e) => {
                         debug!("Failed to embed symbol {}: {}", symbol.name, e);
                         // Fall back to text similarity if embedding fails
-                        let text_similarity = if symbol.name.to_lowercase().contains(&self.query.to_lowercase()) {
+                        let text_similarity = if symbol
+                            .name
+                            .to_lowercase()
+                            .contains(&self.query.to_lowercase())
+                        {
                             0.8
                         } else if symbol.name.to_lowercase() == self.query.to_lowercase() {
                             1.0
@@ -311,7 +345,8 @@ impl FastSearchTool {
         scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return top results
-        let results: Vec<Symbol> = scored_symbols.into_iter()
+        let results: Vec<Symbol> = scored_symbols
+            .into_iter()
             .take(self.limit as usize)
             .map(|(symbol, _score)| symbol)
             .collect();
@@ -328,12 +363,15 @@ impl FastSearchTool {
 
     /// Calculate confidence score based on search quality and result relevance
     fn calculate_search_confidence(&self, symbols: &[Symbol]) -> f32 {
-        if symbols.is_empty() { return 0.0; }
+        if symbols.is_empty() {
+            return 0.0;
+        }
 
         let mut confidence: f32 = 0.5; // Base confidence
 
         // Exact name matches boost confidence
-        let exact_matches = symbols.iter()
+        let exact_matches = symbols
+            .iter()
             .filter(|s| s.name.to_lowercase() == self.query.to_lowercase())
             .count();
         if exact_matches > 0 {
@@ -341,7 +379,8 @@ impl FastSearchTool {
         }
 
         // Partial matches are medium confidence
-        let partial_matches = symbols.iter()
+        let partial_matches = symbols
+            .iter()
             .filter(|s| s.name.to_lowercase().contains(&self.query.to_lowercase()))
             .count();
         if partial_matches > exact_matches {
@@ -360,7 +399,9 @@ impl FastSearchTool {
 
     /// Generate intelligent insights about search patterns
     fn generate_search_insights(&self, symbols: &[Symbol]) -> Option<String> {
-        if symbols.is_empty() { return None; }
+        if symbols.is_empty() {
+            return None;
+        }
 
         let mut insights = Vec::new();
 
@@ -372,8 +413,11 @@ impl FastSearchTool {
 
         if lang_counts.len() > 1 {
             let main_lang = lang_counts.iter().max_by_key(|(_, count)| *count).unwrap();
-            insights.push(format!("Found across {} languages (mainly {})",
-                lang_counts.len(), main_lang.0));
+            insights.push(format!(
+                "Found across {} languages (mainly {})",
+                lang_counts.len(),
+                main_lang.0
+            ));
         }
 
         // Kind distribution
@@ -384,12 +428,20 @@ impl FastSearchTool {
 
         if let Some((dominant_kind, count)) = kind_counts.iter().max_by_key(|(_, count)| *count) {
             if *count > symbols.len() / 2 {
-                insights.push(format!("Mostly {:?}s ({} of {})",
-                    dominant_kind, count, symbols.len()));
+                insights.push(format!(
+                    "Mostly {:?}s ({} of {})",
+                    dominant_kind,
+                    count,
+                    symbols.len()
+                ));
             }
         }
 
-        if insights.is_empty() { None } else { Some(insights.join(", ")) }
+        if insights.is_empty() {
+            None
+        } else {
+            Some(insights.join(", "))
+        }
     }
 
     /// Suggest intelligent next actions based on search results
@@ -405,11 +457,17 @@ impl FastSearchTool {
         }
 
         // Check if we have functions that might be entry points
-        if symbols.iter().any(|s| matches!(s.kind, SymbolKind::Function) && s.name.contains("main")) {
+        if symbols
+            .iter()
+            .any(|s| matches!(s.kind, SymbolKind::Function) && s.name.contains("main"))
+        {
             actions.push("Use fast_explore to understand architecture".to_string());
         }
 
-        if symbols.iter().any(|s| s.name.to_lowercase().contains(&self.query.to_lowercase())) {
+        if symbols
+            .iter()
+            .any(|s| s.name.to_lowercase().contains(&self.query.to_lowercase()))
+        {
             actions.push("Consider exact name match for precision".to_string());
         }
 
@@ -418,9 +476,10 @@ impl FastSearchTool {
 
     /// Format optimized response with insights and next actions
     pub fn format_optimized_results(&self, optimized: &OptimizedResponse<Symbol>) -> String {
-        let mut lines = vec![
-            format!("⚡ Fast Search: '{}' (mode: {})", self.query, self.mode),
-        ];
+        let mut lines = vec![format!(
+            "⚡ Fast Search: '{}' (mode: {})",
+            self.query, self.mode
+        )];
 
         // Add insights if available
         if let Some(insights) = &optimized.insights {
@@ -444,8 +503,16 @@ impl FastSearchTool {
             let mut total_tokens = 0;
             for (i, symbol) in symbols.iter().enumerate() {
                 let mut symbol_text = String::new();
-                symbol_text.push_str(&format!("{}. {} [{}]\n", i + 1, symbol.name, symbol.language));
-                symbol_text.push_str(&format!("   📁 {}:{}-{}\n", symbol.file_path, symbol.start_line, symbol.end_line));
+                symbol_text.push_str(&format!(
+                    "{}. {} [{}]\n",
+                    i + 1,
+                    symbol.name,
+                    symbol.language
+                ));
+                symbol_text.push_str(&format!(
+                    "   📁 {}:{}-{}\n",
+                    symbol.file_path, symbol.start_line, symbol.end_line
+                ));
 
                 if let Some(signature) = &symbol.signature {
                     symbol_text.push_str(&format!("   📝 {}\n", signature));
@@ -453,16 +520,19 @@ impl FastSearchTool {
 
                 if let Some(context) = &symbol.code_context {
                     symbol_text.push_str("   📄 Context:\n");
-                    let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
+                    let context_lines: Vec<String> =
+                        context.lines().map(|s| s.to_string()).collect();
                     let max_lines = 10;
 
                     if context_lines.len() > max_lines {
-                        let truncated_lines: Vec<String> = context_lines.iter().take(max_lines).cloned().collect();
+                        let truncated_lines: Vec<String> =
+                            context_lines.iter().take(max_lines).cloned().collect();
                         let lines_truncated = context_lines.len() - max_lines;
                         for context_line in &truncated_lines {
                             symbol_text.push_str(&format!("   {}\n", context_line));
                         }
-                        symbol_text.push_str(&format!("   ({} more lines truncated)\n", lines_truncated));
+                        symbol_text
+                            .push_str(&format!("   ({} more lines truncated)\n", lines_truncated));
                     } else {
                         for context_line in &context_lines {
                             symbol_text.push_str(&format!("   {}\n", context_line));
@@ -477,9 +547,12 @@ impl FastSearchTool {
 
         // Try progressive reduction first
         let symbol_refs: Vec<&Symbol> = optimized.results.iter().collect();
-        let reduced_symbol_refs = progressive_reducer.reduce(&symbol_refs, available_tokens, estimate_symbols_tokens);
+        let reduced_symbol_refs =
+            progressive_reducer.reduce(&symbol_refs, available_tokens, estimate_symbols_tokens);
 
-        let (symbols_to_show, reduction_message) = if reduced_symbol_refs.len() < optimized.results.len() {
+        let (symbols_to_show, reduction_message) = if reduced_symbol_refs.len()
+            < optimized.results.len()
+        {
             // Progressive reduction was applied
             let symbols: Vec<Symbol> = reduced_symbol_refs.into_iter().cloned().collect();
             let message = format!("📊 Showing {} of {} results (confidence: {:.1}) - Applied progressive reduction {} → {}",
@@ -487,8 +560,12 @@ impl FastSearchTool {
             (symbols, message)
         } else {
             // No reduction needed
-            let message = format!("📊 Showing {} of {} results (confidence: {:.1})",
-                    optimized.results.len(), optimized.total_found, optimized.confidence);
+            let message = format!(
+                "📊 Showing {} of {} results (confidence: {:.1})",
+                optimized.results.len(),
+                optimized.total_found,
+                optimized.confidence
+            );
             (optimized.results.clone(), message)
         };
 
@@ -496,10 +573,7 @@ impl FastSearchTool {
 
         // Format the symbols we decided to show
         for (i, symbol) in symbols_to_show.iter().enumerate() {
-            lines.push(format!(
-                "{}. {} [{}]",
-                i + 1, symbol.name, symbol.language
-            ));
+            lines.push(format!("{}. {} [{}]", i + 1, symbol.name, symbol.language));
             lines.push(format!(
                 "   📁 {}:{}-{}",
                 symbol.file_path, symbol.start_line, symbol.end_line
@@ -553,22 +627,26 @@ impl FastSearchTool {
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs
-    async fn resolve_workspace_filter(&self, handler: &JulieServerHandler) -> Result<Option<Vec<String>>> {
+    async fn resolve_workspace_filter(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Option<Vec<String>>> {
         let workspace_param = self.workspace.as_deref().unwrap_or("primary");
 
         match workspace_param {
             "all" => {
                 // Search across all workspaces - return None to indicate no filtering
                 Ok(None)
-            },
+            }
             "primary" => {
                 // Search only primary workspace
                 Ok(Some(vec!["primary".to_string()]))
-            },
+            }
             workspace_id => {
                 // Validate the workspace ID exists
                 if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+                    let registry_service =
+                        WorkspaceRegistryService::new(primary_workspace.root.clone());
 
                     // Check if it's a valid workspace ID
                     match registry_service.get_workspace(workspace_id).await? {
@@ -582,24 +660,35 @@ impl FastSearchTool {
                         }
                     }
                 } else {
-                    return Err(anyhow::anyhow!("No primary workspace found. Initialize workspace first."));
+                    return Err(anyhow::anyhow!(
+                        "No primary workspace found. Initialize workspace first."
+                    ));
                 }
             }
         }
     }
 
     /// Perform database search with workspace filtering for precise workspace isolation
-    async fn database_search_with_workspace_filter(&self, handler: &JulieServerHandler, workspace_ids: Vec<String>) -> Result<Vec<Symbol>> {
-        let workspace = handler.get_workspace().await?
+    async fn database_search_with_workspace_filter(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_ids: Vec<String>,
+    ) -> Result<Vec<Symbol>> {
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
         let db_lock = db.lock().await;
 
         // Use the workspace-aware database search
-        let mut results = db_lock.find_symbols_by_pattern(&self.query, Some(workspace_ids.clone()))?;
+        let mut results =
+            db_lock.find_symbols_by_pattern(&self.query, Some(workspace_ids.clone()))?;
 
         // Apply language filtering if specified
         if let Some(ref language) = self.language {
@@ -614,7 +703,8 @@ impl FastSearchTool {
                 if pattern.contains('*') {
                     let pattern_parts: Vec<&str> = pattern.split('*').collect();
                     if pattern_parts.len() == 2 {
-                        file_path.starts_with(pattern_parts[0]) && file_path.ends_with(pattern_parts[1])
+                        file_path.starts_with(pattern_parts[0])
+                            && file_path.ends_with(pattern_parts[1])
                     } else {
                         file_path.contains(&pattern.replace('*', ""))
                     }
@@ -636,7 +726,9 @@ impl FastSearchTool {
             let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
             let combined_score_b = path_score_b * exact_boost_b;
 
-            combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
+            combined_score_b
+                .partial_cmp(&combined_score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Apply limit
@@ -644,7 +736,10 @@ impl FastSearchTool {
             results.truncate(self.limit as usize);
         }
 
-        debug!("🗄️ Database search with workspace filter returned {} results", results.len());
+        debug!(
+            "🗄️ Database search with workspace filter returned {} results",
+            results.len()
+        );
         Ok(results)
     }
 }
