@@ -7,25 +7,29 @@
 //! - Tantivy search index
 //! - FastEmbed vectors
 //! - Configuration and caching
+//! - Workspace registry for multi-project indexing
+
+pub mod registry;
+pub mod registry_service;
 
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{info, debug, warn};
 use serde::{Serialize, Deserialize};
+// Import IncrementalIndexer from watcher module
+use crate::watcher::IncrementalIndexer;
 
 // Forward declarations for types we'll implement later
 pub type SqliteDB = crate::database::SymbolDatabase;
-pub type TantivyIndex = (); // TODO: Replace with actual Tantivy index
-pub type EmbeddingStore = (); // TODO: Replace with actual embedding store
-pub type FileWatcher = (); // TODO: Replace with actual file watcher
-
+pub type TantivyIndex = crate::search::SearchEngine;
+pub type EmbeddingStore = crate::embeddings::EmbeddingEngine;
 /// The main Julie workspace structure
 ///
 /// Manages all project-local data storage and provides a unified interface
 /// to the three-pillar architecture (SQLite + Tantivy + FastEmbed)
-#[derive(Clone)]
 pub struct JulieWorkspace {
     /// Project root directory where MCP was started
     pub root: PathBuf,
@@ -43,7 +47,7 @@ pub struct JulieWorkspace {
     pub embeddings: Option<Arc<EmbeddingStore>>,
 
     /// File watcher for incremental updates
-    pub watcher: Option<FileWatcher>,
+    pub watcher: Option<IncrementalIndexer>,
 
     /// Workspace configuration
     pub config: WorkspaceConfig,
@@ -69,6 +73,20 @@ pub struct WorkspaceConfig {
 
     /// Enable incremental updates
     pub incremental_updates: bool,
+}
+
+impl Clone for JulieWorkspace {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            julie_dir: self.julie_dir.clone(),
+            db: self.db.clone(),
+            search: self.search.clone(),
+            embeddings: self.embeddings.clone(),
+            watcher: None, // Don't clone file watcher - create new if needed
+            config: self.config.clone(),
+        }
+    }
 }
 
 impl Default for WorkspaceConfig {
@@ -109,7 +127,7 @@ impl JulieWorkspace {
         let config = WorkspaceConfig::default();
         Self::save_config(&julie_dir, &config)?;
 
-        let workspace = Self {
+        let mut workspace = Self {
             root,
             julie_dir,
             db: None,
@@ -118,6 +136,9 @@ impl JulieWorkspace {
             watcher: None,
             config,
         };
+
+        // Initialize persistent components
+        workspace.initialize_all_components()?;
 
         info!("Julie workspace initialized successfully");
         Ok(workspace)
@@ -140,7 +161,7 @@ impl JulieWorkspace {
                 // Load configuration
                 let config = Self::load_config(&julie_path)?;
 
-                let workspace = Self {
+                let mut workspace = Self {
                     root,
                     julie_dir: julie_path,
                     db: None,
@@ -152,6 +173,9 @@ impl JulieWorkspace {
 
                 // Validate workspace structure
                 workspace.validate_structure()?;
+
+                // Initialize persistent components
+                workspace.initialize_all_components()?;
 
                 Ok(Some(workspace))
             }
@@ -330,6 +354,110 @@ impl JulieWorkspace {
     /// Get the path to the general cache
     pub fn cache_path(&self) -> PathBuf {
         self.julie_dir.join("cache")
+    }
+
+    /// Initialize persistent database connection
+    pub fn initialize_database(&mut self) -> Result<()> {
+        if self.db.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        let db_path = self.db_path();
+        info!("Initializing SQLite database at: {}", db_path.display());
+
+        let database = SqliteDB::new(&db_path)?;
+        self.db = Some(Arc::new(Mutex::new(database)));
+
+        info!("Database initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize persistent search index
+    pub fn initialize_search_index(&mut self) -> Result<()> {
+        if self.search.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        let index_path = self.index_path();
+        info!("Initializing Tantivy search index at: {}", index_path.display());
+
+        let search_engine = TantivyIndex::new(&index_path)?;
+        self.search = Some(Arc::new(RwLock::new(search_engine)));
+
+        info!("Search index initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize embedding engine
+    pub fn initialize_embeddings(&mut self) -> Result<()> {
+        if self.embeddings.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        let models_path = self.models_path();
+        info!("Initializing embedding engine with cache at: {}", models_path.display());
+
+        let embedding_engine = EmbeddingStore::new("bge-small", models_path)?;
+        self.embeddings = Some(Arc::new(embedding_engine));
+
+        info!("Embedding engine initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize file watcher for incremental updates
+    pub fn initialize_file_watcher(&mut self) -> Result<()> {
+        if self.watcher.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        // Ensure all required components are initialized
+        if self.db.is_none() || self.search.is_none() || self.embeddings.is_none() {
+            return Err(anyhow::anyhow!("Required components not initialized before file watcher"));
+        }
+
+        info!("Initializing file watcher for: {}", self.root.display());
+
+        // Now we can properly import and use IncrementalIndexer
+
+        // Create placeholder extractor manager for now
+        let extractor_manager = Arc::new(crate::extractors::ExtractorManager::new());
+
+        let file_watcher = IncrementalIndexer::new(
+            self.root.clone(),
+            self.db.as_ref().unwrap().clone(),
+            self.search.as_ref().unwrap().clone(),
+            self.embeddings.as_ref().unwrap().clone(),
+            extractor_manager,
+        )?;
+
+        self.watcher = Some(file_watcher);
+
+        info!("File watcher initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize all persistent components
+    pub fn initialize_all_components(&mut self) -> Result<()> {
+        self.initialize_database()?;
+        self.initialize_search_index()?;
+        self.initialize_embeddings()?;
+
+        // Initialize file watcher last (requires other components)
+        if self.config.incremental_updates {
+            self.initialize_file_watcher()?;
+        }
+
+        info!("All workspace components initialized successfully");
+        Ok(())
+    }
+
+    /// Start file watching if initialized
+    pub async fn start_file_watching(&mut self) -> Result<()> {
+        if let Some(ref mut watcher) = self.watcher {
+            watcher.start_watching().await?;
+            info!("File watching started");
+        }
+        Ok(())
     }
 }
 

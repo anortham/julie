@@ -205,6 +205,7 @@ impl FastEditTool {
             language: self.language.clone(),
             file_pattern: self.file_pattern.clone(),
             limit: self.limit.unwrap_or(50),
+            workspace: Some("primary".to_string()), // Default to primary workspace
         };
 
         let search_result = search_tool.call_tool(handler).await?;

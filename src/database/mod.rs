@@ -84,12 +84,45 @@ impl SymbolDatabase {
         let _ = self.conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
 
         // Create tables in dependency order
+        self.create_workspaces_table()?;
         self.create_files_table()?;
         self.create_symbols_table()?;
         self.create_relationships_table()?;
         self.create_embeddings_table()?;
 
         debug!("Database schema created successfully");
+        Ok(())
+    }
+
+    /// Create the workspaces table for tracking workspace metadata
+    fn create_workspaces_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('primary', 'reference', 'session')),
+                indexed_at INTEGER,
+                last_accessed INTEGER,
+                expires_at INTEGER,
+                file_count INTEGER DEFAULT 0,
+                symbol_count INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        // Indexes for workspace queries
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workspaces_type ON workspaces(type)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workspaces_expires ON workspaces(expires_at)",
+            [],
+        )?;
+
+        debug!("Created workspaces table and indexes");
         Ok(())
     }
 
@@ -104,7 +137,10 @@ impl SymbolDatabase {
                 last_modified INTEGER NOT NULL,
                 last_indexed INTEGER DEFAULT 0,
                 parse_cache BLOB,
-                symbol_count INTEGER DEFAULT 0
+                symbol_count INTEGER DEFAULT 0,
+
+                -- For multi-workspace support
+                workspace_id TEXT NOT NULL DEFAULT 'primary'
             )",
             [],
         )?;
@@ -117,6 +153,11 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id)",
             [],
         )?;
 
@@ -147,7 +188,10 @@ impl SymbolDatabase {
 
                 -- For cross-language linking
                 semantic_group TEXT,
-                confidence REAL DEFAULT 1.0
+                confidence REAL DEFAULT 1.0,
+
+                -- For multi-workspace support
+                workspace_id TEXT NOT NULL DEFAULT 'primary'
             )",
             [],
         )?;
@@ -183,6 +227,11 @@ impl SymbolDatabase {
             [],
         )?;
 
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id)",
+            [],
+        )?;
+
         debug!("Created symbols table and indexes");
         Ok(())
     }
@@ -197,7 +246,10 @@ impl SymbolDatabase {
                 kind TEXT NOT NULL,
                 confidence REAL DEFAULT 1.0,
                 metadata TEXT,  -- JSON blob
-                created_at INTEGER DEFAULT 0
+                created_at INTEGER DEFAULT 0,
+
+                -- For multi-workspace support
+                workspace_id TEXT NOT NULL DEFAULT 'primary'
             )",
             [],
         )?;
@@ -215,6 +267,11 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_workspace ON relationships(workspace_id)",
             [],
         )?;
 
@@ -247,7 +304,7 @@ impl SymbolDatabase {
     }
 
     /// Store file information with Blake3 hash
-    pub fn store_file_info(&self, file_info: &FileInfo) -> Result<()> {
+    pub fn store_file_info(&self, file_info: &FileInfo, workspace_id: &str) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -255,8 +312,8 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 file_info.path,
                 file_info.language,
@@ -264,7 +321,8 @@ impl SymbolDatabase {
                 file_info.size,
                 file_info.last_modified,
                 now, // Use calculated timestamp instead of unixepoch()
-                file_info.symbol_count
+                file_info.symbol_count,
+                workspace_id
             ],
         )?;
 
@@ -318,7 +376,7 @@ impl SymbolDatabase {
     }
 
     /// Store symbols in a transaction
-    pub async fn store_symbols(&self, symbols: &[Symbol]) -> Result<()> {
+    pub fn store_symbols(&self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
@@ -335,8 +393,8 @@ impl SymbolDatabase {
             tx.execute(
                 "INSERT OR REPLACE INTO symbols
                  (id, name, kind, language, file_path, signature, start_line, start_col,
-                  end_line, end_col, parent_id, metadata, semantic_group, confidence)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                  end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     symbol.id,
                     symbol.name,
@@ -351,7 +409,8 @@ impl SymbolDatabase {
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
-                    symbol.confidence
+                    symbol.confidence,
+                    workspace_id
                 ],
             )?;
         }
@@ -362,7 +421,7 @@ impl SymbolDatabase {
     }
 
     /// Store relationships in a transaction
-    pub async fn store_relationships(&self, relationships: &[Relationship]) -> Result<()> {
+    pub fn store_relationships(&self, relationships: &[Relationship], workspace_id: &str) -> Result<()> {
         if relationships.is_empty() {
             return Ok(());
         }
@@ -378,15 +437,16 @@ impl SymbolDatabase {
 
             tx.execute(
                 "INSERT OR REPLACE INTO relationships
-                 (id, from_symbol_id, to_symbol_id, kind, confidence, metadata)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 (id, from_symbol_id, to_symbol_id, kind, confidence, metadata, workspace_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     rel.id,
                     rel.from_symbol_id,
                     rel.to_symbol_id,
                     rel.kind.to_string(),
                     rel.confidence,
-                    metadata_json
+                    metadata_json,
+                    workspace_id
                 ],
             )?;
         }
@@ -397,7 +457,7 @@ impl SymbolDatabase {
     }
 
     /// Get symbol by ID
-    pub async fn get_symbol_by_id(&self, id: &str) -> Result<Option<Symbol>> {
+    pub fn get_symbol_by_id(&self, id: &str) -> Result<Option<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
@@ -416,7 +476,7 @@ impl SymbolDatabase {
     }
 
     /// Find symbols by name with optional language filter
-    pub async fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
+    pub fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
@@ -438,8 +498,58 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// Find symbols by name pattern with workspace filtering
+    pub fn find_symbols_by_pattern(&self, pattern: &str, workspace_ids: Option<Vec<String>>) -> Result<Vec<Symbol>> {
+        let (query, params) = if let Some(ws_ids) = workspace_ids {
+            if ws_ids.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let placeholders = ws_ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 2))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let query = format!(
+                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                        end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id
+                 FROM symbols
+                 WHERE name LIKE ?1 AND workspace_id IN ({})
+                 ORDER BY workspace_id, language, file_path",
+                placeholders
+            );
+
+            let mut params = vec![format!("%{}%", pattern)];
+            params.extend(ws_ids.into_iter());
+            (query, params)
+        } else {
+            // No workspace filter - search all
+            let query = "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                               end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id
+                         FROM symbols
+                         WHERE name LIKE ?1
+                         ORDER BY workspace_id, language, file_path".to_string();
+            (query, vec![format!("%{}%", pattern)])
+        };
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let symbol_iter = stmt.query_map(
+            params.iter().map(|p| p as &dyn rusqlite::ToSql).collect::<Vec<_>>().as_slice(),
+            |row| self.row_to_symbol(row)
+        )?;
+
+        let mut symbols = Vec::new();
+        for symbol_result in symbol_iter {
+            symbols.push(symbol_result?);
+        }
+
+        debug!("Found {} symbols matching pattern '{}' with workspace filter", symbols.len(), pattern);
+        Ok(symbols)
+    }
+
     /// Get symbols for a specific file
-    pub async fn get_symbols_for_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
+    pub fn get_symbols_for_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, parent_id, metadata, semantic_group, confidence
@@ -462,7 +572,7 @@ impl SymbolDatabase {
     }
 
     /// Delete symbols for a specific file (for incremental updates)
-    pub async fn delete_symbols_for_file(&self, file_path: &str) -> Result<()> {
+    pub fn delete_symbols_for_file(&self, file_path: &str) -> Result<()> {
         let count = self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],
@@ -473,7 +583,7 @@ impl SymbolDatabase {
     }
 
     /// Get outgoing relationships from a symbol
-    pub async fn get_outgoing_relationships(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
+    pub fn get_outgoing_relationships(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
              FROM relationships
@@ -622,7 +732,7 @@ impl SymbolDatabase {
     }
 
     /// Get relationships where the specified symbol is the source (from_symbol_id)
-    pub async fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
+    pub fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare("
             SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
             FROM relationships
@@ -642,7 +752,7 @@ impl SymbolDatabase {
     }
 
     /// Get symbols grouped by semantic_group field
-    pub async fn get_symbols_by_semantic_group(&self, semantic_group: &str) -> Result<Vec<Symbol>> {
+    pub fn get_symbols_by_semantic_group(&self, semantic_group: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare("
             SELECT id, name, kind, language, file_path, signature,
                    start_line, start_col, end_line, end_col, parent_id,
@@ -662,6 +772,133 @@ impl SymbolDatabase {
 
         Ok(symbols)
     }
+
+    /// Delete all data for a specific workspace (for workspace cleanup)
+    pub fn delete_workspace_data(&self, workspace_id: &str) -> Result<WorkspaceCleanupStats> {
+        let tx = self.conn.unchecked_transaction()?;
+
+        // Count data before deletion for reporting
+        let symbols_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0)
+        )?;
+
+        let relationships_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM relationships WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0)
+        )?;
+
+        let files_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0)
+        )?;
+
+        // Delete all workspace data in proper order (relationships first due to foreign keys)
+        tx.execute(
+            "DELETE FROM relationships WHERE workspace_id = ?1",
+            params![workspace_id],
+        )?;
+
+        tx.execute(
+            "DELETE FROM symbols WHERE workspace_id = ?1",
+            params![workspace_id],
+        )?;
+
+        tx.execute(
+            "DELETE FROM files WHERE workspace_id = ?1",
+            params![workspace_id],
+        )?;
+
+        // Note: We could also delete embeddings, but they might be shared across workspaces
+        // For now, leave embeddings and clean them up separately if needed
+
+        tx.commit()?;
+
+        let stats = WorkspaceCleanupStats {
+            symbols_deleted: symbols_count,
+            relationships_deleted: relationships_count,
+            files_deleted: files_count,
+        };
+
+        info!("Deleted workspace '{}' data: {} symbols, {} relationships, {} files",
+              workspace_id, symbols_count, relationships_count, files_count);
+
+        Ok(stats)
+    }
+
+    /// Get workspace usage statistics for LRU eviction
+    pub fn get_workspace_usage_stats(&self) -> Result<Vec<WorkspaceUsageStats>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                COALESCE(s.workspace_id, f.workspace_id) as workspace_id,
+                COUNT(DISTINCT s.id) as symbol_count,
+                COUNT(DISTINCT f.path) as file_count,
+                SUM(f.size) as total_size_bytes
+             FROM symbols s
+             FULL OUTER JOIN files f ON s.workspace_id = f.workspace_id
+             GROUP BY COALESCE(s.workspace_id, f.workspace_id)
+             ORDER BY workspace_id"
+        )?;
+
+        let stats_iter = stmt.query_map([], |row| {
+            Ok(WorkspaceUsageStats {
+                workspace_id: row.get("workspace_id")?,
+                symbol_count: row.get("symbol_count").unwrap_or(0),
+                file_count: row.get("file_count").unwrap_or(0),
+                total_size_bytes: row.get("total_size_bytes").unwrap_or(0),
+            })
+        })?;
+
+        let mut stats = Vec::new();
+        for stat_result in stats_iter {
+            stats.push(stat_result?);
+        }
+
+        Ok(stats)
+    }
+
+    /// Get workspaces ordered by last accessed time (for LRU eviction)
+    pub fn get_workspaces_by_lru(&self) -> Result<Vec<String>> {
+        // This would need integration with the registry service
+        // For now, return workspaces ordered by some heuristic based on file modification times
+        let mut stmt = self.conn.prepare(
+            "SELECT workspace_id, MAX(last_modified) as last_activity
+             FROM files
+             GROUP BY workspace_id
+             ORDER BY last_activity ASC"
+        )?;
+
+        let workspace_iter = stmt.query_map([], |row| {
+            Ok(row.get::<_, String>("workspace_id")?)
+        })?;
+
+        let mut workspaces = Vec::new();
+        for workspace_result in workspace_iter {
+            workspaces.push(workspace_result?);
+        }
+
+        Ok(workspaces)
+    }
+}
+
+/// Statistics returned after workspace cleanup
+#[derive(Debug, Clone)]
+pub struct WorkspaceCleanupStats {
+    pub symbols_deleted: i64,
+    pub relationships_deleted: i64,
+    pub files_deleted: i64,
+}
+
+/// Usage statistics for a workspace (for LRU eviction)
+#[derive(Debug, Clone)]
+pub struct WorkspaceUsageStats {
+    pub workspace_id: String,
+    pub symbol_count: i64,
+    pub file_count: i64,
+    pub total_size_bytes: i64,
 }
 
 /// Utility function to calculate Blake3 hash of file content
@@ -754,7 +991,7 @@ mod tests {
         // Store file info
         let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
         println!("File path in file_info: {}", file_info.path);
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
         // Create a symbol with the same file path
         let file_path = test_file.to_string_lossy().to_string();
@@ -783,7 +1020,7 @@ mod tests {
         };
 
         // This should work without foreign key constraint error
-        let result = db.store_symbols(&[symbol]).await;
+        let result = db.store_symbols(&[symbol], "test");
         assert!(result.is_ok(), "Foreign key constraint failed: {:?}", result);
     }
 
@@ -829,7 +1066,7 @@ mod tests {
             symbol_count: 5,
         };
 
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
         let hash = db.get_file_hash("test.rs").unwrap();
         assert_eq!(hash, Some("abcd1234".to_string()));
@@ -873,11 +1110,11 @@ mod tests {
             last_indexed: 0,
             symbol_count: 1,
         };
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
-        db.store_symbols(&[symbol.clone()]).await.unwrap();
+        db.store_symbols(&[symbol.clone()], "test").unwrap();
 
-        let retrieved = db.get_symbol_by_id("test-symbol-1").await.unwrap();
+        let retrieved = db.get_symbol_by_id("test-symbol-1").unwrap();
         assert!(retrieved.is_some());
 
         let retrieved_symbol = retrieved.unwrap();
@@ -926,13 +1163,13 @@ mod tests {
         let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
         println!("DEBUG: File path in file_info: {}", file_info.path);
         println!("DEBUG: Symbol file path: {}", symbol.file_path);
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
         // Store the symbol
-        db.store_symbols(&[symbol.clone()]).await.unwrap();
+        db.store_symbols(&[symbol.clone()], "test").unwrap();
 
         // Retrieve and verify all fields are preserved
-        let retrieved = db.get_symbol_by_id("test-symbol-complex").await.unwrap().unwrap();
+        let retrieved = db.get_symbol_by_id("test-symbol-complex").unwrap().unwrap();
 
         assert_eq!(retrieved.name, "getUserAsync");
         assert_eq!(retrieved.semantic_group, Some("user-data-access".to_string()));
@@ -960,7 +1197,7 @@ mod tests {
             last_indexed: 0,
             symbol_count: 2,
         };
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
         let caller_symbol = Symbol {
             id: "caller_func".to_string(),
@@ -1006,7 +1243,7 @@ mod tests {
             code_context: None,
         };
 
-        db.store_symbols(&[caller_symbol, called_symbol]).await.unwrap();
+        db.store_symbols(&[caller_symbol, called_symbol], "test").unwrap();
 
         // Create relationship with generated id
         let relationship = crate::extractors::base::Relationship {
@@ -1021,10 +1258,10 @@ mod tests {
         };
 
         // Store the relationship
-        db.store_relationships(&[relationship.clone()]).await.unwrap();
+        db.store_relationships(&[relationship.clone()], "test").unwrap();
 
         // Retrieve relationships for the from_symbol
-        let relationships = db.get_relationships_for_symbol("caller_func").await.unwrap();
+        let relationships = db.get_relationships_for_symbol("caller_func").unwrap();
         assert_eq!(relationships.len(), 1);
 
         let retrieved = &relationships[0];
@@ -1095,7 +1332,7 @@ mod tests {
             last_indexed: 0,
             symbol_count: 1,
         };
-        db.store_file_info(&ts_file_info).unwrap();
+        db.store_file_info(&ts_file_info, "test").unwrap();
 
         let rust_file_info = FileInfo {
             path: "user.rs".to_string(),
@@ -1106,13 +1343,13 @@ mod tests {
             last_indexed: 0,
             symbol_count: 1,
         };
-        db.store_file_info(&rust_file_info).unwrap();
+        db.store_file_info(&rust_file_info, "test").unwrap();
 
         // Store both symbols
-        db.store_symbols(&[ts_interface, rust_struct]).await.unwrap();
+        db.store_symbols(&[ts_interface, rust_struct], "test").unwrap();
 
         // Query symbols by semantic group (this will fail initially - need to implement)
-        let grouped_symbols = db.get_symbols_by_semantic_group("user-entity").await.unwrap();
+        let grouped_symbols = db.get_symbols_by_semantic_group("user-entity").unwrap();
         assert_eq!(grouped_symbols.len(), 2);
 
         // Verify we have both TypeScript and Rust symbols
@@ -1179,12 +1416,12 @@ mod tests {
             last_indexed: 0,
             symbol_count: 1,
         };
-        db.store_file_info(&file_info).unwrap();
+        db.store_file_info(&file_info, "test").unwrap();
 
         // Test that extractor-generated symbols work with database
-        db.store_symbols(&[symbol.clone()]).await.unwrap();
+        db.store_symbols(&[symbol.clone()], "test").unwrap();
 
-        let retrieved = db.get_symbol_by_id(&symbol.id).await.unwrap().unwrap();
+        let retrieved = db.get_symbol_by_id(&symbol.id).unwrap().unwrap();
         assert_eq!(retrieved.name, "getUserById");
         assert!(retrieved.metadata.is_some());
 

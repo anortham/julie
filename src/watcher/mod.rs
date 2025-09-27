@@ -328,10 +328,10 @@ impl IncrementalIndexer {
         db.begin_transaction()?;
 
         // Remove old symbols for this file
-        db.delete_symbols_for_file(&path_str).await?;
+        db.delete_symbols_for_file(&path_str)?;
 
-        // Insert new symbols
-        db.store_symbols(&symbols).await?;
+        // Insert new symbols (file watcher only operates on primary workspace)
+        db.store_symbols(&symbols, "primary")?;
 
         // Update file hash (store as hex string)
         let new_hash_str = hex::encode(new_hash.as_bytes());
@@ -365,7 +365,7 @@ impl IncrementalIndexer {
 
         // Remove from SQLite database
         let db = self.db.lock().await;
-        db.delete_symbols_for_file(&path_str).await?;
+        db.delete_symbols_for_file(&path_str)?;
         db.delete_file_record(&path_str)?;
         drop(db);
 

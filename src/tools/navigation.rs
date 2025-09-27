@@ -8,6 +8,7 @@ use tracing::debug;
 use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind, Relationship};
 use crate::utils::{token_estimation::TokenEstimator, progressive_reduction::ProgressiveReducer};
+use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //*********************//
 // Navigation Tools    //
@@ -39,7 +40,14 @@ pub struct FastGotoTool {
     /// Example: 142 (line where "UserService" is imported or used)
     #[serde(default)]
     pub line_number: Option<u32>,
+    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
+    /// Examples: "all", "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search only the primary workspace for focused results
+    #[serde(default = "default_workspace")]
+    pub workspace: Option<String>,
 }
+
+fn default_workspace() -> Option<String> { Some("primary".to_string()) }
 
 impl FastGotoTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -97,6 +105,16 @@ impl FastGotoTool {
     async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         debug!("🔍 Finding definitions for: {}", self.symbol);
 
+        // Resolve workspace filtering
+        let workspace_filter = self.resolve_workspace_filter(handler).await?;
+
+        // If workspace filtering is specified, use database search for precise workspace isolation
+        if let Some(workspace_ids) = workspace_filter {
+            debug!("🎯 Using workspace-filtered database search for goto definition");
+            return self.database_find_definitions(handler, workspace_ids).await;
+        }
+
+        // For "all" workspaces, use the existing search engine approach
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
         let search_engine = handler.search_engine.read().await;
         let mut exact_matches = Vec::new();
@@ -434,6 +452,85 @@ impl FastGotoTool {
 
         lines.join("\n")
     }
+
+    /// Find definitions using database search with workspace filtering
+    async fn database_find_definitions(&self, handler: &JulieServerHandler, workspace_ids: Vec<String>) -> Result<Vec<Symbol>> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+
+        let db_lock = db.lock().await;
+
+        // Find exact matches by name with workspace filtering
+        let mut exact_matches = db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids))?;
+
+        // Filter for exact name matches (find_symbols_by_pattern uses LIKE)
+        exact_matches.retain(|symbol| symbol.name == self.symbol);
+
+        // Prioritize results
+        exact_matches.sort_by(|a, b| {
+            // First by definition priority (classes > functions > variables)
+            let priority_cmp = self.definition_priority(&a.kind).cmp(&self.definition_priority(&b.kind));
+            if priority_cmp != std::cmp::Ordering::Equal {
+                return priority_cmp;
+            }
+
+            // Then by context file preference if provided
+            if let Some(context_file) = &self.context_file {
+                let a_in_context = a.file_path.contains(context_file);
+                let b_in_context = b.file_path.contains(context_file);
+                match (a_in_context, b_in_context) {
+                    (true, false) => return std::cmp::Ordering::Less,
+                    (false, true) => return std::cmp::Ordering::Greater,
+                    _ => {}
+                }
+            }
+
+            // Finally by file path alphabetically
+            a.file_path.cmp(&b.file_path)
+        });
+
+        debug!("🗄️ Database find definitions returned {} results", exact_matches.len());
+        Ok(exact_matches)
+    }
+
+    /// Resolve workspace filtering parameter to a list of workspace IDs
+    async fn resolve_workspace_filter(&self, handler: &JulieServerHandler) -> Result<Option<Vec<String>>> {
+        let workspace_param = self.workspace.as_deref().unwrap_or("primary");
+
+        match workspace_param {
+            "all" => {
+                // Search across all workspaces - return None to indicate no filtering
+                Ok(None)
+            },
+            "primary" => {
+                // Search only primary workspace
+                Ok(Some(vec!["primary".to_string()]))
+            },
+            workspace_id => {
+                // Validate the workspace ID exists
+                if let Some(primary_workspace) = handler.get_workspace().await? {
+                    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+                    // Check if it's a valid workspace ID
+                    match registry_service.get_workspace(workspace_id).await? {
+                        Some(_) => Ok(Some(vec![workspace_id.to_string()])),
+                        None => {
+                            // Invalid workspace ID
+                            return Err(anyhow::anyhow!(
+                                "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
+                                workspace_id
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(anyhow::anyhow!("No primary workspace found. Initialize workspace first."));
+                }
+            }
+        }
+    }
 }
 
 #[mcp_tool(
@@ -462,10 +559,16 @@ pub struct FastRefsTool {
     /// Tip: Start with default, increase if you need comprehensive coverage
     #[serde(default = "default_limit")]
     pub limit: u32,
+    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
+    /// Examples: "all", "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search only the primary workspace for focused results
+    #[serde(default = "default_workspace_refs")]
+    pub workspace: Option<String>,
 }
 
 fn default_true() -> bool { true }
 fn default_limit() -> u32 { 50 }
+fn default_workspace_refs() -> Option<String> { Some("primary".to_string()) }
 
 impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

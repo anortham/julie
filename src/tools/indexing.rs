@@ -49,8 +49,8 @@ impl IndexWorkspaceTool {
 
         info!("🎯 Resolved workspace path: {}", workspace_path.display());
 
-        // Initialize or load workspace
-        let _workspace = self.initialize_workspace(&workspace_path, force_reindex)?;
+        // Initialize or load workspace in handler
+        handler.initialize_workspace(Some(workspace_path.to_string_lossy().to_string())).await?;
 
         // Check if already indexed and not forcing reindex
         if !force_reindex {
@@ -469,7 +469,46 @@ impl IndexWorkspaceTool {
         debug!("📊 Extracted {} symbols and {} relationships from {}",
                symbols.len(), relationships.len(), file_path);
 
-        // Store results in handler
+        // Store in persistent database and search index if workspace is available
+        if let Some(workspace) = handler.get_workspace().await? {
+            if let Some(db) = &workspace.db {
+                let db_lock = db.lock().await;
+
+                // For now, all indexing through the primary index_workspace tool uses 'primary' workspace_id
+                // TODO: Phase 4 - support indexing reference workspaces with their own workspace_id
+                let workspace_id = "primary";
+
+                // Calculate and store file hash for change detection
+                let _file_hash = crate::database::calculate_file_hash(file_path)?;
+                let file_info = crate::database::create_file_info(file_path, language)?;
+                db_lock.store_file_info(&file_info, workspace_id)?;
+
+                // Store symbols in database
+                if let Err(e) = db_lock.store_symbols(&symbols, workspace_id) {
+                    warn!("Failed to store symbols in database: {}", e);
+                }
+
+                // Store relationships in database
+                if let Err(e) = db_lock.store_relationships(&relationships, workspace_id) {
+                    warn!("Failed to store relationships in database: {}", e);
+                }
+
+                debug!("✅ Stored {} symbols and {} relationships in database",
+                       symbols.len(), relationships.len());
+            }
+
+            // Also add symbols to search index for fast retrieval
+            if let Some(search_index) = &workspace.search {
+                let mut search_lock = search_index.write().await;
+                if let Err(e) = search_lock.index_symbols(symbols.clone()).await {
+                    warn!("Failed to index symbols in search engine: {}", e);
+                } else {
+                    debug!("✅ Indexed {} symbols in Tantivy search", symbols.len());
+                }
+            }
+        }
+
+        // Store results in handler (compatibility)
         {
             let mut symbol_storage = handler.symbols.write().await;
             symbol_storage.extend(symbols);

@@ -1,16 +1,7 @@
 #!/usr/bin/env cargo run --release
 
-mod handler;
-mod tools;
-mod extractors;
-mod search;
-mod embeddings;
-mod database;
-mod utils;
-mod workspace;
-
-#[cfg(test)]
-mod tests;
+// Use modules from the library crate
+// (imports are done directly where needed)
 
 use std::sync::Arc;
 use std::fs;
@@ -18,7 +9,7 @@ use tracing::{info, error, debug};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_appender::{non_blocking, rolling};
 
-use handler::JulieServerHandler;
+use julie::handler::JulieServerHandler;
 use rust_mcp_sdk::schema::{
     Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
     LATEST_PROTOCOL_VERSION,

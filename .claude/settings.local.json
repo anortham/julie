@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__sherpa__guide",
+      "mcp__julie__index_workspace",
+      "mcp__julie__fast_search",
+      "Bash(cargo build:*)",
+      "mcp__julie__fast_refs",
+      "mcp__sherpa__approach",
+      "mcp__tusk__checkpoint",
+      "Bash(dir:*)",
+      "Read(//c/source/coa-codesearch-mcp/**)",
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

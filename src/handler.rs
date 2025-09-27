@@ -5,13 +5,14 @@ use rust_mcp_sdk::schema::{
 };
 use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
 use std::sync::Arc;
-use tracing::{info, debug, error};
+use tracing::{info, debug, error, warn};
 use anyhow::Result;
 
 use crate::tools::JulieTools;
 use crate::extractors::{Symbol, Relationship};
 use crate::search::SearchEngine;
 use crate::embeddings::EmbeddingEngine;
+use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
 /// Julie's custom handler for MCP messages
@@ -22,9 +23,11 @@ use tokio::sync::RwLock;
 /// - Semantic search and embeddings
 /// - Cross-language relationship detection
 pub struct JulieServerHandler {
-    /// In-memory storage for indexed symbols (basic implementation)
+    /// Workspace managing persistent storage
+    pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
+    /// In-memory storage for indexed symbols (compatibility)
     pub symbols: Arc<RwLock<Vec<Symbol>>>,
-    /// In-memory storage for symbol relationships
+    /// In-memory storage for symbol relationships (compatibility)
     pub relationships: Arc<RwLock<Vec<Relationship>>>,
     /// Tantivy-based search engine for fast indexed search
     pub search_engine: Arc<RwLock<SearchEngine>>,
@@ -39,15 +42,16 @@ impl JulieServerHandler {
     pub async fn new() -> Result<Self> {
         info!("🔧 Initializing Julie server handler");
 
-        // Initialize SearchEngine with in-memory index for MCP server use
-        info!("🔍 Initializing Tantivy search engine");
+        // Initialize SearchEngine with in-memory index for compatibility (workspace will override)
+        info!("🔍 Initializing fallback Tantivy search engine");
         let search_engine = SearchEngine::in_memory().map_err(|e| {
-            anyhow::anyhow!("Failed to initialize search engine: {}", e)
+            anyhow::anyhow!("Failed to initialize fallback search engine: {}", e)
         })?;
 
         debug!("✓ Julie handler components initialized");
 
         Ok(Self {
+            workspace: Arc::new(RwLock::new(None)),
             symbols: Arc::new(RwLock::new(Vec::new())),
             relationships: Arc::new(RwLock::new(Vec::new())),
             search_engine: Arc::new(RwLock::new(search_engine)),
@@ -82,6 +86,71 @@ impl JulieServerHandler {
             info!("✅ Cached embedding engine initialized successfully");
         }
 
+        Ok(())
+    }
+
+    /// Initialize or load workspace and update components to use persistent storage
+    pub async fn initialize_workspace(&self, workspace_path: Option<String>) -> Result<()> {
+        let target_path = match workspace_path {
+            Some(path) => {
+                let expanded_path = shellexpand::tilde(&path).to_string();
+                std::path::PathBuf::from(expanded_path)
+            },
+            None => self.get_workspace_path(),
+        };
+
+        info!("Initializing workspace at: {}", target_path.display());
+
+        // Try to load existing workspace first
+        let workspace = match JulieWorkspace::detect_and_load(target_path.clone())? {
+            Some(existing_workspace) => {
+                info!("Loaded existing workspace");
+                existing_workspace
+            },
+            None => {
+                info!("Creating new workspace");
+                JulieWorkspace::initialize(target_path)?
+            }
+        };
+
+        // Update search engine to use persistent index from workspace
+        if let Some(persistent_search) = &workspace.search {
+            let mut search_guard = self.search_engine.write().await;
+            let persistent_search_guard = persistent_search.read().await;
+            // We'll need to implement a way to replace the search engine
+            // For now, store the workspace so indexing can use it
+        }
+
+        // Store the initialized workspace
+        {
+            let mut workspace_guard = self.workspace.write().await;
+            *workspace_guard = Some(workspace);
+        }
+
+        // Start file watching if workspace was successfully initialized
+        if let Some(mut workspace_clone) = self.get_workspace().await? {
+            if let Err(e) = workspace_clone.start_file_watching().await {
+                warn!("Failed to start file watching: {}", e);
+            }
+        }
+
+        info!("Workspace initialization complete");
+        Ok(())
+    }
+
+    /// Get workspace if initialized
+    pub async fn get_workspace(&self) -> Result<Option<JulieWorkspace>> {
+        let workspace_guard = self.workspace.read().await;
+        Ok(workspace_guard.clone())
+    }
+
+    /// Ensure workspace is initialized for operations that require it
+    pub async fn ensure_workspace(&self) -> Result<()> {
+        let workspace_guard = self.workspace.read().await;
+        if workspace_guard.is_none() {
+            drop(workspace_guard);
+            self.initialize_workspace(None).await?;
+        }
         Ok(())
     }
 }
@@ -157,6 +226,10 @@ impl ServerHandler for JulieServerHandler {
             },
             JulieTools::LineEditTool(tool) => {
                 debug!("📝 Line edit: {:?}", tool);
+                tool.call_tool(self).await
+            },
+            JulieTools::ManageWorkspaceTool(tool) => {
+                debug!("🏗️ Manage workspace: {:?}", tool);
                 tool.call_tool(self).await
             },
         };

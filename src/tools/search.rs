@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use crate::handler::JulieServerHandler;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::utils::{token_estimation::TokenEstimator, context_truncation::ContextTruncator, progressive_reduction::ProgressiveReducer, path_relevance::PathRelevanceScorer, exact_match_boost::ExactMatchBoost};
+use crate::workspace::registry_service::WorkspaceRegistryService;
 use super::shared::OptimizedResponse;
 
 //******************//
@@ -51,10 +52,16 @@ pub struct FastSearchTool {
     /// Tip: Start with default, increase if you need more results
     #[serde(default = "default_limit")]
     pub limit: u32,
+    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
+    /// Examples: "all", "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search only the primary workspace for focused results
+    #[serde(default = "default_workspace")]
+    pub workspace: Option<String>,
 }
 
 fn default_limit() -> u32 { 50 }
 fn default_text() -> String { "text".to_string() }
+fn default_workspace() -> Option<String> { Some("primary".to_string()) }
 
 impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -105,14 +112,41 @@ impl FastSearchTool {
     }
 
     async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-        // Use SearchEngine for FAST indexed search instead of O(n) linear scan!
-        let search_engine = handler.search_engine.read().await;
+        // Resolve workspace filtering
+        let workspace_filter = self.resolve_workspace_filter(handler).await?;
 
-        // Perform indexed search using Tantivy - this should be <10ms!
-        let search_results = search_engine.search(&self.query).await.map_err(|e| {
-            debug!("Search engine failed, falling back to linear search: {}", e);
-            anyhow::anyhow!("Search failed: {}", e)
-        });
+        // If workspace filtering is specified, use database search for precise workspace isolation
+        if let Some(workspace_ids) = workspace_filter {
+            debug!("🎯 Using workspace-filtered database search for workspace IDs: {:?}", workspace_ids);
+            return self.database_search_with_workspace_filter(handler, workspace_ids).await;
+        }
+
+        // For "all" workspaces, use the existing Tantivy search engine approach
+        // Try to use persistent search engine from workspace first
+        let search_results = if let Some(workspace) = handler.get_workspace().await? {
+            if let Some(persistent_search) = &workspace.search {
+                debug!("🚀 Using persistent Tantivy search index");
+                let search_engine = persistent_search.read().await;
+                search_engine.search(&self.query).await.map_err(|e| {
+                    debug!("Persistent search failed: {}", e);
+                    anyhow::anyhow!("Persistent search failed: {}", e)
+                })
+            } else {
+                debug!("⚠️  No persistent search engine, using handler fallback");
+                let search_engine = handler.search_engine.read().await;
+                search_engine.search(&self.query).await.map_err(|e| {
+                    debug!("Handler search failed: {}", e);
+                    anyhow::anyhow!("Handler search failed: {}", e)
+                })
+            }
+        } else {
+            debug!("⚠️  No workspace initialized, using handler fallback");
+            let search_engine = handler.search_engine.read().await;
+            search_engine.search(&self.query).await.map_err(|e| {
+                debug!("Handler search failed: {}", e);
+                anyhow::anyhow!("Handler search failed: {}", e)
+            })
+        };
 
         match search_results {
             Ok(results) => {
@@ -420,5 +454,101 @@ impl FastSearchTool {
         }
 
         lines.join("\n")
+    }
+
+    /// Resolve workspace filtering parameter to a list of workspace IDs
+    async fn resolve_workspace_filter(&self, handler: &JulieServerHandler) -> Result<Option<Vec<String>>> {
+        let workspace_param = self.workspace.as_deref().unwrap_or("primary");
+
+        match workspace_param {
+            "all" => {
+                // Search across all workspaces - return None to indicate no filtering
+                Ok(None)
+            },
+            "primary" => {
+                // Search only primary workspace
+                Ok(Some(vec!["primary".to_string()]))
+            },
+            workspace_id => {
+                // Validate the workspace ID exists
+                if let Some(primary_workspace) = handler.get_workspace().await? {
+                    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+                    // Check if it's a valid workspace ID
+                    match registry_service.get_workspace(workspace_id).await? {
+                        Some(_) => Ok(Some(vec![workspace_id.to_string()])),
+                        None => {
+                            // Invalid workspace ID
+                            return Err(anyhow::anyhow!(
+                                "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
+                                workspace_id
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(anyhow::anyhow!("No primary workspace found. Initialize workspace first."));
+                }
+            }
+        }
+    }
+
+    /// Perform database search with workspace filtering for precise workspace isolation
+    async fn database_search_with_workspace_filter(&self, handler: &JulieServerHandler, workspace_ids: Vec<String>) -> Result<Vec<Symbol>> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+
+        let db_lock = db.lock().await;
+
+        // Use the workspace-aware database search
+        let mut results = db_lock.find_symbols_by_pattern(&self.query, Some(workspace_ids.clone()))?;
+
+        // Apply language filtering if specified
+        if let Some(ref language) = self.language {
+            results.retain(|symbol| symbol.language.eq_ignore_ascii_case(language));
+        }
+
+        // Apply file pattern filtering if specified
+        if let Some(ref pattern) = self.file_pattern {
+            results.retain(|symbol| {
+                // Simple glob pattern matching - could be enhanced
+                let file_path = &symbol.file_path;
+                if pattern.contains('*') {
+                    let pattern_parts: Vec<&str> = pattern.split('*').collect();
+                    if pattern_parts.len() == 2 {
+                        file_path.starts_with(pattern_parts[0]) && file_path.ends_with(pattern_parts[1])
+                    } else {
+                        file_path.contains(&pattern.replace('*', ""))
+                    }
+                } else {
+                    file_path.contains(pattern)
+                }
+            });
+        }
+
+        // Apply combined scoring and sorting
+        let path_scorer = PathRelevanceScorer::new(&self.query);
+        let exact_match_booster = ExactMatchBoost::new(&self.query);
+        results.sort_by(|a, b| {
+            let path_score_a = path_scorer.calculate_score(&a.file_path);
+            let exact_boost_a = exact_match_booster.calculate_boost(&a.name);
+            let combined_score_a = path_score_a * exact_boost_a;
+
+            let path_score_b = path_scorer.calculate_score(&b.file_path);
+            let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
+            let combined_score_b = path_score_b * exact_boost_b;
+
+            combined_score_b.partial_cmp(&combined_score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Apply limit
+        if results.len() > self.limit as usize {
+            results.truncate(self.limit as usize);
+        }
+
+        debug!("🗄️ Database search with workspace filter returned {} results", results.len());
+        Ok(results)
     }
 }
