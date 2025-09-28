@@ -16,6 +16,7 @@ fn init_parser() -> Parser {
     parser
 }
 
+#[allow(dead_code)]
 fn debug_tree_structure(tree: &tree_sitter::Tree, target_name: &str, source: &str) {
     fn walk_node(node: tree_sitter::Node, target_name: &str, depth: usize, source: &str) {
         let indent = "  ".repeat(depth);

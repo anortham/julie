@@ -24,7 +24,7 @@ pub mod package_import_tests;
 // pub mod type_inference_tests;
 // pub mod relationship_tests;
 
-use crate::extractors::base::{Symbol, SymbolKind, Visibility};
+use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::java::JavaExtractor;
 use tree_sitter::Parser;
 

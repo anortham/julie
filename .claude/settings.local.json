@@ -28,7 +28,9 @@
       "Read(//Users/murphy/Source/diff-match-patch-rs/**)",
       "WebFetch(domain:docs.rs)",
       "Bash(cargo run:*)",
-      "mcp__julie__fast_edit"
+      "mcp__julie__fast_edit",
+      "Bash(cargo tarpaulin:*)",
+      "Bash(cargo fix:*)"
     ],
     "deny": [],
     "ask": []

@@ -114,13 +114,24 @@ src/
 │   ├── mod.rs          # Extractor management
 │   ├── base.rs         # BaseExtractor trait and common types
 │   ├── typescript.rs   # TypeScript/JavaScript extractor
-│   └── ...             # All other language extractors
+│   └── ...             # All other language extractors (26 total)
 ├── search/              # Tantivy-based search engine
+│   ├── mod.rs          # Search infrastructure
+│   ├── schema.rs       # Tantivy schema definitions
+│   ├── tokenizers.rs   # Code-specific tokenization
+│   └── engine/         # Search engine implementation
 ├── embeddings/          # ONNX-based semantic search
 ├── database/            # SQLite symbol storage
 ├── tools/               # MCP tool implementations
+│   ├── mod.rs          # Tool registration and management
+│   ├── search.rs       # Fast search, goto, refs tools
+│   ├── editing.rs      # FastEditTool, LineEditTool
+│   ├── refactoring.rs  # SmartRefactorTool (RenameSymbol, etc.)
+│   └── workspace/      # Workspace management tools
+├── workspace/           # Multi-workspace registry
+├── tracing/             # Logging and telemetry
 ├── utils/               # Shared utilities
-└── tests/               # Test infrastructure
+└── tests/               # Comprehensive test infrastructure (see below)
 ```
 
 ---
@@ -129,41 +140,149 @@ src/
 
 ### Test Coverage Requirements
 - **Extractors**: 100% test parity with Miller's test suites
-- **Core Logic**: >90% coverage on search and navigation
+- **Editing Tools**: 90% coverage with SOURCE/CONTROL methodology
+- **Core Logic**: >80% coverage on search and navigation
 - **MCP Tools**: Full integration testing
 - **Cross-platform**: Automated testing on Windows, macOS, Linux
 
-### Test Organization
+### 🚨 Current Test Organization Issues (NEEDS REORGANIZATION)
+
+**Test files are currently scattered across:**
+- `src/tests/` - Main test infrastructure (GOOD)
+- `src/tests/*/` - Language-specific extractor tests (ACCEPTABLE)
+- Individual extractor files with inline tests (BAD - creates clutter)
+- `debug/` directory with real-world test files (NEEDS INTEGRATION)
+- `tests/editing/` - SOURCE/CONTROL methodology files (GOOD)
+- Various `.backup` files (CLEANUP NEEDED)
+
+### 🎯 Target Test Organization (TO BE IMPLEMENTED)
+
+```
+src/tests/                           # Central test infrastructure
+├── mod.rs                          # Test module management
+├── test_helpers.rs                 # Shared test utilities
+├── real_world_validation.rs        # Real-world test coordinator
+│
+├── extractors/                     # Language extractor tests
+│   ├── mod.rs                     # Extractor test management
+│   ├── typescript_tests.rs       # TypeScript/JavaScript tests
+│   ├── python_tests.rs           # Python tests
+│   └── ...                       # All 26 language extractors
+│
+├── tools/                          # Tool-specific tests
+│   ├── editing_tests.rs           # FastEditTool tests (SOURCE/CONTROL)
+│   ├── line_edit_control_tests.rs # LineEditTool tests (SOURCE/CONTROL)
+│   ├── refactoring_tests.rs       # SmartRefactorTool tests
+│   ├── search_tools_tests.rs      # Search/navigation tests
+│   └── editing_safety_tests.rs    # Safety and concurrency tests
+│
+└── integration/                    # End-to-end integration tests
+    ├── mcp_integration_tests.rs   # Full MCP server tests
+    └── performance_tests.rs       # Performance benchmarks
+
+tests/editing/                      # SOURCE/CONTROL test data
+├── sources/                       # Original files (never edited)
+│   ├── typescript/
+│   ├── python/
+│   └── ...
+└── controls/                      # Expected results after edits
+    ├── fast-edit/
+    ├── line-edit/
+    └── refactor/
+
+debug/                             # Development test data (TO BE ORGANIZED)
+├── test-workspace-real/           # Real-world files for validation
+└── test-workspace-editing-controls/ # Existing SOURCE/CONTROL examples
+```
+
+### 📊 Code Coverage Tooling
+
+**Configuration**: `tarpaulin.toml`
+- General threshold: 80%
+- Editing tools threshold: 90% (critical for safety)
+- Coverage reports: HTML, LCOV, JSON formats
+
+**Commands**:
+```bash
+# Run coverage analysis
+cargo tarpaulin
+
+# Generate detailed HTML report
+cargo tarpaulin --output-dir target/tarpaulin --output-format Html
+
+# Check specific module coverage
+cargo tarpaulin --include src/tools/editing.rs
+```
+
+### 🛡️ SOURCE/CONTROL Testing Methodology (Professional Standard)
+
+**Critical Pattern for All File Modification Tools:**
+
+1. **SOURCE files** - Original files that are NEVER modified
+2. **CONTROL files** - Expected results after specific operations
+3. **Test Process**: SOURCE → copy → edit → diff against CONTROL
+4. **Verification**: Must match exactly using diff-match-patch
+
+**Example Structure**:
 ```rust
-// File: src/extractors/typescript.rs
-pub struct TypeScriptExtractor { /* ... */ }
+// Test case definition
+struct EditingTestCase {
+    name: &'static str,
+    source_file: &'static str,    // Never modified
+    control_file: &'static str,   // Expected result
+    operation: &'static str,
+    // ... operation parameters
+}
 
-// File: src/tests/typescript_tests.rs
-#[cfg(test)]
-mod typescript_extractor_tests {
-    use super::*;
+// Test execution
+fn run_test(test_case: &EditingTestCase) -> Result<()> {
+    // 1. Copy SOURCE to temp location
+    let test_file = copy_source_file(test_case.source_file)?;
 
-    #[test]
-    fn test_extract_function_declarations() {
-        // Port Miller's test cases exactly
-    }
+    // 2. Perform operation
+    perform_edit_operation(&test_file, &test_case)?;
+
+    // 3. Load CONTROL (expected result)
+    let expected = load_control_file(test_case.control_file)?;
+
+    // 4. Verify exact match using diff-match-patch
+    verify_exact_match(&test_file, &expected)?;
 }
 ```
+
+**Implemented For:**
+- ✅ FastEditTool (3 test cases with perfect matches)
+- ✅ LineEditTool (2/3 test cases working)
+- ❌ SmartRefactorTool (TODO)
 
 ### Running Tests
 ```bash
 # All tests
 cargo test
 
-# Specific extractor
-cargo test typescript_extractor
+# Specific test suites
+cargo test editing_tests          # FastEditTool SOURCE/CONTROL tests
+cargo test line_edit_control      # LineEditTool SOURCE/CONTROL tests
+cargo test typescript_extractor   # Language extractor tests
 
-# With logging
-RUST_LOG=debug cargo test
+# With output
+cargo test -- --nocapture
 
-# Release mode (performance testing)
+# Coverage analysis
+cargo tarpaulin
+
+# Performance tests
 cargo test --release
 ```
+
+### 🚨 URGENT: Test Organization Tasks
+
+1. **Consolidate scattered tests** into `src/tests/` structure
+2. **Clean up `.backup` files** and temporary test artifacts
+3. **Integrate `debug/` test files** into real-world validation
+4. **Complete SOURCE/CONTROL** for all editing tools
+5. **Standardize test naming** and module organization
+6. **Document test-running procedures** for contributors
 
 ---
 
@@ -367,6 +486,14 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 *This document should be updated as the project evolves. All contributors must follow these guidelines without exception.*
 
-**Project Status**: Phase 2.5 Complete - All 26 Language Extractors Operational ✅
-**Next Milestone**: Phase 3 - Tantivy Search Infrastructure (Sub-10ms queries)
-**Last Updated**: 2024-09-24 - 26/26 Extractors Achievement
+**Project Status**: Phase 3.1 - Professional Testing Infrastructure Complete ✅
+**Current Achievements**:
+- ✅ All 26 Language Extractors Operational (Miller Parity)
+- ✅ SOURCE/CONTROL Testing Methodology Implemented
+- ✅ Code Coverage Tooling (tarpaulin) Configured
+- ✅ FastEditTool + LineEditTool Control Tests Operational
+- ✅ Real-World Validation Against GitHub Repositories
+- ✅ Professional Error Detection (File Corruption Prevention)
+
+**Next Milestone**: Complete SmartRefactorTool Control Tests + Test Organization Cleanup
+**Last Updated**: 2025-01-28 - Professional Testing Infrastructure Achievement

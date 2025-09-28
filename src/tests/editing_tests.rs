@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 struct EditingTestCase {
     name: &'static str,
+    source_file: &'static str,
     control_file: &'static str,
-    target_file: &'static str,
     find_text: &'static str,
     replace_text: &'static str,
     description: &'static str,
@@ -25,24 +25,24 @@ struct EditingTestCase {
 const EDITING_TEST_CASES: &[EditingTestCase] = &[
     EditingTestCase {
         name: "simple_function_rename",
-        control_file: "simple_function.rs",
-        target_file: "simple_function_rename.rs",
+        source_file: "simple_function.rs",
+        control_file: "simple_function_rename.rs",
         find_text: "get_user_data",
         replace_text: "fetch_user_info",
         description: "Simple function name replacement across multiple lines",
     },
     EditingTestCase {
         name: "complex_validation_replacement",
-        control_file: "complex_class.ts",
-        target_file: "complex_class_validation.ts",
+        source_file: "complex_class.ts",
+        control_file: "complex_class_validation.ts",
         find_text: "    private validateUser(user: User): boolean {\n        return user.id > 0 &&\n               user.name.length > 0 &&\n               user.email.includes('@');\n    }",
         replace_text: "    private validateUser(user: User): boolean {\n        // Enhanced validation with comprehensive checks\n        if (user.id <= 0) return false;\n        if (!user.name || user.name.trim().length === 0) return false;\n        if (!user.email || !user.email.includes('@') || !user.email.includes('.')) return false;\n\n        return true;\n    }",
         description: "Complex multi-line method replacement preserving indentation",
     },
     EditingTestCase {
         name: "edge_case_todo_replacement",
-        control_file: "edge_cases.py",
-        target_file: "edge_cases_todo_replaced.py",
+        source_file: "edge_cases.py",
+        control_file: "edge_cases_todo_replaced.py",
         find_text: "        # TODO: Replace this with better logic",
         replace_text: "        # Initialize with comprehensive data validation",
         description: "Replace TODO comment with unicode characters and special symbols",
@@ -73,19 +73,19 @@ fn setup_test_environment() -> Result<PathBuf> {
     Ok(temp_dir)
 }
 
-/// Copy control file to test location
-fn setup_test_file(control_file: &str, temp_dir: &Path) -> Result<PathBuf> {
-    let control_path = Path::new("tests/editing/control").join(control_file);
-    let test_path = temp_dir.join(control_file);
+/// Copy source file to test location (SOURCE files are never edited)
+fn setup_test_file(source_file: &str, temp_dir: &Path) -> Result<PathBuf> {
+    let source_path = Path::new("tests/editing/sources").join(source_file);
+    let test_path = temp_dir.join(source_file);
 
-    fs::copy(&control_path, &test_path)?;
+    fs::copy(&source_path, &test_path)?;
     Ok(test_path)
 }
 
-/// Load target file for comparison
-fn load_target_file(target_file: &str) -> Result<String> {
-    let target_path = Path::new("tests/editing/targets").join(target_file);
-    Ok(fs::read_to_string(target_path)?)
+/// Load control file for comparison (CONTROL files are expected results)
+fn load_control_file(control_file: &str) -> Result<String> {
+    let control_path = Path::new("tests/editing/controls/fast-edit").join(control_file);
+    Ok(fs::read_to_string(control_path)?)
 }
 
 /// Verify edit result matches target exactly using diffy
@@ -176,13 +176,13 @@ mod comprehensive_editing_tests {
 
     /// Run a single editing test with comprehensive verification
     async fn run_single_editing_test(test_case: &EditingTestCase, temp_dir: &Path) -> Result<()> {
-        // Step 1: Set up test file from control
-        let test_file_path = setup_test_file(test_case.control_file, temp_dir)?;
-        println!("📁 Control file copied to: {}", test_file_path.display());
+        // Step 1: Set up test file from source (SOURCE files are never edited)
+        let test_file_path = setup_test_file(test_case.source_file, temp_dir)?;
+        println!("📁 Source file copied to: {}", test_file_path.display());
 
-        // Step 2: Load expected target result
-        let expected_content = load_target_file(test_case.target_file)?;
-        println!("🎯 Target state loaded from: {}", test_case.target_file);
+        // Step 2: Load expected control result (CONTROL files are expected outcomes)
+        let expected_content = load_control_file(test_case.control_file)?;
+        println!("🎯 Control state loaded from: {}", test_case.control_file);
 
         // Step 3: Create FastEditTool and perform edit
         let edit_tool = FastEditTool {

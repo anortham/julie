@@ -11,7 +11,7 @@ mod real_world_tests {
     use std::path::{Path, PathBuf};
     use tree_sitter::{Parser, Tree};
 
-    const REAL_WORLD_TEST_DIR: &str = "debug/test-workspace-real";
+    const REAL_WORLD_TEST_DIR: &str = "tests/real-world";
 
     /// Initialize a tree-sitter parser for the given language
     fn init_parser(code: &str, language: &str) -> Tree {
@@ -291,7 +291,7 @@ mod real_world_tests {
     }
 
     /// Get all files of a specific extension from a directory
-    fn get_files_with_extension(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+    pub fn get_files_with_extension(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
         if !dir.exists() {
             return Vec::new();
         }
@@ -796,7 +796,7 @@ mod real_world_tests {
     fn test_cross_language_real_world_integration() {
         let base_dir = Path::new(REAL_WORLD_TEST_DIR);
         let mut total_files_processed = 0;
-        let mut total_symbols_extracted = 0;
+        let mut _total_symbols_extracted = 0;
 
         let languages = [
             ("kotlin", vec!["kt"]),
@@ -838,7 +838,7 @@ mod real_world_tests {
                         test_real_world_file(&file_path, language);
                         total_files_processed += 1;
                         // We'd need to actually count symbols here, simplified for now
-                        total_symbols_extracted += 1;
+                        _total_symbols_extracted += 1;
                     }
                 }
             } else {
@@ -869,14 +869,14 @@ mod real_world_tests {
 // Real-World Refactoring Tool Tests (following the same proven methodology)
 #[cfg(test)]
 mod real_world_refactoring_tests {
-    use super::real_world_tests::*;
+    use super::real_world_tests::get_files_with_extension;
     use crate::handler::JulieServerHandler;
     use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
 
-    const REAL_WORLD_TEST_DIR: &str = "debug/test-workspace-real";
+    const REAL_WORLD_TEST_DIR: &str = "tests/real-world";
 
     /// Test SmartRefactorTool against real TypeScript files
     #[tokio::test]
@@ -1138,7 +1138,7 @@ mod real_world_refactoring_tests {
     }
 
     /// Extract text from CallToolResult
-    fn extract_response_text(result: &crate::tools::CallToolResult) -> String {
+    fn extract_response_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
         result.content.iter()
             .filter_map(|content_block| {
                 serde_json::to_value(content_block).ok().and_then(|json| {

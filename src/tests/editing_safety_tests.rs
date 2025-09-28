@@ -128,9 +128,7 @@ mod concurrency_tests {
         assert!(!final_content.is_empty());
         assert!(final_content.contains("line 3")); // Unchanged line should remain
 
-        // At least one backup should exist
-        let backup1 = format!("{}.backup", file_path);
-        assert!(std::path::Path::new(&backup1).exists());
+        // NOTE: No backup file assertions - backup functionality was intentionally removed
     }
 
     #[tokio::test]

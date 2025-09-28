@@ -91,7 +91,7 @@ mod search_quality_tests {
         // Expected: Production files rank higher than test files for same symbol name
         // This test will FAIL until we integrate PathRelevanceScorer into FastSearchTool
 
-        let symbols = create_test_symbols();
+        let _symbols = create_test_symbols();
         let scorer = PathRelevanceScorer::new("getUserData"); // Not searching "test"
 
         // Calculate scores manually to verify expected behavior

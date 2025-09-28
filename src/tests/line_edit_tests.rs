@@ -645,7 +645,7 @@ mod edge_cases_tests {
 
 #[cfg(test)]
 mod golden_master_tests {
-    use super::*;
+    
 
     /// Golden master test framework for editing operations
     /// This tests against known-good control/target file pairs
