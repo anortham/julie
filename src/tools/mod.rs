@@ -8,6 +8,7 @@ pub mod shared;
 pub mod editing;
 pub mod exploration;
 pub mod navigation;
+pub mod refactoring;
 pub mod search;
 pub mod workspace;
 
@@ -15,6 +16,7 @@ pub mod workspace;
 pub use editing::{FastEditTool, LineEditTool};
 pub use exploration::{FastExploreTool, FindLogicTool};
 pub use navigation::{FastGotoTool, FastRefsTool};
+pub use refactoring::SmartRefactorTool;
 pub use search::FastSearchTool;
 pub use workspace::ManageWorkspaceTool;
 
@@ -39,6 +41,8 @@ tool_box!(
         // Editing tools
         FastEditTool,
         LineEditTool,
+        // Refactoring tools
+        SmartRefactorTool,
         // Workspace management
         ManageWorkspaceTool,
     ]

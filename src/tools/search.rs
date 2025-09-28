@@ -4,7 +4,7 @@ use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use super::shared::OptimizedResponse;
 use crate::embeddings::cosine_similarity;
@@ -252,19 +252,90 @@ impl FastSearchTool {
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         debug!("🧠 Semantic search mode (using embeddings)");
 
-        // First get text search results as candidates
-        let text_candidates = self.text_search(handler).await?;
+        // CRITICAL FIX: Get ALL symbols for semantic comparison (not just text matches!)
+        // This enables true conceptual search using embeddings
+        let all_symbols = {
+            let symbols = handler.symbols.read().await;
+
+            // Apply basic filters (language, file pattern) if specified
+            let filtered: Vec<Symbol> = symbols
+                .iter()
+                .filter(|symbol| {
+                    // Apply language filter if specified
+                    let language_match = self
+                        .language
+                        .as_ref()
+                        .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
+                        .unwrap_or(true);
+
+                    // Apply file pattern filter if specified (basic contains check for now)
+                    let file_match = self
+                        .file_pattern
+                        .as_ref()
+                        .map(|pattern| {
+                            if pattern.starts_with('!') {
+                                // Exclusion pattern
+                                !symbol.file_path.contains(&pattern[1..])
+                            } else {
+                                // Inclusion pattern
+                                symbol.file_path.contains(pattern)
+                            }
+                        })
+                        .unwrap_or(true);
+
+                    language_match && file_match
+                })
+                .cloned()
+                .collect();
+
+            // Limit to reasonable number for performance (expand search space vs text search)
+            let semantic_limit = (self.limit * 10).min(1000) as usize;
+            filtered
+                .into_iter()
+                .take(semantic_limit)
+                .collect::<Vec<Symbol>>()
+        };
+
+        debug!("🔍 Semantic search evaluating {} symbols (vs text search which only evaluates exact matches)", all_symbols.len());
 
         // Ensure embedding engine is initialized
         handler.ensure_embedding_engine().await?;
+
+        // Check embedding status for better user feedback
+        let workspace = handler.get_workspace().await?;
+        let embeddings_ready = workspace
+            .as_ref()
+            .map(|_| {
+                // TODO: Check workspace registry for embedding status
+                // For now, assume embeddings might still be generating
+                false // Placeholder - should check actual embedding status
+            })
+            .unwrap_or(false);
 
         // Get mutable access to embedding engine for embedding generation
         let mut embedding_guard = handler.embedding_engine.write().await;
         let embedding_engine = match embedding_guard.as_mut() {
             Some(engine) => engine,
             None => {
-                debug!("No embedding engine available, falling back to text search");
-                return Ok(text_candidates);
+                if !embeddings_ready {
+                    info!("🔄 Embeddings still generating in background - falling back to basic text matching");
+                } else {
+                    debug!("No embedding engine available, falling back to basic text matching");
+                }
+                // Fallback: basic text similarity without embeddings
+                let query_lower = self.query.to_lowercase();
+                let mut text_matches: Vec<Symbol> = all_symbols
+                    .into_iter()
+                    .filter(|symbol| {
+                        symbol.name.to_lowercase().contains(&query_lower)
+                            || symbol
+                                .signature
+                                .as_ref()
+                                .map_or(false, |sig| sig.to_lowercase().contains(&query_lower))
+                    })
+                    .collect();
+                text_matches.truncate(self.limit as usize);
+                return Ok(text_matches);
             }
         };
 
@@ -302,23 +373,27 @@ impl FastSearchTool {
             embedding_engine.embed_symbol(&query_symbol, &context)?
         };
 
-        // Calculate similarity with text candidates and rank them
+        // PERFORMANCE OPTIMIZATION: Use batch embedding instead of individual calls
         let mut scored_symbols = Vec::new();
 
-        for symbol in text_candidates {
-            // Calculate real embedding similarity
-            let symbol_embedding = {
-                let context = crate::embeddings::CodeContext {
-                    parent_symbol: None,
-                    surrounding_code: symbol.code_context.clone(),
-                    file_context: Some(symbol.signature.clone().unwrap_or_default()),
-                };
+        if all_symbols.is_empty() {
+            debug!("No symbols available for semantic search");
+            return Ok(Vec::new());
+        }
 
-                match embedding_engine.embed_symbol(&symbol, &context) {
-                    Ok(embedding) => embedding,
-                    Err(e) => {
-                        debug!("Failed to embed symbol {}: {}", symbol.name, e);
-                        // Fall back to text similarity if embedding fails
+        // Generate embeddings for all candidates in one batch call
+        match embedding_engine.embed_symbols_batch(&all_symbols) {
+            Ok(batch_results) => {
+                // Create a map for efficient lookup of embeddings by symbol ID
+                let embedding_map: HashMap<String, Vec<f32>> = batch_results.into_iter().collect();
+
+                // Calculate similarities for all symbols
+                for symbol in all_symbols {
+                    if let Some(embedding) = embedding_map.get(&symbol.id) {
+                        let similarity = cosine_similarity(&query_embedding, embedding);
+                        scored_symbols.push((symbol, similarity));
+                    } else {
+                        // Symbol didn't get embedded, use text similarity fallback
                         let text_similarity = if symbol
                             .name
                             .to_lowercase()
@@ -331,14 +406,47 @@ impl FastSearchTool {
                             0.3
                         };
                         scored_symbols.push((symbol, text_similarity));
-                        continue;
                     }
                 }
-            };
+            }
+            Err(e) => {
+                debug!(
+                    "Batch embedding failed: {}, falling back to individual processing",
+                    e
+                );
 
-            // Calculate cosine similarity between query and symbol embeddings
-            let similarity = cosine_similarity(&query_embedding, &symbol_embedding);
-            scored_symbols.push((symbol, similarity));
+                // Fallback to individual processing if batch fails
+                for symbol in all_symbols {
+                    let context = crate::embeddings::CodeContext {
+                        parent_symbol: None,
+                        surrounding_code: symbol.code_context.clone(),
+                        file_context: Some(symbol.signature.clone().unwrap_or_default()),
+                    };
+
+                    match embedding_engine.embed_symbol(&symbol, &context) {
+                        Ok(embedding) => {
+                            let similarity = cosine_similarity(&query_embedding, &embedding);
+                            scored_symbols.push((symbol, similarity));
+                        }
+                        Err(e) => {
+                            debug!("Failed to embed symbol {}: {}", symbol.name, e);
+                            // Fall back to text similarity if embedding fails
+                            let text_similarity = if symbol
+                                .name
+                                .to_lowercase()
+                                .contains(&self.query.to_lowercase())
+                            {
+                                0.8
+                            } else if symbol.name.to_lowercase() == self.query.to_lowercase() {
+                                1.0
+                            } else {
+                                0.3
+                            };
+                            scored_symbols.push((symbol, text_similarity));
+                        }
+                    }
+                }
+            }
         }
 
         // Sort by similarity score (descending)
@@ -639,8 +747,12 @@ impl FastSearchTool {
                 Ok(None)
             }
             "primary" => {
-                // Search only primary workspace
-                Ok(Some(vec!["primary".to_string()]))
+                // FIX: Use Tantivy search for primary workspace to support multi-word queries
+                // Previously this used database search with workspace filtering, but that
+                // routes to LIKE '%pattern%' which can't handle space-separated terms.
+                // Since primary workspace is the main workspace, using Tantivy provides
+                // better search capabilities (multi-word, fuzzy, semantic) without loss of precision.
+                Ok(None)
             }
             workspace_id => {
                 // Validate the workspace ID exists

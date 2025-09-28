@@ -1,10 +1,11 @@
 //! Comprehensive editing tests for FastEditTool
 //!
 //! This module contains bulletproof tests to ensure FastEditTool never corrupts files.
-//! Uses control/target/test pattern with diffmatchpatch verification for safety.
+//! Uses control/target/test pattern with Google's diff-match-patch verification for safety.
 
 use crate::tools::FastEditTool;
 use anyhow::Result;
+use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
 use std::fs;
 use std::path::{Path, PathBuf};
 // use crate::handler::JulieServerHandler;  // Currently unused
@@ -97,8 +98,11 @@ fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &
         return Ok(());
     }
 
-    // Use diffy to show detailed differences
-    let patch = diffy::create_patch(expected_content, result_content);
+    // Use diff-match-patch-rs to show detailed differences
+    let dmp = DiffMatchPatch::new();
+    let diffs = dmp.diff_main::<Efficient>(expected_content, result_content).unwrap_or_default();
+    let patches = dmp.patch_make(PatchInput::new_diffs(&diffs)).unwrap_or_default();
+    let patch = dmp.patch_to_text(&patches);
 
     return Err(anyhow::anyhow!(
         "❌ EDIT VERIFICATION FAILED: {}\n\
@@ -190,7 +194,6 @@ mod comprehensive_editing_tests {
             file_pattern: None,
             limit: None,
             validate: true,
-            backup: true,
             dry_run: false, // Actually perform the edit
         };
 
@@ -243,7 +246,6 @@ mod comprehensive_editing_tests {
             file_pattern: None,
             limit: None,
             validate: true,
-            backup: true,
             dry_run: false,
         };
 
@@ -333,7 +335,6 @@ fn main() {
             file_pattern: None,
             limit: None,
             validate: true,
-            backup: true,
             dry_run: false,
         };
 

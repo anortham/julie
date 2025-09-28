@@ -1,4 +1,5 @@
 use anyhow::Result;
+use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
 use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
@@ -43,8 +44,6 @@ pub struct FastEditTool {
     pub limit: Option<u32>,
     #[serde(default = "default_true")]
     pub validate: bool,
-    #[serde(default = "default_true")]
-    pub backup: bool,
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -128,37 +127,65 @@ impl FastEditTool {
             )]));
         }
 
-        // Perform the replacement
-        let modified_content = original_content.replace(&self.find_text, &self.replace_text);
+        // Use diff-match-patch-rs for professional-grade editing
+        let dmp = DiffMatchPatch::new();
 
-        // Calculate diff using diffy (TODO: consider diff-match-patch-rs upgrade)
-        let patch = diffy::create_patch(&original_content, &modified_content);
+        // For simple find/replace, we'll create the target content first
+        let target_content = original_content.replace(&self.find_text, &self.replace_text);
+
+        // Generate precise diffs and patches using Google's algorithm
+        let diffs = match dmp.diff_main::<Efficient>(&original_content, &target_content) {
+            Ok(diffs) => diffs,
+            Err(e) => {
+                let message = format!("❌ Failed to generate diff: {:?}\n💡 Check file content and encoding", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        // Create patches for atomic application
+        let patches = match dmp.patch_make(PatchInput::new_diffs(&diffs)) {
+            Ok(patches) => patches,
+            Err(e) => {
+                let message = format!("❌ Failed to create patches: {:?}\n💡 File might be corrupted or binary", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        // Generate readable diff for preview
+        let patch_text = dmp.patch_to_text(&patches);
+
+        // Apply patches to get the final result (ensures atomic operation)
+        let (modified_content, patch_results) = match dmp.patch_apply(&patches, &original_content) {
+            Ok((content, results)) => (content, results),
+            Err(e) => {
+                let message = format!("❌ Failed to apply patches: {:?}\n💡 File state might be inconsistent", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        // Check if all patches applied successfully
+        if patch_results.iter().any(|&success| !success) {
+            let failed_count = patch_results.iter().filter(|&&success| !success).count();
+            let message = format!(
+                "⚠️ Some patches failed to apply ({} failed out of {})\n💡 File might have been modified during edit",
+                failed_count, patch_results.len()
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        }
 
         if self.dry_run {
             let message = format!(
                 "🔍 Dry run mode - showing changes to: {}\n\
                 📊 Changes preview:\n\n{}\n\n\
-                💡 Set dry_run=false to apply changes",
-                self.file_path, patch
+                💡 Set dry_run=false to apply changes\n\
+                ✅ All {} patches would apply successfully",
+                self.file_path, patch_text, patch_results.len()
             );
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 message,
             )]));
         }
 
-        // Create backup if requested
-        let backup_path = if self.backup {
-            let backup_path = format!("{}.backup", self.file_path);
-            match fs::write(&backup_path, &original_content) {
-                Ok(_) => Some(backup_path),
-                Err(e) => {
-                    warn!("Failed to create backup: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
 
         // Basic validation (syntax check would go here)
         if self.validate {
@@ -178,28 +205,19 @@ impl FastEditTool {
         // Apply changes
         match fs::write(&self.file_path, &modified_content) {
             Ok(_) => {
-                let changes_count = self
-                    .find_text
-                    .lines()
-                    .count()
-                    .max(self.replace_text.lines().count());
-                let backup_info = if let Some(backup) = backup_path {
-                    format!("\n💾 Backup created: {}", backup)
-                } else {
-                    String::new()
-                };
-
                 let replacements = original_content.matches(&self.find_text).count();
                 let message = format!(
-                    "✅ Fast edit successful - replaced {} occurrence(s)!\n\
+                    "✅ Fast edit successful using Google's diff-match-patch!\n\
                     📁 File: {}\n\
-                    📊 Changed {} line(s)\n\
-                    🔍 Diff:\n{}{}\n\n\
+                    🎯 Applied {} patches successfully\n\
+                    📊 Found and replaced {} occurrence(s)\n\
+                    🔍 Changes:\n{}\n\n\
                     🎯 Next actions:\n\
                     • Run tests to verify changes\n\
                     • Use fast_refs to check impact\n\
-                    • Use fast_search to find related code",
-                    replacements, self.file_path, changes_count, patch, backup_info
+                    • Use fast_search to find related code\n\
+                    💡 Tip: Use git to track changes and revert if needed",
+                    self.file_path, patch_results.len(), replacements, patch_text
                 );
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
@@ -387,9 +405,17 @@ impl FastEditTool {
         };
 
         // Search only within the current workspace directory to prevent unbounded searches
-        let search_roots = vec![
+        let mut search_roots = vec![
             std::env::current_dir()?, // Only search within current workspace
         ];
+
+        if let Ok(extra_roots) = std::env::var("FAST_EDIT_SEARCH_ROOTS") {
+            for path in std::env::split_paths(&extra_roots) {
+                if path.exists() {
+                    search_roots.push(path);
+                }
+            }
+        }
 
         warn!("🔍 Using filesystem fallback search - this indicates the index may be incomplete");
         debug!("Search limited to current directory to prevent unbounded scans");
@@ -487,8 +513,33 @@ impl FastEditTool {
             return Ok(None);
         }
 
-        // Perform replacement
-        let modified_content = original_content.replace(&self.find_text, &self.replace_text);
+        // Use diff-match-patch-rs for consistent editing across single-file and multi-file modes
+        let dmp = DiffMatchPatch::new();
+        let target_content = original_content.replace(&self.find_text, &self.replace_text);
+
+        // Generate and apply patches atomically
+        let diffs = match dmp.diff_main::<Efficient>(&original_content, &target_content) {
+            Ok(diffs) => diffs,
+            Err(_) => return Ok(None), // Skip files that can't be processed
+        };
+
+        let patches = match dmp.patch_make(PatchInput::new_diffs(&diffs)) {
+            Ok(patches) => patches,
+            Err(_) => return Ok(None),
+        };
+
+        let (modified_content, patch_results) = match dmp.patch_apply(&patches, &original_content) {
+            Ok((content, results)) => (content, results),
+            Err(_) => return Ok(None),
+        };
+
+        // Ensure all patches applied successfully
+        if patch_results.iter().any(|&success| !success) {
+            return Ok(Some(format!(
+                "⚠️ {} - partial patch failure (some changes may not have applied)",
+                file_path
+            )));
+        }
 
         if self.dry_run {
             let replacements = original_content.matches(&self.find_text).count();
@@ -498,11 +549,6 @@ impl FastEditTool {
             )));
         }
 
-        // Create backup if requested
-        if self.backup {
-            let backup_path = format!("{}.backup", file_path);
-            let _ = fs::write(&backup_path, &original_content);
-        }
 
         // Basic validation
         if self.validate {
@@ -579,8 +625,6 @@ pub struct LineEditTool {
     pub content: Option<String>,
     #[serde(default = "default_true")]
     pub preserve_indentation: bool,
-    #[serde(default = "default_true")]
-    pub backup: bool,
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -1005,53 +1049,52 @@ impl LineEditTool {
             )]));
         }
 
-        // Calculate diff
-        let patch = diffy::create_patch(original_content, modified_content);
+        // Use diff-match-patch-rs for consistent line editing
+        let dmp = DiffMatchPatch::new();
+        let diffs = match dmp.diff_main::<Efficient>(original_content, modified_content) {
+            Ok(diffs) => diffs,
+            Err(e) => {
+                let message = format!("❌ Failed to generate diff: {:?}\n💡 Check file content and encoding", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        let patches = match dmp.patch_make(PatchInput::new_diffs(&diffs)) {
+            Ok(patches) => patches,
+            Err(e) => {
+                let message = format!("❌ Failed to create patches: {:?}\n💡 File might be corrupted", e);
+                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            }
+        };
+
+        let patch_text = dmp.patch_to_text(&patches);
 
         if self.dry_run {
             let message = format!(
                 "🔍 Dry run mode - showing {} in: {}\n\
                 📊 Changes preview:\n\n{}\n\n\
                 💡 Set dry_run=false to apply changes",
-                operation, self.file_path, patch
+                operation, self.file_path, patch_text
             );
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 message,
             )]));
         }
 
-        // Create backup if requested
-        let backup_path = if self.backup {
-            let backup_path = format!("{}.backup", self.file_path);
-            match fs::write(&backup_path, original_content) {
-                Ok(_) => Some(backup_path),
-                Err(e) => {
-                    warn!("Failed to create backup: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
 
         // Apply changes
         match fs::write(&self.file_path, modified_content) {
             Ok(_) => {
-                let backup_info = if let Some(backup) = backup_path {
-                    format!("\n💾 Backup created: {}", backup)
-                } else {
-                    String::new()
-                };
-
                 let message = format!(
-                    "✅ Line edit successful!\n\
+                    "✅ Line edit successful using Google's diff-match-patch!\n\
                     📁 File: {}\n\
                     📊 Operation: {}\n\
-                    🔍 Diff:\n{}{}\n\n\
+                    🔍 Changes:\n{}\n\n\
                     🎯 Next actions:\n\
                     • Use read operation to verify changes\n\
-                    • Use fast_refs to check for any impacts",
-                    self.file_path, operation, patch, backup_info
+                    • Use fast_refs to check for any impacts\n\
+                    💡 Tip: Use git to track changes and revert if needed",
+                    self.file_path, operation, patch_text
                 );
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,

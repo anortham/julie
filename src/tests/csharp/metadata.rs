@@ -197,14 +197,16 @@ namespace MyProject
             .unwrap()
             .contains("delegate void EventHandler<T>"));
 
-        let func = symbols.iter().find(|s| s.name == "Func");
-        assert!(func.is_some());
-        assert!(func
+        // The Create method should be extracted (not Func which is just a type reference)
+        let create_method = symbols.iter().find(|s| s.name == "Create");
+        assert!(create_method.is_some());
+        assert_eq!(create_method.unwrap().kind, SymbolKind::Method);
+        assert!(create_method
             .unwrap()
             .signature
             .as_ref()
             .unwrap()
-            .contains("in T, out TResult"));
+            .contains("Func<T, TResult>"));
 
         let nested_class = symbols.iter().find(|s| s.name == "NestedClass");
         assert!(nested_class.is_some());

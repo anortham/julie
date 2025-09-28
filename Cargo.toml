@@ -10,6 +10,10 @@ license = "MIT"
 name = "julie"
 path = "src/lib.rs"
 
+[features]
+default = []
+network_models = []
+
 [[bin]]
 name = "julie-server"
 path = "src/main.rs"
@@ -87,7 +91,7 @@ notify = "8.2"
 # Utilities
 async-trait = "0.1"
 futures = "0.3"
-diffy = "0.4"  # Robust diff/patch for surgical code editing
+diff-match-patch-rs = "0.5.1"  # Google's proven diff/patch algorithm for professional editing
 uuid = { version = "1.10", features = ["v4", "serde"] }
 thiserror = "2.0"
 anyhow = "1.0"
@@ -110,6 +114,7 @@ chrono = { version = "0.4.42", features = ["serde"] }
 [dev-dependencies]
 tempfile = "3.13"
 tokio-test = "0.4"
+cargo-tarpaulin = "0.31"
 
 [profile.release]
 opt-level = 3

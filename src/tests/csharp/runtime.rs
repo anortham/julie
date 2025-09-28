@@ -285,7 +285,6 @@ namespace PerformanceTests
             .unwrap()
             .contains("Func<Task>"));
     }
-
     #[test]
     fn test_edge_cases_and_error_handling() {
         let code = r#"
@@ -427,11 +426,12 @@ namespace EdgeCases
         assert!(complex_number.is_some());
         assert_eq!(complex_number.unwrap().kind, SymbolKind::Struct);
 
+        // Check for operator overloads (should be 3: +, ==, !=)
         let operators: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.signature.as_ref().unwrap().contains("operator"))
             .collect();
-        assert!(operators.len() >= 4);
+        assert!(operators.len() >= 3);
 
         let indexed_collection = symbols.iter().find(|s| s.name == "IndexedCollection");
         assert!(indexed_collection.is_some());

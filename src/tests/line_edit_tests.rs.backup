@@ -106,7 +106,7 @@ mod count_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
- // No backup needed for count
+            backup: false, // No backup needed for count
             dry_run: false,
         };
 
@@ -141,7 +141,7 @@ mod count_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
- // No backup needed for count
+            backup: false, // No backup needed for count
             dry_run: false,
         };
 
@@ -175,7 +175,7 @@ mod count_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
-
+            backup: false,
             dry_run: false,
         };
 
@@ -224,7 +224,7 @@ mod read_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
-
+            backup: false,
             dry_run: false,
         };
 

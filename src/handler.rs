@@ -275,6 +275,10 @@ impl ServerHandler for JulieServerHandler {
                 debug!("📝 Line edit: {:?}", tool);
                 tool.call_tool(self).await
             }
+            JulieTools::SmartRefactorTool(tool) => {
+                debug!("🔄 Smart refactor: {:?}", tool);
+                tool.call_tool(self).await
+            }
         };
 
         match result {

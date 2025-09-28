@@ -420,7 +420,7 @@ impl SymbolDatabase {
         }
 
         tx.commit()?;
-        info!("Successfully stored {} symbols", symbols.len());
+        // Symbols stored successfully - no need to log per call
         Ok(())
     }
 
@@ -778,6 +778,32 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        Ok(symbols)
+    }
+
+    /// Get all symbols from all workspaces (for SearchEngine population)
+    pub fn get_all_symbols(&self) -> Result<Vec<Symbol>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, name, kind, language, file_path, signature,
+                   start_line, start_col, end_line, end_col, parent_id,
+                   metadata, semantic_group, confidence
+            FROM symbols
+            ORDER BY workspace_id, file_path, start_line
+        ",
+        )?;
+
+        let rows = stmt.query_map([], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved {} symbols from database for SearchEngine",
+            symbols.len()
+        );
         Ok(symbols)
     }
 

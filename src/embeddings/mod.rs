@@ -98,24 +98,57 @@ impl EmbeddingEngine {
         &self.model_name
     }
 
-    /// Generate embeddings for a batch of symbols (for file watcher integration)
+    /// PERFORMANCE OPTIMIZATION: Generate embeddings for a batch of symbols using batched ML inference
+    /// This dramatically reduces ML model overhead compared to individual embedding calls
     pub fn embed_symbols_batch(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
-        let mut results = Vec::new();
+        if symbols.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Collect all embedding texts and contexts in batches for efficient ML inference
+        let mut batch_texts = Vec::new();
+        let mut symbol_ids = Vec::new();
 
         for symbol in symbols {
             let context = CodeContext::from_symbol(symbol);
-            match self.embed_symbol(symbol, &context) {
-                Ok(embedding) => {
-                    results.push((symbol.id.clone(), embedding));
-                }
-                Err(e) => {
-                    // Log the error but continue with other symbols
-                    tracing::warn!("Failed to embed symbol {}: {}", symbol.id, e);
-                }
-            }
+            let embedding_text = self.build_embedding_text(symbol, &context);
+            batch_texts.push(embedding_text);
+            symbol_ids.push(symbol.id.clone());
         }
 
-        Ok(results)
+        // Generate embeddings for all symbols in one batch call
+        match self.model.embed(batch_texts, None) {
+            Ok(batch_embeddings) => {
+                // Map results back to (id, embedding) pairs
+                let results = symbol_ids
+                    .into_iter()
+                    .zip(batch_embeddings.into_iter())
+                    .collect();
+                Ok(results)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Batch embedding failed: {}, falling back to individual processing",
+                    e
+                );
+
+                // Fallback to individual processing if batch fails
+                let mut results = Vec::new();
+                for symbol in symbols {
+                    let context = CodeContext::from_symbol(symbol);
+                    match self.embed_symbol(symbol, &context) {
+                        Ok(embedding) => {
+                            results.push((symbol.id.clone(), embedding));
+                        }
+                        Err(e) => {
+                            // Log the error but continue with other symbols
+                            tracing::warn!("Failed to embed symbol {}: {}", symbol.id, e);
+                        }
+                    }
+                }
+                Ok(results)
+            }
+        }
     }
 
     /// Update cached embeddings for all symbols in a file. Existing entries for the file are replaced.
@@ -127,22 +160,59 @@ impl EmbeddingEngine {
             }
         }
 
+        if symbols.is_empty() {
+            return Ok(());
+        }
+
         let mut new_ids = HashSet::new();
+
+        // PERFORMANCE OPTIMIZATION: Use batching instead of individual embeddings
+        // Collect all embedding texts in one batch for efficient ML inference
+        let mut batch_texts = Vec::new();
+        let mut symbol_contexts = Vec::new();
 
         for symbol in symbols {
             let context = CodeContext::from_symbol(symbol);
-            match self.embed_symbol(symbol, &context) {
-                Ok(embedding) => {
+            let embedding_text = self.build_embedding_text(symbol, &context);
+            batch_texts.push(embedding_text);
+            symbol_contexts.push((symbol, context));
+        }
+
+        // Generate embeddings for all symbols in one batch call
+        match self.model.embed(batch_texts, None) {
+            Ok(batch_embeddings) => {
+                // Map results back to individual symbols
+                for (embedding, (symbol, _context)) in
+                    batch_embeddings.into_iter().zip(symbol_contexts.iter())
+                {
                     new_ids.insert(symbol.id.clone());
                     self.embeddings.insert(symbol.id.clone(), embedding);
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to embed symbol {} in {}: {}",
-                        symbol.id,
-                        file_path,
-                        e
-                    );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to generate batch embeddings for file {}: {}. Falling back to individual processing.",
+                    file_path,
+                    e
+                );
+
+                // Fallback to individual processing if batch fails
+                for symbol in symbols {
+                    let context = CodeContext::from_symbol(symbol);
+                    match self.embed_symbol(symbol, &context) {
+                        Ok(embedding) => {
+                            new_ids.insert(symbol.id.clone());
+                            self.embeddings.insert(symbol.id.clone(), embedding);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to embed symbol {} in {}: {}",
+                                symbol.id,
+                                file_path,
+                                e
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -232,6 +302,10 @@ mod tests {
     use crate::extractors::base::*;
     use tempfile::TempDir;
 
+    #[cfg_attr(
+        not(feature = "network_models"),
+        ignore = "requires downloadable embedding model"
+    )]
     #[tokio::test]
     async fn test_embedding_engine_creation() {
         let temp_dir = TempDir::new().unwrap();
@@ -243,6 +317,10 @@ mod tests {
         assert_eq!(engine.model_name(), "bge-small");
     }
 
+    #[cfg_attr(
+        not(feature = "network_models"),
+        ignore = "requires downloadable embedding model"
+    )]
     #[tokio::test]
     async fn test_symbol_embedding_generation() {
         let temp_dir = TempDir::new().unwrap();
@@ -284,6 +362,10 @@ mod tests {
         assert!(magnitude > 0.0);
     }
 
+    #[cfg_attr(
+        not(feature = "network_models"),
+        ignore = "requires downloadable embedding model"
+    )]
     #[tokio::test]
     async fn test_text_embedding_generation() {
         let temp_dir = TempDir::new().unwrap();
@@ -305,6 +387,10 @@ mod tests {
         assert_eq!(embedding1.len(), 384);
     }
 
+    #[cfg_attr(
+        not(feature = "network_models"),
+        ignore = "requires downloadable embedding model"
+    )]
     #[tokio::test]
     async fn test_cross_language_similarity() {
         let temp_dir = TempDir::new().unwrap();
@@ -391,6 +477,10 @@ mod tests {
         assert_eq!(context.file_context, Some("/test.rs".to_string()));
     }
 
+    #[cfg_attr(
+        not(feature = "network_models"),
+        ignore = "requires downloadable embedding model"
+    )]
     #[test]
     fn test_build_embedding_text() {
         let temp_dir = TempDir::new().unwrap();

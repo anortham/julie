@@ -14,7 +14,21 @@
       "Bash(cargo check:*)",
       "Bash(find:*)",
       "mcp__julie__manage_workspace",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "mcp__julie__fast_goto",
+      "Bash(cargo clean:*)",
+      "Bash(time:*)",
+      "mcp__codex__codex",
+      "mcp__codex__codex-reply",
+      "Read(//Users/murphy/Source/coa-codesearch-mcp/**)",
+      "mcp__tusk__recall",
+      "WebFetch(domain:crates.io)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Read(//Users/murphy/Source/diff-match-patch-rs/**)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(cargo run:*)",
+      "mcp__julie__fast_edit"
     ],
     "deny": [],
     "ask": []

@@ -246,4 +246,54 @@ mod search_tools_tests {
         // Should show accurate count (not 80)
         assert!(!result.contains("Showing 80 of 80"));
     }
+
+    #[test]
+    fn test_multi_word_query_routing_bug() {
+        // This test reproduces the bug where multi-word queries fail with primary workspace
+        // but work with "all" workspace due to routing to database vs Tantivy
+
+        // Test case: Multi-word query like "fast search" should work regardless of workspace filter
+        // The bug is that workspace="primary" routes to database LIKE search which can't handle spaces
+        // while workspace="all" routes to Tantivy which can handle multi-word queries
+
+        let multi_word_query = "fast search";
+
+        // Test 1: workspace="primary" (default) - this currently fails due to database routing
+        let search_tool_primary = FastSearchTool {
+            query: multi_word_query.to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("primary".to_string()),
+        };
+
+        // Test 2: workspace="all" - this works because it routes to Tantivy
+        let search_tool_all = FastSearchTool {
+            query: multi_word_query.to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("all".to_string()),
+        };
+
+        // Note: This test documents the bug but doesn't actually test the routing logic
+        // because that requires a full handler setup with database and Tantivy.
+        // The real test is demonstrated through manual testing:
+        // - workspace="primary": No results for "fast search"
+        // - workspace="all": Found results for "fast search"
+
+        // For now, we verify the tool configurations are correct
+        assert_eq!(search_tool_primary.query, "fast search");
+        assert_eq!(search_tool_primary.workspace.as_ref().unwrap(), "primary");
+
+        assert_eq!(search_tool_all.query, "fast search");
+        assert_eq!(search_tool_all.workspace.as_ref().unwrap(), "all");
+
+        // TODO: Add integration test with actual handler setup to verify:
+        // 1. search_tool_primary routes to database_search_with_workspace_filter
+        // 2. search_tool_all routes to Tantivy search engine
+        // 3. Multi-word queries work with both routing paths after fix
+    }
 }

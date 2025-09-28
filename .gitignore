@@ -36,4 +36,4 @@ validate_*.rs
 
 # Cargo extracted archives (prevent accidental commits)
 tree-sitter-*/
-harper-tree-sitter-*/
+harper-tree-sitter-*/cache/

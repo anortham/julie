@@ -1,0 +1,41 @@
+[tool.tarpaulin.config]
+# Tarpaulin configuration for Julie code coverage
+
+# Coverage reporting options
+output-format = ["Html", "Lcov", "Json"]
+output-dir = "target/tarpaulin"
+
+# Include all source files
+include-tests = false
+count = true
+ignore-panics = true
+
+# Exclude generated code and external dependencies
+exclude = [
+    "*/target/*",
+    "*/tests/*",
+    "*/benches/*",
+    "*/.cargo/*"
+]
+
+# Post-test commands
+post-test = ["echo 'Coverage analysis complete'"]
+
+# Fail if coverage below threshold (set high for professional tool)
+fail-under = 80.0
+
+# Engine configuration
+engine = "llvm"
+release = false
+all-features = true
+
+# Test timeout (important for large test suites)
+timeout = 300
+
+[tool.tarpaulin.config.editing-tools]
+# Specific configuration for editing tools - these need higher coverage
+fail-under = 90.0
+include = [
+    "src/tools/editing.rs",
+    "src/tools/refactoring.rs"
+]

@@ -65,7 +65,16 @@ impl CodeSearchSchema {
     pub fn new() -> Result<Self> {
         let mut schema_builder = Schema::builder();
 
-        // Core symbol identification
+        // Code-aware text options using our custom tokenizer
+        let code_text_options = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("code_aware") // Use our custom code-aware tokenizer
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored();
+
+        // Standard text options for non-code fields
         let text_options = TextOptions::default()
             .set_indexing_options(
                 TextFieldIndexing::default()
@@ -85,21 +94,21 @@ impl CodeSearchSchema {
             .set_stored();
 
         let symbol_id = schema_builder.add_text_field("symbol_id", stored_only.clone());
-        let symbol_name = schema_builder.add_text_field("symbol_name", text_options.clone());
+        let symbol_name = schema_builder.add_text_field("symbol_name", code_text_options.clone());
         let symbol_name_exact =
             schema_builder.add_text_field("symbol_name_exact", exact_options.clone());
         let symbol_kind = schema_builder.add_text_field("symbol_kind", text_options.clone());
         let language = schema_builder.add_text_field("language", text_options.clone());
-        let file_path = schema_builder.add_text_field("file_path", text_options.clone());
+        let file_path = schema_builder.add_text_field("file_path", code_text_options.clone());
         let file_path_exact =
             schema_builder.add_text_field("file_path_exact", exact_options.clone());
 
         // Content for searching
-        let signature = schema_builder.add_text_field("signature", text_options.clone());
+        let signature = schema_builder.add_text_field("signature", code_text_options.clone());
         let signature_exact =
             schema_builder.add_text_field("signature_exact", exact_options.clone());
         let doc_comment = schema_builder.add_text_field("doc_comment", text_options.clone());
-        let code_context = schema_builder.add_text_field("code_context", text_options.clone());
+        let code_context = schema_builder.add_text_field("code_context", code_text_options.clone());
 
         // Location information (numeric fields use different options)
         let start_line = schema_builder.add_u64_field(
@@ -140,10 +149,15 @@ impl CodeSearchSchema {
         );
 
         // Search optimization (index-only for search)
+        let code_index_only = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("code_aware") // Use code-aware tokenizer for all_text
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
         let index_only = TextOptions::default().set_indexing_options(
             TextFieldIndexing::default().set_index_option(IndexRecordOption::WithFreqsAndPositions),
         );
-        let all_text = schema_builder.add_text_field("all_text", index_only.clone());
+        let all_text = schema_builder.add_text_field("all_text", code_index_only);
         let exact_matches = schema_builder.add_text_field("exact_matches", index_only);
         let language_boost =
             schema_builder.add_f64_field("language_boost", tantivy::schema::INDEXED);
@@ -396,6 +410,12 @@ impl QueryProcessor {
         // (even if there are other non-identifier words like "in", "from", etc.)
         if identifier_words.len() == 1 {
             detected_intents.push(QueryIntent::ExactSymbol);
+
+            if words.len() > identifier_words.len()
+                && !detected_intents.contains(&QueryIntent::SemanticConcept)
+            {
+                detected_intents.push(QueryIntent::SemanticConcept);
+            }
         }
 
         // Check for generic type hints
