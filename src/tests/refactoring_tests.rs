@@ -100,7 +100,9 @@ class UserService {
     }
 }
 "#;
-        let file_path = fixture.create_test_file("service.js", test_content).unwrap();
+        let file_path = fixture
+            .create_test_file("service.js", test_content)
+            .unwrap();
 
         let tool = SmartRefactorTool {
             operation: RefactorOperation::RenameSymbol,
@@ -137,7 +139,10 @@ class UserService {
         // The tool should return an error, not a successful CallToolResult
         let result = tool.call_tool(&handler).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Missing required parameter"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing required parameter"));
     }
 
     #[tokio::test]
@@ -263,8 +268,12 @@ export class UserValidator {
 }
 "#;
 
-        let _file1 = fixture.create_test_file("processor.js", file1_content).unwrap();
-        let _file2 = fixture.create_test_file("validator.js", file2_content).unwrap();
+        let _file1 = fixture
+            .create_test_file("processor.js", file1_content)
+            .unwrap();
+        let _file2 = fixture
+            .create_test_file("validator.js", file2_content)
+            .unwrap();
 
         // Test dry run first
         let tool = SmartRefactorTool {
@@ -338,8 +347,12 @@ export type ServiceFactory = () => UserService;
 "#;
 
         // Create the test files
-        let service_path = fixture.create_test_file("user-service.ts", service_content).unwrap();
-        let controller_path = fixture.create_test_file("user-controller.ts", controller_content).unwrap();
+        let service_path = fixture
+            .create_test_file("user-service.ts", service_content)
+            .unwrap();
+        let controller_path = fixture
+            .create_test_file("user-controller.ts", controller_content)
+            .unwrap();
         let types_path = fixture.create_test_file("types.ts", types_content).unwrap();
 
         // Initialize Julie handler and workspace
@@ -347,12 +360,17 @@ export type ServiceFactory = () => UserService;
 
         // Initialize workspace with the temp directory path
         let workspace_path = fixture.temp_dir.path().to_string_lossy().to_string();
-        handler.initialize_workspace(Some(workspace_path)).await.unwrap();
+        handler
+            .initialize_workspace(Some(workspace_path))
+            .await
+            .unwrap();
 
         // Create the rename tool - rename UserService to AccountService
         let rename_tool = SmartRefactorTool {
             operation: RefactorOperation::RenameSymbol,
-            params: r#"{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}"#.to_string(),
+            params:
+                r#"{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}"#
+                    .to_string(),
             dry_run: false, // Actually perform the rename
         };
 
@@ -363,11 +381,11 @@ export type ServiceFactory = () => UserService;
         // The response should indicate successful rename or no references found
         // (no references found is expected since we're testing with temp files that may not be indexed properly)
         assert!(
-            response.contains("Rename successful") ||
-            response.contains("No references found") ||
-            response.contains("Modified") ||
-            response.contains("files with") ||
-            response.contains("total changes")
+            response.contains("Rename successful")
+                || response.contains("No references found")
+                || response.contains("Modified")
+                || response.contains("files with")
+                || response.contains("total changes")
         );
 
         // Verify files exist and check their content

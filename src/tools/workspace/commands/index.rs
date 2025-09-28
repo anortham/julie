@@ -29,13 +29,20 @@ impl ManageWorkspaceTool {
             *handler.is_indexed.write().await = false;
         }
 
-        // Initialize or load workspace in handler (with force if requested)
-        handler
-            .initialize_workspace_with_force(
-                Some(workspace_path.to_string_lossy().to_string()),
-                force_reindex,
-            )
-            .await?;
+        // Only initialize workspace if not already loaded or if forcing reindex
+        // This prevents Tantivy lock failures from duplicate initialization
+        let workspace_already_loaded = handler.get_workspace().await?.is_some();
+
+        if !workspace_already_loaded || force_reindex {
+            handler
+                .initialize_workspace_with_force(
+                    Some(workspace_path.to_string_lossy().to_string()),
+                    force_reindex,
+                )
+                .await?;
+        } else {
+            debug!("Workspace already loaded, skipping re-initialization");
+        }
 
         // Check if already indexed and not forcing reindex
         if !force_reindex {

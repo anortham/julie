@@ -316,6 +316,17 @@ impl WorkspaceRegistryService {
         Ok(workspaces)
     }
 
+    /// Get the primary workspace ID from the registry
+    pub async fn get_primary_workspace_id(&self) -> Result<Option<String>> {
+        let registry = self.load_registry().await?;
+
+        if let Some(ref primary) = registry.primary_workspace {
+            Ok(Some(primary.id.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Update workspace last accessed time
     pub async fn update_last_accessed(&self, workspace_id: &str) -> Result<()> {
         let mut registry = self.load_registry().await?;

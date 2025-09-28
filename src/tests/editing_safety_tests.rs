@@ -237,9 +237,7 @@ mod permission_tests {
     #[tokio::test]
     async fn test_directory_readonly_handling() {
         let fixture = SafetyTestFixture::new().unwrap();
-        let file_path = fixture
-            .create_test_file("file.txt", "content")
-            .unwrap();
+        let file_path = fixture.create_test_file("file.txt", "content").unwrap();
 
         // Make parent directory read-only
         let parent_dir = std::path::Path::new(&file_path).parent().unwrap();
@@ -285,9 +283,7 @@ mod encoding_tests {
     async fn test_utf8_handling() {
         let fixture = SafetyTestFixture::new().unwrap();
         let utf8_content = "Hello 世界 🌍 café naïve résumé";
-        let file_path = fixture
-            .create_test_file("utf8.txt", utf8_content)
-            .unwrap();
+        let file_path = fixture.create_test_file("utf8.txt", utf8_content).unwrap();
 
         let tool = FastEditTool {
             file_path: file_path.clone(),

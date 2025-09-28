@@ -137,8 +137,13 @@ impl FastEditTool {
         let diffs = match dmp.diff_main::<Efficient>(&original_content, &target_content) {
             Ok(diffs) => diffs,
             Err(e) => {
-                let message = format!("❌ Failed to generate diff: {:?}\n💡 Check file content and encoding", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                let message = format!(
+                    "❌ Failed to generate diff: {:?}\n💡 Check file content and encoding",
+                    e
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -146,8 +151,13 @@ impl FastEditTool {
         let patches = match dmp.patch_make(PatchInput::new_diffs(&diffs)) {
             Ok(patches) => patches,
             Err(e) => {
-                let message = format!("❌ Failed to create patches: {:?}\n💡 File might be corrupted or binary", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                let message = format!(
+                    "❌ Failed to create patches: {:?}\n💡 File might be corrupted or binary",
+                    e
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -158,8 +168,13 @@ impl FastEditTool {
         let (modified_content, patch_results) = match dmp.patch_apply(&patches, &original_content) {
             Ok((content, results)) => (content, results),
             Err(e) => {
-                let message = format!("❌ Failed to apply patches: {:?}\n💡 File state might be inconsistent", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                let message = format!(
+                    "❌ Failed to apply patches: {:?}\n💡 File state might be inconsistent",
+                    e
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -170,7 +185,9 @@ impl FastEditTool {
                 "⚠️ Some patches failed to apply ({} failed out of {})\n💡 File might have been modified during edit",
                 failed_count, patch_results.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         if self.dry_run {
@@ -179,13 +196,14 @@ impl FastEditTool {
                 📊 Changes preview:\n\n{}\n\n\
                 💡 Set dry_run=false to apply changes\n\
                 ✅ All {} patches would apply successfully",
-                self.file_path, patch_text, patch_results.len()
+                self.file_path,
+                patch_text,
+                patch_results.len()
             );
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 message,
             )]));
         }
-
 
         // Basic validation (syntax check would go here)
         if self.validate {
@@ -217,7 +235,10 @@ impl FastEditTool {
                     • Use fast_refs to check impact\n\
                     • Use fast_search to find related code\n\
                     💡 Tip: Use git to track changes and revert if needed",
-                    self.file_path, patch_results.len(), replacements, patch_text
+                    self.file_path,
+                    patch_results.len(),
+                    replacements,
+                    patch_text
                 );
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
@@ -548,7 +569,6 @@ impl FastEditTool {
                 file_path, replacements
             )));
         }
-
 
         // Basic validation
         if self.validate {
@@ -1054,16 +1074,26 @@ impl LineEditTool {
         let diffs = match dmp.diff_main::<Efficient>(original_content, modified_content) {
             Ok(diffs) => diffs,
             Err(e) => {
-                let message = format!("❌ Failed to generate diff: {:?}\n💡 Check file content and encoding", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                let message = format!(
+                    "❌ Failed to generate diff: {:?}\n💡 Check file content and encoding",
+                    e
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
         let patches = match dmp.patch_make(PatchInput::new_diffs(&diffs)) {
             Ok(patches) => patches,
             Err(e) => {
-                let message = format!("❌ Failed to create patches: {:?}\n💡 File might be corrupted", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                let message = format!(
+                    "❌ Failed to create patches: {:?}\n💡 File might be corrupted",
+                    e
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         };
 
@@ -1080,7 +1110,6 @@ impl LineEditTool {
                 message,
             )]));
         }
-
 
         // Apply changes
         match fs::write(&self.file_path, modified_content) {

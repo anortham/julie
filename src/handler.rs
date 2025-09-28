@@ -121,32 +121,43 @@ impl JulieServerHandler {
         info!("Initializing workspace at: {}", target_path.display());
 
         // Handle force reinitialization vs normal initialization
-        let workspace = if force {
-            info!("🔄 Force reinitialization requested - creating fresh workspace");
+        let mut workspace = if force {
+            info!("🔄 Force reinitialization requested - clearing derived data only");
 
-            // Clear existing workspace data if it exists
+            // For force reindex, we only clear derived data, NOT the database (source of truth)
             let julie_dir = target_path.join(".julie");
             if julie_dir.exists() {
-                info!("🗑️ Clearing existing workspace data for force reindex");
+                info!("🗑️ Clearing search index and cache for force reindex (preserving database)");
 
-                // Clear key directories that might cause "already exists" errors
+                // CRITICAL: Only clear derived data, NEVER the database!
+                // Database is source of truth and should be preserved for incremental updates
                 let paths_to_clear = [
-                    julie_dir.join("index"),
-                    julie_dir.join("db"),
-                    julie_dir.join("cache"),
+                    julie_dir.join("index"),   // Tantivy search index (can be rebuilt)
+                    julie_dir.join("vectors"), // Embedding vectors (can be rebuilt)
+                    julie_dir.join("cache"),   // Parse cache (can be rebuilt)
                 ];
 
                 for path in &paths_to_clear {
                     if path.exists() {
                         if let Err(e) = std::fs::remove_dir_all(path) {
-                            warn!("Failed to clear {}: {}", path.display(), e);
+                            warn!("Failed to clear derived data {}: {}", path.display(), e);
                         } else {
-                            debug!("Cleared: {}", path.display());
+                            info!("Cleared derived data: {}", path.display());
                         }
                     }
                 }
+
+                // Database directory is explicitly preserved for incremental updates
+                let db_path = julie_dir.join("db");
+                if db_path.exists() {
+                    info!(
+                        "✅ Database preserved at: {} (contains source of truth)",
+                        db_path.display()
+                    );
+                }
             }
 
+            // Initialize workspace (will reuse existing database if present)
             JulieWorkspace::initialize(target_path)?
         } else {
             // Try to load existing workspace first
@@ -169,17 +180,15 @@ impl JulieServerHandler {
             warn!("⚠️  Workspace has no persistent search index - using in-memory fallback");
         }
 
+        // Start file watching BEFORE storing workspace (to avoid clone issue)
+        if let Err(e) = workspace.start_file_watching().await {
+            warn!("Failed to start file watching: {}", e);
+        }
+
         // Store the initialized workspace
         {
             let mut workspace_guard = self.workspace.write().await;
             *workspace_guard = Some(workspace);
-        }
-
-        // Start file watching if workspace was successfully initialized
-        if let Some(mut workspace_clone) = self.get_workspace().await? {
-            if let Err(e) = workspace_clone.start_file_watching().await {
-                warn!("Failed to start file watching: {}", e);
-            }
         }
 
         info!("Workspace initialization complete");

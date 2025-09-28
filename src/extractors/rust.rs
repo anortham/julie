@@ -23,7 +23,7 @@ pub struct RustExtractor {
 
 #[derive(Debug, Clone)]
 struct ImplBlockInfo {
-    node: Node<'static>,
+    node: Node<'static>, // TODO: Fix unsafe lifetime - this is a bug but not THE bug
     type_name: String,
     #[allow(dead_code)]
     parent_id: Option<String>,
@@ -266,7 +266,8 @@ impl RustExtractor {
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "anonymous".to_string());
 
-        // Convert Node to Node<'static> (this is safe for our use case)
+        // TODO: Fix this unsafe transmute - it's undefined behavior!
+        // Convert Node to Node<'static> (this is NOT actually safe!)
         let static_node = unsafe { std::mem::transmute(node) };
 
         self.impl_blocks.push(ImplBlockInfo {

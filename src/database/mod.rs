@@ -13,7 +13,7 @@ use anyhow::{anyhow, Result};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
@@ -46,7 +46,7 @@ pub struct EmbeddingInfo {
 }
 
 /// Database statistics for health monitoring
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DatabaseStats {
     pub total_symbols: i64,
     pub total_relationships: i64,
@@ -305,7 +305,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    /// Store file information with Blake3 hash
+    /// Store file information with Blake3 hash (regular method for incremental updates)
     pub fn store_file_info(&self, file_info: &FileInfo, workspace_id: &str) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -329,6 +329,101 @@ impl SymbolDatabase {
         )?;
 
         debug!("Stored file info for: {}", file_info.path);
+        Ok(())
+    }
+
+    /// 🚀 BLAZING-FAST bulk file storage for initial indexing
+    pub fn bulk_store_files(&self, files: &[FileInfo], workspace_id: &str) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting blazing-fast bulk insert of {} files",
+            files.len()
+        );
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Drop file indexes
+        self.drop_file_indexes()?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO files
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )?;
+
+        for file in files {
+            stmt.execute(params![
+                file.path,
+                file.language,
+                file.hash,
+                file.size,
+                file.last_modified,
+                now,
+                file.symbol_count,
+                workspace_id
+            ])?;
+        }
+
+        // Drop statement before committing transaction
+        drop(stmt);
+        tx.commit()?;
+
+        // Rebuild file indexes
+        self.create_file_indexes()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Bulk file insert complete! {} files in {:.2}ms",
+            files.len(),
+            duration.as_millis()
+        );
+
+        Ok(())
+    }
+
+    /// Drop all file table indexes for bulk operations
+    fn drop_file_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_files_language",
+            "idx_files_modified",
+            "idx_files_workspace",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recreate all file table indexes after bulk operations
+    fn create_file_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id)",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -377,7 +472,7 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    /// Store symbols in a transaction
+    /// Store symbols in a transaction (regular method for incremental updates)
     pub fn store_symbols(&self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
@@ -424,7 +519,262 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    /// Store relationships in a transaction
+    /// 🚀 BLAZING-FAST bulk symbol storage for initial indexing
+    /// Optimized for speed over safety - drops indexes during insert!
+    pub fn bulk_store_symbols(&mut self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
+        if symbols.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting blazing-fast bulk insert of {} symbols with workspace_id: {}",
+            symbols.len(),
+            workspace_id
+        );
+
+        // STEP 1: Drop all indexes for maximum insert speed
+        debug!("🗑️ Dropping indexes for bulk insert optimization");
+        self.drop_symbol_indexes()?;
+
+        // STEP 2: Optimize SQLite for bulk operations (DANGEROUS but FAST!)
+        self.conn.execute("PRAGMA synchronous = OFF", [])?; // No disk sync - risky but fast
+        self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // Keep journal in memory (returns result)
+        self.conn.execute("PRAGMA cache_size = 20000", [])?; // Large cache for bulk ops
+
+        // STEP 3: Start transaction for atomic bulk insert
+        // Use regular transaction (not unchecked) to ensure foreign key constraints are enforced
+        let tx = self.conn.transaction()?;
+
+        // STEP 4: Prepare statement once, use many times
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO symbols
+             (id, name, kind, language, file_path, signature, start_line, start_col,
+              end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        )?;
+
+        // STEP 5: Sort symbols in parent-first order to avoid foreign key violations
+        // Symbols with no parent go first, then their children, etc.
+        let all_symbol_ids: std::collections::HashSet<_> =
+            symbols.iter().map(|s| s.id.clone()).collect();
+
+        let mut sorted_symbols = Vec::new();
+        let mut remaining_symbols: Vec<_> = symbols.to_vec();
+        let mut inserted_ids = std::collections::HashSet::new();
+
+        // First pass: Insert all symbols with no parent
+        let (no_parent, with_parent): (Vec<_>, Vec<_>) = remaining_symbols
+            .into_iter()
+            .partition(|s| s.parent_id.is_none());
+
+        for symbol in no_parent {
+            inserted_ids.insert(symbol.id.clone());
+            sorted_symbols.push(symbol);
+        }
+
+        remaining_symbols = with_parent;
+
+        // Subsequent passes: Insert symbols whose parents have been inserted
+        while !remaining_symbols.is_empty() {
+            let initial_count = remaining_symbols.len();
+            let (can_insert, still_waiting): (Vec<_>, Vec<_>) =
+                remaining_symbols.into_iter().partition(|s| {
+                    s.parent_id
+                        .as_ref()
+                        .map(|pid| inserted_ids.contains(pid))
+                        .unwrap_or(false)
+                });
+
+            for symbol in can_insert {
+                inserted_ids.insert(symbol.id.clone());
+                sorted_symbols.push(symbol);
+            }
+
+            remaining_symbols = still_waiting;
+
+            // Break if we made no progress (circular dependency or orphaned symbols)
+            if remaining_symbols.len() == initial_count {
+                warn!(
+                    "⚠️ Skipping {} symbols with unresolvable parent references",
+                    remaining_symbols.len()
+                );
+                for mut symbol in remaining_symbols {
+                    if let Some(parent_id) = &symbol.parent_id {
+                        if !all_symbol_ids.contains(parent_id) {
+                            debug!(
+                                "Orphan symbol {} ({}) has missing parent {} - clearing relationship",
+                                symbol.name,
+                                symbol.id,
+                                parent_id
+                            );
+                            symbol.parent_id = None;
+                        }
+                    }
+                    sorted_symbols.push(symbol);
+                }
+                break;
+            }
+        }
+
+        // Final pass: ensure no symbol references a missing parent (enforce FK safety)
+        for symbol in &mut sorted_symbols {
+            if let Some(parent_id) = &symbol.parent_id {
+                if !all_symbol_ids.contains(parent_id) {
+                    debug!(
+                        "Clearing missing parent {} for symbol {} ({}) before insert",
+                        parent_id, symbol.name, symbol.id
+                    );
+                    symbol.parent_id = None;
+                }
+            }
+        }
+
+        // STEP 6: Batch insert for optimal performance
+        const BATCH_SIZE: usize = 1000;
+        let mut processed = 0;
+
+        // Log the first symbol for debugging
+        if let Some(first_symbol) = sorted_symbols.first() {
+            info!(
+                "🔍 First symbol to insert: name={}, file_path={}, parent_id={:?}, id={}",
+                first_symbol.name, first_symbol.file_path, first_symbol.parent_id, first_symbol.id
+            );
+        }
+
+        for chunk in sorted_symbols.chunks(BATCH_SIZE) {
+            for symbol in chunk {
+                let metadata_json = symbol
+                    .metadata
+                    .as_ref()
+                    .map(|m| serde_json::to_string(m))
+                    .transpose()?;
+
+                match stmt.execute(params![
+                    symbol.id,
+                    symbol.name,
+                    symbol.kind.to_string(),
+                    symbol.language,
+                    symbol.file_path,
+                    symbol.signature,
+                    symbol.start_line,
+                    symbol.start_column,
+                    symbol.end_line,
+                    symbol.end_column,
+                    symbol.parent_id,
+                    metadata_json,
+                    symbol.semantic_group,
+                    symbol.confidence,
+                    workspace_id
+                ]) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        // Log the first few failures to understand what's wrong
+                        if processed < 5 {
+                            warn!("Failed to insert symbol: {} from file: {} with parent: {:?}. Error: {}",
+                                  symbol.name, symbol.file_path, symbol.parent_id, e);
+                        }
+                        return Err(anyhow::anyhow!("Symbol insertion failed: {}", e));
+                    }
+                }
+
+                processed += 1;
+            }
+
+            // Progress logging for large bulk operations
+            if processed % 5000 == 0 {
+                debug!(
+                    "📊 Bulk insert progress: {}/{} symbols",
+                    processed,
+                    symbols.len()
+                );
+            }
+        }
+
+        // STEP 6: Drop statement and commit transaction
+        drop(stmt);
+        tx.commit()?;
+
+        // STEP 7: Restore safe SQLite settings
+        self.conn.execute("PRAGMA synchronous = NORMAL", [])?;
+        // journal_mode returns a result, so we need to use query_row or execute_batch
+        self.conn.execute_batch("PRAGMA journal_mode = WAL")?;
+
+        // STEP 8: Rebuild all indexes (still faster than incremental with indexes!)
+        debug!("🏗️ Rebuilding indexes after bulk insert");
+        self.create_symbol_indexes()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Blazing-fast bulk insert complete! {} symbols in {:.2}ms ({:.0} symbols/sec)",
+            symbols.len(),
+            duration.as_millis(),
+            symbols.len() as f64 / duration.as_secs_f64()
+        );
+
+        Ok(())
+    }
+
+    /// Drop all symbol table indexes for bulk operations
+    fn drop_symbol_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_symbols_name",
+            "idx_symbols_kind",
+            "idx_symbols_language",
+            "idx_symbols_file",
+            "idx_symbols_semantic",
+            "idx_symbols_parent",
+            "idx_symbols_workspace",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                // Don't fail if index doesn't exist
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recreate all symbol table indexes after bulk operations
+    fn create_symbol_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_language ON symbols(language)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_semantic ON symbols(semantic_group)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Store relationships in a transaction (regular method for incremental updates)
     pub fn store_relationships(
         &self,
         relationships: &[Relationship],
@@ -463,6 +813,111 @@ impl SymbolDatabase {
 
         tx.commit()?;
         info!("Successfully stored {} relationships", relationships.len());
+        Ok(())
+    }
+
+    /// 🚀 BLAZING-FAST bulk relationship storage for initial indexing
+    pub fn bulk_store_relationships(
+        &mut self,
+        relationships: &[Relationship],
+        workspace_id: &str,
+    ) -> Result<()> {
+        if relationships.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting blazing-fast bulk insert of {} relationships",
+            relationships.len()
+        );
+
+        // Drop relationship indexes
+        self.drop_relationship_indexes()?;
+
+        // Use regular transaction to ensure foreign key constraints are enforced
+        let tx = self.conn.transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO relationships
+             (id, from_symbol_id, to_symbol_id, kind, confidence, metadata, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+
+        for rel in relationships {
+            let metadata_json = rel
+                .metadata
+                .as_ref()
+                .map(|m| serde_json::to_string(m))
+                .transpose()?;
+
+            stmt.execute(params![
+                rel.id,
+                rel.from_symbol_id,
+                rel.to_symbol_id,
+                rel.kind.to_string(),
+                rel.confidence,
+                metadata_json,
+                workspace_id
+            ])?;
+        }
+
+        // Drop statement before committing transaction
+        drop(stmt);
+        tx.commit()?;
+
+        // Rebuild relationship indexes
+        self.create_relationship_indexes()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Bulk relationship insert complete! {} relationships in {:.2}ms",
+            relationships.len(),
+            duration.as_millis()
+        );
+
+        Ok(())
+    }
+
+    /// Drop all relationship table indexes for bulk operations
+    fn drop_relationship_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_rel_from",
+            "idx_rel_to",
+            "idx_rel_kind",
+            "idx_rel_workspace",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recreate all relationship table indexes after bulk operations
+    fn create_relationship_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_symbol_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_symbol_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_workspace ON relationships(workspace_id)",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -807,6 +1262,95 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// Get symbols for a specific workspace (optimized for background tasks)
+    pub fn get_symbols_for_workspace(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, name, kind, language, file_path, signature,
+                   start_line, start_col, end_line, end_col, parent_id,
+                   metadata, semantic_group, confidence
+            FROM symbols
+            WHERE workspace_id = ?1
+            ORDER BY file_path, start_line
+        ",
+        )?;
+
+        let rows = stmt.query_map([workspace_id], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved {} symbols for workspace '{}' from database",
+            symbols.len(),
+            workspace_id
+        );
+        Ok(symbols)
+    }
+
+    /// Get symbols in batches for memory-efficient processing (for large codebases)
+    pub fn get_symbols_batch(
+        &self,
+        workspace_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Symbol>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, name, kind, language, file_path, signature,
+                   start_line, start_col, end_line, end_col, parent_id,
+                   metadata, semantic_group, confidence
+            FROM symbols
+            WHERE workspace_id = ?1
+            ORDER BY file_path, start_line
+            LIMIT ?2 OFFSET ?3
+        ",
+        )?;
+
+        let rows = stmt.query_map(
+            [workspace_id, &limit.to_string(), &offset.to_string()],
+            |row| self.row_to_symbol(row),
+        )?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved batch of {} symbols (offset: {}, limit: {}) for workspace '{}'",
+            symbols.len(),
+            offset,
+            limit,
+            workspace_id
+        );
+        Ok(symbols)
+    }
+
+    /// Get total symbol count for a workspace (for progress tracking)
+    pub fn get_symbol_count_for_workspace(&self, workspace_id: &str) -> Result<i64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(count)
+    }
+
+    /// Check if workspace has any symbols (quick health check)
+    pub fn has_symbols_for_workspace(&self, workspace_id: &str) -> Result<bool> {
+        let exists: i64 = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM symbols WHERE workspace_id = ?1 LIMIT 1)",
+            params![workspace_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(exists > 0)
+    }
+
     /// Delete all data for a specific workspace (for workspace cleanup)
     pub fn delete_workspace_data(&self, workspace_id: &str) -> Result<WorkspaceCleanupStats> {
         let tx = self.conn.unchecked_transaction()?;
@@ -969,7 +1513,9 @@ mod tests {
     use super::*;
     use crate::extractors::SymbolKind;
     use std::collections::HashMap;
+    use std::path::PathBuf;
     use tempfile::TempDir;
+    use tree_sitter::Parser;
 
     #[tokio::test]
     async fn test_database_creation() {
@@ -1168,6 +1714,43 @@ mod tests {
         let retrieved_symbol = retrieved.unwrap();
         assert_eq!(retrieved_symbol.name, "test_function");
         assert_eq!(retrieved_symbol.language, "rust");
+    }
+
+    #[test]
+    fn test_bulk_store_symbols_for_existing_file_paths() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("bulk.db");
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Use a real Go fixture to mirror the production failure scenario
+        let fixture_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/real-world/go/main.go");
+        let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
+
+        let file_info = crate::database::create_file_info(&fixture_path, "go").unwrap();
+        db.bulk_store_files(&[file_info], "test_workspace").unwrap();
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(&fixture_content, None).unwrap();
+
+        let mut extractor = crate::extractors::go::GoExtractor::new(
+            "go".to_string(),
+            fixture_path.to_string_lossy().to_string(),
+            fixture_content,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        assert!(!symbols.is_empty(), "Expected fixture to produce symbols");
+
+        let result = db.bulk_store_symbols(&symbols, "test_workspace");
+        assert!(
+            result.is_ok(),
+            "Bulk store should succeed without foreign key violations: {:?}",
+            result
+        );
     }
 
     #[tokio::test]

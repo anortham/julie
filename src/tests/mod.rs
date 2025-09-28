@@ -3,11 +3,11 @@
 // This module contains test utilities and infrastructure for testing extractors,
 // search functionality, editing tools, and other Julie components.
 
-pub mod editing_tests;
 pub mod editing_safety_tests; // CRITICAL safety tests for editing tools
+pub mod editing_tests;
 pub mod fast_edit_search_replace_tests;
-pub mod line_edit_tests;
 pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool
+pub mod line_edit_tests;
 pub mod refactoring_tests; // Smart refactoring tool tests
 pub mod smart_refactor_control_tests; // SOURCE/CONTROL tests for SmartRefactorTool
 

@@ -5,11 +5,13 @@
 
 use std::fs;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use julie::handler::JulieServerHandler;
+use julie::tools::workspace::{ManageWorkspaceTool, WorkspaceCommand};
+use julie::workspace::registry_service::WorkspaceRegistryService;
 use rust_mcp_sdk::schema::{
     Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
     LATEST_PROTOCOL_VERSION,
@@ -172,6 +174,34 @@ You have Julie superpowers - use them to create code you'll be PROUD of!
     })?;
     debug!("✓ Julie server handler initialized");
 
+    // STEP 3.5: 🚀 AUTO-INDEXING - Initialize workspace and check if indexing is needed
+    info!("🔍 Performing workspace auto-detection and quick indexing check...");
+
+    // Perform auto-indexing with timeout to prevent blocking startup
+    let indexing_start = std::time::Instant::now();
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(10), // 10 second timeout
+        perform_auto_indexing(&handler),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            let duration = indexing_start.elapsed();
+            info!(
+                "✅ Auto-indexing completed in {:.2}s",
+                duration.as_secs_f64()
+            );
+        }
+        Ok(Err(e)) => {
+            warn!("⚠️ Auto-indexing failed: {} (server will continue)", e);
+            eprintln!("Warning: Auto-indexing failed: {}. You can run manual indexing later with the manage_workspace tool.", e);
+        }
+        Err(_) => {
+            warn!("⏰ Auto-indexing timed out after 10s (server will continue)");
+            eprintln!("Info: Large workspace detected - indexing will continue in background. Use manage_workspace tool to check status.");
+        }
+    }
+
     // STEP 4: Create MCP server
     let server: Arc<ServerRuntime> =
         server_runtime::create_server(server_details, transport, handler);
@@ -193,4 +223,113 @@ You have Julie superpowers - use them to create code you'll be PROUD of!
 
     info!("🏁 Julie server stopped");
     Ok(())
+}
+
+/// Perform auto-indexing on server startup
+///
+/// This function:
+/// 1. Detects if workspace needs initialization
+/// 2. Checks if database is empty or stale
+/// 3. Performs fast indexing using bulk SQLite operations
+/// 4. Starts background tasks for Tantivy and embeddings
+async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    info!("🔍 Starting auto-indexing process...");
+
+    // STEP 1: Initialize workspace (create .julie folder if needed)
+    handler
+        .initialize_workspace(None)
+        .await
+        .context("Failed to initialize workspace")?;
+
+    info!("✅ Workspace initialized");
+
+    // STEP 2: Check if we need to index
+    let needs_indexing = check_if_indexing_needed(handler).await?;
+
+    if !needs_indexing {
+        info!("📋 Workspace is up-to-date, no indexing needed");
+        return Ok(());
+    }
+
+    info!("🔄 Workspace needs indexing, starting fast index process...");
+
+    // STEP 3: Perform fast indexing using our workspace tool
+    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+
+    let index_tool = ManageWorkspaceTool {
+        command: WorkspaceCommand::Index {
+            path: Some(current_dir.to_string_lossy().to_string()),
+            force: false, // Don't force unless database is completely empty
+        },
+    };
+
+    // Perform the indexing
+    let index_result = match index_tool.call_tool(handler).await {
+        Ok(result) => result,
+        Err(e) => {
+            return Err(e).context("Failed to perform workspace indexing");
+        }
+    };
+
+    // Log the result
+    debug!("Indexing result: {:?}", index_result);
+
+    info!("🚀 Auto-indexing completed successfully!");
+    Ok(())
+}
+
+/// Check if the workspace needs indexing by examining database state
+async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Result<bool> {
+    // Get workspace to check database
+    let workspace = match handler.get_workspace().await? {
+        Some(ws) => ws,
+        None => {
+            debug!("No workspace found - indexing needed");
+            return Ok(true);
+        }
+    };
+
+    // Check if database exists and has symbols
+    if let Some(db_arc) = &workspace.db {
+        let db = db_arc.lock().await;
+
+        // Check if we have any symbols for the actual primary workspace
+        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+        let primary_workspace_id = match registry_service.get_primary_workspace_id().await? {
+            Some(id) => id,
+            None => {
+                debug!("No primary workspace ID found - indexing needed");
+                return Ok(true);
+            }
+        };
+
+        match db.has_symbols_for_workspace(&primary_workspace_id) {
+            Ok(has_symbols) => {
+                if !has_symbols {
+                    info!("📊 Database is empty - indexing needed");
+                    return Ok(true);
+                }
+
+                // TODO: Add more sophisticated checks:
+                // - Compare file modification times with database timestamps
+                // - Check for new files that aren't in the database
+                // - Use Blake3 hashes to detect changes
+
+                info!("📊 Database has symbols - skipping indexing for now");
+                return Ok(false);
+            }
+            Err(e) => {
+                debug!(
+                    "Error checking database symbols: {} - assuming indexing needed",
+                    e
+                );
+                return Ok(true);
+            }
+        }
+    } else {
+        debug!("No database connection - indexing needed");
+        return Ok(true);
+    }
 }

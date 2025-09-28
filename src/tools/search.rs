@@ -10,6 +10,7 @@ use super::shared::OptimizedResponse;
 use crate::embeddings::cosine_similarity;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
+use crate::health::SystemReadiness;
 use crate::utils::{
     context_truncation::ContextTruncator, exact_match_boost::ExactMatchBoost,
     path_relevance::PathRelevanceScorer, progressive_reduction::ProgressiveReducer,
@@ -78,13 +79,38 @@ impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔍 Fast search: {} (mode: {})", self.query, self.mode);
 
-        // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().await;
-        if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+        // 🚀 NEW: Check system readiness with graceful degradation
+        let readiness = crate::health::HealthChecker::check_system_readiness(handler).await?;
+
+        match readiness {
+            SystemReadiness::NotReady => {
+                let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
+            }
+            SystemReadiness::SqliteOnly { symbol_count } => {
+                // Graceful degradation: Use SQLite fallback
+                warn!("🔄 Search index building... using database search (slower but works!)");
+                return self.fallback_sqlite_search(handler, symbol_count).await;
+            }
+            SystemReadiness::PartiallyReady {
+                tantivy_ready,
+                embeddings_ready,
+                symbol_count,
+            } => {
+                // Show status but proceed with available systems
+                let status_msg = format!(
+                    "🔍 Search {}% ready, embeddings {}% ready ({} symbols available)",
+                    if tantivy_ready { 100 } else { 50 },
+                    if embeddings_ready { 100 } else { 0 },
+                    symbol_count
+                );
+                info!("{}", status_msg);
+            }
+            SystemReadiness::FullyReady { symbol_count } => {
+                debug!("✅ All systems ready ({} symbols)", symbol_count);
+            }
         }
 
         // Perform search based on mode
@@ -853,5 +879,74 @@ impl FastSearchTool {
             results.len()
         );
         Ok(results)
+    }
+
+    /// 🔄 Graceful degradation: SQLite-based search when Tantivy isn't ready
+    async fn fallback_sqlite_search(
+        &self,
+        handler: &JulieServerHandler,
+        symbol_count: i64,
+    ) -> Result<CallToolResult> {
+        info!(
+            "🔄 Using SQLite fallback search ({} symbols available)",
+            symbol_count
+        );
+
+        // Use database search directly
+        let symbols = self
+            .database_search_with_workspace_filter(handler, vec!["primary".to_string()])
+            .await?;
+
+        if symbols.is_empty() {
+            let message = format!(
+                "🔍 No results found for: '{}' (using database search while index builds)\n\
+                💡 Try a broader search term or wait for search index to complete",
+                self.query
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
+        // Create basic response (without advanced optimizations)
+        let mut response_lines = vec![
+            format!("🔄 Search results (database fallback - index building in background):"),
+            format!("📊 Found {} matches for '{}'", symbols.len(), self.query),
+            String::new(),
+        ];
+
+        for (i, symbol) in symbols.iter().enumerate() {
+            if i >= 20 {
+                // Limit for fallback mode
+                response_lines.push(format!("   ... and {} more results", symbols.len() - i));
+                break;
+            }
+
+            response_lines.push(format!(
+                "{}. {} ({:?}) - {}:{}",
+                i + 1,
+                symbol.name,
+                symbol.kind,
+                symbol.file_path,
+                symbol.start_line
+            ));
+
+            if let Some(signature) = &symbol.signature {
+                response_lines.push(format!("   📝 {}", signature));
+            }
+        }
+
+        response_lines.extend(vec![
+            String::new(),
+            "🎯 Suggested actions:".to_string(),
+            "   • Wait for search index to complete for faster results".to_string(),
+            "   • Use fast_goto to jump to specific symbols".to_string(),
+            "   • Try more specific search terms".to_string(),
+        ]);
+
+        let message = response_lines.join("\n");
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 }

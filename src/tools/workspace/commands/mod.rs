@@ -63,6 +63,11 @@ pub enum WorkspaceCommand {
         /// Maximum total index size in MB
         max_size_mb: u64,
     },
+    /// Show comprehensive system health status
+    Health {
+        /// Include detailed diagnostic information
+        detailed: Option<bool>,
+    },
 }
 
 #[mcp_tool(
@@ -90,6 +95,7 @@ pub struct ManageWorkspaceTool {
     /// - Show statistics: {"command": "stats", "workspace_id": null}
     /// - Set TTL: {"command": "set_ttl", "days": 30}
     /// - Set storage limit: {"command": "set_limit", "max_size_mb": 1024}
+    /// - System health check: {"command": "health", "detailed": true}
     ///
     /// Note: The command field uses a tagged enum structure where the command type and parameters
     /// are combined in a single JSON object with the command type as the "command" field.
@@ -125,6 +131,10 @@ impl ManageWorkspaceTool {
             WorkspaceCommand::SetTtl { days } => self.handle_set_ttl_command(handler, *days).await,
             WorkspaceCommand::SetLimit { max_size_mb } => {
                 self.handle_set_limit_command(handler, *max_size_mb).await
+            }
+            WorkspaceCommand::Health { detailed } => {
+                self.handle_health_command(handler, detailed.unwrap_or(false))
+                    .await
             }
         }
     }

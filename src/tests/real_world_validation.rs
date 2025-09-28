@@ -796,7 +796,7 @@ mod real_world_tests {
     fn test_cross_language_real_world_integration() {
         let base_dir = Path::new(REAL_WORLD_TEST_DIR);
         let mut total_files_processed = 0;
-        let mut _total_symbols_extracted = 0;
+        let mut total_symbols_extracted = 0;
 
         let languages = [
             ("kotlin", vec!["kt"]),
@@ -838,7 +838,7 @@ mod real_world_tests {
                         test_real_world_file(&file_path, language);
                         total_files_processed += 1;
                         // We'd need to actually count symbols here, simplified for now
-                        _total_symbols_extracted += 1;
+                        total_symbols_extracted += 1;
                     }
                 }
             } else {
@@ -885,7 +885,10 @@ mod real_world_refactoring_tests {
         let ts_files = get_files_with_extension(&ts_dir, &["ts", "tsx"]);
 
         if ts_files.is_empty() {
-            println!("⚠️ No TypeScript real-world test files found in {}", ts_dir.display());
+            println!(
+                "⚠️ No TypeScript real-world test files found in {}",
+                ts_dir.display()
+            );
             return;
         }
 
@@ -903,7 +906,10 @@ mod real_world_refactoring_tests {
         let js_files = get_files_with_extension(&js_dir, &["js", "jsx"]);
 
         if js_files.is_empty() {
-            println!("⚠️ No JavaScript real-world test files found in {}", js_dir.display());
+            println!(
+                "⚠️ No JavaScript real-world test files found in {}",
+                js_dir.display()
+            );
             return;
         }
 
@@ -921,7 +927,10 @@ mod real_world_refactoring_tests {
         let py_files = get_files_with_extension(&py_dir, &["py"]);
 
         if py_files.is_empty() {
-            println!("⚠️ No Python real-world test files found in {}", py_dir.display());
+            println!(
+                "⚠️ No Python real-world test files found in {}",
+                py_dir.display()
+            );
             return;
         }
 
@@ -938,7 +947,10 @@ mod real_world_refactoring_tests {
         file_path: &Path,
         language: &str,
     ) {
-        println!("🔄 Testing rename refactoring on real file: {}", file_path.display());
+        println!(
+            "🔄 Testing rename refactoring on real file: {}",
+            file_path.display()
+        );
 
         // Read the real file content
         let content = match fs::read_to_string(file_path) {
@@ -1012,13 +1024,17 @@ mod real_world_refactoring_tests {
                     match actual_tool.call_tool(handler).await {
                         Ok(result) => {
                             let response = extract_response_text(&result);
-                            if response.contains("Rename successful") || response.contains("Modified") {
+                            if response.contains("Rename successful")
+                                || response.contains("Modified")
+                            {
                                 println!("    🎉 Actual rename successful for symbol '{}'", symbol);
 
                                 // Verify the file was actually modified correctly
                                 if let Ok(modified_content) = fs::read_to_string(&test_file_path) {
                                     if modified_content.contains(&new_name) {
-                                        println!("    ✅ File correctly modified with new symbol name");
+                                        println!(
+                                            "    ✅ File correctly modified with new symbol name"
+                                        );
                                     } else {
                                         println!("    ⚠️ File was not modified as expected");
                                     }
@@ -1103,7 +1119,8 @@ mod real_world_refactoring_tests {
                         // Extract potential identifiers
                         for word in line.split_whitespace() {
                             if word.len() > 3 && word.chars().next().unwrap().is_alphabetic() {
-                                let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                                let clean_word =
+                                    word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
                                 if !clean_word.is_empty() && clean_word.len() > 3 {
                                     symbols.push(clean_word.to_string());
                                 }
@@ -1139,10 +1156,13 @@ mod real_world_refactoring_tests {
 
     /// Extract text from CallToolResult
     fn extract_response_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
-        result.content.iter()
+        result
+            .content
+            .iter()
             .filter_map(|content_block| {
                 serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text").and_then(|v| v.as_str().map(|s| s.to_string()))
+                    json.get("text")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
                 })
             })
             .collect::<Vec<String>>()

@@ -100,8 +100,12 @@ fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &
 
     // Use diff-match-patch-rs to show detailed differences
     let dmp = DiffMatchPatch::new();
-    let diffs = dmp.diff_main::<Efficient>(expected_content, result_content).unwrap_or_default();
-    let patches = dmp.patch_make(PatchInput::new_diffs(&diffs)).unwrap_or_default();
+    let diffs = dmp
+        .diff_main::<Efficient>(expected_content, result_content)
+        .unwrap_or_default();
+    let patches = dmp
+        .patch_make(PatchInput::new_diffs(&diffs))
+        .unwrap_or_default();
     let patch = dmp.patch_to_text(&patches);
 
     return Err(anyhow::anyhow!(

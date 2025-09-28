@@ -106,7 +106,7 @@ mod count_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
- // No backup needed for count
+            // No backup needed for count
             dry_run: false,
         };
 
@@ -141,7 +141,7 @@ mod count_operation_tests {
             line_number: None,
             content: None,
             preserve_indentation: true,
- // No backup needed for count
+            // No backup needed for count
             dry_run: false,
         };
 
@@ -645,7 +645,6 @@ mod edge_cases_tests {
 
 #[cfg(test)]
 mod golden_master_tests {
-    
 
     /// Golden master test framework for editing operations
     /// This tests against known-good control/target file pairs

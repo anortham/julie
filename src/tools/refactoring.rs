@@ -75,12 +75,8 @@ impl SmartRefactorTool {
         info!("🔄 Smart refactor operation: {:?}", self.operation);
 
         match &self.operation {
-            RefactorOperation::RenameSymbol => {
-                self.handle_rename_symbol(handler).await
-            }
-            RefactorOperation::ExtractFunction => {
-                self.handle_extract_function(handler).await
-            }
+            RefactorOperation::RenameSymbol => self.handle_rename_symbol(handler).await,
+            RefactorOperation::ExtractFunction => self.handle_extract_function(handler).await,
             _ => {
                 let message = format!(
                     "🚧 Operation '{:?}' not yet implemented\n\
@@ -88,7 +84,9 @@ impl SmartRefactorTool {
                     🔜 Coming soon: ExtractFunction, ExtractVariable, etc.",
                     self.operation
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -101,23 +99,28 @@ impl SmartRefactorTool {
         let params: JsonValue = serde_json::from_str(&self.params)
             .map_err(|e| anyhow::anyhow!("Invalid JSON in params: {}", e))?;
 
-        let old_name = params.get("old_name")
+        let old_name = params
+            .get("old_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: old_name"))?;
 
-        let new_name = params.get("new_name")
+        let new_name = params
+            .get("new_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: new_name"))?;
 
-        let scope = params.get("scope")
+        let scope = params
+            .get("scope")
             .and_then(|v| v.as_str())
             .unwrap_or("workspace");
 
-        let update_imports = params.get("update_imports")
+        let update_imports = params
+            .get("update_imports")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let update_comments = params.get("update_comments")
+        let update_comments = params
+            .get("update_comments")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -130,7 +133,7 @@ impl SmartRefactorTool {
         let refs_tool = FastRefsTool {
             symbol: old_name.to_string(),
             include_definition: true,
-            limit: 1000, // High limit for comprehensive rename
+            limit: 1000,                            // High limit for comprehensive rename
             workspace: Some("primary".to_string()), // TODO: Map scope to workspace
         };
 
@@ -145,12 +148,19 @@ impl SmartRefactorTool {
                 💡 Check spelling or try fast_search to locate the symbol",
                 old_name
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
-        debug!("📍 Found {} references across {} files",
-               file_locations.values().map(|refs| refs.len()).sum::<usize>(),
-               file_locations.len());
+        debug!(
+            "📍 Found {} references across {} files",
+            file_locations
+                .values()
+                .map(|refs| refs.len())
+                .sum::<usize>(),
+            file_locations.len()
+        );
 
         // Step 2: Apply renames file by file
         let mut renamed_files = Vec::new();
@@ -158,7 +168,10 @@ impl SmartRefactorTool {
         let dmp = DiffMatchPatch::new();
 
         for (file_path, _line_refs) in &file_locations {
-            match self.rename_in_file(file_path, old_name, new_name, &dmp).await {
+            match self
+                .rename_in_file(file_path, old_name, new_name, &dmp)
+                .await
+            {
                 Ok(changes_applied) => {
                     if changes_applied > 0 {
                         renamed_files.push((file_path.clone(), changes_applied));
@@ -194,7 +207,9 @@ impl SmartRefactorTool {
 
             preview.push_str("\n💡 Set dry_run=false to apply changes");
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(preview)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                preview,
+            )]));
         }
 
         // Final success message
@@ -220,7 +235,9 @@ impl SmartRefactorTool {
 
         message.push_str("\n🎯 Next steps:\n• Run tests to verify changes\n• Use fast_refs to validate rename completion\n💡 Tip: Use git to track changes and revert if needed");
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 
     /// Parse the result from fast_refs to extract file locations
@@ -228,10 +245,15 @@ impl SmartRefactorTool {
         let mut file_locations: HashMap<String, Vec<u32>> = HashMap::new();
 
         // Extract text content from the result
-        let content = refs_result.content.iter()
+        let content = refs_result
+            .content
+            .iter()
             .filter_map(|block| {
                 if let Ok(json_value) = serde_json::to_value(block) {
-                    json_value.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    json_value
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
                 } else {
                     None
                 }
@@ -246,7 +268,8 @@ impl SmartRefactorTool {
                 let line_part = &line[colon_pos + 1..];
 
                 if let Ok(line_num) = line_part.parse::<u32>() {
-                    file_locations.entry(file_part.to_string())
+                    file_locations
+                        .entry(file_part.to_string())
                         .or_insert_with(Vec::new)
                         .push(line_num);
                 }
@@ -280,11 +303,14 @@ impl SmartRefactorTool {
 
         if !self.dry_run {
             // Use diff-match-patch for atomic writing
-            let diffs = dmp.diff_main::<Efficient>(&original_content, &new_content)
+            let diffs = dmp
+                .diff_main::<Efficient>(&original_content, &new_content)
                 .map_err(|e| anyhow::anyhow!("Failed to generate diff: {:?}", e))?;
-            let patches = dmp.patch_make(PatchInput::new_diffs(&diffs))
+            let patches = dmp
+                .patch_make(PatchInput::new_diffs(&diffs))
                 .map_err(|e| anyhow::anyhow!("Failed to create patches: {:?}", e))?;
-            let (final_content, patch_results) = dmp.patch_apply(&patches, &original_content)
+            let (final_content, patch_results) = dmp
+                .patch_apply(&patches, &original_content)
                 .map_err(|e| anyhow::anyhow!("Failed to apply patches: {:?}", e))?;
 
             // Ensure all patches applied successfully
@@ -300,11 +326,16 @@ impl SmartRefactorTool {
     }
 
     /// Handle extract function operation (placeholder)
-    async fn handle_extract_function(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn handle_extract_function(
+        &self,
+        _handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         let message = "🚧 ExtractFunction operation is not yet implemented\n\
                       📋 Design in progress - will extract selected code into a new function\n\
                       💡 Use RenameSymbol operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            message,
+        )]))
     }
 }

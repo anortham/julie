@@ -335,7 +335,7 @@ mod delegation_behavior_tests {
             file_pattern: Some("*.js".to_string()),
             limit: Some(50),
             validate: true, // Should use fast_edit validation logic
-   // Should use fast_edit backup logic
+            // Should use fast_edit backup logic
             dry_run: false,
         };
 

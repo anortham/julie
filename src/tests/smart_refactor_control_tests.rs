@@ -80,7 +80,11 @@ fn load_smart_refactor_control_file(control_file: &str) -> Result<String> {
 }
 
 /// Verify smart refactor result matches control exactly using diff-match-patch
-fn verify_smart_refactor_result(result_content: &str, expected_content: &str, test_name: &str) -> Result<()> {
+fn verify_smart_refactor_result(
+    result_content: &str,
+    expected_content: &str,
+    test_name: &str,
+) -> Result<()> {
     if result_content == expected_content {
         println!(
             "✅ PERFECT SMART REFACTOR MATCH: {} - Refactoring result matches control exactly",
@@ -91,8 +95,12 @@ fn verify_smart_refactor_result(result_content: &str, expected_content: &str, te
 
     // Use diff-match-patch-rs to show detailed differences
     let dmp = DiffMatchPatch::new();
-    let diffs = dmp.diff_main::<Efficient>(expected_content, result_content).unwrap_or_default();
-    let patches = dmp.patch_make(PatchInput::new_diffs(&diffs)).unwrap_or_default();
+    let diffs = dmp
+        .diff_main::<Efficient>(expected_content, result_content)
+        .unwrap_or_default();
+    let patches = dmp
+        .patch_make(PatchInput::new_diffs(&diffs))
+        .unwrap_or_default();
     let patch = dmp.patch_to_text(&patches);
 
     return Err(anyhow::anyhow!(
@@ -158,7 +166,11 @@ mod smart_refactor_control_tests {
         }
 
         println!("\n🏆 SMART REFACTOR CONTROL TEST RESULTS:");
-        println!("✅ Passed: {}/{}", passed_tests, SMART_REFACTOR_TEST_CASES.len());
+        println!(
+            "✅ Passed: {}/{}",
+            passed_tests,
+            SMART_REFACTOR_TEST_CASES.len()
+        );
 
         if passed_tests == SMART_REFACTOR_TEST_CASES.len() {
             println!("🛡️ ALL SMART REFACTOR TESTS PASSED - SmartRefactorTool is safe for production use!");
@@ -169,7 +181,10 @@ mod smart_refactor_control_tests {
     }
 
     /// Run a single smart refactor control test with comprehensive verification
-    async fn run_single_smart_refactor_control_test(test_case: &SmartRefactorTestCase, temp_dir: &Path) -> Result<()> {
+    async fn run_single_smart_refactor_control_test(
+        test_case: &SmartRefactorTestCase,
+        temp_dir: &Path,
+    ) -> Result<()> {
         // Step 1: Set up test file from source (SOURCE files are never edited)
         let test_file_path = setup_smart_refactor_test_file(test_case.source_file, temp_dir)?;
         println!("📁 Source file copied to: {}", test_file_path.display());
@@ -200,7 +215,10 @@ mod smart_refactor_control_tests {
                 simulate_rename_operation(&original_content, old_name, new_name)
             }
             _ => {
-                return Err(anyhow::anyhow!("Operation {:?} not yet implemented in tests", test_case.operation));
+                return Err(anyhow::anyhow!(
+                    "Operation {:?} not yet implemented in tests",
+                    test_case.operation
+                ));
             }
         };
 
@@ -239,7 +257,10 @@ mod smart_refactor_control_tests {
         // For dry run, the file should NOT be modified
         let content_after = fs::read_to_string(&test_file_path)?;
 
-        assert_eq!(original_content, content_after, "Dry run should not modify files");
+        assert_eq!(
+            original_content, content_after,
+            "Dry run should not modify files"
+        );
         println!("✅ Dry run correctly preserved original file");
 
         Ok(())

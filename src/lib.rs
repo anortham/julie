@@ -7,6 +7,7 @@ pub mod database;
 pub mod embeddings;
 pub mod extractors;
 pub mod handler;
+pub mod health;
 pub mod search;
 pub mod tools;
 pub mod tracing;
@@ -16,6 +17,12 @@ pub mod workspace;
 
 #[cfg(test)]
 pub mod tests;
+
+#[cfg(test)]
+mod test_parser_pool;
+
+#[cfg(test)]
+mod test_async_extraction;
 
 // Re-export common types
 pub use extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
