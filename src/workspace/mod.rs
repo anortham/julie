@@ -387,12 +387,6 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
-        if std::env::var("JULIE_SKIP_SEARCH_INDEX").is_ok() {
-            info!("Initializing in-memory search index due to JULIE_SKIP_SEARCH_INDEX");
-            let search_engine = TantivyIndex::in_memory()?;
-            self.search = Some(Arc::new(RwLock::new(search_engine)));
-            return Ok(());
-        }
 
         let index_path = self.index_path();
         info!(
@@ -413,11 +407,6 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
-        if std::env::var("JULIE_SKIP_EMBEDDINGS").is_ok() {
-            info!("Skipping embedding engine initialization due to JULIE_SKIP_EMBEDDINGS");
-            self.embeddings = None;
-            return Ok(());
-        }
 
         let models_path = self.models_path();
         info!(

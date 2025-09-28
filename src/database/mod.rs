@@ -1055,6 +1055,35 @@ impl SymbolDatabase {
         Ok(())
     }
 
+    /// Delete symbols for a specific file within a workspace (workspace-aware incremental updates)
+    pub fn delete_symbols_for_file_in_workspace(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+        let count = self.conn.execute(
+            "DELETE FROM symbols WHERE file_path = ?1 AND workspace_id = ?2",
+            params![file_path, workspace_id],
+        )?;
+
+        debug!("Deleted {} symbols from file '{}' in workspace '{}'", count, file_path, workspace_id);
+        Ok(())
+    }
+
+    /// Delete relationships for symbols from a specific file within a workspace
+    pub fn delete_relationships_for_file(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+        // Delete relationships where either the from_symbol or to_symbol belongs to the file
+        let count = self.conn.execute(
+            "DELETE FROM relationships
+             WHERE from_symbol_id IN (
+                 SELECT id FROM symbols WHERE file_path = ?1 AND workspace_id = ?2
+             )
+             OR to_symbol_id IN (
+                 SELECT id FROM symbols WHERE file_path = ?1 AND workspace_id = ?2
+             )",
+            params![file_path, workspace_id],
+        )?;
+
+        debug!("Deleted {} relationships for file '{}' in workspace '{}'", count, file_path, workspace_id);
+        Ok(())
+    }
+
     /// Get outgoing relationships from a symbol
     pub fn get_outgoing_relationships(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
@@ -1288,6 +1317,38 @@ impl SymbolDatabase {
             workspace_id
         );
         Ok(symbols)
+    }
+
+    /// Get file hashes for a specific workspace for incremental update detection
+    pub fn get_file_hashes_for_workspace(&self, workspace_id: &str) -> Result<std::collections::HashMap<String, String>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT path, hash
+            FROM files
+            WHERE workspace_id = ?1
+            ORDER BY path
+        ",
+        )?;
+
+        let rows = stmt.query_map([workspace_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // path
+                row.get::<_, String>(1)?, // hash
+            ))
+        })?;
+
+        let mut file_hashes = std::collections::HashMap::new();
+        for row_result in rows {
+            let (path, hash) = row_result?;
+            file_hashes.insert(path, hash);
+        }
+
+        debug!(
+            "Retrieved {} file hashes for workspace '{}' from database",
+            file_hashes.len(),
+            workspace_id
+        );
+        Ok(file_hashes)
     }
 
     /// Get symbols in batches for memory-efficient processing (for large codebases)

@@ -42,18 +42,14 @@ impl JulieServerHandler {
     pub async fn new() -> Result<Self> {
         info!("🔧 Initializing Julie server handler");
 
-        // Initialize SearchEngine with in-memory index for compatibility (workspace will override)
-        info!("🔍 Initializing fallback Tantivy search engine");
-        let search_engine = SearchEngine::in_memory()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize fallback search engine: {}", e))?;
-
-        debug!("✓ Julie handler components initialized");
+        // NO MORE IN-MEMORY FALLBACKS - workspace initialization will provide persistent engines
+        debug!("✓ Julie handler components initialized (awaiting workspace for persistent engines)");
 
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
             symbols: Arc::new(RwLock::new(Vec::new())),
             relationships: Arc::new(RwLock::new(Vec::new())),
-            search_engine: Arc::new(RwLock::new(search_engine)),
+            search_engine: Arc::new(RwLock::new(SearchEngine::in_memory().unwrap())),  // Temporary until workspace overrides
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
         })
@@ -87,7 +83,7 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    /// Get the active Tantivy search engine, preferring the workspace's persistent index
+    /// Get the active Tantivy search engine - ALWAYS persistent, no fallbacks
     pub async fn active_search_engine(&self) -> Arc<RwLock<SearchEngine>> {
         if let Some(workspace) = self.workspace.read().await.as_ref() {
             if let Some(search) = &workspace.search {
@@ -95,7 +91,8 @@ impl JulieServerHandler {
             }
         }
 
-        self.search_engine.clone()
+        // NO MORE FALLBACKS - this is an error condition
+        panic!("CRITICAL: No persistent SearchEngine available - workspace not properly initialized!");
     }
 
     /// Initialize or load workspace and update components to use persistent storage
@@ -173,11 +170,11 @@ impl JulieServerHandler {
             }
         };
 
-        // Log availability of persistent search index
+        // Ensure persistent search index is available - NO FALLBACKS ALLOWED
         if workspace.search.is_some() {
-            info!("✅ Persistent search index detected and ready for use");
+            info!("✅ Persistent search index initialized and ready for use");
         } else {
-            warn!("⚠️  Workspace has no persistent search index - using in-memory fallback");
+            return Err(anyhow::anyhow!("CRITICAL: Workspace failed to initialize persistent search index - cannot continue without persistent storage"));
         }
 
         // Start file watching BEFORE storing workspace (to avoid clone issue)

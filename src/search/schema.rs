@@ -314,11 +314,13 @@ impl QueryProcessor {
     pub fn new() -> Result<Self> {
         let mut patterns = HashMap::new();
 
-        // Exact Symbol patterns - camelCase identifiers, function names
+        // Exact Symbol patterns - restrictive patterns for true code symbols only
         let exact_patterns = vec![
-            Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$")?, // Simple identifier
-            Regex::new(r"^[a-z][a-zA-Z0-9]*$")?,      // camelCase
-            Regex::new(r"^[A-Z][a-zA-Z0-9]*$")?,      // PascalCase
+            Regex::new(r"^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$")?, // camelCase with mixed case (getUserById)
+            Regex::new(r"^[A-Z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$")?, // PascalCase with mixed case (UserService)
+            Regex::new(r"^[a-z_]+[a-z0-9_]*_[a-z0-9_]+$")?,       // snake_case with underscores (user_repository)
+            Regex::new(r"^[A-Z_][A-Z0-9_]*$")?,                   // ALL_CAPS constants (API_KEY, MAX_SIZE)
+            Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$")?, // Qualified names (std::vector)
         ];
         patterns.insert(QueryIntent::ExactSymbol, exact_patterns);
 
