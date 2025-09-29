@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
 use super::shared::OptimizedResponse;
-use crate::embeddings::cosine_similarity;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::health::SystemReadiness;
@@ -181,21 +180,35 @@ impl FastSearchTool {
                 })
             } else {
                 debug!("⚠️  No persistent search engine, using handler fallback");
-                let search_engine = handler.active_search_engine().await;
-                let search_engine = search_engine.read().await;
-                search_engine.search(&self.query).await.map_err(|e| {
-                    debug!("Handler search failed: {}", e);
-                    anyhow::anyhow!("Handler search failed: {}", e)
-                })
+                match handler.active_search_engine().await {
+                    Ok(search_engine) => {
+                        let search_engine = search_engine.read().await;
+                        search_engine.search(&self.query).await.map_err(|e| {
+                            debug!("Handler search failed: {}", e);
+                            anyhow::anyhow!("Handler search failed: {}", e)
+                        })
+                    }
+                    Err(e) => {
+                        debug!("Search engine unavailable: {}", e);
+                        Err(e)
+                    }
+                }
             }
         } else {
             debug!("⚠️  No workspace initialized, using handler fallback");
-            let search_engine = handler.active_search_engine().await;
-            let search_engine = search_engine.read().await;
-            search_engine.search(&self.query).await.map_err(|e| {
-                debug!("Handler search failed: {}", e);
-                anyhow::anyhow!("Handler search failed: {}", e)
-            })
+            match handler.active_search_engine().await {
+                Ok(search_engine) => {
+                    let search_engine = search_engine.read().await;
+                    search_engine.search(&self.query).await.map_err(|e| {
+                        debug!("Handler search failed: {}", e);
+                        anyhow::anyhow!("Handler search failed: {}", e)
+                    })
+                }
+                Err(e) => {
+                    debug!("Search engine unavailable: {}", e);
+                    Err(e)
+                }
+            }
         };
 
         match search_results {
@@ -231,13 +244,27 @@ impl FastSearchTool {
                 Ok(matched_symbols)
             }
             Err(_) => {
-                // Fallback to linear search if index fails
-                warn!("⚠️  Search engine failed, using linear search fallback");
-                let symbols = handler.symbols.read().await;
+                // Fallback to database search if index fails (persistent, no data loss)
+                warn!("⚠️  Search engine failed, using SQLite database fallback");
+
+                let workspace = handler
+                    .get_workspace()
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized for search fallback"))?;
+
+                let db = workspace
+                    .db
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No database available for search fallback"))?;
+
+                let db_lock = db.lock().await;
+                let all_symbols = db_lock.get_all_symbols()?;
+                drop(db_lock); // Release lock early
+
                 let query_lower = self.query.to_lowercase();
 
-                let mut results: Vec<Symbol> = symbols
-                    .iter()
+                let mut results: Vec<Symbol> = all_symbols
+                    .into_iter()
                     .filter(|symbol| {
                         let name_match = symbol.name.to_lowercase().contains(&query_lower);
                         let language_match = self
@@ -247,7 +274,6 @@ impl FastSearchTool {
                             .unwrap_or(true);
                         name_match && language_match
                     })
-                    .cloned()
                     .collect();
 
                 // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
@@ -269,109 +295,59 @@ impl FastSearchTool {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                debug!("📝 Linear search fallback returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", results.len());
+                debug!("💾 SQLite database fallback returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", results.len());
                 Ok(results)
             }
         }
     }
 
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-        debug!("🧠 Semantic search mode (using embeddings)");
+        debug!("🧠 Semantic search mode (using HNSW index)");
 
-        // CRITICAL FIX: Get ALL symbols for semantic comparison (not just text matches!)
-        // This enables true conceptual search using embeddings
-        let all_symbols = {
-            let symbols = handler.symbols.read().await;
+        // Get workspace components
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized for semantic search"))?;
 
-            // Apply basic filters (language, file pattern) if specified
-            let filtered: Vec<Symbol> = symbols
-                .iter()
-                .filter(|symbol| {
-                    // Apply language filter if specified
-                    let language_match = self
-                        .language
-                        .as_ref()
-                        .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
-                        .unwrap_or(true);
-
-                    // Apply file pattern filter if specified (basic contains check for now)
-                    let file_match = self
-                        .file_pattern
-                        .as_ref()
-                        .map(|pattern| {
-                            if pattern.starts_with('!') {
-                                // Exclusion pattern
-                                !symbol.file_path.contains(&pattern[1..])
-                            } else {
-                                // Inclusion pattern
-                                symbol.file_path.contains(pattern)
-                            }
-                        })
-                        .unwrap_or(true);
-
-                    language_match && file_match
-                })
-                .cloned()
-                .collect();
-
-            // Limit to reasonable number for performance (expand search space vs text search)
-            let semantic_limit = (self.limit * 10).min(1000) as usize;
-            filtered
-                .into_iter()
-                .take(semantic_limit)
-                .collect::<Vec<Symbol>>()
-        };
-
-        debug!("🔍 Semantic search evaluating {} symbols (vs text search which only evaluates exact matches)", all_symbols.len());
-
-        // Ensure embedding engine is initialized
-        handler.ensure_embedding_engine().await?;
-
-        // Check embedding status for better user feedback
-        let workspace = handler.get_workspace().await?;
-        let embeddings_ready = workspace
+        let db = workspace
+            .db
             .as_ref()
-            .map(|_| {
-                // TODO: Check workspace registry for embedding status
-                // For now, assume embeddings might still be generating
-                false // Placeholder - should check actual embedding status
-            })
-            .unwrap_or(false);
+            .ok_or_else(|| anyhow::anyhow!("No database available for semantic search"))?;
 
-        // Get mutable access to embedding engine for embedding generation
-        let mut embedding_guard = handler.embedding_engine.write().await;
-        let embedding_engine = match embedding_guard.as_mut() {
-            Some(engine) => engine,
-            None => {
-                if !embeddings_ready {
-                    info!("🔄 Embeddings still generating in background - falling back to basic text matching");
-                } else {
-                    debug!("No embedding engine available, falling back to basic text matching");
-                }
-                // Fallback: basic text similarity without embeddings
-                let query_lower = self.query.to_lowercase();
-                let mut text_matches: Vec<Symbol> = all_symbols
-                    .into_iter()
-                    .filter(|symbol| {
-                        symbol.name.to_lowercase().contains(&query_lower)
-                            || symbol
-                                .signature
-                                .as_ref()
-                                .map_or(false, |sig| sig.to_lowercase().contains(&query_lower))
-                    })
-                    .collect();
-                text_matches.truncate(self.limit as usize);
-                return Ok(text_matches);
-            }
-        };
+        let vector_store = workspace
+            .vector_store
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Vector store not initialized for semantic search"))?;
+
+        // Check if HNSW index is available
+        let store_guard = vector_store.read().await;
+        if !store_guard.has_hnsw_index() {
+            drop(store_guard);
+            warn!("HNSW index not built yet - falling back to text search");
+            return self.text_search(handler).await;
+        }
+        drop(store_guard);
+
+        // Ensure embedding engine is initialized for query embedding
+        handler.ensure_embedding_engine().await?;
 
         // Generate embedding for the query
         let query_embedding = {
+            let mut embedding_guard = handler.embedding_engine.write().await;
+            let embedding_engine = match embedding_guard.as_mut() {
+                Some(engine) => engine,
+                None => {
+                    warn!("Embedding engine not available - falling back to text search");
+                    return self.text_search(handler).await;
+                }
+            };
+
             // Create a temporary symbol from the query for embedding
             let query_symbol = Symbol {
                 id: "query".to_string(),
                 name: self.query.clone(),
-                kind: crate::extractors::base::SymbolKind::Function, // Arbitrary kind for query
+                kind: crate::extractors::base::SymbolKind::Function,
                 language: "query".to_string(),
                 file_path: "query".to_string(),
                 start_line: 1,
@@ -399,93 +375,86 @@ impl FastSearchTool {
             embedding_engine.embed_symbol(&query_symbol, &context)?
         };
 
-        // PERFORMANCE OPTIMIZATION: Use batch embedding instead of individual calls
-        let mut scored_symbols = Vec::new();
+        // Use HNSW index for fast similarity search
+        // Search for more results than needed to allow filtering
+        let search_limit = (self.limit * 5).min(200) as usize;
+        let similarity_threshold = 0.3; // Minimum similarity score
 
-        if all_symbols.is_empty() {
-            debug!("No symbols available for semantic search");
+        let store_guard = vector_store.read().await;
+        let hnsw_results = store_guard.search_similar_hnsw(
+            &query_embedding,
+            search_limit,
+            similarity_threshold,
+        )?;
+        drop(store_guard);
+
+        debug!(
+            "🔍 HNSW search returned {} candidates (threshold: {})",
+            hnsw_results.len(),
+            similarity_threshold
+        );
+
+        // Extract symbol IDs from HNSW results
+        let symbol_ids: Vec<String> = hnsw_results
+            .iter()
+            .map(|result| result.symbol_id.clone())
+            .collect();
+
+        if symbol_ids.is_empty() {
+            debug!("No similar symbols found by HNSW search");
             return Ok(Vec::new());
         }
 
-        // Generate embeddings for all candidates in one batch call
-        match embedding_engine.embed_symbols_batch(&all_symbols) {
-            Ok(batch_results) => {
-                // Create a map for efficient lookup of embeddings by symbol ID
-                let embedding_map: HashMap<String, Vec<f32>> = batch_results.into_iter().collect();
-
-                // Calculate similarities for all symbols
-                for symbol in all_symbols {
-                    if let Some(embedding) = embedding_map.get(&symbol.id) {
-                        let similarity = cosine_similarity(&query_embedding, embedding);
-                        scored_symbols.push((symbol, similarity));
-                    } else {
-                        // Symbol didn't get embedded, use text similarity fallback
-                        let text_similarity = if symbol
-                            .name
-                            .to_lowercase()
-                            .contains(&self.query.to_lowercase())
-                        {
-                            0.8
-                        } else if symbol.name.to_lowercase() == self.query.to_lowercase() {
-                            1.0
-                        } else {
-                            0.3
-                        };
-                        scored_symbols.push((symbol, text_similarity));
-                    }
-                }
-            }
-            Err(e) => {
-                debug!(
-                    "Batch embedding failed: {}, falling back to individual processing",
-                    e
-                );
-
-                // Fallback to individual processing if batch fails
-                for symbol in all_symbols {
-                    let context = crate::embeddings::CodeContext {
-                        parent_symbol: None,
-                        surrounding_code: symbol.code_context.clone(),
-                        file_context: Some(symbol.signature.clone().unwrap_or_default()),
-                    };
-
-                    match embedding_engine.embed_symbol(&symbol, &context) {
-                        Ok(embedding) => {
-                            let similarity = cosine_similarity(&query_embedding, &embedding);
-                            scored_symbols.push((symbol, similarity));
-                        }
-                        Err(e) => {
-                            debug!("Failed to embed symbol {}: {}", symbol.name, e);
-                            // Fall back to text similarity if embedding fails
-                            let text_similarity = if symbol
-                                .name
-                                .to_lowercase()
-                                .contains(&self.query.to_lowercase())
-                            {
-                                0.8
-                            } else if symbol.name.to_lowercase() == self.query.to_lowercase() {
-                                1.0
-                            } else {
-                                0.3
-                            };
-                            scored_symbols.push((symbol, text_similarity));
-                        }
-                    }
-                }
+        // Fetch actual symbols from database
+        let db_lock = db.lock().await;
+        let mut symbols: Vec<Symbol> = Vec::new();
+        for symbol_id in &symbol_ids {
+            if let Some(symbol) = db_lock.get_symbol_by_id(symbol_id)? {
+                symbols.push(symbol);
             }
         }
+        drop(db_lock);
 
-        // Sort by similarity score (descending)
-        scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Return top results
-        let results: Vec<Symbol> = scored_symbols
+        // Apply filters (language, file_pattern)
+        let filtered_symbols: Vec<Symbol> = symbols
             .into_iter()
-            .take(self.limit as usize)
-            .map(|(symbol, _score)| symbol)
+            .filter(|symbol| {
+                // Apply language filter if specified
+                let language_match = self
+                    .language
+                    .as_ref()
+                    .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
+                    .unwrap_or(true);
+
+                // Apply file pattern filter if specified
+                let file_match = self
+                    .file_pattern
+                    .as_ref()
+                    .map(|pattern| {
+                        if pattern.starts_with('!') {
+                            // Exclusion pattern
+                            !symbol.file_path.contains(&pattern[1..])
+                        } else {
+                            // Inclusion pattern
+                            symbol.file_path.contains(pattern)
+                        }
+                    })
+                    .unwrap_or(true);
+
+                language_match && file_match
+            })
             .collect();
 
-        debug!("Semantic search returned {} results", results.len());
+        // Limit to requested number of results
+        let results: Vec<Symbol> = filtered_symbols
+            .into_iter()
+            .take(self.limit as usize)
+            .collect();
+
+        debug!(
+            "✅ Semantic search returned {} results (HNSW-powered)",
+            results.len()
+        );
         Ok(results)
     }
 
@@ -803,16 +772,16 @@ impl FastSearchTool {
                         Some(_) => Ok(Some(vec![workspace_id.to_string()])),
                         None => {
                             // Invalid workspace ID
-                            return Err(anyhow::anyhow!(
+                            Err(anyhow::anyhow!(
                                 "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
                                 workspace_id
-                            ));
+                            ))
                         }
                     }
                 } else {
-                    return Err(anyhow::anyhow!(
+                    Err(anyhow::anyhow!(
                         "No primary workspace found. Initialize workspace first."
-                    ));
+                    ))
                 }
             }
         }
