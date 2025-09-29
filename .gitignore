@@ -38,3 +38,5 @@ validate_*.rs
 tree-sitter-*/
 harper-tree-sitter-*/cache/
 cache/
+.claude/settings.local.json
+.code/

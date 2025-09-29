@@ -773,12 +773,24 @@ impl FastSearchTool {
                 Ok(None)
             }
             "primary" => {
-                // FIX: Use Tantivy search for primary workspace to support multi-word queries
-                // Previously this used database search with workspace filtering, but that
-                // routes to LIKE '%pattern%' which can't handle space-separated terms.
-                // Since primary workspace is the main workspace, using Tantivy provides
-                // better search capabilities (multi-word, fuzzy, semantic) without loss of precision.
-                Ok(None)
+                // Resolve primary workspace ID for precise workspace filtering
+                let workspace = handler.get_workspace().await?;
+                if let Some(workspace) = workspace {
+                    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+                    match registry_service.get_primary_workspace_id().await? {
+                        Some(workspace_id) => {
+                            debug!("🔍 Resolved primary workspace to ID: {}", workspace_id);
+                            Ok(Some(vec![workspace_id]))
+                        }
+                        None => {
+                            debug!("🔍 No primary workspace ID found, using Tantivy search");
+                            Ok(None)
+                        }
+                    }
+                } else {
+                    debug!("🔍 No workspace available, using Tantivy search");
+                    Ok(None)
+                }
             }
             workspace_id => {
                 // Validate the workspace ID exists
@@ -892,9 +904,28 @@ impl FastSearchTool {
             symbol_count
         );
 
+        // Get actual primary workspace ID instead of hardcoded "primary"
+        let workspace = handler.get_workspace().await?;
+        let workspace_ids = if let Some(workspace) = workspace {
+            let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+            match registry_service.get_primary_workspace_id().await? {
+                Some(workspace_id) => {
+                    debug!("🔍 Using actual primary workspace ID: {}", workspace_id);
+                    vec![workspace_id]
+                }
+                None => {
+                    debug!("🔍 No primary workspace ID found, falling back to 'primary'");
+                    vec!["primary".to_string()]
+                }
+            }
+        } else {
+            debug!("🔍 No workspace available, falling back to 'primary'");
+            vec!["primary".to_string()]
+        };
+
         // Use database search directly
         let symbols = self
-            .database_search_with_workspace_filter(handler, vec!["primary".to_string()])
+            .database_search_with_workspace_filter(handler, workspace_ids)
             .await?;
 
         if symbols.is_empty() {
