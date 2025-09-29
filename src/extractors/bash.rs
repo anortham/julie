@@ -15,8 +15,16 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 use tree_sitter::Tree;
+
+// Static regexes compiled once for performance
+static PARAM_NUMBER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$(\d+)").unwrap());
+static INTEGER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+$").unwrap());
+static FLOAT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+\.\d+$").unwrap());
+static BOOLEAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(true|false)$").unwrap());
 
 pub struct BashExtractor {
     base: BaseExtractor,
@@ -116,7 +124,7 @@ impl BashExtractor {
 
         for node in param_nodes {
             let param_text = self.base.get_node_text(&node);
-            if let Some(captures) = regex::Regex::new(r"\$(\d+)").unwrap().captures(&param_text) {
+            if let Some(captures) = PARAM_NUMBER_RE.captures(&param_text) {
                 if let Some(param_number) = captures.get(1) {
                     let param_name = format!("${}", param_number.as_str());
 
@@ -597,14 +605,11 @@ impl BashExtractor {
                 if let Some(value_part) = signature.split('=').nth(1) {
                     let value = value_part.trim().trim_matches(|c| c == '"' || c == '\'');
 
-                    if regex::Regex::new(r"^\d+$").unwrap().is_match(value) {
+                    if INTEGER_RE.is_match(value) {
                         var_type = "integer".to_string();
-                    } else if regex::Regex::new(r"^\d+\.\d+$").unwrap().is_match(value) {
+                    } else if FLOAT_RE.is_match(value) {
                         var_type = "float".to_string();
-                    } else if regex::Regex::new(r"^(true|false)$")
-                        .unwrap()
-                        .is_match(&value.to_lowercase())
-                    {
+                    } else if BOOLEAN_RE.is_match(&value.to_lowercase()) {
                         var_type = "boolean".to_string();
                     } else if value.starts_with('/') || value.contains('/') {
                         var_type = "path".to_string();
@@ -635,6 +640,7 @@ impl BashExtractor {
         None
     }
 
+    #[allow(clippy::manual_find)] // Manual loops required for borrow checker
     fn find_variable_name_node<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -662,6 +668,7 @@ impl BashExtractor {
         None
     }
 
+    #[allow(clippy::manual_find)] // Manual loops required for borrow checker
     fn find_command_name_node<'a>(
         &self,
         node: tree_sitter::Node<'a>,

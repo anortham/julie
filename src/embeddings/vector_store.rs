@@ -5,13 +5,20 @@
 
 use super::SimilarityResult;
 use anyhow::Result;
+use hnsw_rs::prelude::*;  // Includes Hnsw, DistCosine, and other distance metrics
 use std::collections::HashMap;
+use std::path::Path;
 
 /// High-performance vector store for embedding similarity search
 pub struct VectorStore {
     dimensions: usize,
     vectors: HashMap<String, Vec<f32>>,
-    // TODO: Add HNSW index for efficient similarity search
+    /// HNSW index for fast approximate nearest neighbor search
+    /// Note: Using 'static lifetime since index owns its data
+    hnsw_index: Option<Hnsw<'static, f32, DistCosine>>,
+    /// Mapping from HNSW numeric IDs to symbol IDs
+    /// Needed because HNSW uses usize indices but we use String symbol IDs
+    id_mapping: Vec<String>,
 }
 
 impl VectorStore {
@@ -20,6 +27,8 @@ impl VectorStore {
         Ok(Self {
             dimensions,
             vectors: HashMap::new(),
+            hnsw_index: None,
+            id_mapping: Vec::new(),
         })
     }
 
@@ -108,6 +117,165 @@ impl VectorStore {
     /// Get vector by symbol ID
     pub fn get_vector(&self, symbol_id: &str) -> Option<&Vec<f32>> {
         self.vectors.get(symbol_id)
+    }
+
+    // ========================================================================
+    // HNSW Index Methods (TDD Implementation - Start with stubs that fail)
+    // ========================================================================
+
+    /// Build HNSW index from stored vectors
+    pub fn build_hnsw_index(&mut self) -> Result<()> {
+        if self.vectors.is_empty() {
+            return Err(anyhow::anyhow!("Cannot build HNSW index: no vectors stored"));
+        }
+
+        // HNSW construction parameters (based on hnsw_rs best practices)
+        let max_nb_connection = 32;  // Typical: 16-64, good balance for code search
+        let nb_elem = self.vectors.len();
+        let nb_layer = 16.min((nb_elem as f32).ln().trunc() as usize);
+        let ef_construction = 400;  // Higher = better quality, slower build (typical: 200-800)
+
+        tracing::debug!(
+            "Building HNSW index: {} vectors, {} layers, max_conn={}, ef_c={}",
+            nb_elem,
+            nb_layer,
+            max_nb_connection,
+            ef_construction
+        );
+
+        // Create HNSW index with cosine distance
+        // Note: DistCosine expects pre-normalized vectors
+        let mut hnsw = Hnsw::<'static, f32, DistCosine>::new(
+            max_nb_connection,
+            nb_elem,
+            nb_layer,
+            ef_construction,
+            DistCosine {},
+        );
+
+        // Build ID mapping and prepare data for insertion
+        // IMPORTANT: Sort by symbol ID for deterministic index building
+        // HashMap iteration order is non-deterministic!
+        self.id_mapping.clear();
+        self.id_mapping.reserve(nb_elem);
+
+        let mut sorted_vectors: Vec<_> = self.vectors.iter().collect();
+        sorted_vectors.sort_by(|a, b| a.0.cmp(b.0));  // Sort by symbol ID
+
+        let mut data_for_insertion = Vec::with_capacity(nb_elem);
+
+        for (idx, (symbol_id, vector)) in sorted_vectors.iter().enumerate() {
+            self.id_mapping.push((*symbol_id).clone());
+            data_for_insertion.push((*vector, idx));
+        }
+
+        // Insert all vectors into the index (parallel for performance)
+        hnsw.parallel_insert(&data_for_insertion);
+
+        // Set to search mode (required before searching)
+        hnsw.set_searching_mode(true);
+
+        // Store the built index
+        self.hnsw_index = Some(hnsw);
+
+        tracing::info!("✅ HNSW index built successfully: {} vectors indexed", nb_elem);
+        Ok(())
+    }
+
+    /// Check if HNSW index is built
+    pub fn has_hnsw_index(&self) -> bool {
+        self.hnsw_index.is_some()
+    }
+
+    /// Search for similar vectors using HNSW index (fast approximate search)
+    pub fn search_similar_hnsw(
+        &self,
+        query_vector: &[f32],
+        limit: usize,
+        threshold: f32,
+    ) -> Result<Vec<SimilarityResult>> {
+        if query_vector.len() != self.dimensions {
+            return Err(anyhow::anyhow!(
+                "Query vector dimensions {} do not match expected {}",
+                query_vector.len(),
+                self.dimensions
+            ));
+        }
+
+        let hnsw = self.hnsw_index.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("HNSW index not built. Call build_hnsw_index() first")
+        })?;
+
+        // Perform k-NN search
+        // ef_search controls search quality (higher = better but slower)
+        let ef_search = (limit * 2).max(50);  // Search wider than limit for better quality
+
+        let neighbors = hnsw.search(query_vector, limit, ef_search);
+
+        // Convert HNSW results to SimilarityResults
+        let mut results = Vec::new();
+
+        for neighbor in neighbors {
+            let idx = neighbor.d_id;
+
+            // Map HNSW ID back to symbol ID
+            if idx >= self.id_mapping.len() {
+                tracing::warn!("HNSW returned invalid ID: {}", idx);
+                continue;
+            }
+
+            let symbol_id = &self.id_mapping[idx];
+
+            // Get the actual vector for this symbol
+            let vector = match self.vectors.get(symbol_id) {
+                Some(v) => v,
+                None => {
+                    tracing::warn!("Symbol ID {} not found in vectors", symbol_id);
+                    continue;
+                }
+            };
+
+            // Calculate actual cosine similarity
+            let similarity = super::cosine_similarity(query_vector, vector);
+
+            // Apply threshold filter
+            if similarity >= threshold {
+                results.push(SimilarityResult {
+                    symbol_id: symbol_id.clone(),
+                    similarity_score: similarity,
+                    embedding: vector.clone(),
+                });
+            }
+        }
+
+        // Results should already be sorted by HNSW, but re-sort to be sure
+        results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
+
+        Ok(results)
+    }
+
+    /// Save HNSW index to disk
+    /// Note: Requires bincode serialization - TO BE IMPLEMENTED
+    pub fn save_hnsw_index(&self, _path: &Path) -> Result<()> {
+        Err(anyhow::anyhow!("HNSW persistence not yet implemented - requires hnswio module integration"))
+    }
+
+    /// Load HNSW index from disk
+    /// Note: Requires bincode deserialization - TO BE IMPLEMENTED
+    pub fn load_hnsw_index(&mut self, _path: &Path) -> Result<()> {
+        Err(anyhow::anyhow!("HNSW loading not yet implemented - requires hnswio module integration"))
+    }
+
+    /// Add a vector to existing HNSW index (incremental update)
+    /// Note: Requires index rebuild or insert API - TO BE IMPLEMENTED
+    pub fn add_vector_to_hnsw(&mut self, _symbol_id: String, _vector: Vec<f32>) -> Result<()> {
+        Err(anyhow::anyhow!("HNSW incremental addition not implemented - requires index rebuild"))
+    }
+
+    /// Remove a vector from HNSW index
+    /// Note: HNSW doesn't support deletion - requires index rebuild
+    pub fn remove_vector_from_hnsw(&mut self, _symbol_id: &str) -> Result<()> {
+        Err(anyhow::anyhow!("HNSW vector removal not supported - HNSW is immutable after building"))
     }
 }
 

@@ -9,8 +9,13 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+// Static regex compiled once for performance
+static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)\s+\w+").unwrap());
 
 /// Dart language extractor that handles Dart-specific constructs including Flutter
 ///
@@ -597,8 +602,8 @@ impl DartExtractor {
         let on_node = self.find_child_by_type(node, "on");
         let type_node = self.find_child_by_type(node, "type_identifier");
 
-        let signature = if on_node.is_some() && type_node.is_some() {
-            let constraint_type = self.base.get_node_text(&type_node.unwrap());
+        let signature = if let (Some(_on), Some(type_n)) = (on_node, type_node) {
+            let constraint_type = self.base.get_node_text(&type_n);
             format!("mixin {} on {}", name, constraint_type)
         } else {
             format!("mixin {}", name)
@@ -643,8 +648,8 @@ impl DartExtractor {
         let on_node = self.find_child_by_type(node, "on");
         let type_node = self.find_child_by_type(node, "type_identifier");
 
-        let signature = if on_node.is_some() && type_node.is_some() {
-            let extended_type = self.base.get_node_text(&type_node.unwrap());
+        let signature = if let (Some(_on), Some(type_n)) = (on_node, type_node) {
+            let extended_type = self.base.get_node_text(&type_n);
             format!("extension {} on {}", name, extended_type)
         } else {
             format!("extension {}", name)
@@ -851,11 +856,10 @@ impl DartExtractor {
         // For function_signature nodes, check the sibling function_body for async keyword
         if node.kind() == "function_signature" {
             if let Some(function_body) = node.next_sibling() {
-                if function_body.kind() == "function_body" {
-                    if self.find_child_by_type(&function_body, "async").is_some() {
+                if function_body.kind() == "function_body"
+                    && self.find_child_by_type(&function_body, "async").is_some() {
                         return true;
                     }
-                }
             }
         }
 
@@ -896,7 +900,7 @@ impl DartExtractor {
         let source_lines: Vec<&str> = self.base.content.lines().collect();
 
         // Check up to 3 lines before the method for @override annotation
-        let check_start = if start_row >= 3 { start_row - 3 } else { 0 };
+        let check_start = start_row.saturating_sub(3);
         for line_idx in check_start..start_row {
             if line_idx < source_lines.len() {
                 let line = source_lines[line_idx].trim();
@@ -1290,10 +1294,7 @@ impl DartExtractor {
         for symbol in symbols {
             if let Some(signature) = &symbol.signature {
                 // Extract type from signatures like "int counter = 0" or "String name"
-                if let Some(captures) = regex::Regex::new(r"^(\w+)\s+\w+")
-                    .ok()
-                    .and_then(|re| re.captures(signature))
-                {
+                if let Some(captures) = TYPE_SIGNATURE_RE.captures(signature) {
                     if let Some(type_match) = captures.get(1) {
                         types.insert(symbol.name.clone(), type_match.as_str().to_string());
                     }
@@ -1423,7 +1424,7 @@ impl DartExtractor {
             if name
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_lowercase() || c.is_uppercase())
+                .is_some_and(|c| c.is_lowercase() || c.is_uppercase())
             {
                 let symbol = self.base.create_symbol(
                     node,
@@ -1449,6 +1450,7 @@ impl DartExtractor {
 
     // === Utility Methods ===
 
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     fn find_child_by_type<'a>(&self, node: &Node<'a>, node_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

@@ -421,11 +421,7 @@ impl BaseExtractor {
         }
 
         // Calculate context bounds using configuration
-        let context_start = if start_row >= self.context_config.lines_before {
-            start_row - self.context_config.lines_before
-        } else {
-            0
-        };
+        let context_start = start_row.saturating_sub(self.context_config.lines_before);
         let context_end = std::cmp::min(lines.len() - 1, end_row + self.context_config.lines_after);
 
         // Build context with optional line numbers
@@ -447,12 +443,10 @@ impl BaseExtractor {
                 } else {
                     format!("    {:3}: {}", line_num, line_content)
                 }
+            } else if i >= start_row && i <= end_row {
+                format!("  ➤ {}", line_content)
             } else {
-                if i >= start_row && i <= end_row {
-                    format!("  ➤ {}", line_content)
-                } else {
-                    format!("    {}", line_content)
-                }
+                format!("    {}", line_content)
             };
 
             context_lines.push(formatted_line);

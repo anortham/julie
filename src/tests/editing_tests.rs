@@ -371,4 +371,145 @@ fn main() {
 
         Ok(())
     }
+
+    //**************************************************************************
+    // Token Optimization Tests (TDD)
+    //**************************************************************************
+
+    /// Test FastEditTool token optimization with short responses (should remain unchanged)
+    #[tokio::test]
+    async fn test_fast_edit_token_optimization_short_response() -> Result<()> {
+        println!("🔍 Testing FastEditTool token optimization for short responses...");
+
+        let short_message = "✅ Successfully replaced 3 occurrences of 'getUserData' with 'fetchUserInfo'";
+
+        // This test will fail initially until we implement optimize_response
+        let tool = FastEditTool {
+            file_path: "test.js".to_string(),
+            find_text: "test".to_string(),
+            replace_text: "demo".to_string(),
+            mode: None,
+            language: None,
+            file_pattern: None,
+            limit: None,
+            validate: true,
+            dry_run: false,
+        };
+
+        // Test that short responses are not truncated
+        let optimized = tool.optimize_response(&short_message);
+        assert_eq!(optimized, short_message, "Short responses should not be truncated");
+        assert!(!optimized.contains("Response truncated"), "Short responses should not show truncation warning");
+
+        println!("✅ Short response optimization test passed");
+        Ok(())
+    }
+
+    /// Test FastEditTool token optimization with very long responses (should be truncated)
+    #[tokio::test]
+    async fn test_fast_edit_token_optimization_long_response() -> Result<()> {
+        println!("🔍 Testing FastEditTool token optimization for long responses...");
+
+        // Create a message that exceeds 15K tokens (~60K characters)
+        let long_message = format!(
+            "✅ Successfully processed large codebase with the following changes:\n{}{}{}",
+            "- Modified file: /very/long/path/to/some/file/that/has/a/really/long/name/".repeat(500),
+            "\n- Applied transformation: ".repeat(300),
+            "getUserData -> fetchUserInfo, validateUser -> checkUserCredentials, processData -> handleDataTransformation".repeat(200)
+        );
+
+        let tool = FastEditTool {
+            file_path: "test.js".to_string(),
+            find_text: "test".to_string(),
+            replace_text: "demo".to_string(),
+            mode: None,
+            language: None,
+            file_pattern: None,
+            limit: None,
+            validate: true,
+            dry_run: false,
+        };
+
+        // Test that long responses are truncated
+        let optimized = tool.optimize_response(&long_message);
+        assert!(optimized.len() < long_message.len(), "Long responses should be truncated");
+        assert!(optimized.contains("Response truncated"), "Truncated responses should show warning");
+        assert!(optimized.contains("Use more specific parameters"), "Should provide helpful guidance");
+
+        // Verify token count stays under 15K limit
+        let token_estimator = crate::utils::token_estimation::TokenEstimator::new();
+        let token_count = token_estimator.estimate_string(&optimized);
+        assert!(token_count <= 15000, "Optimized response should stay under 15K tokens, got {}", token_count);
+
+        println!("✅ Long response optimization test passed");
+        Ok(())
+    }
+
+    /// Test LineEditTool token optimization with short responses
+    #[tokio::test]
+    async fn test_line_edit_token_optimization_short_response() -> Result<()> {
+        println!("🔍 Testing LineEditTool token optimization for short responses...");
+
+        let short_message = "✅ Successfully inserted 1 line at position 42";
+
+        let tool = crate::tools::LineEditTool {
+            file_path: "test.py".to_string(),
+            operation: "insert".to_string(),
+            line_number: Some(42),
+            content: Some("print('Hello World')".to_string()),
+            start_line: None,
+            end_line: None,
+            preserve_indentation: true,
+            dry_run: false,
+        };
+
+        // Test that short responses are not truncated
+        let optimized = tool.optimize_response(&short_message);
+        assert_eq!(optimized, short_message, "Short responses should not be truncated");
+        assert!(!optimized.contains("Response truncated"), "Short responses should not show truncation warning");
+
+        println!("✅ LineEditTool short response optimization test passed");
+        Ok(())
+    }
+
+    /// Test that essential information is preserved during truncation
+    #[tokio::test]
+    async fn test_token_optimization_preserves_essential_info() -> Result<()> {
+        println!("🔍 Testing that token optimization preserves essential information...");
+
+        // Create a message with essential info at the beginning
+        let essential_start = "✅ Successfully replaced 147 occurrences across 23 files";
+
+        // Create varied filler content that will actually consume many tokens
+        let mut filler_content = String::new();
+        for i in 0..3000 {
+            filler_content.push_str(&format!("\n- File {}: path/to/some/very/long/filename_{}.js modified successfully with detailed changes including variable renames, function updates, class modifications, import statements, and comprehensive refactoring", i, i));
+        }
+
+        let long_message = format!("{}{}", essential_start, filler_content);
+
+        let tool = FastEditTool {
+            file_path: "test.js".to_string(),
+            find_text: "test".to_string(),
+            replace_text: "demo".to_string(),
+            mode: None,
+            language: None,
+            file_pattern: None,
+            limit: None,
+            validate: true,
+            dry_run: false,
+        };
+
+        let optimized = tool.optimize_response(&long_message);
+
+        // Essential information should be preserved
+        assert!(optimized.contains("Successfully replaced 147 occurrences"), "Essential success info should be preserved");
+        assert!(optimized.contains("across 23 files"), "File count should be preserved");
+
+        // But filler should be truncated
+        assert!(optimized.len() < long_message.len(), "Filler content should be truncated");
+
+        println!("✅ Essential information preservation test passed");
+        Ok(())
+    }
 }

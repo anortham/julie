@@ -84,4 +84,18 @@ impl SearchEngine {
             language_boosting,
         })
     }
+
+    /// Get the total number of documents in the Tantivy index
+    /// Used to check if the search index has been populated
+    pub fn get_indexed_document_count(&self) -> Result<u64> {
+        let searcher = self.reader.searcher();
+        let segment_readers = searcher.segment_readers();
+
+        let total_docs: u64 = segment_readers
+            .iter()
+            .map(|reader| reader.num_docs() as u64)
+            .sum();
+
+        Ok(total_docs)
+    }
 }

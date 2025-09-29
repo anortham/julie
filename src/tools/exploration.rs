@@ -57,9 +57,23 @@ impl FastExploreTool {
             )]));
         }
 
-        // Get symbols and relationships for token-optimized exploration
-        let symbols = handler.symbols.read().await;
-        let relationships = handler.relationships.read().await;
+        // Get symbols and relationships from database (persistent storage)
+        let (symbols, relationships) = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    let syms = db_lock.get_all_symbols().unwrap_or_default();
+                    let rels = db_lock.get_all_relationships().unwrap_or_default();
+                    (syms, rels)
+                } else {
+                    (Vec::new(), Vec::new())
+                }
+            } else {
+                (Vec::new(), Vec::new())
+            }
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         // Use token-optimized formatting for all modes
         let message = match self.mode.as_str() {
@@ -80,11 +94,23 @@ impl FastExploreTool {
 
     #[allow(dead_code)]
     async fn generate_overview(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().await;
-
-        // WILDCARD SEARCH FIX: Use in-memory symbol store instead of broken search("*")
-        // The search engine's wildcard query fails, but symbols are correctly stored in memory
-        let all_symbols = handler.symbols.read().await;
+        // Get symbols and relationships from database (persistent storage)
+        let (all_symbols, relationships) = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    let syms = db_lock.get_all_symbols().unwrap_or_default();
+                    let rels = db_lock.get_all_relationships().unwrap_or_default();
+                    (syms, rels)
+                } else {
+                    (Vec::new(), Vec::new())
+                }
+            } else {
+                (Vec::new(), Vec::new())
+            }
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         // Count by symbol type - from in-memory symbols
         let mut counts = HashMap::new();
@@ -143,15 +169,52 @@ impl FastExploreTool {
 
     #[allow(dead_code)]
     async fn analyze_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().await;
+        // Get relationships from database (persistent storage)
+        let relationships = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    db_lock.get_all_relationships().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         // Create HashMap for O(1) symbol lookups instead of O(n) linear search
-        let search_engine = handler.active_search_engine().await;
-        let search_engine = search_engine.read().await;
-        let all_symbols = search_engine
-            .search("*")
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?;
+        let all_symbols = match handler.active_search_engine().await {
+            Ok(search_engine) => {
+                let search_engine = search_engine.read().await;
+                search_engine
+                    .search("*")
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?
+            }
+            Err(_e) => {
+                // Fallback: use database for symbol access (persistent)
+                if let Ok(workspace) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            db_lock.get_all_symbols().unwrap_or_default()
+                                .into_iter()
+                                .map(|symbol| crate::search::SearchResult { symbol, score: 1.0, snippet: String::new() })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            }
+        };
         let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
             .iter()
             .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
@@ -203,15 +266,52 @@ impl FastExploreTool {
 
     #[allow(dead_code)]
     async fn find_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().await;
+        // Get relationships from database (persistent storage)
+        let relationships = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    db_lock.get_all_relationships().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         // Use SearchEngine instead of O(n) iteration through all symbols
-        let search_engine = handler.active_search_engine().await;
-        let search_engine = search_engine.read().await;
-        let all_symbols = search_engine
-            .search("*")
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?;
+        let all_symbols = match handler.active_search_engine().await {
+            Ok(search_engine) => {
+                let search_engine = search_engine.read().await;
+                search_engine
+                    .search("*")
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?
+            }
+            Err(_e) => {
+                // Fallback: use database for symbol access (persistent)
+                if let Ok(workspace) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            db_lock.get_all_symbols().unwrap_or_default()
+                                .into_iter()
+                                .map(|symbol| crate::search::SearchResult { symbol, score: 1.0, snippet: String::new() })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            }
+        };
 
         // Find files with most symbols (complexity hotspots)
         let mut file_symbol_counts = HashMap::new();
@@ -255,68 +355,122 @@ impl FastExploreTool {
 
     #[allow(dead_code)]
     async fn trace_relationships(&self, handler: &JulieServerHandler) -> Result<String> {
-        let relationships = handler.relationships.read().await;
+        // Get relationships from database (persistent storage)
+        let relationships = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    db_lock.get_all_relationships().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         let mut message = "🔍 Relationship Tracing\n=====================\n".to_string();
 
         if let Some(focus) = &self.focus {
-            // Use SearchEngine to find the focused symbol instead of O(n) linear search
-            let search_engine = handler.active_search_engine().await;
-            let search_engine = search_engine.read().await;
-            let focus_results = search_engine
-                .search(focus)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to search for focus symbol: {}", e))?;
+            // Use SearchEngine to find the focused symbol and get all symbols
+            match handler.active_search_engine().await {
+                Ok(search_engine) => {
+                    let search_engine = search_engine.read().await;
+                    let focus_results = search_engine
+                        .search(focus)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to search for focus symbol: {}", e))?;
 
-            // Find exact match for the focused symbol
-            if let Some(target_result) = focus_results.iter().find(|sr| sr.symbol.name == *focus) {
-                let target_symbol = &target_result.symbol;
-                message.push_str(&format!("Tracing relationships for: {}\n\n", focus));
+                    // Find exact match for the focused symbol
+                    if let Some(target_result) = focus_results.iter().find(|sr| sr.symbol.name == *focus) {
+                        let target_symbol = &target_result.symbol;
+                        message.push_str(&format!("Tracing relationships for: {}\n\n", focus));
 
-                // Create HashMap for O(1) symbol lookups instead of O(n) for each relationship
-                let all_symbols = search_engine
-                    .search("*")
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to get all symbols: {}", e))?;
-                let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
-                    .iter()
-                    .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
-                    .collect();
+                        // Create HashMap for O(1) symbol lookups instead of O(n) for each relationship
+                        let all_symbols = search_engine
+                            .search("*")
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Failed to get all symbols: {}", e))?;
+                        let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
+                            .iter()
+                            .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
+                            .collect();
 
-                // Find incoming relationships (what references this symbol)
-                let incoming: Vec<_> = relationships
-                    .iter()
-                    .filter(|rel| rel.to_symbol_id == target_symbol.id)
-                    .collect();
+                        // Find incoming relationships (what references this symbol)
+                        let incoming: Vec<_> = relationships
+                            .iter()
+                            .filter(|rel| rel.to_symbol_id == target_symbol.id)
+                            .collect();
 
-                // Find outgoing relationships (what this symbol references)
-                let outgoing: Vec<_> = relationships
-                    .iter()
-                    .filter(|rel| rel.from_symbol_id == target_symbol.id)
-                    .collect();
+                        // Find outgoing relationships (what this symbol references)
+                        let outgoing: Vec<_> = relationships
+                            .iter()
+                            .filter(|rel| rel.from_symbol_id == target_symbol.id)
+                            .collect();
 
-                message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
-                for rel in incoming.iter().take(10) {
-                    if let Some(from_symbol) = symbol_map.get(&rel.from_symbol_id) {
+                        message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
+                        for rel in incoming.iter().take(10) {
+                            if let Some(from_symbol) = symbol_map.get(&rel.from_symbol_id) {
+                                message.push_str(&format!(
+                                    "  {} {} this symbol\n",
+                                    from_symbol.name, rel.kind
+                                ));
+                            }
+                        }
+
                         message.push_str(&format!(
-                            "  {} {} this symbol\n",
-                            from_symbol.name, rel.kind
+                            "\n→ Outgoing ({} relationships):\n",
+                            outgoing.len()
                         ));
+                        for rel in outgoing.iter().take(10) {
+                            if let Some(to_symbol) = symbol_map.get(&rel.to_symbol_id) {
+                                message
+                                    .push_str(&format!("  This symbol {} {}\n", rel.kind, to_symbol.name));
+                            }
+                        }
+                    } else {
+                        message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
                     }
                 }
+                Err(_e) => {
+                    // Fallback: use database for relationship tracing (persistent)
+                    let symbols = if let Ok(workspace) = handler.get_workspace().await {
+                        if let Some(workspace) = workspace {
+                            if let Some(db) = workspace.db.as_ref() {
+                                let db_lock = db.lock().await;
+                                db_lock.get_symbols_by_name(focus).unwrap_or_default()
+                            } else {
+                                Vec::new()
+                            }
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    if let Some(target_symbol) = symbols.first() {
+                        message.push_str(&format!("Tracing relationships for: {} (fallback mode)\n\n", focus));
 
-                message.push_str(&format!(
-                    "\n→ Outgoing ({} relationships):\n",
-                    outgoing.len()
-                ));
-                for rel in outgoing.iter().take(10) {
-                    if let Some(to_symbol) = symbol_map.get(&rel.to_symbol_id) {
-                        message
-                            .push_str(&format!("  This symbol {} {}\n", rel.kind, to_symbol.name));
+                        // Find incoming relationships (what references this symbol)
+                        let incoming: Vec<_> = relationships
+                            .iter()
+                            .filter(|rel| rel.to_symbol_id == target_symbol.id)
+                            .collect();
+
+                        // Find outgoing relationships (what this symbol references)
+                        let outgoing: Vec<_> = relationships
+                            .iter()
+                            .filter(|rel| rel.from_symbol_id == target_symbol.id)
+                            .collect();
+
+                        message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
+                        message.push_str(&format!("→ Outgoing ({} relationships):\n", outgoing.len()));
+                    } else {
+                        message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
                     }
                 }
-            } else {
-                message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
             }
         } else {
             message.push_str("💡 Use focus parameter to trace a specific symbol\n");
@@ -691,27 +845,150 @@ impl FindLogicTool {
             )]));
         }
 
-        let message = format!(
-            "🏢 **Business Logic Detection**\n\
-            ==============================\n\n\
-            🎯 Domain: {}\n\
-            📊 Max results: {}\n\
-            🏛️ Group by layer: {}\n\
-            ⚡ Min business score: {:.1}\n\n\
-            🚧 Intelligent business logic detection coming soon!\n\
-            🎯 Will filter framework noise and focus on:\n\
-            • Core domain logic (high business value)\n\
-            • Service layer business rules\n\
-            • Domain entities and aggregates\n\
-            • Business process workflows\n\
-            • Validation and business constraints\n\n\
-            💡 Perfect for understanding what the code actually does!",
-            self.domain, self.max_results, self.group_by_layer, self.min_business_score
-        );
+        // Get all symbols and relationships from database for business logic analysis (persistent)
+        let (all_symbols, all_relationships) = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    let syms = db_lock.get_all_symbols().unwrap_or_default();
+                    let rels = db_lock.get_all_relationships().unwrap_or_default();
+                    (syms, rels)
+                } else {
+                    (Vec::new(), Vec::new())
+                }
+            } else {
+                (Vec::new(), Vec::new())
+            }
+        } else {
+            (Vec::new(), Vec::new())
+        };
+
+        // Filter symbols for business logic based on domain keywords and relevance
+        let business_symbols = self.filter_business_logic(&all_symbols);
+        let business_relationships = self.filter_business_relationships(&all_relationships, &business_symbols);
+
+        // Use token-optimized formatting
+        let message = self.format_optimized_results(&business_symbols, &business_relationships);
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
             message,
         )]))
+    }
+
+    /// Filter symbols to identify business logic based on domain keywords and relevance scoring
+    fn filter_business_logic(&self, symbols: &[Symbol]) -> Vec<Symbol> {
+        let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
+        let mut business_symbols = Vec::new();
+
+        for symbol in symbols {
+            let business_score = self.calculate_business_score(symbol, &domain_keywords);
+            if business_score >= self.min_business_score {
+                // Clone the symbol and update its confidence to reflect business score
+                let mut business_symbol = symbol.clone();
+                business_symbol.confidence = Some(business_score);
+                business_symbols.push(business_symbol);
+            }
+        }
+
+        // Sort by business score (confidence) descending and limit results
+        business_symbols.sort_by(|a, b| {
+            let score_a = a.confidence.unwrap_or(0.0);
+            let score_b = b.confidence.unwrap_or(0.0);
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        business_symbols.truncate(self.max_results as usize);
+        business_symbols
+    }
+
+    /// Calculate business relevance score for a symbol based on domain keywords
+    fn calculate_business_score(&self, symbol: &Symbol, domain_keywords: &[&str]) -> f32 {
+        let mut score: f32 = 0.0;
+
+        // Check symbol name for domain relevance (highest weight)
+        let name_lower = symbol.name.to_lowercase();
+        for keyword in domain_keywords {
+            if name_lower.contains(&keyword.to_lowercase()) {
+                score += 0.4; // Name match is highly valuable
+            }
+        }
+
+        // Check file path for business context (medium weight)
+        let path_lower = symbol.file_path.to_lowercase();
+        for keyword in domain_keywords {
+            if path_lower.contains(&keyword.to_lowercase()) {
+                score += 0.2;
+            }
+        }
+
+        // Business logic indicators in file path (medium weight)
+        if path_lower.contains("service") || path_lower.contains("business") ||
+           path_lower.contains("domain") || path_lower.contains("logic") ||
+           path_lower.contains("model") || path_lower.contains("entity") {
+            score += 0.15;
+        }
+
+        // Check documentation for business context (medium weight)
+        if let Some(doc) = &symbol.doc_comment {
+            let doc_lower = doc.to_lowercase();
+            for keyword in domain_keywords {
+                if doc_lower.contains(&keyword.to_lowercase()) {
+                    score += 0.15;
+                }
+            }
+
+            // Business logic keywords in documentation
+            if doc_lower.contains("business") || doc_lower.contains("process") ||
+               doc_lower.contains("rule") || doc_lower.contains("workflow") ||
+               doc_lower.contains("domain") {
+                score += 0.1;
+            }
+        }
+
+        // Check semantic group for business layer classification (low weight)
+        if let Some(group) = &symbol.semantic_group {
+            let group_lower = group.to_lowercase();
+            if group_lower.contains("business") || group_lower.contains("domain") ||
+               group_lower.contains("service") || group_lower.contains("logic") {
+                score += 0.1;
+            }
+        }
+
+        // Symbol kind preferences (business logic is more likely in certain kinds)
+        match symbol.kind {
+            crate::extractors::SymbolKind::Class |
+            crate::extractors::SymbolKind::Function |
+            crate::extractors::SymbolKind::Method => score += 0.05,
+            crate::extractors::SymbolKind::Interface |
+            crate::extractors::SymbolKind::Struct => score += 0.03,
+            _ => {} // Other kinds get no bonus
+        }
+
+        // Boost score for existing confidence if it indicates high quality
+        if let Some(existing_confidence) = symbol.confidence {
+            if existing_confidence > 0.8 {
+                score += 0.05;
+            }
+        }
+
+        // Normalize score to 0.0-1.0 range (current max possible is around 1.0)
+        score.min(1.0)
+    }
+
+    /// Filter relationships that connect business logic symbols
+    fn filter_business_relationships(&self, relationships: &[Relationship], business_symbols: &[Symbol]) -> Vec<Relationship> {
+        let business_symbol_ids: std::collections::HashSet<String> =
+            business_symbols.iter().map(|s| s.id.clone()).collect();
+
+        relationships
+            .iter()
+            .filter(|rel| {
+                // Include relationships where both ends are business logic symbols
+                business_symbol_ids.contains(&rel.from_symbol_id) &&
+                business_symbol_ids.contains(&rel.to_symbol_id)
+            })
+            .cloned()
+            .collect()
     }
 
     /// Format optimized results with token optimization for FindLogicTool
@@ -765,7 +1042,7 @@ impl FindLogicTool {
                     .clone();
                 grouped_symbols
                     .entry(layer)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(symbol);
             }
 

@@ -34,7 +34,7 @@ impl HTMLExtractor {
         }
 
         // If we only extracted error symbols, try basic structure fallback
-        let has_only_errors = symbols.len() > 0
+        let has_only_errors = !symbols.is_empty()
             && symbols.iter().all(|s| {
                 s.metadata
                     .as_ref()
@@ -928,7 +928,7 @@ impl HTMLExtractor {
         let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</\1>|>)"#)
             .unwrap();
 
-        for (_index, captures) in re.captures_iter(content).enumerate() {
+        for captures in re.captures_iter(content) {
             if let Some(tag_name_match) = captures.get(1) {
                 let tag_name = tag_name_match.as_str().to_string();
                 let attributes_text = captures.get(2).map(|m| m.as_str()).unwrap_or("");

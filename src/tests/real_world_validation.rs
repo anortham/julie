@@ -993,7 +993,7 @@ mod real_world_refactoring_tests {
 
             // Test dry run first
             let dry_run_tool = SmartRefactorTool {
-                operation: RefactorOperation::RenameSymbol,
+                operation: "rename_symbol".to_string(),
                 params: format!(
                     r#"{{"old_name": "{}", "new_name": "{}", "scope": "workspace"}}"#,
                     symbol, new_name
@@ -1013,7 +1013,7 @@ mod real_world_refactoring_tests {
 
                     // If dry run found references, test actual rename
                     let actual_tool = SmartRefactorTool {
-                        operation: RefactorOperation::RenameSymbol,
+                        operation: "rename_symbol".to_string(),
                         params: format!(
                             r#"{{"old_name": "{}", "new_name": "{}", "scope": "workspace"}}"#,
                             symbol, new_name

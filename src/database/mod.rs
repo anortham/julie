@@ -12,6 +12,7 @@
 use anyhow::{anyhow, Result};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
@@ -81,7 +82,7 @@ impl SymbolDatabase {
         self.conn.execute("PRAGMA foreign_keys = ON", [])?;
 
         // Set WAL mode for better concurrency (this returns results, so ignore them)
-        let _ = self
+        self
             .conn
             .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
 
@@ -283,6 +284,7 @@ impl SymbolDatabase {
 
     /// Create the embeddings table for vector mapping
     fn create_embeddings_table(&self) -> Result<()> {
+        // Metadata table: maps symbol_id to vector_id
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS embeddings (
                 symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
@@ -301,7 +303,24 @@ impl SymbolDatabase {
             [],
         )?;
 
-        debug!("Created embeddings table and indexes");
+        // Vector data table: stores actual f32 vector arrays as BLOBs
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS embedding_vectors (
+                vector_id TEXT PRIMARY KEY,
+                dimensions INTEGER NOT NULL,
+                vector_data BLOB NOT NULL,
+                model_name TEXT NOT NULL,
+                created_at INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_embedding_vectors_model ON embedding_vectors(model_name)",
+            [],
+        )?;
+
+        debug!("Created embeddings and embedding_vectors tables with indexes");
         Ok(())
     }
 
@@ -433,7 +452,7 @@ impl SymbolDatabase {
             .conn
             .prepare("SELECT hash FROM files WHERE path = ?1")?;
 
-        let result = stmt.query_row(params![file_path], |row| Ok(row.get::<_, String>(0)?));
+        let result = stmt.query_row(params![file_path], |row| row.get::<_, String>(0));
 
         match result {
             Ok(hash) => Ok(Some(hash)),
@@ -486,7 +505,7 @@ impl SymbolDatabase {
             let metadata_json = symbol
                 .metadata
                 .as_ref()
-                .map(|m| serde_json::to_string(m))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             tx.execute(
@@ -647,7 +666,7 @@ impl SymbolDatabase {
                 let metadata_json = symbol
                     .metadata
                     .as_ref()
-                    .map(|m| serde_json::to_string(m))
+                    .map(serde_json::to_string)
                     .transpose()?;
 
                 match stmt.execute(params![
@@ -792,7 +811,7 @@ impl SymbolDatabase {
             let metadata_json = rel
                 .metadata
                 .as_ref()
-                .map(|m| serde_json::to_string(m))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             tx.execute(
@@ -847,7 +866,7 @@ impl SymbolDatabase {
             let metadata_json = rel
                 .metadata
                 .as_ref()
-                .map(|m| serde_json::to_string(m))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             stmt.execute(params![
@@ -987,7 +1006,7 @@ impl SymbolDatabase {
             );
 
             let mut params = vec![format!("%{}%", pattern)];
-            params.extend(ws_ids.into_iter());
+            params.extend(ws_ids);
             (query, params)
         } else {
             // No workspace filter - search all
@@ -1148,7 +1167,7 @@ impl SymbolDatabase {
             .conn
             .prepare("SELECT DISTINCT language FROM files ORDER BY language")?;
 
-        let language_iter = stmt.query_map([], |row| Ok(row.get::<_, String>(0)?))?;
+        let language_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
         let mut languages = Vec::new();
         for lang_result in language_iter {
@@ -1289,6 +1308,267 @@ impl SymbolDatabase {
             symbols.len()
         );
         Ok(symbols)
+    }
+
+    /// Get all symbols matching an exact name (indexed lookup)
+    /// Used to replace in-memory Vec<Symbol> fallbacks with persistent SQLite queries
+    pub fn get_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, name, kind, language, file_path, signature,
+                   start_line, start_col, end_line, end_col, parent_id,
+                   metadata, semantic_group, confidence
+            FROM symbols
+            WHERE name = ?1
+            ORDER BY file_path, start_line
+        ",
+        )?;
+
+        let rows = stmt.query_map([name], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved {} symbols with name '{}' from database",
+            symbols.len(),
+            name
+        );
+        Ok(symbols)
+    }
+
+    /// Get all relationships from the database
+    /// Used to replace in-memory Vec<Relationship> fallbacks with persistent SQLite queries
+    pub fn get_all_relationships(&self) -> Result<Vec<Relationship>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
+            FROM relationships
+            ORDER BY from_symbol_id
+        ",
+        )?;
+
+        let rows = stmt.query_map([], |row| self.row_to_relationship(row))?;
+
+        let mut relationships = Vec::new();
+        for row_result in rows {
+            relationships.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved {} relationships from database",
+            relationships.len()
+        );
+        Ok(relationships)
+    }
+
+    // ==================== EMBEDDING PERSISTENCE METHODS ====================
+
+    /// Store embedding vector data as BLOB
+    pub fn store_embedding_vector(
+        &self,
+        vector_id: &str,
+        vector_data: &[f32],
+        dimensions: usize,
+        model_name: &str,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Serialize f32 vector to bytes using native endianness
+        let bytes: Vec<u8> = vector_data
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO embedding_vectors
+             (vector_id, dimensions, vector_data, model_name, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![vector_id, dimensions as i64, bytes, model_name, now],
+        )?;
+
+        debug!(
+            "Stored embedding vector: {} ({}D, {} bytes)",
+            vector_id,
+            dimensions,
+            bytes.len()
+        );
+        Ok(())
+    }
+
+    /// Retrieve embedding vector data from BLOB
+    pub fn get_embedding_vector(&self, vector_id: &str) -> Result<Option<Vec<f32>>> {
+        let result = self.conn.query_row(
+            "SELECT vector_data, dimensions FROM embedding_vectors WHERE vector_id = ?1",
+            params![vector_id],
+            |row| {
+                let bytes: Vec<u8> = row.get(0)?;
+                let dimensions: i64 = row.get(1)?;
+                Ok((bytes, dimensions))
+            },
+        );
+
+        match result {
+            Ok((bytes, dimensions)) => {
+                // Deserialize bytes back to f32 vector
+                if bytes.len() != (dimensions as usize * 4) {
+                    return Err(anyhow!(
+                        "Invalid vector data size: expected {} bytes, got {}",
+                        dimensions * 4,
+                        bytes.len()
+                    ));
+                }
+
+                let vector: Vec<f32> = bytes
+                    .chunks_exact(4)
+                    .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                    .collect();
+
+                Ok(Some(vector))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow!("Failed to retrieve embedding vector: {}", e)),
+        }
+    }
+
+    /// Store embedding metadata linking symbol to vector
+    pub fn store_embedding_metadata(
+        &self,
+        symbol_id: &str,
+        vector_id: &str,
+        model_name: &str,
+        embedding_hash: Option<&str>,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO embeddings
+             (symbol_id, vector_id, model_name, embedding_hash, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![symbol_id, vector_id, model_name, embedding_hash, now],
+        )?;
+
+        debug!(
+            "Stored embedding metadata: symbol={}, vector={}, model={}",
+            symbol_id, vector_id, model_name
+        );
+        Ok(())
+    }
+
+    /// Get embedding vector for a specific symbol
+    pub fn get_embedding_for_symbol(
+        &self,
+        symbol_id: &str,
+        model_name: &str,
+    ) -> Result<Option<Vec<f32>>> {
+        // First get the vector_id from embeddings metadata table
+        let vector_id_result = self.conn.query_row(
+            "SELECT vector_id FROM embeddings WHERE symbol_id = ?1 AND model_name = ?2",
+            params![symbol_id, model_name],
+            |row| row.get::<_, String>(0),
+        );
+
+        match vector_id_result {
+            Ok(vector_id) => {
+                // Then fetch the actual vector data
+                self.get_embedding_vector(&vector_id)
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow!("Failed to get embedding metadata: {}", e)),
+        }
+    }
+
+    /// Delete embedding vector and metadata
+    pub fn delete_embedding(&self, vector_id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM embedding_vectors WHERE vector_id = ?1", params![vector_id])?;
+
+        // Metadata will cascade delete automatically due to FK constraint
+        debug!("Deleted embedding vector: {}", vector_id);
+        Ok(())
+    }
+
+    /// Delete embeddings for a specific symbol
+    pub fn delete_embeddings_for_symbol(&self, symbol_id: &str) -> Result<()> {
+        // Get all vector_ids before deleting metadata
+        let mut stmt = self.conn.prepare(
+            "SELECT vector_id FROM embeddings WHERE symbol_id = ?1"
+        )?;
+        let vector_ids: Vec<String> = stmt
+            .query_map(params![symbol_id], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Delete metadata (cascades due to FK)
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE symbol_id = ?1",
+            params![symbol_id],
+        )?;
+
+        // Delete vector data
+        for vector_id in vector_ids {
+            self.conn.execute(
+                "DELETE FROM embedding_vectors WHERE vector_id = ?1",
+                params![vector_id],
+            )?;
+        }
+
+        debug!("Deleted embeddings for symbol: {}", symbol_id);
+        Ok(())
+    }
+
+    /// Load all embeddings for a specific model from disk into memory
+    pub fn load_all_embeddings(&self, model_name: &str) -> Result<HashMap<String, Vec<f32>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.symbol_id, ev.vector_data, ev.dimensions
+             FROM embeddings e
+             JOIN embedding_vectors ev ON e.vector_id = ev.vector_id
+             WHERE e.model_name = ?1"
+        )?;
+
+        let rows = stmt.query_map(params![model_name], |row| {
+            let symbol_id: String = row.get(0)?;
+            let bytes: Vec<u8> = row.get(1)?;
+            let dimensions: i64 = row.get(2)?;
+            Ok((symbol_id, bytes, dimensions))
+        })?;
+
+        let mut embeddings = HashMap::new();
+        let mut loaded_count = 0;
+
+        for row_result in rows {
+            let (symbol_id, bytes, dimensions) = row_result?;
+
+            // Deserialize bytes to f32 vector
+            if bytes.len() != (dimensions as usize * 4) {
+                warn!(
+                    "Skipping corrupted embedding for symbol {}: invalid size",
+                    symbol_id
+                );
+                continue;
+            }
+
+            let vector: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+
+            embeddings.insert(symbol_id, vector);
+            loaded_count += 1;
+        }
+
+        info!(
+            "Loaded {} embeddings for model '{}' from disk",
+            loaded_count, model_name
+        );
+        Ok(embeddings)
     }
 
     /// Get symbols for a specific workspace (optimized for background tasks)
@@ -1512,7 +1792,7 @@ impl SymbolDatabase {
              ORDER BY last_activity ASC",
         )?;
 
-        let workspace_iter = stmt.query_map([], |row| Ok(row.get::<_, String>("workspace_id")?))?;
+        let workspace_iter = stmt.query_map([], |row| row.get::<_, String>("workspace_id"))?;
 
         let mut workspaces = Vec::new();
         for workspace_result in workspace_iter {

@@ -3,11 +3,13 @@
 // This module provides semantic search capabilities using FastEmbed for easy model integration.
 // It enables cross-language understanding by generating meaning-based vector representations.
 
+use crate::database::SymbolDatabase;
 use crate::extractors::base::Symbol;
 use anyhow::Result;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub mod cross_language;
 pub mod vector_store;
@@ -18,6 +20,12 @@ pub struct CodeContext {
     pub parent_symbol: Option<Box<Symbol>>,
     pub surrounding_code: Option<String>,
     pub file_context: Option<String>,
+}
+
+impl Default for CodeContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodeContext {
@@ -43,13 +51,17 @@ pub struct EmbeddingEngine {
     model: TextEmbedding,
     model_name: String,
     dimensions: usize,
-    embeddings: HashMap<String, Vec<f32>>,
-    file_index: HashMap<String, HashSet<String>>,
+    /// Required database connection for persistence (no in-memory fallback)
+    db: Arc<Mutex<SymbolDatabase>>,
 }
 
 impl EmbeddingEngine {
-    /// Create a new embedding engine with the specified model
-    pub fn new(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
+    /// Create a new embedding engine with database persistence
+    pub fn new(
+        model_name: &str,
+        cache_dir: PathBuf,
+        db: Arc<Mutex<SymbolDatabase>>,
+    ) -> Result<Self> {
         let (model, dimensions) = match model_name {
             "bge-small" => {
                 let options =
@@ -64,12 +76,16 @@ impl EmbeddingEngine {
             }
         };
 
+        tracing::info!(
+            "🧠 EmbeddingEngine initialized with model {} (database-backed, no in-memory storage)",
+            model_name
+        );
+
         Ok(Self {
             model,
             model_name: model_name.to_string(),
             dimensions,
-            embeddings: HashMap::new(),
-            file_index: HashMap::new(),
+            db,
         })
     }
 
@@ -122,7 +138,7 @@ impl EmbeddingEngine {
                 // Map results back to (id, embedding) pairs
                 let results = symbol_ids
                     .into_iter()
-                    .zip(batch_embeddings.into_iter())
+                    .zip(batch_embeddings)
                     .collect();
                 Ok(results)
             }
@@ -151,23 +167,13 @@ impl EmbeddingEngine {
         }
     }
 
-    /// Update cached embeddings for all symbols in a file. Existing entries for the file are replaced.
-    pub fn upsert_file_embeddings(&mut self, file_path: &str, symbols: &[Symbol]) -> Result<()> {
-        // Remove any previously cached embeddings for this file
-        if let Some(existing_ids) = self.file_index.remove(file_path) {
-            for symbol_id in existing_ids {
-                self.embeddings.remove(&symbol_id);
-            }
-        }
-
+    /// Update embeddings for all symbols in a file (database-only, no in-memory cache)
+    pub async fn upsert_file_embeddings(&mut self, file_path: &str, symbols: &[Symbol]) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
 
-        let mut new_ids = HashSet::new();
-
-        // PERFORMANCE OPTIMIZATION: Use batching instead of individual embeddings
-        // Collect all embedding texts in one batch for efficient ML inference
+        // PERFORMANCE OPTIMIZATION: Use batching for efficient ML inference
         let mut batch_texts = Vec::new();
         let mut symbol_contexts = Vec::new();
 
@@ -181,12 +187,33 @@ impl EmbeddingEngine {
         // Generate embeddings for all symbols in one batch call
         match self.model.embed(batch_texts, None) {
             Ok(batch_embeddings) => {
-                // Map results back to individual symbols
+                let db_guard = self.db.lock().await;
+
+                // Persist all embeddings directly to database
                 for (embedding, (symbol, _context)) in
                     batch_embeddings.into_iter().zip(symbol_contexts.iter())
                 {
-                    new_ids.insert(symbol.id.clone());
-                    self.embeddings.insert(symbol.id.clone(), embedding);
+                    let vector_id = &symbol.id;
+
+                    // Store the vector data
+                    if let Err(e) = db_guard.store_embedding_vector(
+                        vector_id,
+                        &embedding,
+                        self.dimensions,
+                        &self.model_name,
+                    ) {
+                        tracing::warn!("Failed to persist vector for {}: {}", symbol.id, e);
+                    }
+
+                    // Store the metadata linking symbol to vector
+                    if let Err(e) = db_guard.store_embedding_metadata(
+                        &symbol.id,
+                        vector_id,
+                        &self.model_name,
+                        None,  // embedding_hash not computed yet
+                    ) {
+                        tracing::warn!("Failed to persist embedding metadata for {}: {}", symbol.id, e);
+                    }
                 }
             }
             Err(e) => {
@@ -201,8 +228,26 @@ impl EmbeddingEngine {
                     let context = CodeContext::from_symbol(symbol);
                     match self.embed_symbol(symbol, &context) {
                         Ok(embedding) => {
-                            new_ids.insert(symbol.id.clone());
-                            self.embeddings.insert(symbol.id.clone(), embedding);
+                            let db_guard = self.db.lock().await;
+                            let vector_id = &symbol.id;
+
+                            if let Err(e) = db_guard.store_embedding_vector(
+                                vector_id,
+                                &embedding,
+                                self.dimensions,
+                                &self.model_name,
+                            ) {
+                                tracing::warn!("Failed to persist vector for {}: {}", symbol.id, e);
+                            }
+
+                            if let Err(e) = db_guard.store_embedding_metadata(
+                                &symbol.id,
+                                vector_id,
+                                &self.model_name,
+                                None,  // embedding_hash not computed yet
+                            ) {
+                                tracing::warn!("Failed to persist embedding metadata for {}: {}", symbol.id, e);
+                            }
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -217,27 +262,32 @@ impl EmbeddingEngine {
             }
         }
 
-        if !new_ids.is_empty() {
-            self.file_index.insert(file_path.to_string(), new_ids);
-        }
-
         Ok(())
     }
 
-    /// Remove cached embeddings associated with a file path
-    pub fn remove_embeddings_for_file(&mut self, file_path: &str) -> Result<()> {
-        if let Some(symbol_ids) = self.file_index.remove(file_path) {
-            for symbol_id in symbol_ids {
-                self.embeddings.remove(&symbol_id);
+    /// Remove embeddings for symbols in a file (database-only)
+    /// Note: Requires symbol IDs to be provided since we don't track file->symbol mapping in memory
+    pub async fn remove_embeddings_for_symbols(&mut self, symbol_ids: &[String]) -> Result<()> {
+        if symbol_ids.is_empty() {
+            return Ok(());
+        }
+
+        let db_guard = self.db.lock().await;
+
+        for symbol_id in symbol_ids {
+            if let Err(e) = db_guard.delete_embeddings_for_symbol(symbol_id) {
+                tracing::warn!("Failed to delete embeddings for {}: {}", symbol_id, e);
             }
-            tracing::debug!("Removed cached embeddings for {}", file_path);
         }
+
+        tracing::debug!("Removed embeddings for {} symbols", symbol_ids.len());
         Ok(())
     }
 
-    /// Retrieve a cached embedding vector if it exists
-    pub fn get_embedding(&self, symbol_id: &str) -> Option<&Vec<f32>> {
-        self.embeddings.get(symbol_id)
+    /// Retrieve an embedding vector from the database
+    pub async fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
+        let db_guard = self.db.lock().await;
+        db_guard.get_embedding_for_symbol(symbol_id, &self.model_name)
     }
 
     pub fn build_embedding_text(&self, symbol: &Symbol, context: &CodeContext) -> String {
@@ -300,7 +350,18 @@ pub struct SimilarityResult {
 mod tests {
     use super::*;
     use crate::extractors::base::*;
+    use crate::database::SymbolDatabase;
     use tempfile::TempDir;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // Helper: Create a test database for embedding tests
+    fn create_test_db() -> Arc<Mutex<SymbolDatabase>> {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        Arc::new(Mutex::new(db))
+    }
 
     #[cfg_attr(
         not(feature = "network_models"),
@@ -310,9 +371,10 @@ mod tests {
     async fn test_embedding_engine_creation() {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
+        let db = create_test_db();
 
         // Test creating with different models
-        let engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        let engine = EmbeddingEngine::new("bge-small", cache_dir, db).unwrap();
         assert_eq!(engine.dimensions(), 384);
         assert_eq!(engine.model_name(), "bge-small");
     }
@@ -325,8 +387,9 @@ mod tests {
     async fn test_symbol_embedding_generation() {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
+        let db = create_test_db();
 
-        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).unwrap();
 
         // Create a test symbol
         let symbol = Symbol {
@@ -370,8 +433,9 @@ mod tests {
     async fn test_text_embedding_generation() {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
+        let db = create_test_db();
 
-        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).unwrap();
 
         let embedding1 = engine.embed_text("function getUserData").unwrap();
         let embedding2 = engine.embed_text("function getUserData").unwrap();
@@ -395,8 +459,9 @@ mod tests {
     async fn test_cross_language_similarity() {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
+        let db = create_test_db();
 
-        let mut engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).unwrap();
 
         // Test similar concepts in different languages
         let ts_embedding = engine
@@ -485,8 +550,9 @@ mod tests {
     fn test_build_embedding_text() {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
+        let db = create_test_db();
 
-        let engine = EmbeddingEngine::new("bge-small", cache_dir).unwrap();
+        let engine = EmbeddingEngine::new("bge-small", cache_dir, db).unwrap();
 
         let symbol = Symbol {
             id: "test".to_string(),

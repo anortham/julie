@@ -819,7 +819,7 @@ impl SwiftExtractor {
             .find(|c| c.kind() == "protocol_property_requirements");
         let accessors = protocol_requirements
             .map(|req| format!(" {}", self.base.get_node_text(&req)))
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(String::new);
 
         let mut signature = if is_static {
             format!("static var {}", name)
@@ -1045,7 +1045,7 @@ impl SwiftExtractor {
             children
                 .get(equal_index + 1)
                 .map(|type_node| self.base.get_node_text(type_node))
-                .unwrap_or_else(|| String::new())
+                .unwrap_or_else(String::new)
         } else {
             String::new()
         };

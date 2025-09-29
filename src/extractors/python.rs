@@ -753,6 +753,7 @@ impl PythonExtractor {
         (SymbolKind::Function, None)
     }
 
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     fn find_type_annotation<'a>(&self, node: &Node<'a>) -> Option<Node<'a>> {
         // Look for type annotation in assignment node children
         let mut cursor = node.walk();

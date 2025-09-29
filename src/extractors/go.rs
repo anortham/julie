@@ -188,7 +188,7 @@ impl GoExtractor {
     /// Check if identifier is public (Go visibility rules)
     fn is_public(&self, name: &str) -> bool {
         // In Go, identifiers starting with uppercase are public
-        name.chars().next().map_or(false, |c| c.is_uppercase())
+        name.chars().next().is_some_and(|c| c.is_uppercase())
     }
 
     /// Get node text (helper method)
@@ -386,7 +386,7 @@ impl GoExtractor {
                     let mut signature = format!("type {}{} interface", name, type_params);
 
                     // Extract interface body content for union types and methods
-                    let interface_body = (&*self).extract_interface_body(type_node);
+                    let interface_body = self.extract_interface_body(type_node);
                     if !interface_body.is_empty() {
                         signature += &format!(" {{ {} }}", interface_body);
                     }
@@ -909,7 +909,7 @@ impl GoExtractor {
                 import_path
                     .trim_matches('"')
                     .split('/')
-                    .last()
+                    .next_back()
                     .unwrap_or("unknown")
                     .to_string()
             };

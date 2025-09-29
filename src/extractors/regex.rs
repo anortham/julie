@@ -599,7 +599,7 @@ impl RegexExtractor {
 
     fn is_valid_regex_pattern(&self, text: &str) -> bool {
         // Skip very short patterns or obvious non-regex content
-        if text.len() < 1 {
+        if text.is_empty() {
             return false;
         }
 

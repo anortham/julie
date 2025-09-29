@@ -24,6 +24,9 @@ mod test_parser_pool;
 #[cfg(test)]
 mod test_async_extraction;
 
+#[cfg(test)]
+mod debug_test;
+
 // Re-export common types
 pub use extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 pub use tracing::{

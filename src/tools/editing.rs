@@ -4,10 +4,14 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::handler::JulieServerHandler;
+use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
 fn default_true() -> bool {
     true
@@ -85,9 +89,7 @@ impl FastEditTool {
             }
             Some(unknown_mode) => {
                 let message = format!("❌ Unknown mode: '{}'\n💡 Use 'search_and_replace' or omit for single file mode", unknown_mode);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
             }
         }
     }
@@ -98,16 +100,12 @@ impl FastEditTool {
         if self.find_text.is_empty() {
             let message =
                 "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if self.find_text == self.replace_text {
             let message = "❌ find_text and replace_text are identical\n💡 No changes needed";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         // Check if file exists
@@ -116,9 +114,7 @@ impl FastEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Read current file content
@@ -126,9 +122,7 @@ impl FastEditTool {
             Ok(content) => content,
             Err(e) => {
                 let message = format!("❌ Failed to read file: {}\n💡 Check file permissions", e);
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -139,9 +133,7 @@ impl FastEditTool {
                 💡 Check the exact text to find (case sensitive)",
                 self.find_text
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Use diff-match-patch-rs for professional-grade editing
@@ -158,9 +150,7 @@ impl FastEditTool {
                     "❌ Failed to generate diff: {:?}\n💡 Check file content and encoding",
                     e
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -172,9 +162,7 @@ impl FastEditTool {
                     "❌ Failed to create patches: {:?}\n💡 File might be corrupted or binary",
                     e
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -189,9 +177,7 @@ impl FastEditTool {
                     "❌ Failed to apply patches: {:?}\n💡 File state might be inconsistent",
                     e
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -202,9 +188,7 @@ impl FastEditTool {
                 "⚠️ Some patches failed to apply ({} failed out of {})\n💡 File might have been modified during edit",
                 failed_count, patch_results.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         if self.dry_run {
@@ -217,9 +201,7 @@ impl FastEditTool {
                 patch_text,
                 patch_results.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Basic validation (syntax check would go here)
@@ -231,41 +213,43 @@ impl FastEditTool {
                     💡 Changes would break the code structure",
                     validation_error
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         }
 
-        // Apply changes
-        match fs::write(&self.file_path, &modified_content) {
-            Ok(_) => {
-                let replacements = original_content.matches(&self.find_text).count();
-                let message = format!(
-                    "✅ Fast edit successful using Google's diff-match-patch!\n\
-                    📁 File: {}\n\
-                    🎯 Applied {} patches successfully\n\
-                    📊 Found and replaced {} occurrence(s)\n\
-                    🔍 Changes:\n{}\n\n\
-                    🎯 Next actions:\n\
-                    • Run tests to verify changes\n\
-                    • Use fast_refs to check impact\n\
-                    • Use fast_search to find related code\n\
-                    💡 Tip: Use git to track changes and revert if needed",
-                    self.file_path,
-                    patch_results.len(),
-                    replacements,
-                    patch_text
-                );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+        // Apply changes with transactional safety
+        match EditingTransaction::begin(&self.file_path) {
+            Ok(transaction) => {
+                match transaction.commit(&modified_content) {
+                    Ok(_) => {
+                        let replacements = original_content.matches(&self.find_text).count();
+                        let message = format!(
+                            "✅ Fast edit successful using Google's diff-match-patch + transactional safety!\n\
+                            📁 File: {}\n\
+                            🎯 Applied {} patches successfully\n\
+                            📊 Found and replaced {} occurrence(s)\n\
+                            🔍 Changes:\n{}\n\n\
+                            🎯 Next actions:\n\
+                            • Run tests to verify changes\n\
+                            • Use fast_refs to check impact\n\
+                            • Use fast_search to find related code\n\
+                            💡 Tip: Use git to track changes and revert if needed",
+                            self.file_path,
+                            patch_results.len(),
+                            replacements,
+                            patch_text
+                        );
+                        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+                    }
+                    Err(e) => {
+                        let message = format!("❌ Failed to commit file changes: {}\n💡 Original file preserved via transaction rollback", e);
+                        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+                    }
+                }
             }
             Err(e) => {
-                let message = format!("❌ Failed to write file: {}\n💡 Check file permissions", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+                let message = format!("❌ Failed to start transaction: {}\n💡 Check file permissions", e);
+                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
             }
         }
     }
@@ -278,24 +262,18 @@ impl FastEditTool {
         // Validate search_and_replace mode inputs
         if !self.file_path.is_empty() {
             let message = "❌ file_path must be empty for search_and_replace mode\n💡 Use file_pattern and language filters instead";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if self.find_text.is_empty() {
             let message =
                 "❌ find_text cannot be empty\n💡 Specify the exact text to find and replace";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if self.find_text == self.replace_text {
             let message = "❌ find_text and replace_text are identical\n💡 No changes needed";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         // Step 1: Delegate to fast_search to find matching files
@@ -328,9 +306,7 @@ impl FastEditTool {
                  💡 Try broader search criteria",
                 self.find_text, self.language, self.file_pattern
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Step 2: Apply fast_edit logic to each file
@@ -369,9 +345,7 @@ impl FastEditTool {
         };
 
         let combined_result = format!("{}\n\n📋 File Details:\n{}", summary, results.join("\n"));
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            combined_result,
-        )]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&combined_result))]))
     }
 
     /// Extract file paths from CallToolResult (proper parsing instead of Debug format)
@@ -597,16 +571,21 @@ impl FastEditTool {
             }
         }
 
-        // Write modified content
-        match fs::write(file_path, &modified_content) {
-            Ok(_) => {
-                let replacements = original_content.matches(&self.find_text).count();
-                Ok(Some(format!(
-                    "✅ {} - replaced {} occurrence(s)",
-                    file_path, replacements
-                )))
+        // Apply changes with transactional safety
+        match EditingTransaction::begin(file_path) {
+            Ok(transaction) => {
+                match transaction.commit(&modified_content) {
+                    Ok(_) => {
+                        let replacements = original_content.matches(&self.find_text).count();
+                        Ok(Some(format!(
+                            "✅ {} - replaced {} occurrence(s) (transactional)",
+                            file_path, replacements
+                        )))
+                    }
+                    Err(_) => Ok(Some(format!("❌ {} - transaction failed (original preserved)", file_path))),
+                }
             }
-            Err(_) => Ok(Some(format!("❌ {} - write failed", file_path))),
+            Err(_) => Ok(Some(format!("❌ {} - transaction setup failed", file_path))),
         }
     }
 
@@ -640,6 +619,282 @@ impl FastEditTool {
         }
 
         Ok(())
+    }
+
+    /// Apply token optimization to FastEditTool responses to prevent context overflow
+    pub fn optimize_response(&self, message: &str) -> String {
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 15000; // 15K token limit for simple editing tools
+
+        let message_tokens = token_estimator.estimate_string(message);
+
+        if message_tokens <= token_limit {
+            // No optimization needed
+            return message.to_string();
+        }
+
+        // Split message into lines for progressive reduction
+        let lines: Vec<String> = message.lines().map(|s| s.to_string()).collect();
+
+        // Apply progressive reduction to stay within token limits
+        let progressive_reducer = ProgressiveReducer::new();
+        let line_refs: Vec<&String> = lines.iter().collect();
+
+        let estimate_lines_tokens = |line_refs: &[&String]| -> usize {
+            let content = line_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
+            token_estimator.estimate_string(&content)
+        };
+
+        let reduced_lines = progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
+
+        let reduced_count = reduced_lines.len();
+        let mut optimized_message = reduced_lines.into_iter().cloned().collect::<Vec<_>>().join("\n");
+
+        if reduced_count < lines.len() {
+            optimized_message.push_str("\n\n⚠️  Response truncated to stay within token limits");
+            optimized_message.push_str("\n💡 Use more specific parameters for focused results");
+        }
+
+        optimized_message
+    }
+}
+
+//******************************************//
+//     Transactional Editing System        //
+//******************************************//
+
+/// Memory-based single-file transaction system
+///
+/// Provides atomic file operations without creating persistent backup files.
+/// Uses temp file + rename pattern for guaranteed atomicity.
+pub struct EditingTransaction {
+    file_path: PathBuf,
+    original_content: Option<String>,
+    temp_file_path: Option<PathBuf>,
+}
+
+impl EditingTransaction {
+    /// Begin a new transaction for a file
+    pub fn begin(file_path: &str) -> Result<Self> {
+        let file_path = PathBuf::from(file_path);
+
+        // Read original content if file exists
+        let original_content = if file_path.exists() {
+            Some(fs::read_to_string(&file_path)?)
+        } else {
+            None
+        };
+
+        debug!("Started transaction for: {}", file_path.display());
+
+        Ok(EditingTransaction {
+            file_path,
+            original_content,
+            temp_file_path: None,
+        })
+    }
+
+    /// Commit new content to the file atomically
+    pub fn commit(mut self, content: &str) -> Result<()> {
+        // Generate unique temp file name
+        let temp_name = format!("{}.tmp.{}",
+            self.file_path.display(),
+            Uuid::new_v4().simple());
+        let temp_path = self.file_path.with_file_name(temp_name);
+
+        // Write to temp file first
+        fs::write(&temp_path, content)?;
+        self.temp_file_path = Some(temp_path.clone());
+
+        // Atomic rename (this is the commit point)
+        fs::rename(&temp_path, &self.file_path)?;
+
+        debug!("Transaction committed for: {}", self.file_path.display());
+        Ok(())
+    }
+
+    /// Rollback to original content
+    pub fn rollback(self) -> Result<()> {
+        match &self.original_content {
+            Some(content) => {
+                fs::write(&self.file_path, content)?;
+                debug!("Transaction rolled back for: {}", self.file_path.display());
+            }
+            None => {
+                // File didn't exist originally, remove it
+                if self.file_path.exists() {
+                    fs::remove_file(&self.file_path)?;
+                    debug!("Transaction rolled back - removed file: {}", self.file_path.display());
+                }
+            }
+        }
+
+        // Clean up temp file if it exists
+        if let Some(temp_path) = &self.temp_file_path {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Emergency cleanup of orphaned temp files
+    pub fn emergency_cleanup(directory: &Path) -> Result<()> {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+
+            // Remove orphaned temp files
+            if name.contains(".tmp.") {
+                let path = entry.path();
+                if let Err(e) = fs::remove_file(&path) {
+                    warn!("Failed to clean up temp file {:?}: {}", path, e);
+                } else {
+                    debug!("Cleaned up orphaned temp file: {:?}", path);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for EditingTransaction {
+    fn drop(&mut self) {
+        // Clean up temp file on drop (if transaction wasn't committed)
+        if let Some(temp_path) = &self.temp_file_path {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+    }
+}
+
+/// Memory-based multi-file transaction system
+///
+/// Provides all-or-nothing semantics across multiple files.
+/// Either all files are updated successfully, or none are changed.
+pub struct MultiFileTransaction {
+    session_id: String,
+    files: HashMap<PathBuf, String>, // file_path -> original_content
+    pending_content: HashMap<PathBuf, String>, // file_path -> new_content
+    temp_files: Vec<PathBuf>,
+}
+
+impl MultiFileTransaction {
+    /// Create a new multi-file transaction
+    pub fn new(session_id: &str) -> Result<Self> {
+        debug!("Started multi-file transaction: {}", session_id);
+
+        Ok(MultiFileTransaction {
+            session_id: session_id.to_string(),
+            files: HashMap::new(),
+            pending_content: HashMap::new(),
+            temp_files: Vec::new(),
+        })
+    }
+
+    /// Add a file to the transaction
+    pub fn add_file(&mut self, file_path: &str) -> Result<()> {
+        let path = PathBuf::from(file_path);
+
+        // Read original content if file exists
+        let original_content = if path.exists() {
+            fs::read_to_string(&path)?
+        } else {
+            String::new()
+        };
+
+        self.files.insert(path.clone(), original_content);
+        debug!("Added file to transaction: {}", path.display());
+
+        Ok(())
+    }
+
+    /// Set new content for a file in the transaction
+    pub fn set_content(&mut self, file_path: &str, content: &str) -> Result<()> {
+        let path = PathBuf::from(file_path);
+
+        if !self.files.contains_key(&path) {
+            return Err(anyhow::anyhow!("File not added to transaction: {}", file_path));
+        }
+
+        self.pending_content.insert(path, content.to_string());
+        Ok(())
+    }
+
+    /// Commit all changes atomically
+    pub fn commit_all(mut self) -> Result<()> {
+        // Phase 0: Pre-flight validation - check if we can write to all target files
+        for file_path in self.pending_content.keys() {
+            if file_path.exists() {
+                // Check if file is readonly by trying to get metadata and permissions
+                let metadata = fs::metadata(file_path)?;
+                let permissions = metadata.permissions();
+                if permissions.readonly() {
+                    return Err(anyhow::anyhow!("Cannot write to readonly file: {}", file_path.display()));
+                }
+            }
+        }
+
+        // Phase 1: Write all content to temp files
+        for (file_path, content) in &self.pending_content {
+            let temp_name = format!("{}.tmp.{}",
+                file_path.display(),
+                self.session_id);
+            let temp_path = file_path.with_file_name(temp_name);
+
+            fs::write(&temp_path, content)?;
+            self.temp_files.push(temp_path);
+        }
+
+        // Phase 2: Atomic rename all temp files (commit point)
+        for (i, (file_path, _)) in self.pending_content.iter().enumerate() {
+            let temp_path = &self.temp_files[i];
+
+            if let Err(e) = fs::rename(temp_path, file_path) {
+                // If any rename fails, roll back all previous renames
+                self.rollback_partial_commit(i)?;
+                return Err(e.into());
+            }
+        }
+
+        debug!("Multi-file transaction committed: {} files", self.pending_content.len());
+        Ok(())
+    }
+
+    /// Rollback partial commit (used internally)
+    fn rollback_partial_commit(&self, committed_count: usize) -> Result<()> {
+        // Restore files that were successfully renamed
+        for (i, (file_path, _)) in self.pending_content.iter().enumerate() {
+            if i < committed_count {
+                let original_content = &self.files[file_path];
+                if let Err(e) = fs::write(file_path, original_content) {
+                    warn!("Failed to restore file during rollback: {:?}: {}", file_path, e);
+                }
+            }
+        }
+
+        // Clean up remaining temp files
+        for (i, temp_path) in self.temp_files.iter().enumerate() {
+            if i >= committed_count && temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for MultiFileTransaction {
+    fn drop(&mut self) {
+        // Clean up any remaining temp files
+        for temp_path in &self.temp_files {
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
     }
 }
 
@@ -702,9 +957,7 @@ impl LineEditTool {
             "replace" => self.replace_lines().await,
             _ => {
                 let message = format!("❌ Invalid operation: '{}'\n💡 Valid operations: count, read, insert, delete, replace", self.operation);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
             }
         }
     }
@@ -715,9 +968,7 @@ impl LineEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         let content = fs::read_to_string(&self.file_path)?;
@@ -728,9 +979,7 @@ impl LineEditTool {
         };
 
         let message = format!("📏 Line count for {}: {} lines", self.file_path, line_count);
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
-        )]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
     }
 
     async fn read_lines(&self) -> Result<CallToolResult> {
@@ -746,25 +995,19 @@ impl LineEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
             let message =
                 "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         let content = fs::read_to_string(&self.file_path)?;
@@ -776,9 +1019,7 @@ impl LineEditTool {
                 start_line,
                 lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Extract requested lines (convert to 0-based indexing)
@@ -798,9 +1039,7 @@ impl LineEditTool {
             result.push_str(&format!("{:4}: {}\n", start_idx + i + 1, line));
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            result,
-        )]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&result))]))
     }
 
     async fn insert_at_line(&self) -> Result<CallToolResult> {
@@ -817,17 +1056,13 @@ impl LineEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Validate line number (1-based)
         if line_number == 0 {
             let message = "❌ Line number must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
@@ -839,9 +1074,7 @@ impl LineEditTool {
                 "❌ line_number {} exceeds file length {} + 1\n💡 Use line number between 1 and {}",
                 line_number, lines.len(), lines.len() + 1
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Handle indentation preservation
@@ -904,25 +1137,19 @@ impl LineEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
             let message =
                 "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
@@ -934,9 +1161,7 @@ impl LineEditTool {
                 start_line,
                 lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Calculate actual range to delete (convert to 0-based indexing)
@@ -985,25 +1210,19 @@ impl LineEditTool {
                 "❌ File not found: {}\n💡 Check the file path",
                 self.file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Validate line numbers (1-based)
         if start_line == 0 || end_line == 0 {
             let message =
                 "❌ Line numbers must be >= 1 (1-based indexing)\n💡 Use line_number >= 1";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         if start_line > end_line {
             let message = "❌ start_line must be <= end_line\n💡 Check line range";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         let original_content = fs::read_to_string(&self.file_path)?;
@@ -1015,9 +1234,7 @@ impl LineEditTool {
                 start_line,
                 lines.len()
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Calculate actual range to replace (convert to 0-based indexing)
@@ -1102,9 +1319,7 @@ impl LineEditTool {
     ) -> Result<CallToolResult> {
         if original_content == modified_content {
             let message = "ℹ️ No changes needed - content would be identical";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]));
         }
 
         // Use diff-match-patch-rs for consistent line editing
@@ -1116,9 +1331,7 @@ impl LineEditTool {
                     "❌ Failed to generate diff: {:?}\n💡 Check file content and encoding",
                     e
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -1129,9 +1342,7 @@ impl LineEditTool {
                     "❌ Failed to create patches: {:?}\n💡 File might be corrupted",
                     e
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
             }
         };
 
@@ -1144,35 +1355,75 @@ impl LineEditTool {
                 💡 Set dry_run=false to apply changes",
                 operation, self.file_path, patch_text
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
-        // Apply changes
-        match fs::write(&self.file_path, modified_content) {
-            Ok(_) => {
-                let message = format!(
-                    "✅ Line edit successful using Google's diff-match-patch!\n\
-                    📁 File: {}\n\
-                    📊 Operation: {}\n\
-                    🔍 Changes:\n{}\n\n\
-                    🎯 Next actions:\n\
-                    • Use read operation to verify changes\n\
-                    • Use fast_refs to check for any impacts\n\
-                    💡 Tip: Use git to track changes and revert if needed",
-                    self.file_path, operation, patch_text
-                );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+        // Apply changes with transactional safety
+        match EditingTransaction::begin(&self.file_path) {
+            Ok(transaction) => {
+                match transaction.commit(modified_content) {
+                    Ok(_) => {
+                        let message = format!(
+                            "✅ Line edit successful using Google's diff-match-patch with transactional safety!\n\
+                            📁 File: {}\n\
+                            📊 Operation: {}\n\
+                            🔍 Changes:\n{}\n\n\
+                            🛡️ Safety: Atomic operation completed successfully\n\n\
+                            🎯 Next actions:\n\
+                            • Use read operation to verify changes\n\
+                            • Use fast_refs to check for any impacts\n\
+                            💡 Tip: Use git to track changes and revert if needed",
+                            self.file_path, operation, patch_text
+                        );
+                        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+                    }
+                    Err(_) => {
+                        let message = "❌ Transaction failed - original file preserved!\n💡 File permissions or disk space may be an issue".to_string();
+                        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+                    }
+                }
             }
-            Err(e) => {
-                let message = format!("❌ Failed to write file: {}\n💡 Check file permissions", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+            Err(_) => {
+                let message = "❌ Transaction setup failed - file unchanged\n💡 Check file permissions and disk space".to_string();
+                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
             }
         }
+    }
+
+    /// Apply token optimization to LineEditTool responses to prevent context overflow
+    pub fn optimize_response(&self, message: &str) -> String {
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 15000; // 15K token limit for simple editing tools
+
+        let message_tokens = token_estimator.estimate_string(message);
+
+        if message_tokens <= token_limit {
+            // No optimization needed
+            return message.to_string();
+        }
+
+        // Split message into lines for progressive reduction
+        let lines: Vec<String> = message.lines().map(|s| s.to_string()).collect();
+
+        // Apply progressive reduction to stay within token limits
+        let progressive_reducer = ProgressiveReducer::new();
+        let line_refs: Vec<&String> = lines.iter().collect();
+
+        let estimate_lines_tokens = |line_refs: &[&String]| -> usize {
+            let content = line_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
+            token_estimator.estimate_string(&content)
+        };
+
+        let reduced_lines = progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
+
+        let reduced_count = reduced_lines.len();
+        let mut optimized_message = reduced_lines.into_iter().cloned().collect::<Vec<_>>().join("\n");
+
+        if reduced_count < lines.len() {
+            optimized_message.push_str("\n\n⚠️  Response truncated to stay within token limits");
+            optimized_message.push_str("\n💡 Use more specific parameters for focused results");
+        }
+
+        optimized_message
     }
 }

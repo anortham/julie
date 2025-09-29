@@ -15,7 +15,7 @@ mod registry;
 //******************//
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "command", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum WorkspaceCommand {
     /// Index primary workspace or current directory
     Index {
@@ -82,59 +82,105 @@ pub enum WorkspaceCommand {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Workspace management command to execute
+    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health", "set_ttl", "set_limit"
     ///
-    /// COMMON COMMANDS:
-    /// • Index: Enable fast search by indexing current directory (use force=true to rebuild)
-    /// • Add: Include additional workspace for cross-project search
-    /// • List: Show all registered workspaces with status
-    /// • Clean: Remove expired workspaces to optimize storage
-    /// • Stats: Display workspace statistics and health info
-    ///
-    /// ADVANCED COMMANDS:
-    /// • Remove: Delete specific workspace by ID
-    /// • SetTtl: Configure workspace expiration (days)
-    /// • SetLimit: Set storage limits (MB)
-    /// • Health: System health check with diagnostics
-    ///
-    /// Most common: Index (to enable search) and List (to see workspaces)
-    pub command: WorkspaceCommand,
+    /// EXAMPLES:
+    /// Index workspace:      {"operation": "index", "path": null, "force": false}
+    /// List workspaces:      {"operation": "list"}
+    /// Show stats:           {"operation": "stats", "workspace_id": null}
+    /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
+    /// Clean expired:        {"operation": "clean", "expired_only": true}
+    pub operation: String,
+
+    // Optional parameters used by various operations
+    /// Path to workspace (used by: index, add)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+
+    /// Force complete re-indexing (used by: index)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force: Option<bool>,
+
+    /// Display name for workspace (used by: add)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Workspace ID (used by: remove, refresh, stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+
+    /// Only clean expired workspaces (used by: clean)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expired_only: Option<bool>,
+
+    /// TTL in days (used by: set_ttl)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub days: Option<u32>,
+
+    /// Max size in MB (used by: set_limit)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_size_mb: Option<u64>,
+
+    /// Include detailed diagnostics (used by: health)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detailed: Option<bool>,
 }
 
 impl ManageWorkspaceTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        info!("🏗️ Managing workspace with command: {:?}", self.command);
+        info!("🏗️ Managing workspace with operation: {}", self.operation);
 
-        match &self.command {
-            WorkspaceCommand::Index { path, force } => {
-                self.handle_index_command(handler, path.clone(), *force)
-                    .await
+        match self.operation.as_str() {
+            "index" => {
+                self.handle_index_command(
+                    handler,
+                    self.path.clone(),
+                    self.force.unwrap_or(false),
+                )
+                .await
             }
-            WorkspaceCommand::Add { path, name } => {
-                self.handle_add_command(handler, path, name.clone()).await
+            "add" => {
+                let path = self.path.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("'path' parameter required for 'add' operation"))?;
+                self.handle_add_command(handler, path, self.name.clone()).await
             }
-            WorkspaceCommand::Remove { workspace_id } => {
+            "remove" => {
+                let workspace_id = self.workspace_id.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("'workspace_id' parameter required for 'remove' operation"))?;
                 self.handle_remove_command(handler, workspace_id).await
             }
-            WorkspaceCommand::List => self.handle_list_command(handler).await,
-            WorkspaceCommand::Clean { expired_only } => {
-                self.handle_clean_command(handler, *expired_only).await
+            "list" => self.handle_list_command(handler).await,
+            "clean" => {
+                self.handle_clean_command(handler, self.expired_only.unwrap_or(false))
+                    .await
             }
-            WorkspaceCommand::Refresh { workspace_id } => {
+            "refresh" => {
+                let workspace_id = self.workspace_id.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("'workspace_id' parameter required for 'refresh' operation"))?;
                 self.handle_refresh_command(handler, workspace_id).await
             }
-            WorkspaceCommand::Stats { workspace_id } => {
-                self.handle_stats_command(handler, workspace_id.clone())
+            "stats" => {
+                self.handle_stats_command(handler, self.workspace_id.clone())
                     .await
             }
-            WorkspaceCommand::SetTtl { days } => self.handle_set_ttl_command(handler, *days).await,
-            WorkspaceCommand::SetLimit { max_size_mb } => {
-                self.handle_set_limit_command(handler, *max_size_mb).await
+            "set_ttl" => {
+                let days = self.days
+                    .ok_or_else(|| anyhow::anyhow!("'days' parameter required for 'set_ttl' operation"))?;
+                self.handle_set_ttl_command(handler, days).await
             }
-            WorkspaceCommand::Health { detailed } => {
-                self.handle_health_command(handler, detailed.unwrap_or(false))
+            "set_limit" => {
+                let max_size_mb = self.max_size_mb
+                    .ok_or_else(|| anyhow::anyhow!("'max_size_mb' parameter required for 'set_limit' operation"))?;
+                self.handle_set_limit_command(handler, max_size_mb).await
+            }
+            "health" => {
+                self.handle_health_command(handler, self.detailed.unwrap_or(false))
                     .await
             }
+            _ => Err(anyhow::anyhow!(
+                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health, set_ttl, set_limit",
+                self.operation
+            )),
         }
     }
 }

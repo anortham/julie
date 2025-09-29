@@ -10,6 +10,8 @@ pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool
 pub mod line_edit_tests;
 pub mod refactoring_tests; // Smart refactoring tool tests
 pub mod smart_refactor_control_tests; // SOURCE/CONTROL tests for SmartRefactorTool
+pub mod transactional_editing_tests; // TDD tests for transactional editing safety (memory-based, no .backup files)
+pub mod transactional_integration_tests; // Integration tests for transactional safety in FastEditTool and LineEditTool
 
 #[cfg(test)]
 pub mod test_helpers {
@@ -175,3 +177,6 @@ pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into 
 pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
 pub mod watcher_tests;
 pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
+
+// HNSW Vector Store Tests (TDD for semantic search infrastructure)
+pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search

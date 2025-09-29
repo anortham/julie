@@ -4,7 +4,7 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace
@@ -24,9 +24,8 @@ impl ManageWorkspaceTool {
         // Clear existing state if force reindexing
         if force_reindex {
             info!("🔄 Force reindex requested - clearing existing state");
-            handler.symbols.write().await.clear();
-            handler.relationships.write().await.clear();
             *handler.is_indexed.write().await = false;
+            // Database will be cleared by initialize_workspace_with_force
         }
 
         // Only initialize workspace if not already loaded or if forcing reindex
@@ -48,7 +47,21 @@ impl ManageWorkspaceTool {
         if !force_reindex {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
-                let symbol_count = handler.symbols.read().await.len();
+                // Get symbol count from database (persistent storage)
+                let symbol_count = if let Ok(workspace) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            db_lock.get_all_symbols().unwrap_or_default().len()
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
                 let message = format!(
                     "✅ Workspace already indexed!\n\
                     📊 Found {} symbols\n\
@@ -81,6 +94,17 @@ impl ManageWorkspaceTool {
                     {
                         Ok(entry) => {
                             info!("✅ Registered primary workspace: {}", entry.id);
+
+                            // Update workspace statistics with actual counts
+                            let index_size = 0; // TODO: Calculate actual index size from Tantivy
+                            if let Err(e) = registry_service
+                                .update_workspace_statistics(&entry.id, file_count, index_size)
+                                .await
+                            {
+                                warn!("Failed to update workspace statistics: {}", e);
+                            } else {
+                                debug!("✅ Updated workspace statistics: {} files, {} symbols", file_count, symbol_count);
+                            }
                         }
                         Err(e) => {
                             debug!("Primary workspace registration: {}", e);

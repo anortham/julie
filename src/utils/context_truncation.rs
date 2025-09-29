@@ -5,6 +5,12 @@ pub struct ContextTruncator {
     // Placeholder - implement after tests
 }
 
+impl Default for ContextTruncator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContextTruncator {
     pub fn new() -> Self {
         Self {}

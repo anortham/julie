@@ -4,8 +4,18 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+// Static regexes compiled once for performance
+static TYPE_ANNOTATION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(\w+)\]").unwrap());
+static INTEGER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+$").unwrap());
+static FLOAT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+\.\d+$").unwrap());
+static BOOL_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\$(true|false)$").unwrap());
+static TYPE_BRACKET_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[.*\]$").unwrap());
+static FUNCTION_NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap());
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps:
 /// - Functions (simple and advanced with [CmdletBinding()])
@@ -778,20 +788,17 @@ impl PowerShellExtractor {
                 let mut type_name = "object".to_string();
 
                 // Extract type from PowerShell type annotations
-                if let Some(captures) = regex::Regex::new(r"\[(\w+)\]").unwrap().captures(signature)
+                if let Some(captures) = TYPE_ANNOTATION_RE.captures(signature)
                 {
                     type_name = captures.get(1).unwrap().as_str().to_lowercase();
                 } else if signature.contains("=") {
                     // Infer from value
                     let value = signature.split('=').nth(1).map_or("", |v| v.trim());
-                    if regex::Regex::new(r"^\d+$").unwrap().is_match(value) {
+                    if INTEGER_RE.is_match(value) {
                         type_name = "int".to_string();
-                    } else if regex::Regex::new(r"^\d+\.\d+$").unwrap().is_match(value) {
+                    } else if FLOAT_RE.is_match(value) {
                         type_name = "double".to_string();
-                    } else if regex::Regex::new(r"^\$(true|false)$")
-                        .unwrap()
-                        .is_match(value)
-                    {
+                    } else if BOOL_VAR_RE.is_match(value) {
                         type_name = "bool".to_string();
                     } else if value.starts_with('"') || value.starts_with("'") {
                         type_name = "string".to_string();
@@ -962,7 +969,7 @@ impl PowerShellExtractor {
                 attributes.push(attr_text);
             }
             // Check if it's a type (like [string], [switch])
-            else if regex::Regex::new(r"^\[.*\]$").unwrap().is_match(&attr_text) {
+            else if TYPE_BRACKET_RE.is_match(&attr_text) {
                 attributes.push(attr_text);
             }
         }
@@ -1075,38 +1082,23 @@ impl PowerShellExtractor {
 
     fn extract_inheritance(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r":\s*(\w+)")
+        regex::Regex::new(r":\s*(\w+)")
             .unwrap()
-            .captures(&node_text)
-        {
-            Some(captures.get(1).unwrap().as_str().to_string())
-        } else {
-            None
-        }
+            .captures(&node_text).map(|captures| captures.get(1).unwrap().as_str().to_string())
     }
 
     fn extract_return_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]")
+        regex::Regex::new(r"\[(\w+)\]")
             .unwrap()
-            .captures(&node_text)
-        {
-            Some(format!("[{}]", captures.get(1).unwrap().as_str()))
-        } else {
-            None
-        }
+            .captures(&node_text).map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
     }
 
     fn extract_property_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
-        if let Some(captures) = regex::Regex::new(r"\[(\w+)\]")
+        regex::Regex::new(r"\[(\w+)\]")
             .unwrap()
-            .captures(&node_text)
-        {
-            Some(format!("[{}]", captures.get(1).unwrap().as_str()))
-        } else {
-            None
-        }
+            .captures(&node_text).map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
     }
 
     // Variable classification methods
@@ -1240,9 +1232,7 @@ impl PowerShellExtractor {
                     let text = self.base.get_node_text(&child);
                     // Extract function name from text like "\nfunction Set-CustomProperty {"
                     if let Some(captures) =
-                        regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)")
-                            .unwrap()
-                            .captures(&text)
+                        FUNCTION_NAME_RE.captures(&text)
                     {
                         return Some(captures.get(1).unwrap().as_str().to_string());
                     }
@@ -1255,9 +1245,7 @@ impl PowerShellExtractor {
         while let Some(n) = current {
             if n.kind() == "ERROR" {
                 let text = self.base.get_node_text(&n);
-                if let Some(captures) = regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)")
-                    .unwrap()
-                    .captures(&text)
+                if let Some(captures) = FUNCTION_NAME_RE.captures(&text)
                 {
                     return Some(captures.get(1).unwrap().as_str().to_string());
                 }

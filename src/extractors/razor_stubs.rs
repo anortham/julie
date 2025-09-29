@@ -1,6 +1,20 @@
 // Stub implementations for remaining Razor extractor methods
 // Split from razor.rs to reduce file size and improve maintainability
 
+use regex::Regex;
+use std::sync::LazyLock;
+
+// Static regexes compiled once for performance
+static RAZOR_TYPE_PATTERN1: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:\[\w+.*?\]\s+)?(?:public|private|protected|internal|static)\s+(\w+(?:<[^>]+>)?(?:\?|\[\])?)\s+\w+").unwrap()
+});
+static RAZOR_TYPE_PATTERN2: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:public|private|protected|internal|static|async)\s+(\w+(?:<[^>]+>)?)\s+\w+\s*\(").unwrap()
+});
+static RAZOR_TYPE_PATTERN3: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(\w+(?:<[^>]+>)?(?:\?|\[\])?)\s+\w+\s*=").unwrap()
+});
+
 impl RazorExtractor {
     // Stub implementations for remaining methods
     pub fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
@@ -106,7 +120,7 @@ impl RazorExtractor {
         } else {
             signature_parts.push("void".to_string()); // Default return type for local functions
         }
-        signature_parts.push(format!("{}{}", name, parameters.as_ref().map(|s| s.clone()).unwrap_or_else(|| "()".to_string())));
+        signature_parts.push(format!("{}{}", name, parameters.clone().unwrap_or_else(|| "()".to_string())));
 
         Some(self.base.create_symbol(
             &node,
@@ -593,6 +607,7 @@ impl RazorExtractor {
     }
 
     // Helper methods
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     pub fn find_child_by_type<'a>(&self, node: Node<'a>, child_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -603,6 +618,7 @@ impl RazorExtractor {
         None
     }
 
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     pub fn find_child_by_types<'a>(&self, node: Node<'a>, child_types: &[&str]) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -630,11 +646,7 @@ impl RazorExtractor {
     }
 
     pub fn extract_method_parameters(&self, node: Node) -> Option<String> {
-        if let Some(param_list) = self.find_child_by_type(node, "parameter_list") {
-            Some(self.base.get_node_text(&param_list))
-        } else {
-            None
-        }
+        self.find_child_by_type(node, "parameter_list").map(|param_list| self.base.get_node_text(&param_list))
     }
 
     pub fn extract_return_type(&self, node: Node) -> Option<String> {
@@ -643,11 +655,7 @@ impl RazorExtractor {
             "nullable_type", "array_type"
         ];
 
-        if let Some(return_type) = self.find_child_by_types(node, &type_kinds) {
-            Some(self.base.get_node_text(&return_type))
-        } else {
-            None
-        }
+        self.find_child_by_types(node, &type_kinds).map(|return_type| self.base.get_node_text(&return_type))
     }
 
     pub fn extract_property_type(&self, node: Node) -> Option<String> {
@@ -754,7 +762,7 @@ impl RazorExtractor {
 
             // Find the using component (from symbols) - prefer the main page/component
             let from_symbol = symbols.iter().find(|s| s.kind == SymbolKind::Class)
-                .or_else(|| symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@page"))))
+                .or_else(|| symbols.iter().find(|s| s.signature.as_ref().is_some_and(|sig| sig.contains("@page"))))
                 .or_else(|| symbols.iter().find(|s| s.kind == SymbolKind::Module));
 
             if let Some(from_sym) = from_symbol {
@@ -813,7 +821,7 @@ impl RazorExtractor {
                     let tag_name = tag_match.as_str();
 
                     if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class)
-                        .or_else(|| symbols.iter().find(|s| s.signature.as_ref().map_or(false, |sig| sig.contains("@page")))) {
+                        .or_else(|| symbols.iter().find(|s| s.signature.as_ref().is_some_and(|sig| sig.contains("@page")))) {
 
                         // Find the component symbol (should exist now due to symbol extraction)
                         if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name) {
@@ -913,11 +921,10 @@ impl RazorExtractor {
                     inferred_type = return_type.to_string();
                 } else if let Some(signature) = &symbol.signature {
                     // Try to extract type from signature
-                    let type_patterns = [
-                        regex::Regex::new(r"(?:\[\w+.*?\]\s+)?(?:public|private|protected|internal|static)\s+(\w+(?:<[^>]+>)?(?:\?|\[\])?)\s+\w+").unwrap(),
-                        regex::Regex::new(r"(?:public|private|protected|internal|static|async)\s+(\w+(?:<[^>]+>)?)\s+\w+\s*\(").unwrap(),
-                        regex::Regex::new(r"(\w+(?:<[^>]+>)?(?:\?|\[\])?)\s+\w+\s*=").unwrap(),
-                        regex::Regex::new(&format!(r"\s+(\w+(?:<[^>]+>)?(?:\?|\[\])?)\s+{}\b", regex::escape(&symbol.name))).unwrap(),
+                    let type_patterns: Vec<&Regex> = vec![
+                        &*RAZOR_TYPE_PATTERN1,
+                        &*RAZOR_TYPE_PATTERN2,
+                        &*RAZOR_TYPE_PATTERN3,
                     ];
 
                     for pattern in &type_patterns {
@@ -935,8 +942,7 @@ impl RazorExtractor {
 
             // Handle special cases
             if metadata.as_ref().and_then(|m| m.get("isDataBinding"))
-                .and_then(|v| v.as_str())
-                .map_or(false, |v| v == "true") {
+                .and_then(|v| v.as_str()) == Some("true") {
                 inferred_type = "bool".to_string();
             }
 

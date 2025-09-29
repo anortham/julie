@@ -195,7 +195,7 @@ impl ExactMatchBoost {
                     // Split acronyms followed by words: uppercase followed by uppercase then lowercase
                     // Example: "XMLParser" -> split at 'L'|'P' because 'L' is upper, 'P' is upper, next is lower
                     (prev.is_uppercase() && char_is_upper &&
-                     next_char.map_or(false, |n| n.is_lowercase()) &&
+                     next_char.is_some_and(|n| n.is_lowercase()) &&
                      !current_word.is_empty())
                 } else {
                     false

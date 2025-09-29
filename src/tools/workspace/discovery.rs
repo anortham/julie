@@ -116,7 +116,7 @@ impl ManageWorkspaceTool {
 
         // If no extension, check if it's likely a text file by reading first few bytes
         if extension.is_empty() {
-            return Ok(self.is_likely_text_file(file_path)?);
+            return self.is_likely_text_file(file_path);
         }
 
         // Index any non-blacklisted file
@@ -167,7 +167,7 @@ impl ManageWorkspaceTool {
         // Check if most bytes are printable ASCII/UTF-8
         let printable_count = buffer[..bytes_read]
             .iter()
-            .filter(|&&b| b >= 32 && b <= 126 || b == 9 || b == 10 || b == 13 || b >= 128)
+            .filter(|&&b| (32..=126).contains(&b) || b == 9 || b == 10 || b == 13 || b >= 128)
             .count();
 
         let text_ratio = printable_count as f64 / bytes_read as f64;

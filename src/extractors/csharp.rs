@@ -139,7 +139,7 @@ impl CSharpExtractor {
             // Extract the last part of the namespace for the symbol name
             full_using_path
                 .split('.')
-                .last()
+                .next_back()
                 .unwrap_or(&full_using_path)
                 .to_string()
         };

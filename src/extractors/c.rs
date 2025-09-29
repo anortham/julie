@@ -926,13 +926,13 @@ impl CExtractor {
 
         // Check for ALIGN attribute - find the specific usage for this struct
         // Look for "typedef struct ALIGN(...) {" pattern followed by this identifier
-        let struct_pattern = format!("typedef struct ALIGN(");
+        let struct_pattern = "typedef struct ALIGN(".to_string();
         if let Some(struct_start) = context_text.find(&struct_pattern) {
             let align_start = struct_start + "typedef struct ".len();
             if let Some(align_end) = context_text[align_start..].find(')') {
                 let align_attr = &context_text[align_start..align_start + align_end + 1];
                 // Only add if this looks like the specific alignment for our struct
-                if context_text[align_start + align_end + 1..].contains(&identifier_name) {
+                if context_text[align_start + align_end + 1..].contains(identifier_name) {
                     attributes.push(align_attr.to_string());
                 }
             }

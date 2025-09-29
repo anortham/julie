@@ -17,3 +17,20 @@
 * we should be able to specify searching for text, file, directory, we also need to think about context in the results
 * I see that FindLogicTool is currently a placeholder with "coming soon" functionality.
 * maybe we need some semantic editing tools too, like cut method? cut type? something to think about for refactoring refactor_tool? extract method, interface, type? thoughts?
+* just got this error in a workspace I added julie too: ⏺ julie - fast_search (MCP)(query: "hooks behavioral checkpoint recall", mode: "text", limit: 20)
+  ⎿  ❌ Workspace not indexed yet!
+     💡 Run 'manage_workspace index' first to enable fast search. <- we are supposed to be auto indexing on startup, why isn't that working?
+* this is a poor experience: ⏺ julie - fast_search (MCP)(query: "recall function implementation", mode: "text", limit: 20)
+  ⎿  ❌ Workspace not indexed yet!
+     💡 Run 'manage_workspace index' first to enable fast search.
+
+✻ Thinking…
+
+  I need to index the workspace first to use Julie's fast search capabilities. Let me do that.
+
+⏺ julie - manage_workspace (MCP)(command: {"force":false})
+  ⎿  Error: Invalid tool parameters: missing field `command`
+
+✻ Thinking…
+
+  Let me read the files directly to understand the recall implementation.

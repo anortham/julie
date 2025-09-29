@@ -66,7 +66,7 @@ impl SearchEngine {
         results
     }
 
-    async fn exact_symbol_search(&self, query: &str) -> Result<Vec<SearchResult>> {
+    pub async fn exact_symbol_search(&self, query: &str) -> Result<Vec<SearchResult>> {
         let clean_query = query.trim_matches('"');
 
         let searcher = self.reader.searcher();

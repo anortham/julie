@@ -26,10 +26,12 @@ use crate::watcher::IncrementalIndexer;
 pub type SqliteDB = crate::database::SymbolDatabase;
 pub type TantivyIndex = crate::search::SearchEngine;
 pub type EmbeddingStore = crate::embeddings::EmbeddingEngine;
+pub type VectorIndex = crate::embeddings::vector_store::VectorStore;
+
 /// The main Julie workspace structure
 ///
 /// Manages all project-local data storage and provides a unified interface
-/// to the three-pillar architecture (SQLite + Tantivy + FastEmbed)
+/// to the four-pillar architecture (SQLite + Tantivy + FastEmbed + HNSW)
 pub struct JulieWorkspace {
     /// Project root directory where MCP was started
     pub root: PathBuf,
@@ -45,6 +47,9 @@ pub struct JulieWorkspace {
 
     /// Embedding store (semantic bridge)
     pub embeddings: Option<Arc<Mutex<EmbeddingStore>>>,
+
+    /// Vector store with HNSW index (fast similarity search)
+    pub vector_store: Option<Arc<RwLock<VectorIndex>>>,
 
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
@@ -83,6 +88,7 @@ impl Clone for JulieWorkspace {
             db: self.db.clone(),
             search: self.search.clone(),
             embeddings: self.embeddings.clone(),
+            vector_store: self.vector_store.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
             config: self.config.clone(),
         }
@@ -133,6 +139,7 @@ impl JulieWorkspace {
             db: None,
             search: None,
             embeddings: None,
+            vector_store: None,
             watcher: None,
             config,
         };
@@ -168,6 +175,7 @@ impl JulieWorkspace {
                     db: None,
                     search: None,
                     embeddings: None,
+                    vector_store: None,
                     watcher: None,
                     config,
                 };
@@ -211,6 +219,18 @@ impl JulieWorkspace {
             fs::create_dir_all(folder)
                 .map_err(|e| anyhow!("Failed to create directory {}: {}", folder.display(), e))?;
             debug!("Created directory: {}", folder.display());
+        }
+
+        // Create .gitignore to prevent accidental commits of Julie's data
+        let gitignore_path = julie_dir.join(".gitignore");
+        if !gitignore_path.exists() {
+            fs::write(
+                &gitignore_path,
+                "# Julie code intelligence data - do not commit to version control\n\
+                *\n\
+                !.gitignore\n"
+            )?;
+            debug!("Created .gitignore in .julie directory");
         }
 
         info!("Created complete .julie folder structure");
@@ -407,6 +427,11 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
+            .clone();
 
         let models_path = self.models_path();
         info!(
@@ -414,10 +439,72 @@ impl JulieWorkspace {
             models_path.display()
         );
 
-        let embedding_engine = EmbeddingStore::new("bge-small", models_path)?;
+        let embedding_engine = EmbeddingStore::new("bge-small", models_path, db)?;
         self.embeddings = Some(Arc::new(Mutex::new(embedding_engine)));
 
         info!("Embedding engine initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize HNSW vector store for fast semantic search
+    /// Loads existing embeddings from database and builds HNSW index for immediate use
+    pub fn initialize_vector_store(&mut self) -> Result<()> {
+        if self.vector_store.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        info!("🧠 Initializing HNSW vector store with database embeddings");
+
+        // Create empty vector store (384 dimensions for BGE-Small model)
+        let mut store = VectorIndex::new(384)?;
+
+        // Load embeddings from database if available
+        if let Some(db) = &self.db {
+            // Use blocking lock since this is a synchronous initialization function
+            match db.try_lock() {
+                Ok(db_lock) => {
+                    let model_name = "bge-small"; // Match the embedding model from config
+
+                    match db_lock.load_all_embeddings(model_name) {
+                        Ok(embeddings) => {
+                            let count = embeddings.len();
+                            info!("📥 Loading {} embeddings from database into vector store", count);
+
+                            // Store each embedding in the vector store
+                            for (symbol_id, vector) in embeddings {
+                                if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
+                                    warn!("Failed to store embedding for symbol {}: {}", symbol_id, e);
+                                }
+                            }
+
+                            info!("✅ Loaded {} embeddings into vector store", count);
+
+                            // Build HNSW index for fast similarity search
+                            info!("🏗️  Building HNSW index from {} embeddings...", count);
+                            match store.build_hnsw_index() {
+                                Ok(_) => {
+                                    info!("✅ HNSW index built successfully - semantic search ready!");
+                                }
+                                Err(e) => {
+                                    warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Could not load embeddings from database: {}. Starting with empty store.", e);
+                        }
+                    }
+                }
+                Err(_) => {
+                    warn!("Could not acquire database lock during initialization. Starting with empty store.");
+                }
+            }
+        } else {
+            warn!("Database not initialized. Vector store will start empty.");
+        }
+
+        self.vector_store = Some(Arc::new(RwLock::new(store)));
+        info!("✅ Vector store initialized and ready for semantic search");
         Ok(())
     }
 
@@ -465,6 +552,7 @@ impl JulieWorkspace {
         self.initialize_database()?;
         self.initialize_search_index()?;
         self.initialize_embeddings()?;
+        self.initialize_vector_store()?; // HNSW index for fast semantic search
 
         // Initialize file watcher last (requires other components)
         if self.config.incremental_updates {

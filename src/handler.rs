@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 use crate::embeddings::EmbeddingEngine;
-use crate::extractors::{Relationship, Symbol};
 use crate::search::SearchEngine;
 use crate::tools::JulieTools;
 use crate::workspace::JulieWorkspace;
@@ -25,10 +24,6 @@ use tokio::sync::RwLock;
 pub struct JulieServerHandler {
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
-    /// In-memory storage for indexed symbols (compatibility)
-    pub symbols: Arc<RwLock<Vec<Symbol>>>,
-    /// In-memory storage for symbol relationships (compatibility)
-    pub relationships: Arc<RwLock<Vec<Relationship>>>,
     /// Tantivy-based search engine for fast indexed search
     pub search_engine: Arc<RwLock<SearchEngine>>,
     /// Flag to track if workspace has been indexed
@@ -47,8 +42,6 @@ impl JulieServerHandler {
 
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
-            symbols: Arc::new(RwLock::new(Vec::new())),
-            relationships: Arc::new(RwLock::new(Vec::new())),
             search_engine: Arc::new(RwLock::new(SearchEngine::in_memory().unwrap())),  // Temporary until workspace overrides
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
@@ -67,13 +60,26 @@ impl JulieServerHandler {
 
         if embedding_guard.is_none() {
             debug!("🧠 Initializing cached embedding engine");
+
+            // Get database from workspace
+            let workspace_guard = self.workspace.read().await;
+            let workspace = workspace_guard
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
+
+            let db = workspace
+                .db
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
+                .clone();
+
             // Create model cache directory
             let cache_dir = std::env::temp_dir().join("julie_cache").join("embeddings");
             std::fs::create_dir_all(&cache_dir).map_err(|e| {
                 anyhow::anyhow!("Failed to create embedding cache directory: {}", e)
             })?;
 
-            let engine = EmbeddingEngine::new("bge-small", cache_dir)
+            let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
                 .map_err(|e| anyhow::anyhow!("Failed to initialize embedding engine: {}", e))?;
 
             *embedding_guard = Some(engine);
@@ -83,16 +89,18 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    /// Get the active Tantivy search engine - ALWAYS persistent, no fallbacks
-    pub async fn active_search_engine(&self) -> Arc<RwLock<SearchEngine>> {
+    /// Get the active Tantivy search engine - returns error if workspace not initialized
+    pub async fn active_search_engine(&self) -> Result<Arc<RwLock<SearchEngine>>> {
         if let Some(workspace) = self.workspace.read().await.as_ref() {
             if let Some(search) = &workspace.search {
-                return search.clone();
+                return Ok(search.clone());
             }
         }
 
-        // NO MORE FALLBACKS - this is an error condition
-        panic!("CRITICAL: No persistent SearchEngine available - workspace not properly initialized!");
+        // Return helpful error instead of panicking
+        Err(anyhow::anyhow!(
+            "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable search functionality."
+        ))
     }
 
     /// Initialize or load workspace and update components to use persistent storage
@@ -249,7 +257,7 @@ impl ServerHandler for JulieServerHandler {
         // Execute the requested tool
         let result = match &tool_params {
             JulieTools::ManageWorkspaceTool(tool) => {
-                info!("🏗️ Managing workspace: {:?}", tool.command);
+                info!("🏗️ Managing workspace: {}", tool.operation);
                 tool.call_tool(self).await
             }
             // Consolidated fast tools with appealing names
@@ -294,8 +302,7 @@ impl ServerHandler for JulieServerHandler {
             }
             Err(e) => {
                 error!("❌ Tool execution failed: {}", e);
-                Err(CallToolError::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(CallToolError::new(std::io::Error::other(
                     format!("Tool execution failed: {}", e),
                 )))
             }

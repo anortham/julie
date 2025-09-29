@@ -124,12 +124,13 @@ impl FastGotoTool {
 
         // For "all" workspaces, use the existing search engine approach
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
-        let search_engine = handler.active_search_engine().await;
-        let search_engine = search_engine.read().await;
         let mut exact_matches = Vec::new();
 
         // Use indexed search for exact matches - MUCH faster than linear scan!
-        match search_engine.search(&self.symbol).await {
+        match handler.active_search_engine().await {
+            Ok(search_engine) => {
+                let search_engine = search_engine.read().await;
+                match search_engine.search(&self.symbol).await {
             Ok(search_results) => {
                 // Use SearchResult's symbol directly - no O(n) linear lookup needed!
                 for search_result in search_results {
@@ -143,23 +144,54 @@ impl FastGotoTool {
                     exact_matches.len()
                 );
             }
+                Err(e) => {
+                    debug!("Search engine failed, falling back to SQLite database: {}", e);
+                    // Fallback to database search for exact name lookup (indexed, fast)
+                    if let Ok(workspace) = handler.get_workspace().await {
+                        if let Some(workspace) = workspace {
+                            if let Some(db) = workspace.db.as_ref() {
+                                let db_lock = db.lock().await;
+                                exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                            }
+                        }
+                    }
+                }
+            }
+            }
             Err(e) => {
-                debug!("Search engine failed, falling back to linear search: {}", e);
-                // Fallback to linear search only if indexed search fails
-                let symbols = handler.symbols.read().await;
-                exact_matches = symbols
-                    .iter()
-                    .filter(|symbol| symbol.name == self.symbol)
-                    .cloned()
-                    .collect();
+                debug!("Search engine unavailable, using SQLite database: {}", e);
+                // Fallback to database search for exact name lookup (indexed, fast)
+                if let Ok(workspace) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                        }
+                    }
+                }
             }
         }
 
-        let relationships = handler.relationships.read().await;
+        // Get relationships and symbols from database for navigation (persistent storage)
+        let (relationships, symbols) = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    let rels = db_lock.get_all_relationships().unwrap_or_default();
+                    let syms = db_lock.get_all_symbols().unwrap_or_default();
+                    (rels, syms)
+                } else {
+                    (Vec::new(), Vec::new())
+                }
+            } else {
+                (Vec::new(), Vec::new())
+            }
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         // Strategy 2: Use relationships to find actual definitions
         // Look for symbols that are referenced/imported with this name
-        let symbols = handler.symbols.read().await; // Get symbols for relationship lookup
         for relationship in relationships.iter() {
             if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id)
             {
@@ -197,6 +229,8 @@ impl FastGotoTool {
             );
 
             // Use indexed search for naming convention variants instead of O(n) linear scan
+            // TODO: Re-implement with proper search engine access
+            /*
             let variants = vec![
                 self.to_snake_case(&self.symbol),
                 self.to_camel_case(&self.symbol),
@@ -221,30 +255,52 @@ impl FastGotoTool {
                     }
                 }
             }
+            */
         }
 
-        // Strategy 4: Semantic matching if still no results
-        // TODO: DISABLED - This AI embedding computation on all 2458 symbols was causing UI hangs
-        // The expensive O(n) AI processing needs to be optimized or made optional
-        if false && exact_matches.is_empty() {
-            // Disabled for performance
-            debug!("🧠 Semantic matching temporarily disabled for performance");
+        // Strategy 4: HNSW-powered semantic matching (FAST!)
+        if exact_matches.is_empty() {
+            debug!("🧠 Using HNSW semantic search for: {}", self.symbol);
+
+            // Get embedding engine and vector store from workspace
             if let Ok(()) = handler.ensure_embedding_engine().await {
-                let mut embedding_guard = handler.embedding_engine.write().await;
-                if let Some(embedding_engine) = embedding_guard.as_mut() {
-                    if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
-                        let symbols = handler.symbols.read().await;
-                        for symbol in symbols.iter() {
-                            let symbol_text = format!("{} {:?}", symbol.name, symbol.kind);
-                            if let Ok(symbol_embedding) = embedding_engine.embed_text(&symbol_text)
-                            {
-                                let similarity = crate::embeddings::cosine_similarity(
-                                    &query_embedding,
-                                    &symbol_embedding,
-                                );
-                                if similarity > 0.7 {
-                                    // High similarity threshold for definitions
-                                    exact_matches.push(symbol.clone());
+                if let Ok(workspace_opt) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace_opt {
+                        // Get embedding for query
+                        let mut embedding_guard = handler.embedding_engine.write().await;
+                        if let Some(embedding_engine) = embedding_guard.as_mut() {
+                            if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+                                // Access vector store
+                                if let Some(vector_store_arc) = &workspace.vector_store {
+                                    let mut vector_store = vector_store_arc.write().await;
+
+                                    // Lazy load embeddings and build HNSW index if needed
+                                    if !vector_store.has_hnsw_index() {
+                                        debug!("Building HNSW index on first use...");
+                                        // TODO: Load embeddings from database here
+                                        // For now, skip semantic search if index not built
+                                        debug!("HNSW index not yet built - skipping semantic search");
+                                    } else {
+                                        // Use HNSW for fast similarity search!
+                                        match vector_store.search_similar_hnsw(&query_embedding, 10, 0.7) {
+                                            Ok(similar_symbols) => {
+                                                debug!("Found {} semantically similar symbols", similar_symbols.len());
+
+                                                // Get actual symbol data from database
+                                                if let Some(db_arc) = &workspace.db {
+                                                    let db = db_arc.lock().await;
+                                                    for result in similar_symbols {
+                                                        if let Ok(Some(symbol)) = db.get_symbol_by_id(&result.symbol_id) {
+                                                            exact_matches.push(symbol);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                debug!("HNSW search failed: {}", e);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -299,7 +355,7 @@ impl FastGotoTool {
 
         while let Some(ch) = chars.next() {
             if ch.is_uppercase() {
-                if !result.is_empty() && chars.peek().map_or(false, |c| c.is_lowercase()) {
+                if !result.is_empty() && chars.peek().is_some_and(|c| c.is_lowercase()) {
                     result.push('_');
                 }
                 result.push(ch.to_lowercase().next().unwrap());
@@ -580,16 +636,16 @@ impl FastGotoTool {
                         Some(_) => Ok(Some(vec![workspace_id.to_string()])),
                         None => {
                             // Invalid workspace ID
-                            return Err(anyhow::anyhow!(
+                            Err(anyhow::anyhow!(
                                 "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
                                 workspace_id
-                            ));
+                            ))
                         }
                     }
                 } else {
-                    return Err(anyhow::anyhow!(
+                    Err(anyhow::anyhow!(
                         "No primary workspace found. Initialize workspace first."
-                    ));
+                    ))
                 }
             }
         }
@@ -682,16 +738,30 @@ impl FastRefsTool {
             self.symbol
         );
 
-        // Get required data from handler
-        let relationships = handler.relationships.read().await;
+        // Get relationships from database (persistent storage)
+        let relationships = if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+                    db_lock.get_all_relationships().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
-        let search_engine = handler.active_search_engine().await;
-        let search_engine = search_engine.read().await;
         let mut definitions = Vec::new();
 
         // Use indexed search for exact matches - MUCH faster than linear scan!
-        match search_engine.search(&self.symbol).await {
+        match handler.active_search_engine().await {
+            Ok(search_engine) => {
+                let search_engine = search_engine.read().await;
+                match search_engine.search(&self.symbol).await {
             Ok(search_results) => {
                 // Use SearchResult's symbol directly - no O(n) linear lookup needed!
                 for search_result in search_results {
@@ -705,19 +775,37 @@ impl FastRefsTool {
                     definitions.len()
                 );
             }
+                Err(e) => {
+                    debug!("Search engine failed, falling back to SQLite database: {}", e);
+                    // Fallback to database search for exact name lookup (indexed, fast)
+                    if let Ok(workspace) = handler.get_workspace().await {
+                        if let Some(workspace) = workspace {
+                            if let Some(db) = workspace.db.as_ref() {
+                                let db_lock = db.lock().await;
+                                definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                            }
+                        }
+                    }
+                }
+            }
+            }
             Err(e) => {
-                debug!("Search engine failed, falling back to linear search: {}", e);
-                // Fallback to linear search only if indexed search fails
-                let symbols = handler.symbols.read().await;
-                for symbol in symbols.iter() {
-                    if symbol.name == self.symbol {
-                        definitions.push(symbol.clone());
+                debug!("Search engine unavailable, using SQLite database: {}", e);
+                // Fallback to database search for exact name lookup (indexed, fast)
+                if let Ok(workspace) = handler.get_workspace().await {
+                    if let Some(workspace) = workspace {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                        }
                     }
                 }
             }
         }
 
         // Cross-language naming convention matching using additional searches
+        // TODO: Re-implement with proper search engine access
+        /*
         let variants = vec![
             self.to_snake_case(&self.symbol),
             self.to_camel_case(&self.symbol),
@@ -742,6 +830,7 @@ impl FastRefsTool {
                 }
             }
         }
+        */
 
         // Remove duplicates
         definitions.sort_by(|a, b| a.id.cmp(&b.id));
@@ -754,7 +843,7 @@ impl FastRefsTool {
             .filter(|rel| {
                 // INFLATION FIX: Only count relationships where target is REFERENCED (to_symbol_id)
                 // NOT where target does the referencing (from_symbol_id)
-                symbol_ids.iter().any(|id| rel.to_symbol_id == *id)
+                symbol_ids.contains(&rel.to_symbol_id)
             })
             .cloned()
             .collect();
@@ -800,7 +889,7 @@ impl FastRefsTool {
 
         while let Some(ch) = chars.next() {
             if ch.is_uppercase() {
-                if !result.is_empty() && chars.peek().map_or(false, |c| c.is_lowercase()) {
+                if !result.is_empty() && chars.peek().is_some_and(|c| c.is_lowercase()) {
                     result.push('_');
                 }
                 result.push(ch.to_lowercase().next().unwrap());

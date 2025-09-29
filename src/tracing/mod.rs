@@ -570,7 +570,7 @@ mod tests {
         // Create embedding engine (will need cache dir)
         let cache_dir = temp_dir.path().join("cache");
         std::fs::create_dir_all(&cache_dir).unwrap();
-        let embeddings = Arc::new(EmbeddingEngine::new("bge-small", cache_dir).unwrap());
+        let embeddings = Arc::new(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).unwrap());
 
         CrossLanguageTracer::new(db, search, embeddings)
     }

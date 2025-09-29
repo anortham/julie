@@ -4,47 +4,23 @@ use crate::extractors::base::{
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-/// Common regex patterns used for Vue SFC parsing
-/// Compiled once for better performance
-#[allow(dead_code)]
-struct VuePatterns {
-    template_start: Regex,
-    script_start: Regex,
-    style_start: Regex,
-    section_end: Regex,
-    lang_attr: Regex,
-    component_name: Regex,
-    data_function: Regex,
-    methods_object: Regex,
-    computed_object: Regex,
-    props_object: Regex,
-    function_definition: Regex,
-    component_usage: Regex,
-    directive_usage: Regex,
-    css_class: Regex,
-}
-
-impl VuePatterns {
-    fn new() -> Result<Self, regex::Error> {
-        Ok(VuePatterns {
-            template_start: Regex::new(r"^<template(\s+[^>]*)?>")?,
-            script_start: Regex::new(r"^<script(\s+[^>]*)?>")?,
-            style_start: Regex::new(r"^<style(\s+[^>]*)?>")?,
-            section_end: Regex::new(r"^</(template|script|style)>")?,
-            lang_attr: Regex::new(r#"lang=["']?([^"'\s>]+)"#)?,
-            component_name: Regex::new(r#"name\s*:\s*['"`]([^'"`]+)['"`]"#)?,
-            data_function: Regex::new(r"^\s*data\s*\(\s*\)\s*\{")?,
-            methods_object: Regex::new(r"^\s*methods\s*:\s*\{")?,
-            computed_object: Regex::new(r"^\s*computed\s*:\s*\{")?,
-            props_object: Regex::new(r"^\s*props\s*:\s*\{")?,
-            function_definition: Regex::new(r"^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{")?,
-            component_usage: Regex::new(r"<([A-Z][a-zA-Z0-9-]*)")?,
-            directive_usage: Regex::new(r"\s(v-[a-zA-Z-]+)=")?,
-            css_class: Regex::new(r"\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{")?,
-        })
-    }
-}
+// Static regex patterns compiled once for performance
+static TEMPLATE_START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<template(\s+[^>]*)?>").unwrap());
+static SCRIPT_START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<script(\s+[^>]*)?>").unwrap());
+static STYLE_START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^<style(\s+[^>]*)?>").unwrap());
+static SECTION_END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^</(template|script|style)>").unwrap());
+static LANG_ATTR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"lang=["']?([^"'\s>]+)"#).unwrap());
+static COMPONENT_NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"name\s*:\s*['"`]([^'"`]+)['"`]"#).unwrap());
+static DATA_FUNCTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*data\s*\(\s*\)\s*\{").unwrap());
+static METHODS_OBJECT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*methods\s*:\s*\{").unwrap());
+static COMPUTED_OBJECT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*computed\s*:\s*\{").unwrap());
+static PROPS_OBJECT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*props\s*:\s*\{").unwrap());
+static FUNCTION_DEF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{").unwrap());
+static COMPONENT_USAGE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<([A-Z][a-zA-Z0-9-]*)").unwrap());
+static DIRECTIVE_USAGE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s(v-[a-zA-Z-]+)=").unwrap());
+static CSS_CLASS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{").unwrap());
 
 /// Vue Single File Component (SFC) Extractor
 ///
@@ -54,8 +30,6 @@ impl VuePatterns {
 /// Port of Miller's Vue extractor with comprehensive Vue SFC feature support
 pub struct VueExtractor {
     base: BaseExtractor,
-    #[allow(dead_code)]
-    patterns: VuePatterns,
 }
 
 #[derive(Debug, Clone)]
@@ -72,15 +46,8 @@ struct VueSection {
 
 impl VueExtractor {
     pub fn new(language: String, file_path: String, content: String) -> Self {
-        // Pre-compile regex patterns for better performance
-        let patterns = VuePatterns::new().unwrap_or_else(|_e| {
-            // This shouldn't happen in practice, but we provide a fallback
-            panic!("Critical error: Vue regex patterns compilation failed")
-        });
-
         Self {
             base: BaseExtractor::new(language, file_path, content),
-            patterns,
         }
     }
 
@@ -166,15 +133,9 @@ impl VueExtractor {
             let trimmed = line.trim();
 
             // Check for section start - following Miller's regex patterns
-            let template_match = Regex::new(r"^<template(\s+[^>]*)?>")
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
-                .captures(trimmed);
-            let script_match = Regex::new(r"^<script(\s+[^>]*)?>")
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
-                .captures(trimmed);
-            let style_match = Regex::new(r"^<style(\s+[^>]*)?>")
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
-                .captures(trimmed);
+            let template_match = TEMPLATE_START_RE.captures(trimmed);
+            let script_match = SCRIPT_START_RE.captures(trimmed);
+            let style_match = STYLE_START_RE.captures(trimmed);
 
             if template_match.is_some() || script_match.is_some() || style_match.is_some() {
                 // End previous section
@@ -198,9 +159,7 @@ impl VueExtractor {
                     .map(|m| m.as_str())
                     .unwrap_or("");
 
-                let lang = Regex::new(r#"lang=["']?([^"'\s>]+)"#)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
-                    .captures(attrs)
+                let lang = LANG_ATTR_RE.captures(attrs)
                     .and_then(|m| m.get(1))
                     .map(|m| m.as_str().to_string())
                     .unwrap_or_else(|| match section_type {
@@ -219,9 +178,7 @@ impl VueExtractor {
             }
 
             // Check for section end
-            if Regex::new(r"^</(template|script|style)>")
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
-                .is_match(trimmed)
+            if SECTION_END_RE.is_match(trimmed)
             {
                 if let Some(section) = current_section.take() {
                     sections.push(section.build(section_content.join("\n"), i));
@@ -326,7 +283,8 @@ impl VueExtractor {
             let actual_line = section.start_line + i;
 
             // Extract Vue component options - following Miller's patterns
-            if let Ok(data_regex) = Regex::new(r"^\s*data\s*\(\s*\)\s*\{") {
+            {
+                let data_regex = &*DATA_FUNCTION_RE;
                 if data_regex.is_match(line) {
                     symbols.push(self.create_symbol_manual(
                         "data",
@@ -342,7 +300,8 @@ impl VueExtractor {
                 }
             }
 
-            if let Ok(methods_regex) = Regex::new(r"^\s*methods\s*:\s*\{") {
+            {
+                let methods_regex = &*METHODS_OBJECT_RE;
                 if methods_regex.is_match(line) {
                     symbols.push(self.create_symbol_manual(
                         "methods",
@@ -358,7 +317,8 @@ impl VueExtractor {
                 }
             }
 
-            if let Ok(computed_regex) = Regex::new(r"^\s*computed\s*:\s*\{") {
+            {
+                let computed_regex = &*COMPUTED_OBJECT_RE;
                 if computed_regex.is_match(line) {
                     symbols.push(self.create_symbol_manual(
                         "computed",
@@ -374,7 +334,8 @@ impl VueExtractor {
                 }
             }
 
-            if let Ok(props_regex) = Regex::new(r"^\s*props\s*:\s*\{") {
+            {
+                let props_regex = &*PROPS_OBJECT_RE;
                 if props_regex.is_match(line) {
                     symbols.push(self.create_symbol_manual(
                         "props",
@@ -391,7 +352,8 @@ impl VueExtractor {
             }
 
             // Extract function definitions - following Miller's pattern
-            if let Ok(func_regex) = Regex::new(r"^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{") {
+            {
+                let func_regex = &*FUNCTION_DEF_RE;
                 if let Some(captures) = func_regex.captures(line) {
                     if let Some(func_name) = captures.get(1) {
                         let name = func_name.as_str();
@@ -425,7 +387,8 @@ impl VueExtractor {
             let actual_line = section.start_line + i;
 
             // Extract component usage - following Miller's pattern
-            if let Ok(component_regex) = Regex::new(r"<([A-Z][a-zA-Z0-9-]*)") {
+            {
+                let component_regex = &*COMPONENT_USAGE_RE;
                 for captures in component_regex.captures_iter(line) {
                     if let Some(component_name) = captures.get(1) {
                         let name = component_name.as_str();
@@ -446,7 +409,8 @@ impl VueExtractor {
             }
 
             // Extract directives - following Miller's pattern
-            if let Ok(directive_regex) = Regex::new(r"\s(v-[a-zA-Z-]+)=") {
+            {
+                let directive_regex = &*DIRECTIVE_USAGE_RE;
                 for captures in directive_regex.captures_iter(line) {
                     if let Some(directive_name) = captures.get(1) {
                         let name = directive_name.as_str();
@@ -480,7 +444,8 @@ impl VueExtractor {
             let actual_line = section.start_line + i;
 
             // Extract CSS class names - following Miller's pattern
-            if let Ok(class_regex) = Regex::new(r"\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{") {
+            {
+                let class_regex = &*CSS_CLASS_RE;
                 for captures in class_regex.captures_iter(line) {
                     if let Some(class_name) = captures.get(1) {
                         let name = class_name.as_str();
@@ -510,7 +475,8 @@ impl VueExtractor {
         // Try to extract from script section first - following Miller's logic
         for section in sections {
             if section.section_type == "script" {
-                if let Ok(name_regex) = Regex::new(r#"name\s*:\s*['"`]([^'"`]+)['"`]"#) {
+                {
+                    let name_regex = &*COMPONENT_NAME_RE;
                     if let Some(captures) = name_regex.captures(&section.content) {
                         if let Some(name_match) = captures.get(1) {
                             return Some(name_match.as_str().to_string());
@@ -525,7 +491,7 @@ impl VueExtractor {
             .base
             .file_path
             .split('/')
-            .last()
+            .next_back()
             .and_then(|name| name.strip_suffix(".vue"));
 
         if let Some(file_name) = file_name {

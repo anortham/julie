@@ -72,7 +72,7 @@ function processUser() {
 
         // Create the refactor tool
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: format!(
                 r#"{{"old_name": "getUserData", "new_name": "fetchUserProfile", "scope": "file"}}"#
             ),
@@ -105,7 +105,7 @@ class UserService {
             .unwrap();
 
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: format!(
                 r#"{{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}}"#
             ),
@@ -129,7 +129,7 @@ class UserService {
     #[tokio::test]
     async fn test_rename_symbol_missing_parameters() {
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: r#"{"old_name": "test"}"#.to_string(), // Missing new_name
             dry_run: true,
         };
@@ -148,7 +148,7 @@ class UserService {
     #[tokio::test]
     async fn test_rename_symbol_invalid_json() {
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: r#"invalid json{"#.to_string(),
             dry_run: true,
         };
@@ -164,7 +164,7 @@ class UserService {
     #[tokio::test]
     async fn test_rename_symbol_no_references_found() {
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: r#"{"old_name": "NonExistentSymbol", "new_name": "NewName"}"#.to_string(),
             dry_run: true,
         };
@@ -186,7 +186,7 @@ mod extract_function_tests {
     #[tokio::test]
     async fn test_extract_function_not_implemented() {
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::ExtractFunction,
+            operation: "extract_function".to_string(),
             params: r#"{"file": "test.js", "start_line": 1, "end_line": 5}"#.to_string(),
             dry_run: true,
         };
@@ -208,7 +208,7 @@ mod operation_validation_tests {
     #[tokio::test]
     async fn test_unsupported_operation() {
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::InlineVariable,
+            operation: "inline_variable".to_string(),
             params: r#"{"variable": "temp"}"#.to_string(),
             dry_run: true,
         };
@@ -226,7 +226,7 @@ mod operation_validation_tests {
     async fn test_tool_creation_and_serialization() {
         // Test that the tool can be created and serialized properly
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: r#"{"old_name": "test", "new_name": "newTest"}"#.to_string(),
             dry_run: false,
         };
@@ -236,7 +236,7 @@ mod operation_validation_tests {
         let _deserialized: SmartRefactorTool = serde_json::from_str(&json).unwrap();
 
         // Verify basic fields
-        assert!(matches!(tool.operation, RefactorOperation::RenameSymbol));
+        assert_eq!(tool.operation, "rename_symbol");
         assert!(!tool.dry_run);
     }
 }
@@ -277,7 +277,7 @@ export class UserValidator {
 
         // Test dry run first
         let tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params: r#"{"old_name": "UserValidator", "new_name": "AccountValidator", "scope": "workspace"}"#.to_string(),
             dry_run: true,
         };
@@ -367,7 +367,7 @@ export type ServiceFactory = () => UserService;
 
         // Create the rename tool - rename UserService to AccountService
         let rename_tool = SmartRefactorTool {
-            operation: RefactorOperation::RenameSymbol,
+            operation: "rename_symbol".to_string(),
             params:
                 r#"{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}"#
                     .to_string(),

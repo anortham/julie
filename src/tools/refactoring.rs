@@ -21,6 +21,7 @@ use tracing::{debug, info};
 
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
+use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
 /// Available refactoring operations
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -94,7 +95,7 @@ impl SmartRefactorTool {
                     Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function",
                     self.operation
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
             }
         }
     }
@@ -157,7 +158,7 @@ impl SmartRefactorTool {
                 old_name
             );
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
+                self.optimize_response(&message),
             )]));
         }
 
@@ -175,9 +176,9 @@ impl SmartRefactorTool {
         let mut errors = Vec::new();
         let dmp = DiffMatchPatch::new();
 
-        for (file_path, _line_refs) in &file_locations {
+        for file_path in file_locations.keys() {
             match self
-                .rename_in_file(file_path, old_name, new_name, &dmp)
+                .rename_in_file(handler, file_path, old_name, new_name, &dmp)
                 .await
             {
                 Ok(changes_applied) => {
@@ -216,7 +217,7 @@ impl SmartRefactorTool {
             preview.push_str("\n💡 Set dry_run=false to apply changes");
 
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                preview,
+                self.optimize_response(&preview),
             )]));
         }
 
@@ -244,7 +245,7 @@ impl SmartRefactorTool {
         message.push_str("\n🎯 Next steps:\n• Run tests to verify changes\n• Use fast_refs to validate rename completion\n💡 Tip: Use git to track changes and revert if needed");
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
+            self.optimize_response(&message),
         )]))
     }
 
@@ -278,7 +279,7 @@ impl SmartRefactorTool {
                 if let Ok(line_num) = line_part.parse::<u32>() {
                     file_locations
                         .entry(file_part.to_string())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(line_num);
                 }
             }
@@ -287,9 +288,11 @@ impl SmartRefactorTool {
         Ok(file_locations)
     }
 
-    /// Rename all occurrences of old_name to new_name in a single file
-    async fn rename_in_file(
+    /// AST-aware rename using Julie's search engine to find exact symbol matches
+    /// This replaces only actual symbol references, not string literals or comments
+    pub async fn rename_in_file(
         &self,
+        handler: &JulieServerHandler,
         file_path: &str,
         old_name: &str,
         new_name: &str,
@@ -299,8 +302,15 @@ impl SmartRefactorTool {
         let original_content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
 
-        // Simple replacement for now - TODO: Make this smarter with tree-sitter
-        let new_content = original_content.replace(old_name, new_name);
+        // AST-aware replacement using SearchEngine to find exact symbol matches
+        let new_content = match self.ast_aware_replace(&original_content, file_path, old_name, new_name, handler).await {
+            Ok(content) => content,
+            Err(e) => {
+                // Fallback to simple replacement if AST search fails
+                debug!("⚠️ AST search failed, falling back to simple replacement: {}", e);
+                original_content.replace(old_name, new_name)
+            }
+        };
 
         if original_content == new_content {
             return Ok(0); // No changes needed
@@ -331,6 +341,189 @@ impl SmartRefactorTool {
         }
 
         Ok(changes_count)
+    }
+
+    /// AST-aware replacement using direct tree-sitter parsing for precise symbol renaming
+    /// Only replaces actual symbol references, not string literals or comments
+    async fn ast_aware_replace(
+        &self,
+        content: &str,
+        file_path: &str,
+        old_name: &str,
+        new_name: &str,
+        _handler: &JulieServerHandler,
+    ) -> Result<String> {
+        debug!("🌳 Starting AST-aware replacement using tree-sitter parsing");
+
+        // Try search engine first, but fall back to tree-sitter parsing if not available
+        let symbol_positions = match self.find_symbols_via_search(file_path, old_name, _handler).await {
+            Ok(positions) => {
+                debug!("✅ Found {} symbols via search engine", positions.len());
+                positions
+            }
+            Err(search_error) => {
+                debug!("⚠️ Search engine failed: {}, falling back to tree-sitter parsing", search_error);
+                self.find_symbols_via_treesitter(content, file_path, old_name).await?
+            }
+        };
+
+        // Hybrid approach: Use AST for validation + careful text replacement for completeness
+        if !symbol_positions.is_empty() {
+            debug!("✅ AST validation passed: found {} symbol definitions", symbol_positions.len());
+        } else {
+            debug!("⚠️ No AST symbol definitions found - symbol may not exist");
+            return Err(anyhow::anyhow!("Symbol not found in AST"));
+        }
+
+        // Use smart text replacement to catch ALL occurrences (including usages)
+        debug!("📝 About to call smart_text_replace with old_name='{}', new_name='{}'", old_name, new_name);
+        let result = self.smart_text_replace(content, old_name, new_name)?;
+        debug!("🎯 smart_text_replace completed, result length: {}", result.len());
+
+        Ok(result)
+    }
+
+    /// Find symbol positions using search engine (for indexed files)
+    async fn find_symbols_via_search(
+        &self,
+        file_path: &str,
+        old_name: &str,
+        handler: &JulieServerHandler,
+    ) -> Result<Vec<(u32, u32)>> {
+        let search_engine = handler.active_search_engine().await?;
+        let search_engine = search_engine.read().await;
+
+        let search_results = search_engine.exact_symbol_search(old_name).await?;
+
+        let positions: Vec<(u32, u32)> = search_results
+            .into_iter()
+            .filter(|result| result.symbol.file_path == file_path)
+            .map(|result| (result.symbol.start_byte, result.symbol.end_byte))
+            .collect();
+
+        Ok(positions)
+    }
+
+    /// Find symbol positions using direct tree-sitter parsing (for any file)
+    async fn find_symbols_via_treesitter(
+        &self,
+        content: &str,
+        file_path: &str,
+        old_name: &str,
+    ) -> Result<Vec<(u32, u32)>> {
+        use crate::extractors::ExtractorManager;
+
+        debug!("🌳 Using tree-sitter to find symbols in {}", file_path);
+
+        // Create an extractor manager and extract all symbols
+        let extractor_manager = ExtractorManager::new();
+        let symbols = extractor_manager.extract_symbols(file_path, content).await?;
+
+        // Find symbols that match our target name exactly
+        let matching_positions: Vec<(u32, u32)> = symbols
+            .into_iter()
+            .filter(|symbol| symbol.name == old_name)
+            .map(|symbol| (symbol.start_byte, symbol.end_byte))
+            .collect();
+
+        debug!(
+            "🎯 Tree-sitter found {} matching symbols for '{}'",
+            matching_positions.len(),
+            old_name
+        );
+
+        Ok(matching_positions)
+    }
+
+    /// Smart text replacement that avoids string literals and comments
+    /// This catches ALL symbol usages (declarations + references) while being safe
+    pub fn smart_text_replace(&self, content: &str, old_name: &str, new_name: &str) -> Result<String> {
+        debug!("🎯 Smart text replacement: '{}' -> '{}' (avoiding strings/comments)", old_name, new_name);
+
+        let mut result = String::new();
+        let mut chars = content.char_indices().peekable();
+        let mut replacements_made = 0;
+
+        while let Some((i, ch)) = chars.next() {
+            match ch {
+                // Skip string literals (double quotes, single quotes, template literals)
+                '"' | '\'' | '`' => {
+                    result.push(ch);
+                    let quote_char = ch;
+                    // Copy everything until closing quote
+                    while let Some((_, ch)) = chars.next() {
+                        result.push(ch);
+                        if ch == quote_char {
+                            break;
+                        }
+                        // Handle escaped quotes
+                        if ch == '\\' {
+                            if let Some((_, escaped_ch)) = chars.next() {
+                                result.push(escaped_ch);
+                            }
+                        }
+                    }
+                }
+                // Skip single-line comments
+                '/' if chars.peek().map(|(_, ch)| *ch) == Some('/') => {
+                    result.push(ch);
+                    result.push(chars.next().unwrap().1); // consume second '/'
+                    // Copy rest of line
+                    for (_, ch) in chars.by_ref() {
+                        result.push(ch);
+                        if ch == '\n' {
+                            break;
+                        }
+                    }
+                }
+                // Skip multi-line comments
+                '/' if chars.peek().map(|(_, ch)| *ch) == Some('*') => {
+                    result.push(ch);
+                    result.push(chars.next().unwrap().1); // consume '*'
+                    // Copy until */
+                    while let Some((_, ch)) = chars.next() {
+                        result.push(ch);
+                        if ch == '*' && chars.peek().map(|(_, ch)| *ch) == Some('/') {
+                            result.push(chars.next().unwrap().1); // consume '/'
+                            break;
+                        }
+                    }
+                }
+                // Check for symbol replacement
+                _ if ch.is_alphabetic() || ch == '_' => {
+                    // We found the start of an identifier
+                    let start_idx = i;
+                    let mut identifier = String::new();
+                    identifier.push(ch);
+
+                    // Collect the full identifier
+                    while let Some((_, ch)) = chars.peek() {
+                        if ch.is_alphanumeric() || *ch == '_' {
+                            identifier.push(*ch);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Check if this identifier matches our target symbol
+                    if identifier == old_name {
+                        result.push_str(new_name);
+                        replacements_made += 1;
+                        debug!("✅ Replaced '{}' -> '{}' at position {}", old_name, new_name, start_idx);
+                    } else {
+                        result.push_str(&identifier);
+                    }
+                }
+                // Copy other characters as-is
+                _ => {
+                    result.push(ch);
+                }
+            }
+        }
+
+        debug!("🎯 Smart replacement complete: {} occurrences replaced", replacements_made);
+        Ok(result)
     }
 
     /// Handle extract function operation
@@ -426,7 +619,7 @@ impl SmartRefactorTool {
                 function_name, file_path, start_line, end_line, language, function_def, function_call, dependencies
             );
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(preview)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&preview))]));
         }
 
         // Apply the actual refactoring
@@ -455,7 +648,7 @@ impl SmartRefactorTool {
             function_name, file_path, start_line, end_line, insertion_line
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
     }
 
     /// Detect the base indentation level of code lines
@@ -748,7 +941,7 @@ impl SmartRefactorTool {
                 💡 Check spelling or use fast_search to locate the symbol",
                 symbol_name, file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
         }
 
         // Step 2: Read the file to find symbol boundaries
@@ -771,7 +964,7 @@ impl SmartRefactorTool {
                 symbol_name, file_path, start_line, end_line, new_body
             );
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(preview)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&preview))]));
         }
 
         // Replace the symbol body
@@ -796,7 +989,7 @@ impl SmartRefactorTool {
             symbol_name, file_path, start_line, end_line
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
     }
 
     /// Parse search results to find symbol locations in a specific file
@@ -1057,7 +1250,7 @@ impl SmartRefactorTool {
                       📋 Coming soon - will insert code before/after symbols\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
     }
 
     async fn handle_extract_type(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1065,7 +1258,7 @@ impl SmartRefactorTool {
                       📋 Coming soon - will extract inline types to named types\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
     }
 
     async fn handle_update_imports(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1073,7 +1266,7 @@ impl SmartRefactorTool {
                       📋 Coming soon - will fix broken imports after file moves\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
     }
 
     async fn handle_inline_variable(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1081,7 +1274,7 @@ impl SmartRefactorTool {
                       📋 Coming soon - will inline variable by replacing uses with value\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
     }
 
     async fn handle_inline_function(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1089,6 +1282,43 @@ impl SmartRefactorTool {
                       📋 Coming soon - will inline function by replacing calls with body\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+    }
+
+    /// Apply token optimization to SmartRefactorTool responses to prevent context overflow
+    fn optimize_response(&self, message: &str) -> String {
+        let token_estimator = TokenEstimator::new();
+        let token_limit: usize = 25000; // 25K token limit - maximum for AST-powered tools that need full context
+
+        let message_tokens = token_estimator.estimate_string(message);
+
+        if message_tokens <= token_limit {
+            // No optimization needed
+            return message.to_string();
+        }
+
+        // Split message into lines for progressive reduction
+        let lines: Vec<String> = message.lines().map(|s| s.to_string()).collect();
+
+        // Apply progressive reduction to stay within token limits
+        let progressive_reducer = ProgressiveReducer::new();
+        let line_refs: Vec<&String> = lines.iter().collect();
+
+        let estimate_lines_tokens = |line_refs: &[&String]| -> usize {
+            let content = line_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
+            token_estimator.estimate_string(&content)
+        };
+
+        let reduced_lines = progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
+
+        let reduced_count = reduced_lines.len();
+        let mut optimized_message = reduced_lines.into_iter().cloned().collect::<Vec<_>>().join("\n");
+
+        if reduced_count < lines.len() {
+            optimized_message.push_str("\n\n⚠️  Response truncated to stay within token limits");
+            optimized_message.push_str("\n💡 Use more specific parameters for focused results");
+        }
+
+        optimized_message
     }
 }

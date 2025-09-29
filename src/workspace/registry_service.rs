@@ -103,9 +103,14 @@ impl WorkspaceRegistryService {
     }
 
     /// Save the registry to disk with atomic operations
-    pub async fn save_registry(&self, mut registry: WorkspaceRegistry) -> Result<()> {
+    pub async fn save_registry(&self, registry: WorkspaceRegistry) -> Result<()> {
         let _lock = self.registry_lock.lock().await;
+        self.save_registry_internal(registry).await
+    }
 
+    /// Internal save function that assumes lock is already held
+    /// Used by both save_registry() and load_registry_from_disk() to prevent deadlock
+    async fn save_registry_internal(&self, mut registry: WorkspaceRegistry) -> Result<()> {
         // Update metadata
         registry.last_updated = current_timestamp();
         self.update_registry_statistics(&mut registry).await?;
@@ -167,8 +172,8 @@ impl WorkspaceRegistryService {
                     info!("Attempting to restore from backup");
                     match self.try_load_registry_file(&backup_path).await {
                         Ok(registry) => {
-                            // Save restored registry as main file
-                            self.save_registry(registry.clone()).await?;
+                            // Save restored registry as main file (using internal to avoid deadlock)
+                            self.save_registry_internal(registry.clone()).await?;
                             info!("Registry restored from backup successfully");
                             Ok(registry)
                         }

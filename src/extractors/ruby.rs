@@ -801,7 +801,7 @@ impl RubyExtractor {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "identifier"
-                && child.prev_sibling().map_or(false, |s| s.kind() == ".")
+                && child.prev_sibling().is_some_and(|s| s.kind() == ".")
             {
                 return self.base.get_node_text(&child);
             }
@@ -813,11 +813,10 @@ impl RubyExtractor {
         // Find the target before the dot
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "identifier" || child.kind() == "self" {
-                if child.next_sibling().map_or(false, |s| s.kind() == ".") {
+            if (child.kind() == "identifier" || child.kind() == "self")
+                && child.next_sibling().is_some_and(|s| s.kind() == ".") {
                     return self.base.get_node_text(&child);
                 }
-            }
         }
         "self".to_string()
     }
@@ -844,7 +843,7 @@ impl RubyExtractor {
             .replace(['\'', '"'], "");
         let module_name = require_path
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or(&require_path)
             .to_string();
         let method_name = self.extract_method_name_from_call(node)?;

@@ -142,7 +142,7 @@ impl CSSExtractor {
             serde_json::Value::Array(
                 properties
                     .into_iter()
-                    .map(|p| serde_json::Value::String(p))
+                    .map(serde_json::Value::String)
                     .collect(),
             ),
         );
@@ -430,6 +430,7 @@ impl CSSExtractor {
     }
 
     /// Find declaration block in rule
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     fn find_declaration_block<'a>(
         &self,
         node: &tree_sitter::Node<'a>,

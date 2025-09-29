@@ -1,8 +1,13 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+// Static regex compiled once for performance
+static ZIG_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r":\s*([\w\[\]!?*]+)").unwrap());
 
 pub struct ZigExtractor {
     base: BaseExtractor,
@@ -833,8 +838,8 @@ impl ZigExtractor {
         let extern_node = self.base.find_child_by_type(&node, "extern");
         let string_node = self.base.find_child_by_type(&node, "string");
         let mut extern_prefix = String::new();
-        if extern_node.is_some() && string_node.is_some() {
-            let linkage = self.base.get_node_text(&string_node.unwrap());
+        if let (Some(_extern), Some(string_n)) = (extern_node, string_node) {
+            let linkage = self.base.get_node_text(&string_n);
             extern_prefix = format!("extern {} ", linkage);
         }
 
@@ -1155,8 +1160,7 @@ impl ZigExtractor {
         for symbol in symbols {
             if let Some(signature) = &symbol.signature {
                 // Extract Zig types from signatures
-                let zig_type_pattern = regex::Regex::new(r":\s*([\w\[\]!?*]+)").unwrap();
-                if let Some(type_match) = zig_type_pattern.captures(signature) {
+                if let Some(type_match) = ZIG_TYPE_RE.captures(signature) {
                     types.insert(symbol.name.clone(), type_match[1].to_string());
                 }
             }

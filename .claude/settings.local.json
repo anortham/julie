@@ -30,9 +30,25 @@
       "Bash(cargo run:*)",
       "mcp__julie__fast_edit",
       "Bash(cargo tarpaulin:*)",
-      "Bash(cargo fix:*)"
+      "Bash(cargo fix:*)",
+      "Bash(test:*)",
+      "Bash(sqlite3:*)",
+      "Bash(echo:*)",
+      "Bash(cat:*)",
+      "Read(//Users/murphy/Source/serena/**)",
+      "Bash(RUST_LOG=debug cargo test smart_refactor_control -- --nocapture)",
+      "Bash(RUST_LOG=debug cargo test replace_finduserbyid_method_body -- --nocapture)",
+      "Bash(RUST_LOG=debug cargo test test_all_smart_refactor_control_scenarios -- --nocapture)",
+      "Bash(RUST_LOG=debug cargo test test_all_smart_refactor_control_scenarios -- --test-threads=1 --nocapture)",
+      "Bash(RUST_LOG=debug cargo test test_bulk_store_symbols_full_workspace_dataset -- --nocapture)",
+      "Bash(RUST_LOG=debug,julie::search::engine::indexing=trace cargo run --bin julie_server)",
+      "Bash(RUST_LOG=debug,julie::search::engine::indexing=trace cargo run --bin julie-server)",
+      "Bash(RUST_LOG=debug cargo test test_all_smart_refactor_control_scenarios)",
+      "Bash(RUST_LOG=debug cargo test debug_typescript_extraction -- --nocapture)",
+      "Bash(rustc --version)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "outputStyle": "Explanatory"
 }

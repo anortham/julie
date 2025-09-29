@@ -48,6 +48,12 @@ pub struct ExtractorManager {
 }
 
 #[allow(dead_code)] // TODO: Implement extractor management methods
+impl Default for ExtractorManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExtractorManager {
     pub fn new() -> Self {
         Self {

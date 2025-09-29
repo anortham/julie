@@ -1,9 +1,37 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
 };
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::Tree;
+
+// Static regexes compiled once for performance
+static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b(INT|INTEGER|VARCHAR|TEXT|DECIMAL|FLOAT|BOOLEAN|DATE|TIMESTAMP|CHAR|BIGINT|SMALLINT)\b").unwrap()
+});
+static CREATE_VIEW_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap()
+});
+static ON_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap()
+});
+static USING_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"USING\s+([A-Z]+)").unwrap()
+});
+static INDEX_COLUMN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))").unwrap()
+});
+static INCLUDE_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"INCLUDE\s*(\([^)]+\))").unwrap()
+});
+static VAR_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap()
+});
+static DECLARE_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"DECLARE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(DECIMAL\([^)]+\)|INT|BIGINT|VARCHAR\([^)]+\)|TEXT|BOOLEAN)").unwrap()
+});
 
 /// SQL language extractor that handles SQL-specific constructs for cross-language tracing:
 /// - Table definitions (CREATE TABLE)
@@ -44,8 +72,7 @@ impl SqlExtractor {
         for symbol in symbols {
             if let Some(ref signature) = symbol.signature {
                 // Extract SQL data types from signatures like "CREATE TABLE users (id INT, name VARCHAR(100))"
-                let sql_type_pattern = regex::Regex::new(r"\b(INT|INTEGER|VARCHAR|TEXT|DECIMAL|FLOAT|BOOLEAN|DATE|TIMESTAMP|CHAR|BIGINT|SMALLINT)\b").unwrap();
-                if let Some(type_match) = sql_type_pattern.find(signature) {
+                if let Some(type_match) = SQL_TYPE_RE.find(signature) {
                     types.insert(symbol.id.clone(), type_match.as_str().to_uppercase());
                 }
             }
@@ -338,7 +365,7 @@ impl SqlExtractor {
         let mut has_primary = false;
         let mut has_key = false;
 
-        self.base.traverse_tree(&column_node, &mut |node| {
+        self.base.traverse_tree(column_node, &mut |node| {
             match node.kind() {
                 "primary_key_constraint" | "primary_key" => {
                     constraints.push("PRIMARY KEY".to_string());
@@ -555,12 +582,12 @@ impl SqlExtractor {
             if child_node.kind() == "parameter_declaration" || child_node.kind() == "parameter" {
                 let param_name_node = self
                     .base
-                    .find_child_by_type(&child_node, "identifier")
-                    .or_else(|| self.base.find_child_by_type(&child_node, "parameter_name"));
+                    .find_child_by_type(child_node, "identifier")
+                    .or_else(|| self.base.find_child_by_type(child_node, "parameter_name"));
                 let type_node = self
                     .base
-                    .find_child_by_type(&child_node, "data_type")
-                    .or_else(|| self.base.find_child_by_type(&child_node, "type_name"));
+                    .find_child_by_type(child_node, "data_type")
+                    .or_else(|| self.base.find_child_by_type(child_node, "type_name"));
 
                 if let Some(param_name_node) = param_name_node {
                     let param_name = self.base.get_node_text(&param_name_node);
@@ -635,10 +662,7 @@ impl SqlExtractor {
         let node_text = self.base.get_node_text(&node);
 
         // Extract views from ERROR nodes
-        let view_regex =
-            regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
-
-        if let Some(captures) = view_regex.captures(&node_text) {
+        if let Some(captures) = CREATE_VIEW_RE.captures(&node_text) {
             if let Some(view_name) = captures.get(1) {
                 let name = view_name.as_str().to_string();
 
@@ -707,17 +731,12 @@ impl SqlExtractor {
         }
 
         // Add column information if found
-        let column_regex = regex::Regex::new(
-            r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))",
-        )
-        .unwrap();
-        if let Some(column_captures) = column_regex.captures(&node_text) {
+        if let Some(column_captures) = INDEX_COLUMN_RE.captures(&node_text) {
             signature.push_str(&format!(" {}", column_captures.get(1).unwrap().as_str()));
         }
 
         // Add INCLUDE clause if present
-        let include_regex = regex::Regex::new(r"INCLUDE\s*(\([^)]+\))").unwrap();
-        if let Some(include_captures) = include_regex.captures(&node_text) {
+        if let Some(include_captures) = INCLUDE_CLAUSE_RE.captures(&node_text) {
             signature.push_str(&format!(
                 " INCLUDE {}",
                 include_captures.get(1).unwrap().as_str()
@@ -1221,12 +1240,10 @@ impl SqlExtractor {
                                     || expr_text.contains("AVG")
                                 {
                                     "aggregate function".to_string()
+                                } else if expr_text.len() > 30 {
+                                    format!("{}...", &expr_text[0..30])
                                 } else {
-                                    if expr_text.len() > 30 {
-                                        format!("{}...", &expr_text[0..30])
-                                    } else {
-                                        expr_text.clone()
-                                    }
+                                    expr_text.clone()
                                 }
                             }
                         };
@@ -1407,9 +1424,7 @@ impl SqlExtractor {
         }
 
         // Extract views from ERROR nodes
-        let view_regex =
-            regex::Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap();
-        if let Some(captures) = view_regex.captures(&error_text) {
+        if let Some(captures) = CREATE_VIEW_RE.captures(&error_text) {
             if let Some(view_name) = captures.get(1) {
                 let name = view_name.as_str().to_string();
 
@@ -1720,11 +1735,7 @@ impl SqlExtractor {
         // Find the FROM clause to limit our search to the SELECT list only
         // Use regex to find the table FROM clause, not FROM inside expressions
         let from_regex = regex::Regex::new(r"\bFROM\s+[a-zA-Z_][a-zA-Z0-9_]*\s+[a-zA-Z_]").unwrap();
-        let from_index = if let Some(from_match) = from_regex.find(&error_text[select_index..]) {
-            Some(select_index + from_match.start())
-        } else {
-            None
-        };
+        let from_index = from_regex.find(&error_text[select_index..]).map(|from_match| select_index + from_match.start());
 
         let select_section = if let Some(from_idx) = from_index {
             if from_idx > select_index {
@@ -1874,10 +1885,7 @@ impl SqlExtractor {
                 let declaration_raw = self.base.get_node_text(&node);
                 let declaration_text = declaration_raw.trim();
                 // Match patterns like "v_current_prefs JSONB;" or "v_score DECIMAL(10,2) DEFAULT 0.0;"
-                let var_regex =
-                    regex::Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap();
-
-                if let Some(captures) = var_regex.captures(declaration_text) {
+                if let Some(captures) = VAR_DECL_RE.captures(declaration_text) {
                     let variable_name = captures.get(1).unwrap().as_str();
                     let variable_type = captures
                         .get(2)
@@ -1918,9 +1926,7 @@ impl SqlExtractor {
                     let parent_text = self.base.get_node_text(&parent);
 
                     // Look for DECLARE patterns in the parent text
-                    let declare_regex = regex::Regex::new(r"DECLARE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(DECIMAL\([^)]+\)|INT|BIGINT|VARCHAR\([^)]+\)|TEXT|BOOLEAN)").unwrap();
-
-                    for captures in declare_regex.captures_iter(&parent_text) {
+                    for captures in DECLARE_VAR_RE.captures_iter(&parent_text) {
                         let variable_name = captures.get(1).unwrap().as_str();
                         let variable_type = captures.get(2).unwrap().as_str();
 
@@ -1961,7 +1967,7 @@ impl SqlExtractor {
             // Only add if not already added from tree traversal
             if !symbols.iter().any(|s| {
                 s.name == variable_name
-                    && s.parent_id.as_ref().map(|p| p.as_str()) == Some(parent_id)
+                    && s.parent_id.as_deref() == Some(parent_id)
             }) {
                 let mut metadata = HashMap::new();
                 metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
@@ -2147,9 +2153,9 @@ impl SqlExtractor {
                 || (child_node.kind() == "identifier"
                     && child_node
                         .parent()
-                        .map_or(false, |p| p.kind() == "from_clause"))
+                        .is_some_and(|p| p.kind() == "from_clause"))
             {
-                let table_name = self.base.get_node_text(&child_node);
+                let table_name = self.base.get_node_text(child_node);
                 let _table_symbol = symbols
                     .iter()
                     .find(|s| s.name == table_name && s.kind == SymbolKind::Class);
@@ -2174,9 +2180,9 @@ impl SqlExtractor {
                 || (child_node.kind() == "identifier"
                     && child_node
                         .parent()
-                        .map_or(false, |p| p.kind() == "object_reference"))
+                        .is_some_and(|p| p.kind() == "object_reference"))
             {
-                let table_name = self.base.get_node_text(&child_node);
+                let table_name = self.base.get_node_text(child_node);
                 let table_symbol = symbols
                     .iter()
                     .find(|s| s.name == table_name && s.kind == SymbolKind::Class);

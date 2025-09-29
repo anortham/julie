@@ -4,6 +4,12 @@ pub struct TokenEstimator {
     // Placeholder - will implement after tests
 }
 
+impl Default for TokenEstimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TokenEstimator {
     /// Average characters per token for English text (verified from COA framework)
     const CHARS_PER_TOKEN: f64 = 4.0;
@@ -76,10 +82,10 @@ impl TokenEstimator {
     pub fn contains_cjk(&self, text: &str) -> bool {
         for ch in text.chars() {
             let code = ch as u32;
-            if (code >= 0x4E00 && code <= 0x9FFF) ||  // CJK Unified Ideographs
-               (code >= 0x3400 && code <= 0x4DBF) ||  // CJK Extension A
-               (code >= 0x3040 && code <= 0x30FF) ||  // Hiragana and Katakana
-               (code >= 0xAC00 && code <= 0xD7AF)
+            if (0x4E00..=0x9FFF).contains(&code) ||  // CJK Unified Ideographs
+               (0x3400..=0x4DBF).contains(&code) ||  // CJK Extension A
+               (0x3040..=0x30FF).contains(&code) ||  // Hiragana and Katakana
+               (0xAC00..=0xD7AF).contains(&code)
             {
                 // Hangul Syllables
                 return true;

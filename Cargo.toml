@@ -71,6 +71,9 @@ tantivy = "0.25"
 # Embeddings (using FastEmbed for easy model integration)
 fastembed = "5.2"
 
+# HNSW for fast vector similarity search (semantic code search)
+hnsw_rs = "0.3"
+
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }
 

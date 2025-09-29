@@ -10,7 +10,7 @@ use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use julie::handler::JulieServerHandler;
-use julie::tools::workspace::{ManageWorkspaceTool, WorkspaceCommand};
+use julie::tools::workspace::ManageWorkspaceTool;
 use julie::workspace::registry_service::WorkspaceRegistryService;
 use rust_mcp_sdk::schema::{
     Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
@@ -78,8 +78,7 @@ async fn main() -> SdkResult<()> {
             ..Default::default()
         },
         meta: None,
-        instructions: Some(format!(
-            r#"# 🚀 Julie - Your Precision Development Powerhouse!
+        instructions: Some(r#"# 🚀 Julie - Your Precision Development Powerhouse!
 
 You have access to Julie's revolutionary code intelligence tools that make development a JOY.
 These tools transform how you write code, bringing CONFIDENCE, PRECISION, and the deep
@@ -151,8 +150,7 @@ The best code comes from UNDERSTANDING, not GUESSING.
 Julie gives you that understanding INSTANTLY.
 
 You have Julie superpowers - use them to create code you'll be PROUD of!
-"#
-        )),
+"#.to_string()),
         protocol_version: LATEST_PROTOCOL_VERSION.to_string(),
     };
 
@@ -167,8 +165,7 @@ You have Julie superpowers - use them to create code you'll be PROUD of!
 
     // STEP 3: Instantiate our custom handler
     let handler = JulieServerHandler::new().await.map_err(|e| {
-        rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
@@ -237,16 +234,24 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
 
     info!("🔍 Starting auto-indexing process...");
 
-    // STEP 1: Initialize workspace (create .julie folder if needed)
-    handler
-        .initialize_workspace(None)
-        .await
-        .context("Failed to initialize workspace")?;
+    // STEP 1: Check if we need indexing BEFORE creating any folders
+    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+    let julie_dir = current_dir.join(".julie");
 
-    info!("✅ Workspace initialized");
+    let needs_indexing = if !julie_dir.exists() {
+        info!("📁 No .julie folder found - this is a new project, indexing needed");
+        true
+    } else {
+        // Initialize workspace to check existing state
+        handler
+            .initialize_workspace(None)
+            .await
+            .context("Failed to initialize workspace")?;
+        info!("✅ Workspace initialized");
 
-    // STEP 2: Check if we need to index
-    let needs_indexing = check_if_indexing_needed(handler).await?;
+        // Check if existing workspace needs indexing
+        check_if_indexing_needed(handler).await?
+    };
 
     if !needs_indexing {
         info!("📋 Workspace is up-to-date, no indexing needed");
@@ -255,14 +260,27 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
 
     info!("🔄 Workspace needs indexing, starting fast index process...");
 
+    // STEP 2: Initialize workspace if not already done (for new projects)
+    if !julie_dir.exists() {
+        handler
+            .initialize_workspace(None)
+            .await
+            .context("Failed to initialize workspace")?;
+        info!("✅ Workspace initialized");
+    }
+
     // STEP 3: Perform fast indexing using our workspace tool
-    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
 
     let index_tool = ManageWorkspaceTool {
-        command: WorkspaceCommand::Index {
-            path: Some(current_dir.to_string_lossy().to_string()),
-            force: false, // Don't force unless database is completely empty
-        },
+        operation: "index".to_string(),
+        path: Some(current_dir.to_string_lossy().to_string()),
+        force: Some(false), // Don't force unless database is completely empty
+        name: None,
+        workspace_id: None,
+        expired_only: None,
+        days: None,
+        max_size_mb: None,
+        detailed: None,
     };
 
     // Perform the indexing
@@ -312,24 +330,44 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
                     return Ok(true);
                 }
 
+                // 🔥 CRITICAL FIX: Also verify Tantivy search index consistency
+                // If SQLite has data but Tantivy is empty, we need to re-index
+                match handler.active_search_engine().await {
+                    Ok(search_engine_arc) => {
+                        let search_engine = search_engine_arc.read().await;
+                        let tantivy_doc_count = search_engine.get_indexed_document_count().unwrap_or(0);
+
+                        if tantivy_doc_count == 0 {
+                            info!("🔍 Database has symbols but Tantivy search index is empty - indexing needed for consistency!");
+                            return Ok(true);
+                        } else {
+                            info!("📊 Database has symbols and Tantivy has {} documents - skipping indexing", tantivy_doc_count);
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Failed to check Tantivy consistency: {} - assuming indexing needed", e);
+                        return Ok(true);
+                    }
+                }
+
                 // TODO: Add more sophisticated checks:
                 // - Compare file modification times with database timestamps
                 // - Check for new files that aren't in the database
                 // - Use Blake3 hashes to detect changes
+                // - Verify SQLite and Tantivy document counts match
 
-                info!("📊 Database has symbols - skipping indexing for now");
-                return Ok(false);
+                Ok(false)
             }
             Err(e) => {
                 debug!(
                     "Error checking database symbols: {} - assuming indexing needed",
                     e
                 );
-                return Ok(true);
+                Ok(true)
             }
         }
     } else {
         debug!("No database connection - indexing needed");
-        return Ok(true);
+        Ok(true)
     }
 }

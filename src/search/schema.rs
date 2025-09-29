@@ -464,6 +464,12 @@ pub struct LanguageBoosting {
     field_boosts: HashMap<String, HashMap<String, f64>>,
 }
 
+impl Default for LanguageBoosting {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LanguageBoosting {
     pub fn new() -> Self {
         let mut language_boosts = HashMap::new();

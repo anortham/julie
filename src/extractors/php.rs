@@ -269,6 +269,7 @@ impl PhpExtractor {
     }
 
     /// Helper method to find child node by type
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     fn find_child<'a>(&self, node: &Node<'a>, child_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -540,8 +541,8 @@ impl PhpExtractor {
 
         // Extract all text values immediately
         let name = {
-            let text = self.base.get_node_text(&name_node);
-            text
+            
+            self.base.get_node_text(&name_node)
         };
 
         // Extract value text immediately

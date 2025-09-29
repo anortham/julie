@@ -458,6 +458,16 @@ impl ManageWorkspaceTool {
 
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
+        // Default to current workspace if no workspace_id specified
+        let workspace_id = match workspace_id {
+            Some(id) => Some(id),
+            None => {
+                // Get primary workspace ID from registry
+                let registry = registry_service.load_registry().await?;
+                registry.primary_workspace.as_ref().map(|pw| pw.id.clone())
+            }
+        };
+
         match workspace_id {
             Some(id) => {
                 // Show stats for specific workspace

@@ -45,7 +45,7 @@ impl GDScriptExtractor {
                             .base
                             .file_path
                             .split('/')
-                            .last()
+                            .next_back()
                             .unwrap_or("ImplicitClass")
                             .replace(".gd", "");
 
@@ -820,7 +820,7 @@ impl GDScriptExtractor {
                         .as_ref()
                         .map(|sig| sig.contains("class_name"))
                         .unwrap_or(false)
-                    && s.parent_id == default_parent.map(|s| s.clone())
+                    && s.parent_id == default_parent.cloned()
             })
             .collect();
 
@@ -1070,7 +1070,7 @@ impl GDScriptExtractor {
         // Check if this function name appears in any setget property signature
         symbols.iter().any(|s| {
             s.kind == SymbolKind::Field
-                && s.signature.as_ref().map_or(false, |sig| {
+                && s.signature.as_ref().is_some_and(|sig| {
                     sig.contains("setget")
                         && (sig.contains(&format!("setget {}", function_name))
                             || sig.contains(&format!(", {}", function_name))

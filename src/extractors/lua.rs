@@ -6,8 +6,14 @@
 use crate::extractors::base::{
     BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+// Static regex compiled once for performance
+static SETMETATABLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)").unwrap());
 
 pub struct LuaExtractor {
     base: BaseExtractor,
@@ -501,34 +507,32 @@ impl LuaExtractor {
                 }
             }
             // Handle simple identifier assignments: PI = 3.14159
-            else {
-                if let Some(name_node) = self.find_child_by_type(left, "identifier") {
-                    let name = self.base.get_node_text(&name_node);
-                    let signature = self.base.get_node_text(&node);
+            else if let Some(name_node) = self.find_child_by_type(left, "identifier") {
+                let name = self.base.get_node_text(&name_node);
+                let signature = self.base.get_node_text(&node);
 
-                    // Determine kind and type based on the assignment
-                    let mut kind = SymbolKind::Variable;
-                    let data_type = if right.kind() == "function_definition" {
-                        kind = SymbolKind::Function;
-                        "function".to_string()
-                    } else {
-                        self.infer_type_from_expression(right)
-                    };
+                // Determine kind and type based on the assignment
+                let mut kind = SymbolKind::Variable;
+                let data_type = if right.kind() == "function_definition" {
+                    kind = SymbolKind::Function;
+                    "function".to_string()
+                } else {
+                    self.infer_type_from_expression(right)
+                };
 
-                    let mut metadata = HashMap::new();
-                    metadata.insert("dataType".to_string(), data_type.clone().into());
+                let mut metadata = HashMap::new();
+                metadata.insert("dataType".to_string(), data_type.clone().into());
 
-                    let options = SymbolOptions {
-                        signature: Some(signature),
-                        parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some(Visibility::Public), // Global assignments are public
-                        metadata: Some(metadata),
-                        ..Default::default()
-                    };
+                let options = SymbolOptions {
+                    signature: Some(signature),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    visibility: Some(Visibility::Public), // Global assignments are public
+                    metadata: Some(metadata),
+                    ..Default::default()
+                };
 
-                    let symbol = self.base.create_symbol(&name_node, name, kind, options);
-                    self.symbols.push(symbol);
-                }
+                let symbol = self.base.create_symbol(&name_node, name, kind, options);
+                self.symbols.push(symbol);
             }
         }
 
@@ -621,44 +625,42 @@ impl LuaExtractor {
                 }
             }
             // Handle simple variable: PI = 3.14159
-            else {
-                if let Some(name_node) = self.find_child_by_type(*var_node, "identifier") {
-                    let name = self.base.get_node_text(&name_node);
+            else if let Some(name_node) = self.find_child_by_type(*var_node, "identifier") {
+                let name = self.base.get_node_text(&name_node);
 
-                    // Determine kind and type based on the assignment
-                    let mut kind = SymbolKind::Variable;
-                    let mut data_type = "unknown".to_string();
+                // Determine kind and type based on the assignment
+                let mut kind = SymbolKind::Variable;
+                let mut data_type = "unknown".to_string();
 
-                    if let Some(expression) = expressions.get(i) {
-                        if expression.kind() == "function_definition" {
-                            kind = SymbolKind::Function;
-                            data_type = "function".to_string();
-                        } else {
-                            data_type = self.infer_type_from_expression(*expression);
-                        }
+                if let Some(expression) = expressions.get(i) {
+                    if expression.kind() == "function_definition" {
+                        kind = SymbolKind::Function;
+                        data_type = "function".to_string();
+                    } else {
+                        data_type = self.infer_type_from_expression(*expression);
                     }
+                }
 
-                    let mut metadata = HashMap::new();
-                    metadata.insert("dataType".to_string(), data_type.clone().into());
+                let mut metadata = HashMap::new();
+                metadata.insert("dataType".to_string(), data_type.clone().into());
 
-                    let options = SymbolOptions {
-                        signature: Some(signature.clone()),
-                        parent_id: parent_id.map(|s| s.to_string()),
-                        visibility: Some(Visibility::Public), // Global variables are public
-                        metadata: Some(metadata),
-                        ..Default::default()
-                    };
+                let options = SymbolOptions {
+                    signature: Some(signature.clone()),
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    visibility: Some(Visibility::Public), // Global variables are public
+                    metadata: Some(metadata),
+                    ..Default::default()
+                };
 
-                    let symbol = self.base.create_symbol(&name_node, name, kind, options);
-                    self.symbols.push(symbol);
+                let symbol = self.base.create_symbol(&name_node, name, kind, options);
+                self.symbols.push(symbol);
 
-                    // If this is a table, extract its fields with this symbol as parent
-                    if let Some(expression) = expressions.get(i) {
-                        if expression.kind() == "table_constructor" || expression.kind() == "table"
-                        {
-                            let parent_id = self.symbols.last().unwrap().id.clone();
-                            self.extract_table_fields(*expression, Some(&parent_id));
-                        }
+                // If this is a table, extract its fields with this symbol as parent
+                if let Some(expression) = expressions.get(i) {
+                    if expression.kind() == "table_constructor" || expression.kind() == "table"
+                    {
+                        let parent_id = self.symbols.last().unwrap().id.clone();
+                        self.extract_table_fields(*expression, Some(&parent_id));
                     }
                 }
             }
@@ -856,9 +858,7 @@ impl LuaExtractor {
             // Extract inheritance information from setmetatable pattern
             if is_setmetatable {
                 if let Some(captures) =
-                    regex::Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)")
-                        .ok()
-                        .and_then(|re| signature.as_ref().and_then(|s| re.captures(s)))
+                    signature.as_ref().and_then(|s| SETMETATABLE_RE.captures(s))
                 {
                     if let Some(parent_class_name) = captures.get(1) {
                         let parent_class_name = parent_class_name.as_str();
@@ -885,6 +885,7 @@ impl LuaExtractor {
         }
     }
 
+    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     fn find_child_by_type<'a>(&self, node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

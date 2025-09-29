@@ -324,32 +324,54 @@ impl IncrementalIndexer {
         }
         drop(db);
 
-        // 3. Detect language and extract symbols
-        let _language = self.detect_language(&path)?;
+        // 3. Detect language and extract symbols with enhanced error handling
+        let language = self.detect_language(&path)?;
         let content_str = String::from_utf8_lossy(&content);
 
-        let symbols = self
+        // Enhanced extraction with graceful error handling
+        let symbols = match self
             .extractor_manager
             .extract_symbols(&path_str, &content_str)
-            .await?;
+            .await
+        {
+            Ok(symbols) => symbols,
+            Err(e) => {
+                error!("❌ Symbol extraction failed for {}: {}", path_str, e);
+                warn!("⚠️  SAFEGUARD: Preserving existing symbols due to extraction failure");
+                return Ok(()); // Skip update to preserve existing data
+            }
+        };
 
         info!(
-            "Extracted {} symbols from {}",
+            "Extracted {} symbols from {} ({})",
             symbols.len(),
-            path.display()
+            path.display(),
+            language
         );
 
-        // 4. Update SQLite database (transactionally) with safeguard against symbol erasure
+        // 4. Update SQLite database (transactionally) with enhanced safeguards
         let mut db = self.db.lock().await;
 
-        // SAFEGUARD: Check if we're about to erase symbols from a file that previously had them
-        if symbols.is_empty() {
-            let existing_symbols = db.get_symbols_for_file(&path_str)?;
-            if !existing_symbols.is_empty() {
-                warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {} - extraction returned zero symbols (possible parser error)",
-                      existing_symbols.len(), path_str);
-                warn!("⚠️  File content may be corrupted or parser failed. Keeping existing symbols to prevent data loss.");
-                return Ok(()); // Skip update to preserve existing data
+        // Get existing symbols for comparison
+        let existing_symbols = db.get_symbols_for_file(&path_str)?;
+
+        // ENHANCED SAFEGUARD: Multiple checks to prevent data loss
+        if symbols.is_empty() && !existing_symbols.is_empty() {
+            warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {} - extraction returned zero symbols",
+                  existing_symbols.len(), path_str);
+            warn!("⚠️  Possible causes: parser error, file corruption, or unsupported language changes");
+            warn!("⚠️  File size: {} bytes, Language: {}", content.len(), language);
+            return Ok(()); // Skip update to preserve existing data
+        }
+
+        // ADDITIONAL SAFEGUARD: Warn if significant symbol count drop (>50% reduction)
+        if !existing_symbols.is_empty() && !symbols.is_empty() {
+            let existing_count = existing_symbols.len();
+            let new_count = symbols.len();
+            if new_count < existing_count / 2 {
+                warn!("⚠️  SIGNIFICANT SYMBOL REDUCTION: {} -> {} symbols in {}",
+                      existing_count, new_count, path_str);
+                warn!("⚠️  This may indicate partial parsing failure. Proceeding with update but flagging for review.");
             }
         }
 
@@ -378,7 +400,7 @@ impl IncrementalIndexer {
         // 6. Update embeddings using mutex-protected engine
         {
             let mut embedding_engine = self.embedding_engine.lock().await;
-            if let Err(e) = embedding_engine.upsert_file_embeddings(path_str.as_ref(), &symbols) {
+            if let Err(e) = embedding_engine.upsert_file_embeddings(path_str.as_ref(), &symbols).await {
                 warn!("Failed to update embeddings for {}: {}", path_str, e);
             } else {
                 debug!(
@@ -399,6 +421,15 @@ impl IncrementalIndexer {
 
         let path_str = path.to_string_lossy();
 
+        // Get symbol IDs before deleting (needed for embedding cleanup)
+        let symbol_ids: Vec<String> = {
+            let db = self.db.lock().await;
+            db.get_symbols_for_file(&path_str)?
+                .into_iter()
+                .map(|s| s.id)
+                .collect()
+        };
+
         // Remove from SQLite database
         let db = self.db.lock().await;
         db.delete_symbols_for_file(&path_str)?;
@@ -411,10 +442,10 @@ impl IncrementalIndexer {
         search.commit().await?;
         drop(search);
 
-        // Remove from embeddings
-        {
+        // Remove from embeddings (database will handle the actual deletion)
+        if !symbol_ids.is_empty() {
             let mut embedding_engine = self.embedding_engine.lock().await;
-            if let Err(e) = embedding_engine.remove_embeddings_for_file(path_str.as_ref()) {
+            if let Err(e) = embedding_engine.remove_embeddings_for_symbols(&symbol_ids).await {
                 warn!("Failed to remove embeddings for {}: {}", path_str, e);
             }
         }
