@@ -6,8 +6,11 @@
 use super::SimilarityResult;
 use anyhow::Result;
 use hnsw_rs::prelude::*;  // Includes Hnsw, DistCosine, and other distance metrics
+// use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
 use std::collections::HashMap;
 use std::path::Path;
+
+const HNSW_MAX_LAYERS: usize = 16; // hnsw_rs NB_LAYER_MAX; required for dump persistence
 
 /// High-performance vector store for embedding similarity search
 pub struct VectorStore {
@@ -132,7 +135,8 @@ impl VectorStore {
         // HNSW construction parameters (based on hnsw_rs best practices)
         let max_nb_connection = 32;  // Typical: 16-64, good balance for code search
         let nb_elem = self.vectors.len();
-        let nb_layer = 16.min((nb_elem as f32).ln().trunc() as usize);
+        // hnsw_rs persistence requires using the full layer budget (NB_LAYER_MAX)
+        let nb_layer = HNSW_MAX_LAYERS;
         let ef_construction = 400;  // Higher = better quality, slower build (typical: 200-800)
 
         tracing::debug!(
@@ -254,16 +258,75 @@ impl VectorStore {
         Ok(results)
     }
 
-    /// Save HNSW index to disk
-    /// Note: Requires bincode serialization - TO BE IMPLEMENTED
-    pub fn save_hnsw_index(&self, _path: &Path) -> Result<()> {
-        Err(anyhow::anyhow!("HNSW persistence not yet implemented - requires hnswio module integration"))
+    /// Save HNSW index to disk using hnsw_rs file_dump
+    /// Creates two files: {path}/hnsw_index.hnsw.graph and {path}/hnsw_index.hnsw.data
+    pub fn save_hnsw_index(&mut self, path: &Path) -> Result<()> {
+        let hnsw = self.hnsw_index.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("Cannot save: HNSW index not built. Call build_hnsw_index() first")
+        })?;
+
+        // Ensure the directory exists
+        std::fs::create_dir_all(path)?;
+
+        // Use "hnsw_index" as the base filename (creates hnsw_index.hnsw.graph + hnsw_index.hnsw.data)
+        let filename = "hnsw_index";
+
+        tracing::info!("💾 Saving HNSW index to {}", path.display());
+        tracing::debug!("Index has {} vectors, dimensions: {}", self.vectors.len(), self.dimensions);
+
+        // CRITICAL: Disable search mode before dumping to allow write operations
+        // The searching flag prevents internal write operations
+        hnsw.set_searching_mode(false);
+        tracing::debug!("Search mode disabled for dump");
+
+        let dump_result = hnsw.file_dump(path, filename);
+
+        tracing::debug!("file_dump returned: {:?}", dump_result);
+
+        // Re-enable search mode after dumping
+        hnsw.set_searching_mode(true);
+        tracing::debug!("Search mode re-enabled");
+
+        match dump_result {
+            Ok(dumped_file) => {
+                tracing::info!("✅ HNSW index saved successfully: {}", dumped_file);
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("❌ HNSW dump failed with error: {:?}", e);
+                Err(anyhow::anyhow!("Failed to save HNSW index: {}", e))
+            }
+        }
     }
 
-    /// Load HNSW index from disk
-    /// Note: Requires bincode deserialization - TO BE IMPLEMENTED
-    pub fn load_hnsw_index(&mut self, _path: &Path) -> Result<()> {
-        Err(anyhow::anyhow!("HNSW loading not yet implemented - requires hnswio module integration"))
+    /// Load HNSW index from disk using hnsw_rs HnswIo
+    /// Expects files: {path}/hnsw_index.hnsw.graph and {path}/hnsw_index.hnsw.data
+    ///
+    /// Note: Currently we rebuild from database instead of loading persisted index
+    /// due to lifetime constraints with HnswIo. This is a known limitation that
+    /// will be addressed in a future update. For now, save_hnsw_index() is implemented
+    /// but load_hnsw_index() falls back to rebuild.
+    pub fn load_hnsw_index(&mut self, path: &Path) -> Result<()> {
+        let filename = "hnsw_index";
+        let graph_file = path.join(format!("{}.hnsw.graph", filename));
+        let data_file = path.join(format!("{}.hnsw.data", filename));
+
+        // Check if persisted index files exist
+        if !graph_file.exists() || !data_file.exists() {
+            return Err(anyhow::anyhow!(
+                "HNSW index files not found at {}. Expected {}.hnsw.graph and {}.hnsw.data",
+                path.display(),
+                filename,
+                filename
+            ));
+        }
+
+        tracing::warn!("📂 HNSW persistence loading not yet fully implemented due to lifetime constraints");
+        tracing::info!("💡 Using rebuild from database instead (works, but slower)");
+
+        // For now, return an error to trigger rebuild path
+        // TODO: Solve lifetime issue with HnswIo and 'static requirement
+        Err(anyhow::anyhow!("HNSW loading temporarily disabled - will rebuild from database"))
     }
 
     /// Add a vector to existing HNSW index (incremental update)
@@ -282,6 +345,7 @@ impl VectorStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_vector_store_creation() {
@@ -354,4 +418,44 @@ mod tests {
         store.remove_vector("test").unwrap();
         assert!(store.is_empty());
     }
+
+    #[test]
+    fn test_save_hnsw_index_persists_files() {
+        let mut store = VectorStore::new(3).unwrap();
+
+        store
+            .store_vector("a".to_string(), vec![1.0, 0.0, 0.0])
+            .unwrap();
+        store
+            .store_vector("b".to_string(), vec![0.0, 1.0, 0.0])
+            .unwrap();
+        store
+            .store_vector("c".to_string(), vec![0.0, 0.0, 1.0])
+            .unwrap();
+
+        store.build_hnsw_index().unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = store.save_hnsw_index(temp_dir.path());
+
+        assert!(
+            result.is_ok(),
+            "expected save_hnsw_index to succeed but it returned {:?}",
+            result.err()
+        );
+
+        let graph_path = temp_dir.path().join("hnsw_index.hnsw.graph");
+        let data_path = temp_dir.path().join("hnsw_index.hnsw.data");
+
+        assert!(graph_path.exists(), "graph file missing");
+        assert!(data_path.exists(), "data file missing");
+
+        let graph_len = std::fs::metadata(&graph_path).unwrap().len();
+        let data_len = std::fs::metadata(&data_path).unwrap().len();
+
+        assert!(graph_len > 0, "graph file should contain data");
+        assert!(data_len > 0, "data file should contain vectors");
+    }
+
 }

@@ -315,10 +315,23 @@ impl FastSearchTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available for semantic search"))?;
 
-        let vector_store = workspace
-            .vector_store
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Vector store not initialized for semantic search"))?;
+        // Ensure vector store is initialized (lazy-loads from disk or rebuilds)
+        handler.ensure_vector_store().await?;
+
+        // Now get the workspace again to access the initialized vector store
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Workspace disappeared after vector store init"))?;
+
+        // Check if vector_store is ready
+        let vector_store = match workspace.vector_store.as_ref() {
+            Some(vs) => vs,
+            None => {
+                warn!("Vector store initialization failed - falling back to text search");
+                return self.text_search(handler).await;
+            }
+        };
 
         // Check if HNSW index is available
         let store_guard = vector_store.read().await;

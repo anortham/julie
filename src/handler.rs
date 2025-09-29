@@ -55,6 +55,18 @@ impl JulieServerHandler {
 
     /// Get or initialize the cached embedding engine for semantic operations
     /// This avoids expensive repeated initialization of the ONNX model
+    /// Ensure vector store is initialized (lazy initialization for semantic search)
+    pub async fn ensure_vector_store(&self) -> Result<()> {
+        let mut workspace_guard = self.workspace.write().await;
+        if let Some(ref mut ws) = workspace_guard.as_mut() {
+            if ws.vector_store.is_none() {
+                info!("🔄 Lazy-initializing vector store for semantic search...");
+                ws.initialize_vector_store()?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn ensure_embedding_engine(&self) -> Result<()> {
         let mut embedding_guard = self.embedding_engine.write().await;
 

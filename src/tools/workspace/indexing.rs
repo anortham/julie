@@ -1019,10 +1019,54 @@ async fn generate_embeddings_from_sqlite(
 
     let duration = start_time.elapsed();
     info!(
-        "✅ Embedding generation complete in {:.2}s - semantic search is now available!",
+        "✅ Embedding generation complete in {:.2}s",
         duration.as_secs_f64()
     );
 
+    // 🏗️ BUILD AND SAVE HNSW INDEX
+    info!("🏗️ Building HNSW index from fresh embeddings...");
+    let hnsw_start = std::time::Instant::now();
+
+    let mut vector_store = crate::embeddings::vector_store::VectorStore::new(384)?;
+
+    {
+        let db_lock = db.lock().await;
+        match db_lock.load_all_embeddings("bge-small") {
+            Ok(embeddings) => {
+                let count = embeddings.len();
+                info!("📥 Loading {} embeddings for HNSW", count);
+
+                for (symbol_id, vector) in embeddings {
+                    if let Err(e) = vector_store.store_vector(symbol_id.clone(), vector) {
+                        warn!("Failed to store vector {}: {}", symbol_id, e);
+                    }
+                }
+
+                // Build HNSW index
+                match vector_store.build_hnsw_index() {
+                    Ok(_) => {
+                        info!("✅ HNSW index built in {:.2}s", hnsw_start.elapsed().as_secs_f64());
+
+                        // Save to disk for lazy loading on next startup
+                        let vectors_path = std::path::PathBuf::from("./.julie/vectors");
+                        if let Err(e) = vector_store.save_hnsw_index(&vectors_path) {
+                            warn!("Failed to save HNSW index to disk: {}", e);
+                        } else {
+                            info!("💾 HNSW index saved to vectors/ for fast loading");
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to build HNSW index: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Could not load embeddings for HNSW: {}", e);
+            }
+        }
+    }
+
+    info!("✅ Background task complete - semantic search ready via lazy loading!");
     Ok(())
 }
 
