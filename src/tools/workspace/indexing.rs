@@ -419,7 +419,7 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         language: &str,
         parser: &mut Parser,
-        search_engine: &Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
+        _search_engine: &Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo, Vec<Symbol>)> {
         // Read file content ONCE for both Tantivy and symbol extraction
         let content = fs::read_to_string(file_path)

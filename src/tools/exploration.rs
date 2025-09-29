@@ -21,9 +21,18 @@ use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastExploreTool {
+    /// Exploration mode to run
+    /// Valid modes: "overview" (symbol counts and structure), "dependencies" (relationships between symbols), "hotspots" (files with most symbols), "all" (comprehensive analysis)
+    /// Example: "overview" for quick codebase summary
     pub mode: String,
+    /// Analysis depth level (controls detail amount)
+    /// Valid depths: "minimal" (basic info), "medium" (balanced detail), "deep" (comprehensive analysis)
+    /// Default: "medium" - good balance of detail vs. readability
     #[serde(default = "default_medium")]
     pub depth: String,
+    /// Optional filter to focus analysis on specific areas
+    /// Examples: "auth" to focus on authentication code, "user" for user-related symbols, "payment" for payment logic
+    /// Leave empty for full codebase analysis
     #[serde(default)]
     pub focus: Option<String>,
 }
@@ -651,9 +660,21 @@ impl FastExploreTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FindLogicTool {
+    /// Business domain keywords to search for
+    /// Examples: "payment" for payment processing logic, "auth" for authentication, "user" for user management, "order" for order processing
+    /// Can use multiple keywords: "payment checkout billing" for broader coverage
     pub domain: String,
+    /// Maximum number of business logic symbols to return
+    /// Higher values = more comprehensive results but longer response
+    /// Recommended: 20-50 for focused analysis, 100+ for comprehensive review
     pub max_results: i32,
+    /// Group results by architectural layer (controllers, services, models, etc.)
+    /// true = organized by layer for architectural understanding
+    /// false = flat list sorted by relevance score
     pub group_by_layer: bool,
+    /// Minimum business relevance score threshold (0.0 to 1.0)
+    /// Higher values = more selective, only highly relevant business logic
+    /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
     pub min_business_score: f32,
 }
 

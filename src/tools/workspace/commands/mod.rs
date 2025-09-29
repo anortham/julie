@@ -72,7 +72,7 @@ pub enum WorkspaceCommand {
 
 #[mcp_tool(
     name = "manage_workspace",
-    description = "🏗️ UNIFIED WORKSPACE MANAGEMENT - Index, add, remove, and manage multiple project workspaces\n\nCommon operations:\n• Index workspace: Use 'index' command to enable fast search capabilities\n• Force reindex: Use 'index' with force=true to rebuild from scratch\n• Multi-workspace: Use 'add' to include reference workspaces for cross-project search\n• Maintenance: Use 'clean' to remove expired workspaces and optimize storage\n\nMust provide command as JSON object with command type + parameters (see examples in parameter docs)",
+    description = "MANAGE PROJECT WORKSPACES - Index, add, remove, and configure multiple project workspaces",
     title = "Manage Julie Workspaces",
     idempotent_hint = false,
     destructive_hint = false,
@@ -82,23 +82,22 @@ pub enum WorkspaceCommand {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Workspace management command to execute.
+    /// Workspace management command to execute
     ///
-    /// Examples:
-    /// - Index current directory: {"command": "index", "force": false, "path": null}
-    /// - Force reindex workspace: {"command": "index", "force": true, "path": null}
-    /// - Index specific path: {"command": "index", "force": false, "path": "/path/to/workspace"}
-    /// - Add reference workspace: {"command": "add", "path": "/path/to/other/project", "name": "Optional Display Name"}
-    /// - List all workspaces: {"command": "list"}
-    /// - Remove workspace: {"command": "remove", "workspace_id": "workspace-id-here"}
-    /// - Clean expired workspaces: {"command": "clean", "expired_only": true}
-    /// - Show statistics: {"command": "stats", "workspace_id": null}
-    /// - Set TTL: {"command": "set_ttl", "days": 30}
-    /// - Set storage limit: {"command": "set_limit", "max_size_mb": 1024}
-    /// - System health check: {"command": "health", "detailed": true}
+    /// COMMON COMMANDS:
+    /// • Index: Enable fast search by indexing current directory (use force=true to rebuild)
+    /// • Add: Include additional workspace for cross-project search
+    /// • List: Show all registered workspaces with status
+    /// • Clean: Remove expired workspaces to optimize storage
+    /// • Stats: Display workspace statistics and health info
     ///
-    /// Note: The command field uses a tagged enum structure where the command type and parameters
-    /// are combined in a single JSON object with the command type as the "command" field.
+    /// ADVANCED COMMANDS:
+    /// • Remove: Delete specific workspace by ID
+    /// • SetTtl: Configure workspace expiration (days)
+    /// • SetLimit: Set storage limits (MB)
+    /// • Health: System health check with diagnostics
+    ///
+    /// Most common: Index (to enable search) and List (to see workspaces)
     pub command: WorkspaceCommand,
 }
 

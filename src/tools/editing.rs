@@ -24,26 +24,43 @@ fn default_true() -> bool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastEditTool {
-    /// File path for single-file mode, or empty string for search_and_replace mode
+    /// File path for single-file editing, or empty string "" for multi-file search_and_replace mode
+    /// Single file example: "src/main.rs"
+    /// Multi-file mode: "" (empty string triggers search_and_replace across multiple files)
     pub file_path: String,
-    /// Text to find and replace
+    /// Text pattern to find and replace
+    /// Supports exact text matching and simple patterns
+    /// Example: "getUserData" or "console.log" or "old_function_name"
     pub find_text: String,
-    /// Text to replace with
+    /// Replacement text to substitute for found patterns
+    /// Example: "fetchUserData" or "logger.info" or "new_function_name"
     pub replace_text: String,
-    /// Operation mode: None (single file) or "search_and_replace" (multi-file)
+    /// Operation mode for multi-file operations
+    /// Use "search_and_replace" for multi-file mode (requires file_path to be empty string)
+    /// Leave empty for single-file mode
     #[serde(default)]
     pub mode: Option<String>,
-    /// Programming language filter for search_and_replace mode (optional)
+    /// Programming language filter for search_and_replace mode
+    /// Valid: "rust", "typescript", "javascript", "python", "java", etc.
+    /// Example: "typescript" to only process .ts/.tsx files
     #[serde(default)]
     pub language: Option<String>,
-    /// File pattern filter for search_and_replace mode (optional)
+    /// File pattern filter for search_and_replace mode
+    /// Examples: "src/**/*.rs", "*.test.ts", "components/**/*.tsx"
+    /// Use glob patterns to target specific files/directories
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum files to process in search_and_replace mode (optional)
+    /// Maximum number of files to process in search_and_replace mode
+    /// Default: reasonable limit to prevent overwhelming results
+    /// Example: 10 for targeted changes, 100 for broad refactoring
     #[serde(default)]
     pub limit: Option<u32>,
+    /// Validate changes before applying (recommended for safety)
+    /// Default: true - performs backup and integrity checks
     #[serde(default = "default_true")]
     pub validate: bool,
+    /// Preview changes without applying them
+    /// Default: false - set true to see what would change
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -637,14 +654,35 @@ impl FastEditTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct LineEditTool {
+    /// Path to the file to edit
+    /// Example: "src/main.rs" or "/absolute/path/to/file.ts"
     pub file_path: String,
-    pub operation: String, // "count", "read", "insert", "delete", "replace"
+    /// Line editing operation to perform
+    /// Valid operations: "count" (count lines), "read" (read lines), "insert" (add lines), "delete" (remove lines), "replace" (change lines)
+    /// Example: "insert" to add new content at specific line number
+    pub operation: String,
+    /// Starting line number for range operations (1-based)
+    /// Required for: read, delete, replace operations
+    /// Example: 10 to start from line 10
     pub start_line: Option<u32>,
+    /// Ending line number for range operations (1-based, inclusive)
+    /// Required for: read, delete, replace operations
+    /// Example: 15 to end at line 15
     pub end_line: Option<u32>,
-    pub line_number: Option<u32>, // for insert operation
+    /// Specific line number for insert operations (1-based)
+    /// Required for: insert operation only
+    /// Example: 5 to insert content after line 5
+    pub line_number: Option<u32>,
+    /// Text content for insert and replace operations
+    /// Required for: insert, replace operations
+    /// Example: "console.log('Hello World');" for new code
     pub content: Option<String>,
+    /// Automatically preserve existing indentation when inserting/replacing
+    /// Default: true - maintains consistent code formatting
     #[serde(default = "default_true")]
     pub preserve_indentation: bool,
+    /// Preview changes without applying them
+    /// Default: false - set true to see what would change
     #[serde(default)]
     pub dry_run: bool,
 }

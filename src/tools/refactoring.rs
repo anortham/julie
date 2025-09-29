@@ -47,19 +47,22 @@ pub enum RefactorOperation {
 /// Smart refactoring tool for semantic code transformations
 #[mcp_tool(
     name = "smart_refactor",
-    description = "🔄 INTELLIGENT REFACTORING - Semantic code transformations using AST analysis + precise diff-match-patch",
+    description = "REFACTOR WITH PRECISION - Rename symbols, extract functions, and transform code structure safely",
     title = "Smart Semantic Refactoring Tool"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SmartRefactorTool {
     /// The refactoring operation to perform
-    pub operation: RefactorOperation,
+    /// Valid operations: "rename_symbol", "extract_function", "replace_symbol_body", "insert_relative_to_symbol", "extract_type", "update_imports", "inline_variable", "inline_function"
+    /// Examples: "rename_symbol" to rename classes/functions across workspace, "replace_symbol_body" to update method implementations
+    pub operation: String,
 
     /// Operation-specific parameters as JSON string
-    /// For rename_symbol: "{\"old_name\": \"UserService\", \"new_name\": \"AccountService\", \"scope\": \"workspace\", \"update_imports\": true}"
-    /// For extract_function: "{\"file\": \"src/handler.rs\", \"start_line\": 45, \"end_line\": 67, \"function_name\": \"validateInput\"}"
-    /// For replace_symbol_body: "{\"file\": \"src/handler.rs\", \"symbol_name\": \"handle_request\", \"new_body\": \"fn handle_request() { ... }\"}"
-    /// For insert_relative_to_symbol: "{\"file\": \"src/handler.rs\", \"target_symbol\": \"MyClass\", \"position\": \"after\", \"content\": \"fn new_method() {}\"}"
+    /// • rename_symbol: old_name, new_name, scope, update_imports
+    /// • extract_function: file, start_line, end_line, function_name
+    /// • replace_symbol_body: file, symbol_name, new_body
+    /// • insert_relative_to_symbol: file, target_symbol, position, content
+    /// Example: {"old_name": "UserService", "new_name": "AccountService"} for rename_symbol
     #[serde(default = "default_empty_json")]
     pub params: String,
 
@@ -76,15 +79,23 @@ impl SmartRefactorTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🔄 Smart refactor operation: {:?}", self.operation);
 
-        match &self.operation {
-            RefactorOperation::RenameSymbol => self.handle_rename_symbol(handler).await,
-            RefactorOperation::ExtractFunction => self.handle_extract_function(handler).await,
-            RefactorOperation::ReplaceSymbolBody => self.handle_replace_symbol_body(handler).await,
-            RefactorOperation::InsertRelativeToSymbol => self.handle_insert_relative_to_symbol(handler).await,
-            RefactorOperation::ExtractType => self.handle_extract_type(handler).await,
-            RefactorOperation::UpdateImports => self.handle_update_imports(handler).await,
-            RefactorOperation::InlineVariable => self.handle_inline_variable(handler).await,
-            RefactorOperation::InlineFunction => self.handle_inline_function(handler).await,
+        match self.operation.as_str() {
+            "rename_symbol" => self.handle_rename_symbol(handler).await,
+            "extract_function" => self.handle_extract_function(handler).await,
+            "replace_symbol_body" => self.handle_replace_symbol_body(handler).await,
+            "insert_relative_to_symbol" => self.handle_insert_relative_to_symbol(handler).await,
+            "extract_type" => self.handle_extract_type(handler).await,
+            "update_imports" => self.handle_update_imports(handler).await,
+            "inline_variable" => self.handle_inline_variable(handler).await,
+            "inline_function" => self.handle_inline_function(handler).await,
+            _ => {
+                let message = format!(
+                    "❌ Unknown refactoring operation: '{}'\n\
+                    Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function",
+                    self.operation
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(message)]))
+            }
         }
     }
 
@@ -325,7 +336,7 @@ impl SmartRefactorTool {
     /// Handle extract function operation
     async fn handle_extract_function(
         &self,
-        handler: &JulieServerHandler,
+        _handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
         debug!("🔄 Processing extract function operation");
 
@@ -380,7 +391,6 @@ impl SmartRefactorTool {
 
         // Extract the code block (convert to 0-based indexing)
         let extracted_lines = &lines[(start_line as usize - 1)..(end_line as usize)];
-        let extracted_code = extracted_lines.join("\n");
 
         // Detect the base indentation level of the extracted code
         let base_indent = self.detect_base_indentation(extracted_lines);
