@@ -28,7 +28,7 @@ export class UserService {
   }
 
   async findUserById(id: string): Promise<User | null> {
-    this.logger.info(`Finding user with ID: ${id}`);
+    this.logger.info('Finding user with ID: ' + id);
 
     // Check cache first
     if (this.cache.has(id)) {
@@ -42,7 +42,7 @@ export class UserService {
       }
       return user;
     } catch (error) {
-      this.logger.error(`Failed to find user: ${error}`);
+      this.logger.error('Failed to find user: ' + error);
       return null;
     }
   }
@@ -57,7 +57,7 @@ export class UserService {
     await this.saveUserToDatabase(user);
     this.cache.set(user.id, user);
 
-    this.logger.info(`Created user: ${user.name}`);
+    this.logger.info('Created user: ' + user.name);
     return user;
   }
 

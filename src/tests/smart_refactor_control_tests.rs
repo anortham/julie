@@ -31,15 +31,15 @@ const SMART_REFACTOR_TEST_CASES: &[SmartRefactorTestCase] = &[
         params: r#"{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace", "update_imports": true}"#,
         description: "Rename class UserService to AccountService across entire file",
     },
-    // Future test cases for other operations...
-    // SmartRefactorTestCase {
-    //     name: "extract_validation_function",
-    //     source_file: "refactor_source.ts",
-    //     control_file: "extract_validation_function.ts",
-    //     operation: RefactorOperation::ExtractFunction,
-    //     params: r#"{"file": "tests/editing/sources/refactor_source.ts", "start_line": 77, "end_line": 83, "function_name": "hasUserPermission"}"#,
-    //     description: "Extract permission check logic into separate function",
-    // },
+    // 🔴 RED: ReplaceSymbolBody test cases (WILL FAIL initially for TDD)
+    SmartRefactorTestCase {
+        name: "replace_finduserbyid_method_body",
+        source_file: "refactor_source.ts",
+        control_file: "replace_finduserbyid_body.ts",
+        operation: RefactorOperation::ReplaceSymbolBody,
+        params: r#"{"file": "refactor_source.ts", "symbol_name": "findUserById", "new_body": "  async findUserById(id: string): Promise<User | null> {\n    // Optimized implementation with error handling\n    if (!id || id.trim().length === 0) {\n      throw new Error('Invalid user ID provided');\n    }\n\n    this.logger.info('Finding user with ID: ' + id);\n\n    // Check cache first\n    const cachedUser = this.cache.get(id);\n    if (cachedUser) {\n      return cachedUser;\n    }\n\n    try {\n      const user = await this.fetchUserFromDatabase(id);\n      if (user) {\n        this.cache.set(id, user);\n        this.logger.debug('User ' + id + ' cached successfully');\n      }\n      return user;\n    } catch (error) {\n      this.logger.error('Failed to find user: ' + error);\n      throw error;\n    }\n  }"}"#,
+        description: "Replace findUserById method body with enhanced implementation",
+    },
 ];
 
 /// Test helper to set up temp directories and files
@@ -65,11 +65,17 @@ fn setup_smart_refactor_test_environment() -> Result<PathBuf> {
 }
 
 /// Copy source file to test location (SOURCE files are never edited)
-fn setup_smart_refactor_test_file(source_file: &str, temp_dir: &Path) -> Result<PathBuf> {
+fn setup_smart_refactor_test_file(source_file: &str, test_case_name: &str, temp_dir: &Path) -> Result<PathBuf> {
     let source_path = Path::new("tests/editing/sources").join(source_file);
-    let test_path = temp_dir.join(source_file);
+
+    // Create unique filename using test case name to prevent contamination
+    let file_stem = Path::new(source_file).file_stem().unwrap().to_str().unwrap();
+    let file_ext = Path::new(source_file).extension().unwrap().to_str().unwrap();
+    let unique_filename = format!("{}_{}.{}", file_stem, test_case_name, file_ext);
+    let test_path = temp_dir.join(unique_filename);
 
     fs::copy(&source_path, &test_path)?;
+
     Ok(test_path)
 }
 
@@ -118,6 +124,64 @@ fn simulate_rename_operation(file_content: &str, old_name: &str, new_name: &str)
     // Simple text replacement simulation for testing
     // In real implementation, this would use tree-sitter parsing + FastRefsTool + diff-match-patch
     file_content.replace(old_name, new_name)
+}
+
+/// 🔴 RED: Simulate ReplaceSymbolBody operation for TDD testing
+/// This represents what our implementation SHOULD do (will fail initially)
+fn simulate_replace_symbol_body_operation(file_content: &str, params: &str) -> Result<String> {
+    // Parse parameters
+    let params: serde_json::Value = serde_json::from_str(params)?;
+    let symbol_name = params["symbol_name"].as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing symbol_name parameter"))?;
+    let new_body = params["new_body"].as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing new_body parameter"))?;
+
+    // 🔴 RED PHASE: Simulate what ReplaceSymbolBody should do
+    // This is a basic simulation for TDD - real implementation will use tree-sitter
+
+    if symbol_name == "findUserById" {
+        // Simple approach: find start and end line, replace everything between
+        let lines: Vec<&str> = file_content.lines().collect();
+        let mut result_lines = Vec::new();
+        let mut method_start_line = None;
+        let mut method_end_line = None;
+
+        // Find method start and end
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains("async findUserById(") && line.contains(": Promise<User | null>") {
+                method_start_line = Some(i);
+            }
+            // Look for the method-ending brace (indented at the class level)
+            if method_start_line.is_some() && *line == "  }" && method_end_line.is_none() {
+                // This should be the end of the method (2-space indentation for class methods)
+                method_end_line = Some(i);
+                break;
+            }
+        }
+
+        if let (Some(start), Some(end)) = (method_start_line, method_end_line) {
+            // Add lines before the method
+            for i in 0..start {
+                result_lines.push(lines[i]);
+            }
+
+            // Add the new method implementation
+            result_lines.push(new_body);
+
+            // Add lines after the method
+            for i in (end + 1)..lines.len() {
+                result_lines.push(lines[i]);
+            }
+
+            return Ok(result_lines.join("\n"));
+        }
+    }
+
+    // If we get here, symbol not found or not implemented
+    Err(anyhow::anyhow!(
+        "🔴 RED: simulate_replace_symbol_body_operation not fully implemented for symbol '{}'",
+        symbol_name
+    ))
 }
 
 #[cfg(test)]
@@ -186,48 +250,189 @@ mod smart_refactor_control_tests {
         temp_dir: &Path,
     ) -> Result<()> {
         // Step 1: Set up test file from source (SOURCE files are never edited)
-        let test_file_path = setup_smart_refactor_test_file(test_case.source_file, temp_dir)?;
+        let test_file_path = setup_smart_refactor_test_file(test_case.source_file, test_case.name, temp_dir)?;
         println!("📁 Source file copied to: {}", test_file_path.display());
 
         // Step 2: Load expected control result (CONTROL files are expected outcomes)
         let expected_content = load_smart_refactor_control_file(test_case.control_file)?;
         println!("🎯 Control state loaded from: {}", test_case.control_file);
 
-        // Step 3: Create SmartRefactorTool (for validation, not actual execution)
-        let _smart_refactor_tool = SmartRefactorTool {
-            operation: test_case.operation.clone(),
-            params: test_case.params.to_string(),
-            dry_run: false, // Actually perform the refactoring
-        };
+        // Step 3: Initialize base parameters (will be updated later for ReplaceSymbolBody)
+        let mut params = test_case.params.to_string();
 
-        // Step 4: Simulate the smart refactor operation
-        // NOTE: In a real test, this would call smart_refactor_tool.call_tool(handler)
-        // For now, we simulate the rename operation for testing the methodology
+        // Step 4: For ReplaceSymbolBody, backup original before modification
         let original_content = fs::read_to_string(&test_file_path)?;
+        let backup_path = if matches!(test_case.operation, RefactorOperation::ReplaceSymbolBody) {
+            let backup = test_file_path.with_extension("ts.backup");
+            fs::copy(&test_file_path, &backup)?;
+            Some(backup)
+        } else {
+            None
+        };
 
         let modified_content = match &test_case.operation {
             RefactorOperation::RenameSymbol => {
-                // Parse params to get old_name and new_name
-                let params: serde_json::Value = serde_json::from_str(test_case.params)?;
-                let old_name = params["old_name"].as_str().unwrap();
-                let new_name = params["new_name"].as_str().unwrap();
+                // Create SmartRefactorTool for RenameSymbol (no parameter updates needed)
+                let smart_refactor_tool = SmartRefactorTool {
+                    operation: test_case.operation.clone(),
+                    params: params.clone(),
+                    dry_run: false,
+                };
+                println!("🔧 SmartRefactorTool params: {}", params);
+
+                // For RenameSymbol, simulate the operation since it doesn't require indexing
+                let params_json: serde_json::Value = serde_json::from_str(&params)?;
+                let old_name = params_json["old_name"].as_str().unwrap();
+                let new_name = params_json["new_name"].as_str().unwrap();
 
                 simulate_rename_operation(&original_content, old_name, new_name)
             }
+            RefactorOperation::ReplaceSymbolBody => {
+                // 🟢 GREEN: Now test the ACTUAL ReplaceSymbolBody implementation
+                let handler = crate::handler::JulieServerHandler::new().await?;
+
+                // Manually index the test file symbols to avoid workspace management complexity
+                println!("🔧 Manually indexing symbols from test file for SmartRefactorTool...");
+
+                // Extract symbols from the test file using ExtractorManager
+                let extractor_manager = crate::extractors::ExtractorManager::new();
+                match extractor_manager.extract_symbols(&test_file_path.to_string_lossy(), &original_content).await {
+                    Ok(symbols) => {
+                        println!("📊 Extracted {} symbols from test file", symbols.len());
+
+                        // Step 1: Clean up any existing Tantivy index to avoid lock contention
+                        let current_dir = std::env::current_dir()?;
+                        let julie_dir = current_dir.join(".julie");
+                        let tantivy_dir = julie_dir.join("index").join("tantivy");
+
+                        if tantivy_dir.exists() {
+                            if let Err(e) = std::fs::remove_dir_all(&tantivy_dir) {
+                                println!("⚠️ Warning: Failed to clean Tantivy index: {}", e);
+                            } else {
+                                println!("🧹 Cleaned existing Tantivy index to avoid lock contention");
+                            }
+                        }
+
+                        // Step 2: Set up minimal workspace with database for health checker
+                        let test_workspace = crate::workspace::JulieWorkspace::initialize(current_dir.clone())?;
+                        *handler.workspace.write().await = Some(test_workspace);
+
+                        // Step 3: Get or register workspace in registry service for health checker
+                        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(current_dir.clone());
+                        let workspace_id = match registry_service.get_primary_workspace_id().await? {
+                            Some(workspace_id) => {
+                                // Primary workspace already exists, use it
+                                println!("✅ Using existing primary workspace: {}", workspace_id);
+                                workspace_id
+                            }
+                            None => {
+                                // Register new primary workspace
+                                let entry = registry_service.register_workspace(
+                                    current_dir.to_string_lossy().to_string(),
+                                    crate::workspace::registry::WorkspaceType::Primary
+                                ).await?;
+                                println!("✅ Workspace registered with ID: {}", entry.id);
+                                entry.id
+                            }
+                        };
+
+                        // Step 2: Add file record and symbols to database to satisfy health checker
+                        if let Some(workspace) = handler.get_workspace().await? {
+                            if let Some(db_arc) = &workspace.db {
+                                let db_lock = db_arc.lock().await;
+
+                                // First, add the file record to satisfy foreign key constraint
+                                let file_info = crate::database::FileInfo {
+                                    path: test_file_path.to_string_lossy().to_string(),
+                                    language: "typescript".to_string(),
+                                    hash: "test-hash".to_string(), // Simple hash for testing
+                                    size: original_content.len() as i64,
+                                    last_modified: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
+                                    last_indexed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
+                                    symbol_count: symbols.len() as i32,
+                                };
+
+                                if let Err(e) = db_lock.store_file_info(&file_info, &workspace_id) {
+                                    println!("⚠️ Warning: Failed to store file info in database: {}", e);
+                                } else {
+                                    println!("✅ File info added to database for FK constraint");
+                                }
+
+                                // Now store symbols (should work with file record in place)
+                                if let Err(e) = db_lock.store_symbols(&symbols, &workspace_id) {
+                                    println!("⚠️ Warning: Failed to store symbols in database: {}", e);
+                                } else {
+                                    println!("✅ {} symbols added to database for health checker", symbols.len());
+                                }
+                            }
+                        }
+
+                        // Step 3: Add symbols to search engine for actual searching
+                        {
+                            let mut search_engine = handler.search_engine.write().await;
+                            if let Err(e) = search_engine.index_symbols(symbols).await {
+                                println!("⚠️ Warning: Failed to index symbols: {}", e);
+                            } else {
+                                println!("✅ Symbols indexed successfully into in-memory search engine");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("⚠️ Warning: Failed to extract symbols: {}", e);
+                    }
+                }
+
+                // Keep original file path since we're not using temporary workspace
+                println!("🔧 Using original file path for SmartRefactorTool: {}", test_file_path.display());
+
+                // Update parameters to use the test file path
+                let absolute_path = test_file_path.to_string_lossy();
+                params = params.replace("refactor_source.ts", &absolute_path);
+                println!("🔧 Updated SmartRefactorTool params: {}", params);
+
+                // Create SmartRefactorTool with updated parameters
+                let smart_refactor_tool = SmartRefactorTool {
+                    operation: test_case.operation.clone(),
+                    params: params.clone(),
+                    dry_run: false,
+                };
+
+                let result = smart_refactor_tool.call_tool(&handler).await?;
+
+                // Call the actual implementation and check success
+                let result_text = format!("{:?}", result);
+                if result_text.contains("✅") {
+                    // Success - read the modified file
+                    fs::read_to_string(&test_file_path)?
+                } else {
+                    return Err(anyhow::anyhow!("ReplaceSymbolBody failed: {}", result_text));
+                }
+            }
             _ => {
                 return Err(anyhow::anyhow!(
-                    "Operation {:?} not yet implemented in tests",
+                    "🔴 RED: Operation {:?} not yet implemented in tests - this is expected for TDD!",
                     test_case.operation
                 ));
             }
         };
 
-        // Write the result
-        fs::write(&test_file_path, &modified_content)?;
-        println!("✏️ Smart refactor operation completed");
+        // For ReplaceSymbolBody, the file is already written by the real implementation
+        // For other operations, write the result
+        if !matches!(test_case.operation, RefactorOperation::ReplaceSymbolBody) {
+            fs::write(&test_file_path, &modified_content)?;
+            println!("✏️ Smart refactor operation completed (simulated for TDD)");
+        } else {
+            println!("✏️ Smart refactor operation completed (actual implementation)");
+        }
 
-        // Step 5: Load actual result
+        // Step 5: Load actual result from the test file path
         let actual_content = fs::read_to_string(&test_file_path)?;
+
+        // Step 6: For ReplaceSymbolBody, restore original file after reading result
+        if let Some(backup_path) = backup_path {
+            fs::copy(&backup_path, &test_file_path)?; // Restore original
+            fs::remove_file(&backup_path)?; // Clean up backup
+        }
 
         // Step 6: Verify result matches control exactly
         verify_smart_refactor_result(&actual_content, &expected_content, test_case.name)?;
@@ -241,7 +446,7 @@ mod smart_refactor_control_tests {
         println!("🔍 Testing SmartRefactorTool dry run safety...");
 
         let temp_dir = setup_smart_refactor_test_environment()?;
-        let test_file_path = setup_smart_refactor_test_file("refactor_source.ts", &temp_dir)?;
+        let test_file_path = setup_smart_refactor_test_file("refactor_source.ts", "dry_run_safety", &temp_dir)?;
 
         // Get original content
         let original_content = fs::read_to_string(&test_file_path)?;

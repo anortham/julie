@@ -19,7 +19,7 @@ export interface Permission {
   resource: string;
 }
 
-export class AccountService {
+export class UserService {
   private logger: Logger;
   private cache = new Map<string, User>();
 
@@ -28,22 +28,29 @@ export class AccountService {
   }
 
   async findUserById(id: string): Promise<User | null> {
+    // Optimized implementation with error handling
+    if (!id || id.trim().length === 0) {
+      throw new Error('Invalid user ID provided');
+    }
+
     this.logger.info('Finding user with ID: ' + id);
 
     // Check cache first
-    if (this.cache.has(id)) {
-      return this.cache.get(id)!;
+    const cachedUser = this.cache.get(id);
+    if (cachedUser) {
+      return cachedUser;
     }
 
     try {
       const user = await this.fetchUserFromDatabase(id);
       if (user) {
         this.cache.set(id, user);
+        this.logger.debug('User ' + id + ' cached successfully');
       }
       return user;
     } catch (error) {
       this.logger.error('Failed to find user: ' + error);
-      return null;
+      throw error;
     }
   }
 
