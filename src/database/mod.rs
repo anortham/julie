@@ -1786,7 +1786,7 @@ impl SymbolDatabase {
                             end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
                             parent_id, metadata, semantic_group, confidence
                      FROM symbols
-                     WHERE name LIKE ?1 AND language = ?2 AND workspace_id IN ({})
+                     WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2 AND workspace_id IN ({})
                      ORDER BY name, file_path
                      LIMIT 1000",
                     workspace_placeholders
@@ -1797,7 +1797,7 @@ impl SymbolDatabase {
                             end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
                             parent_id, metadata, semantic_group, confidence
                      FROM symbols
-                     WHERE name LIKE ?1 AND workspace_id IN ({})
+                     WHERE (name LIKE ?1 OR code_context LIKE ?1) AND workspace_id IN ({})
                      ORDER BY name, file_path
                      LIMIT 1000",
                     workspace_placeholders
@@ -1809,7 +1809,7 @@ impl SymbolDatabase {
                         end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
                         parent_id, metadata, semantic_group, confidence
                  FROM symbols
-                 WHERE name LIKE ?1 AND language = ?2
+                 WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2
                  ORDER BY name, file_path
                  LIMIT 1000".to_string()
             } else {
@@ -1817,7 +1817,7 @@ impl SymbolDatabase {
                         end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
                         parent_id, metadata, semantic_group, confidence
                  FROM symbols
-                 WHERE name LIKE ?1
+                 WHERE (name LIKE ?1 OR code_context LIKE ?1)
                  ORDER BY name, file_path
                  LIMIT 1000".to_string()
             }

@@ -4,6 +4,53 @@ use crate::search::schema::QueryIntent;
 use tracing::debug;
 
 #[tokio::test]
+async fn test_file_content_search() {
+    // TDD Test: FILE_CONTENT symbols with markdown should be searchable
+    let mut engine = SearchEngine::in_memory().unwrap();
+
+    // Create a FILE_CONTENT symbol with markdown content
+    let file_content_symbol = Symbol {
+        id: "FILE_CONTENT_CLAUDE_md".to_string(),
+        name: "FILE_CONTENT_CLAUDE_md".to_string(),
+        kind: SymbolKind::Module,  // FILE_CONTENT uses Module kind
+        language: "markdown".to_string(),
+        file_path: "CLAUDE.md".to_string(),
+        signature: None,
+        start_line: 1,
+        end_line: 100,
+        start_column: 0,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 5000,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some("# CLAUDE.md - Project Julie Development Guidelines\n\n**Julie** is a cross-platform code intelligence server built in Rust.".to_string()),
+    };
+
+    // Index the FILE_CONTENT symbol
+    engine.index_symbols(vec![file_content_symbol.clone()]).await.unwrap();
+
+    // Test 1: Multi-word semantic search (triggers SemanticConcept intent)
+    let results = engine.search("Project Julie").await.unwrap();
+    assert!(!results.is_empty(), "Should find FILE_CONTENT with semantic search");
+    assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
+
+    // Test 2: Single word search
+    let results = engine.search("Guidelines").await.unwrap();
+    assert!(!results.is_empty(), "Should find FILE_CONTENT with single word");
+    assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
+
+    // Test 3: Case insensitive search
+    let results = engine.search("rust").await.unwrap();
+    assert!(!results.is_empty(), "Should find FILE_CONTENT case-insensitively");
+    assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
+}
+
+#[tokio::test]
 async fn test_basic_search_functionality() {
     // TDD Test: Should index a symbol and find it via search
     let mut engine = SearchEngine::in_memory().unwrap();

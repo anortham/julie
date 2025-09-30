@@ -86,6 +86,23 @@ We will be using Julie to develop Julie (eating our own dog food):
    - User restarts Claude Code with new Julie build
    - Test the new features in live MCP session
 
+### Workspace Storage Location
+**CRITICAL**: Julie stores workspace data at **project level**, not user home:
+- **Workspace data**: `<project>/.julie/` (e.g., `/Users/murphy/Source/julie/.julie/`)
+- **NOT** at `~/.julie/` (this is a common mistake!)
+
+**Directory Structure:**
+```
+<project>/.julie/
+├── db/
+│   └── symbols.db           # SQLite database with all symbols
+├── index/                   # Tantivy search indexes
+├── vectors/                 # Semantic embeddings (HNSW)
+├── cache/                   # Query caches
+├── logs/                    # Debug logs
+└── workspace_registry.json  # Workspace metadata
+```
+
 ### Why This Matters
 - **Real-world validation**: If Julie can't analyze its own code, it's not ready
 - **Performance testing**: Large codebase stress testing
@@ -98,6 +115,12 @@ When implementing new features, the agent should say:
 ---
 
 ## 🏗️ Architecture Principles
+
+### 📚 Architecture Documentation
+**IMPORTANT**: Read these documents to understand Julie's architecture:
+- **[SEARCH_FLOW.md](docs/SEARCH_FLOW.md)** - How searches flow through the system (KEEP THIS UPDATED!)
+- **TODO.md** - Current observations and ideas
+- **ARCHITECTURE_DEBT.md** - Known issues and technical debt
 
 ### Core Design Decisions
 1. **Native Rust**: No FFI, no CGO, no external dependencies

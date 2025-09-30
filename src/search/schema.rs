@@ -108,7 +108,8 @@ impl CodeSearchSchema {
         let signature_exact =
             schema_builder.add_text_field("signature_exact", exact_options.clone());
         let doc_comment = schema_builder.add_text_field("doc_comment", text_options.clone());
-        let code_context = schema_builder.add_text_field("code_context", code_text_options.clone());
+        // Use standard tokenizer for code_context to support FILE_CONTENT (markdown/text files)
+        let code_context = schema_builder.add_text_field("code_context", text_options.clone());
 
         // Location information (numeric fields use different options)
         let start_line = schema_builder.add_u64_field(

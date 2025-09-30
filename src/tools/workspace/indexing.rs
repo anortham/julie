@@ -1009,8 +1009,10 @@ impl ManageWorkspaceTool {
 
         info!("🎯 Returning from process_file_without_parser: {} tantivy_symbols", tantivy_symbols.len());
 
-        // Return: no symbols extracted, no relationships, but file indexed for text search
-        Ok((Vec::new(), Vec::new(), file_info, tantivy_symbols))
+        // Return: FILE_CONTENT symbols for BOTH database storage AND Tantivy indexing
+        // Clone is necessary because both database and Tantivy need the symbols
+        let database_symbols = tantivy_symbols.clone();
+        Ok((database_symbols, Vec::new(), file_info, tantivy_symbols))
     }
 }
 

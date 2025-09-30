@@ -108,7 +108,7 @@ impl SearchEngine {
             let camelcase_variants = self.expand_camelcase_query(clean_query);
             debug!("🐪 Generated camelCase variants: {:?}", camelcase_variants);
 
-            let query_parser = QueryParser::for_index(&self.index, vec![fields.symbol_name]);
+            let query_parser = QueryParser::for_index(&self.index, vec![fields.symbol_name, fields.code_context]);
 
             for variant in camelcase_variants {
                 match query_parser.parse_query(&variant) {
@@ -159,6 +159,7 @@ impl SearchEngine {
                 fields.signature_exact,
                 fields.symbol_name,
                 fields.all_text,
+                fields.code_context,  // Support FILE_CONTENT in generic type search
             ],
         );
 
@@ -220,7 +221,7 @@ impl SearchEngine {
 
         let query_parser = QueryParser::for_index(
             &self.index,
-            vec![fields.signature, fields.signature_exact, fields.all_text],
+            vec![fields.signature, fields.signature_exact, fields.all_text, fields.code_context],
         );
 
         let escaped_query = format!("\"{}\"", query);
@@ -279,6 +280,7 @@ impl SearchEngine {
                 fields.symbol_name,
                 fields.signature,
                 fields.doc_comment,
+                fields.code_context,  // Query directly for FILE_CONTENT with standard tokenizer
             ],
         );
 
