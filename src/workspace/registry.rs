@@ -362,11 +362,20 @@ fn normalize_path(path: &str) -> Result<String> {
 
 /// Extract workspace name from path
 fn extract_workspace_name(path: &str) -> String {
-    Path::new(path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("workspace")
-        .to_string()
+    // Canonicalize path to resolve "." and ".." to actual directory names
+    let resolved_path = std::fs::canonicalize(path)
+        .ok()
+        .and_then(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .or_else(|| {
+            // Fallback: use the original path's file_name
+            Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(String::from)
+        })
+        .unwrap_or_else(|| "workspace".to_string());
+
+    resolved_path
 }
 
 /// Sanitize name for use in file system
