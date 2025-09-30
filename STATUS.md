@@ -74,17 +74,24 @@
    - **Status**: Unknown functionality
 
 ### Quality Improvements Needed
-6. **Orphan Cleanup** - Database bloat over time
+6. **Excessive Logging** - Debug logs flooding output
+   - `indexing.rs` produces too much noise during indexing
+   - Makes logs nearly worthless for tracking down bugs
+   - Need to reduce verbosity or add log level controls
+   - **Estimated**: 2-3 hours
+   - **Priority**: High (impacts debugging effectiveness)
+
+7. **Orphan Cleanup** - Database bloat over time
    - Deleted files leave orphaned entries
    - Need maintenance routine
    - **Estimated**: 1 day
 
-7. **Registry Terminology** - User confusion
+8. **Registry Terminology** - User confusion
    - "Documents" means symbols, not files
    - Need separate file_count display
    - **Estimated**: 2-3 hours
 
-8. **Progress Indicators** - Long operations appear frozen
+9. **Progress Indicators** - Long operations appear frozen
    - Indexing 60s+ with no feedback
    - Need MCP progress notifications
    - **Estimated**: 1-2 hours
