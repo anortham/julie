@@ -14,9 +14,11 @@ static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
 static CREATE_VIEW_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap()
 });
+#[allow(dead_code)]
 static ON_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap()
 });
+#[allow(dead_code)]
 static USING_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"USING\s+([A-Z]+)").unwrap()
 });

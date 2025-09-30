@@ -257,24 +257,15 @@ impl FastSearchTool {
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("No database available for search fallback"))?;
 
+                // Use indexed query instead of O(n) scan
                 let db_lock = db.lock().await;
-                let all_symbols = db_lock.get_all_symbols()?;
+                let workspace_ids = vec![]; // Empty = search all workspaces
+                let mut results: Vec<Symbol> = db_lock.query_symbols_by_name_pattern(
+                    &self.query,
+                    self.language.as_deref(),
+                    &workspace_ids,
+                )?;
                 drop(db_lock); // Release lock early
-
-                let query_lower = self.query.to_lowercase();
-
-                let mut results: Vec<Symbol> = all_symbols
-                    .into_iter()
-                    .filter(|symbol| {
-                        let name_match = symbol.name.to_lowercase().contains(&query_lower);
-                        let language_match = self
-                            .language
-                            .as_ref()
-                            .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
-                            .unwrap_or(true);
-                        name_match && language_match
-                    })
-                    .collect();
 
                 // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
                 let path_scorer = PathRelevanceScorer::new(&self.query);

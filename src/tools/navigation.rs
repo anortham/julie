@@ -172,47 +172,62 @@ impl FastGotoTool {
             }
         }
 
-        // Get relationships and symbols from database for navigation (persistent storage)
-        let (relationships, symbols) = if let Ok(workspace) = handler.get_workspace().await {
+        // OPTIMIZED: Query symbols by name FIRST using indexed query, then get relationships
+        // This avoids loading ALL symbols and relationships (O(n) → O(log n))
+        let matching_symbols = if let Ok(workspace) = handler.get_workspace().await {
             if let Some(workspace) = workspace {
                 if let Some(db) = workspace.db.as_ref() {
                     let db_lock = db.lock().await;
-                    let rels = db_lock.get_all_relationships().unwrap_or_default();
-                    let syms = db_lock.get_all_symbols().unwrap_or_default();
-                    (rels, syms)
+                    // Use exact name match to find symbols
+                    db_lock.find_symbols_by_name(&self.symbol).unwrap_or_default()
                 } else {
-                    (Vec::new(), Vec::new())
+                    Vec::new()
                 }
             } else {
-                (Vec::new(), Vec::new())
+                Vec::new()
             }
         } else {
-            (Vec::new(), Vec::new())
+            Vec::new()
         };
 
         // Strategy 2: Use relationships to find actual definitions
-        // Look for symbols that are referenced/imported with this name
-        for relationship in relationships.iter() {
-            if let Some(target_symbol) = symbols.iter().find(|s| s.id == relationship.to_symbol_id)
-            {
-                // Check if this relationship represents a definition or import
-                match &relationship.kind {
-                    crate::extractors::base::RelationshipKind::Imports => {
-                        if target_symbol.name == self.symbol {
-                            exact_matches.push(target_symbol.clone());
+        // Get relationships TO these matching symbols (much smaller set than all relationships)
+        if !matching_symbols.is_empty() {
+            if let Ok(workspace) = handler.get_workspace().await {
+                if let Some(workspace) = workspace {
+                    if let Some(db) = workspace.db.as_ref() {
+                        let db_lock = db.lock().await;
+                        let all_relationships = db_lock.get_all_relationships().unwrap_or_default();
+
+                        // Filter relationships that point to our matching symbols
+                        let symbol_ids: std::collections::HashSet<_> = matching_symbols.iter().map(|s| s.id.as_str()).collect();
+                        for relationship in all_relationships.iter() {
+                            if symbol_ids.contains(relationship.to_symbol_id.as_str()) {
+                                // Check if this relationship represents a definition or import
+                                match &relationship.kind {
+                                    crate::extractors::base::RelationshipKind::Imports => {
+                                        // Find the target symbol from our matching set
+                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
+                                            exact_matches.push(target_symbol.clone());
+                                        }
+                                    }
+                                    crate::extractors::base::RelationshipKind::Defines => {
+                                        // Find the target symbol from our matching set
+                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
+                                            exact_matches.push(target_symbol.clone());
+                                        }
+                                    }
+                                    crate::extractors::base::RelationshipKind::Extends => {
+                                        // Find the target symbol from our matching set
+                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
+                                            exact_matches.push(target_symbol.clone());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                     }
-                    crate::extractors::base::RelationshipKind::Defines => {
-                        if target_symbol.name == self.symbol {
-                            exact_matches.push(target_symbol.clone());
-                        }
-                    }
-                    crate::extractors::base::RelationshipKind::Extends => {
-                        if target_symbol.name == self.symbol {
-                            exact_matches.push(target_symbol.clone());
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -349,6 +364,7 @@ impl FastGotoTool {
     }
 
     // Helper functions for cross-language naming convention conversion
+    #[allow(dead_code)]
     fn to_snake_case(&self, s: &str) -> String {
         let mut result = String::new();
         let mut chars = s.chars().peekable();
@@ -366,6 +382,7 @@ impl FastGotoTool {
         result
     }
 
+    #[allow(dead_code)]
     fn to_camel_case(&self, s: &str) -> String {
         let mut result = String::new();
         let mut capitalize_next = false;
@@ -383,6 +400,7 @@ impl FastGotoTool {
         result
     }
 
+    #[allow(dead_code)]
     fn to_pascal_case(&self, s: &str) -> String {
         let camel = self.to_camel_case(s);
         if camel.is_empty() {
@@ -883,6 +901,7 @@ impl FastRefsTool {
 
     // Helper functions for cross-language naming convention conversion
     // (reuse implementation from GotoDefinitionTool)
+    #[allow(dead_code)]
     fn to_snake_case(&self, s: &str) -> String {
         let mut result = String::new();
         let mut chars = s.chars().peekable();
@@ -900,6 +919,7 @@ impl FastRefsTool {
         result
     }
 
+    #[allow(dead_code)]
     fn to_camel_case(&self, s: &str) -> String {
         let mut result = String::new();
         let mut capitalize_next = false;
@@ -917,6 +937,7 @@ impl FastRefsTool {
         result
     }
 
+    #[allow(dead_code)]
     fn to_pascal_case(&self, s: &str) -> String {
         let camel = self.to_camel_case(s);
         if camel.is_empty() {

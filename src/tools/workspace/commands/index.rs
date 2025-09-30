@@ -136,7 +136,7 @@ impl ManageWorkspaceTool {
                     let index_size = workspace.julie_dir
                         .join("index/tantivy")
                         .metadata()
-                        .map(|m| calculate_dir_size(&workspace.julie_dir.join("index/tantivy")))
+                        .map(|_m| calculate_dir_size(&workspace.julie_dir.join("index/tantivy")))
                         .unwrap_or(0);
 
                     if let Err(e) = registry_service

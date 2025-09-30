@@ -1753,6 +1753,263 @@ impl SymbolDatabase {
         Ok(count as usize)
     }
 
+    /// Query symbols by name pattern (LIKE search) with optional filters
+    /// Uses idx_symbols_name, idx_symbols_language, idx_symbols_workspace for fast lookup
+    pub fn query_symbols_by_name_pattern(
+        &self,
+        pattern: &str,
+        language: Option<&str>,
+        workspace_ids: &[String],
+    ) -> Result<Vec<Symbol>> {
+        let pattern_like = format!("%{}%", pattern);
+
+        let query = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            if let Some(_lang) = language {
+                format!(
+                    "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                            end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                            parent_id, metadata, semantic_group, confidence
+                     FROM symbols
+                     WHERE name LIKE ?1 AND language = ?2 AND workspace_id IN ({})
+                     ORDER BY name, file_path
+                     LIMIT 1000",
+                    workspace_placeholders
+                )
+            } else {
+                format!(
+                    "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                            end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                            parent_id, metadata, semantic_group, confidence
+                     FROM symbols
+                     WHERE name LIKE ?1 AND workspace_id IN ({})
+                     ORDER BY name, file_path
+                     LIMIT 1000",
+                    workspace_placeholders
+                )
+            }
+        } else {
+            if language.is_some() {
+                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                        parent_id, metadata, semantic_group, confidence
+                 FROM symbols
+                 WHERE name LIKE ?1 AND language = ?2
+                 ORDER BY name, file_path
+                 LIMIT 1000".to_string()
+            } else {
+                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                        parent_id, metadata, semantic_group, confidence
+                 FROM symbols
+                 WHERE name LIKE ?1
+                 ORDER BY name, file_path
+                 LIMIT 1000".to_string()
+            }
+        };
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        // Build params dynamically
+        let symbols = if let Some(lang) = language {
+            let mut params_vec: Vec<&dyn rusqlite::ToSql> = vec![&pattern_like, &lang];
+            for ws_id in workspace_ids {
+                params_vec.push(ws_id);
+            }
+            let rows = stmt.query_map(params_vec.as_slice(), |row| self.row_to_symbol(row))?;
+            let mut result = Vec::new();
+            for row in rows {
+                result.push(row?);
+            }
+            result
+        } else {
+            let mut params_vec: Vec<&dyn rusqlite::ToSql> = vec![&pattern_like];
+            for ws_id in workspace_ids {
+                params_vec.push(ws_id);
+            }
+            let rows = stmt.query_map(params_vec.as_slice(), |row| self.row_to_symbol(row))?;
+            let mut result = Vec::new();
+            for row in rows {
+                result.push(row?);
+            }
+            result
+        };
+
+        Ok(symbols)
+    }
+
+    /// Query symbols by kind with workspace filtering
+    /// Uses idx_symbols_kind, idx_symbols_workspace for fast lookup
+    pub fn query_symbols_by_kind(
+        &self,
+        kind: &SymbolKind,
+        workspace_ids: &[String],
+    ) -> Result<Vec<Symbol>> {
+        let kind_str = match kind {
+            SymbolKind::Function => "function",
+            SymbolKind::Method => "method",
+            SymbolKind::Class => "class",
+            SymbolKind::Interface => "interface",
+            SymbolKind::Enum => "enum",
+            SymbolKind::Struct => "struct",
+            SymbolKind::Variable => "variable",
+            SymbolKind::Constant => "constant",
+            SymbolKind::Property => "property",
+            SymbolKind::Module => "module",
+            SymbolKind::Namespace => "namespace",
+            SymbolKind::Type => "type",
+            SymbolKind::Trait => "trait",
+            SymbolKind::Union => "union",
+            SymbolKind::Field => "field",
+            SymbolKind::Constructor => "constructor",
+            SymbolKind::Destructor => "destructor",
+            SymbolKind::Operator => "operator",
+            SymbolKind::Import => "import",
+            SymbolKind::Export => "export",
+            SymbolKind::Event => "event",
+            SymbolKind::Delegate => "delegate",
+            SymbolKind::EnumMember => "enum_member",
+        };
+
+        let query = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            format!(
+                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                        parent_id, metadata, semantic_group, confidence
+                 FROM symbols
+                 WHERE kind = ?1 AND workspace_id IN ({})
+                 ORDER BY file_path, start_line",
+                workspace_placeholders
+            )
+        } else {
+            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
+             FROM symbols
+             WHERE kind = ?1
+             ORDER BY file_path, start_line".to_string()
+        };
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let mut params_vec: Vec<&dyn rusqlite::ToSql> = vec![&kind_str];
+        for ws_id in workspace_ids {
+            params_vec.push(ws_id);
+        }
+
+        let rows = stmt.query_map(params_vec.as_slice(), |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row in rows {
+            symbols.push(row?);
+        }
+
+        Ok(symbols)
+    }
+
+    /// Query symbols by language with workspace filtering
+    /// Uses idx_symbols_language, idx_symbols_workspace for fast lookup
+    pub fn query_symbols_by_language(
+        &self,
+        language: &str,
+        workspace_ids: &[String],
+    ) -> Result<Vec<Symbol>> {
+        let query = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            format!(
+                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                        parent_id, metadata, semantic_group, confidence
+                 FROM symbols
+                 WHERE language = ?1 AND workspace_id IN ({})
+                 ORDER BY file_path, start_line",
+                workspace_placeholders
+            )
+        } else {
+            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
+             FROM symbols
+             WHERE language = ?1
+             ORDER BY file_path, start_line".to_string()
+        };
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let mut params_vec: Vec<&dyn rusqlite::ToSql> = vec![&language];
+        for ws_id in workspace_ids {
+            params_vec.push(ws_id);
+        }
+
+        let rows = stmt.query_map(params_vec.as_slice(), |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row in rows {
+            symbols.push(row?);
+        }
+
+        Ok(symbols)
+    }
+
+    /// Get aggregate symbol statistics (fast COUNT queries with GROUP BY)
+    /// Returns counts by kind and by language
+    pub fn get_symbol_statistics(
+        &self,
+        workspace_ids: &[String],
+    ) -> Result<(std::collections::HashMap<String, usize>, std::collections::HashMap<String, usize>)> {
+        use std::collections::HashMap;
+
+        let mut by_kind = HashMap::new();
+        let mut by_language = HashMap::new();
+
+        // Count by kind
+        let kind_query = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            format!(
+                "SELECT kind, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY kind",
+                workspace_placeholders
+            )
+        } else {
+            "SELECT kind, COUNT(*) as count FROM symbols GROUP BY kind".to_string()
+        };
+
+        let mut stmt = self.conn.prepare(&kind_query)?;
+        let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+        })?;
+
+        for row in rows {
+            let (kind, count) = row?;
+            by_kind.insert(kind, count);
+        }
+
+        // Count by language
+        let lang_query = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            format!(
+                "SELECT language, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY language",
+                workspace_placeholders
+            )
+        } else {
+            "SELECT language, COUNT(*) as count FROM symbols GROUP BY language".to_string()
+        };
+
+        let mut stmt = self.conn.prepare(&lang_query)?;
+        let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+        })?;
+
+        for row in rows {
+            let (language, count) = row?;
+            by_language.insert(language, count);
+        }
+
+        Ok((by_kind, by_language))
+    }
+
     /// Delete all data for a specific workspace (for workspace cleanup)
     pub fn delete_workspace_data(&self, workspace_id: &str) -> Result<WorkspaceCleanupStats> {
         let tx = self.conn.unchecked_transaction()?;
