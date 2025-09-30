@@ -55,16 +55,7 @@ impl FastGotoTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🎯 Finding definition for: {}", self.symbol);
 
-        // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().await;
-        if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
-        }
-
-        // Find symbol definitions
+        // Find symbol definitions (workspace resolution happens in find_definitions)
         let definitions = self.find_definitions(handler).await?;
 
         if definitions.is_empty() {
@@ -717,16 +708,7 @@ impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔗 Finding references for: {}", self.symbol);
 
-        // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().await;
-        if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable navigation.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
-        }
-
-        // Find references
+        // Find references (workspace resolution happens in find_references_and_definitions)
         let (definitions, references) = self.find_references_and_definitions(handler).await?;
 
         if definitions.is_empty() && references.is_empty() {

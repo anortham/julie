@@ -37,31 +37,108 @@ impl ManageWorkspaceTool {
             Ok(entry) => {
                 let display_name = name.unwrap_or_else(|| entry.display_name.clone());
 
-                // TODO: Index the reference workspace (Phase 4)
-                // For now, just register it in the registry
+                // Index the reference workspace immediately
+                let workspace_path = std::path::PathBuf::from(&entry.original_path);
 
-                let message = format!(
-                    "✅ Added reference workspace!\n\
-                    📝 ID: {}\n\
-                    📁 Path: {}\n\
-                    🏷️ Name: {}\n\
-                    ⏰ Expires: {} days\n\
-                    💡 Use 'refresh {}' to index its content",
-                    entry.id,
-                    entry.original_path,
-                    display_name,
-                    entry
-                        .expires_at
-                        .map(|exp| {
-                            let days = (exp - entry.created_at) / (24 * 60 * 60);
-                            format!("{}", days)
-                        })
-                        .unwrap_or("never".to_string()),
-                    entry.id
+                info!(
+                    "🔍 Starting indexing of reference workspace: {}",
+                    display_name
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
+
+                match self
+                    .index_workspace_files(handler, &workspace_path, false)
+                    .await
+                {
+                    Ok((symbol_count, file_count, relationship_count)) => {
+                        // Update workspace statistics in registry
+                        if let Ok(Some(workspace)) = handler.get_workspace().await {
+                            let index_size = workspace.julie_dir
+                                .join("index/tantivy")
+                                .metadata()
+                                .map(|_m| {
+                                    fn calculate_dir_size(path: &std::path::Path) -> u64 {
+                                        let mut total_size = 0u64;
+                                        if let Ok(entries) = std::fs::read_dir(path) {
+                                            for entry in entries.flatten() {
+                                                if let Ok(metadata) = entry.metadata() {
+                                                    if metadata.is_file() {
+                                                        total_size += metadata.len();
+                                                    } else if metadata.is_dir() {
+                                                        total_size += calculate_dir_size(&entry.path());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        total_size
+                                    }
+                                    calculate_dir_size(&workspace.julie_dir.join("index/tantivy"))
+                                })
+                                .unwrap_or(0);
+
+                            if let Err(e) = registry_service
+                                .update_workspace_statistics(&entry.id, symbol_count, index_size)
+                                .await
+                            {
+                                warn!("Failed to update workspace statistics: {}", e);
+                            } else {
+                                info!("✅ Updated workspace statistics for {}: {} symbols, {} bytes index",
+                                      entry.id, symbol_count, index_size);
+                            }
+                        }
+
+                        let message = format!(
+                            "✅ **Reference Workspace Added and Indexed!**\n\
+                            📝 ID: {}\n\
+                            📁 Path: {}\n\
+                            🏷️ Name: {}\n\
+                            📊 Indexing Results:\n\
+                            • {} files indexed\n\
+                            • {} symbols extracted\n\
+                            • {} relationships found\n\
+                            ⏰ Expires: {} days\n\
+                            🔍 Use workspace parameter in search tools to query this workspace:\n\
+                            • workspace: \"all\" - search all workspaces\n\
+                            • workspace: \"{}\" - search only this workspace",
+                            entry.id,
+                            entry.original_path,
+                            display_name,
+                            file_count,
+                            symbol_count,
+                            relationship_count,
+                            entry
+                                .expires_at
+                                .map(|exp| {
+                                    let days = (exp - entry.created_at) / (24 * 60 * 60);
+                                    format!("{}", days)
+                                })
+                                .unwrap_or("never".to_string()),
+                            entry.id
+                        );
+                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                            message,
+                        )]))
+                    }
+                    Err(e) => {
+                        // Workspace was registered but indexing failed - that's OK
+                        // User can manually refresh later
+                        let message = format!(
+                            "⚠️ **Reference Workspace Registered (Indexing Failed)**\n\
+                            📝 ID: {}\n\
+                            📁 Path: {}\n\
+                            🏷️ Name: {}\n\
+                            💥 Indexing Error: {}\n\
+                            💡 Workspace is registered but not indexed. Use 'refresh {}' to retry indexing.",
+                            entry.id,
+                            entry.original_path,
+                            display_name,
+                            e,
+                            entry.id
+                        );
+                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                            message,
+                        )]))
+                    }
+                }
             }
             Err(e) => {
                 let message = format!("❌ Failed to add workspace: {}", e);
@@ -395,6 +472,42 @@ impl ManageWorkspaceTool {
                     .await
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {
+                        // Update workspace statistics in registry
+                        if let Ok(Some(workspace)) = handler.get_workspace().await {
+                            let index_size = workspace.julie_dir
+                                .join("index/tantivy")
+                                .metadata()
+                                .map(|_m| {
+                                    fn calculate_dir_size(path: &std::path::Path) -> u64 {
+                                        let mut total_size = 0u64;
+                                        if let Ok(entries) = std::fs::read_dir(path) {
+                                            for entry in entries.flatten() {
+                                                if let Ok(metadata) = entry.metadata() {
+                                                    if metadata.is_file() {
+                                                        total_size += metadata.len();
+                                                    } else if metadata.is_dir() {
+                                                        total_size += calculate_dir_size(&entry.path());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        total_size
+                                    }
+                                    calculate_dir_size(&workspace.julie_dir.join("index/tantivy"))
+                                })
+                                .unwrap_or(0);
+
+                            if let Err(e) = registry_service
+                                .update_workspace_statistics(workspace_id, symbol_count, index_size)
+                                .await
+                            {
+                                warn!("Failed to update workspace statistics: {}", e);
+                            } else {
+                                info!("✅ Updated workspace statistics for {}: {} symbols, {} bytes index",
+                                      workspace_id, symbol_count, index_size);
+                            }
+                        }
+
                         let message = format!(
                             "✅ **Workspace Refresh Complete!**\n\
                             🏷️ Workspace: {}\n\

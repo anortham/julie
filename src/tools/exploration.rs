@@ -48,16 +48,8 @@ impl FastExploreTool {
             self.mode, self.focus
         );
 
-        // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().await;
-        if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable exploration.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
-        }
-
         // Get symbols and relationships from database (persistent storage)
+        // Note: get_all_symbols() returns symbols from ALL workspaces, not just primary
         let (symbols, relationships) = if let Ok(workspace) = handler.get_workspace().await {
             if let Some(workspace) = workspace {
                 if let Some(db) = workspace.db.as_ref() {
@@ -836,16 +828,8 @@ impl FindLogicTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🏢 Finding business logic for domain: {}", self.domain);
 
-        // Check if workspace is indexed
-        let is_indexed = *handler.is_indexed.read().await;
-        if !is_indexed {
-            let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable business logic detection.";
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
-        }
-
         // Get all symbols and relationships from database for business logic analysis (persistent)
+        // Note: get_all_symbols() returns symbols from ALL workspaces, not just primary
         let (all_symbols, all_relationships) = if let Ok(workspace) = handler.get_workspace().await {
             if let Some(workspace) = workspace {
                 if let Some(db) = workspace.db.as_ref() {

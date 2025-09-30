@@ -52,7 +52,7 @@ impl ManageWorkspaceTool {
             info!("🔄 Force reindex requested - processing all {} files", all_discovered_files.len());
             all_discovered_files
         } else {
-            self.filter_changed_files(handler, all_discovered_files, is_primary_workspace).await?
+            self.filter_changed_files(handler, all_discovered_files, workspace_path).await?
         };
 
         info!(
@@ -68,9 +68,11 @@ impl ManageWorkspaceTool {
                     workspace.root.clone(),
                 );
 
-            // Try to get existing workspace_id first
-            if let Some(existing_id) = registry_service.get_primary_workspace_id().await? {
-                existing_id
+            // Look up the workspace ID by path (works for both primary and reference workspaces)
+            let workspace_path_str = workspace_path.to_string_lossy().to_string();
+            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&workspace_path_str).await? {
+                info!("✅ Using existing workspace ID: {} for path: {}", workspace_entry.id, workspace_path_str);
+                workspace_entry.id
             } else {
                 // Register workspace if not registered yet
                 let workspace_path_str = workspace.root.to_string_lossy().to_string();
@@ -219,21 +221,15 @@ impl ManageWorkspaceTool {
                 language
             );
 
-            // Get or create parser for this language
-            let parser = match parser_pool.get_parser(&language) {
-                Ok(p) => p,
-                Err(e) => {
-                    debug!("Skipping unsupported language {}: {}", language, e);
-                    continue;
-                }
-            };
-
-            // Process all files of this language with the same parser
-            for file_path in file_paths {
-                match self
-                    .process_file_with_parser(&file_path, &language, parser, &search_engine)
-                    .await
-                {
+            // Try to get a parser for this language
+            match parser_pool.get_parser(&language) {
+                Ok(parser) => {
+                    // Has parser: full symbol extraction + text indexing for all files
+                    for file_path in file_paths {
+                        match self
+                            .process_file_with_parser(&file_path, &language, parser, &search_engine)
+                            .await
+                        {
                     Ok((symbols, relationships, file_info, tantivy_symbols)) => {
                         *total_files += 1;
 
@@ -274,9 +270,36 @@ impl ManageWorkspaceTool {
                 }
             }
         }
+        Err(e) => {
+            // No parser: index files for text search only (no symbol extraction)
+            info!("🔍 No parser for {} ({}) - indexing {} files for text search only", language, e, file_paths.len());
+            for file_path in file_paths {
+                match self.process_file_without_parser(&file_path, &language).await {
+                    Ok((symbols, relationships, file_info, tantivy_symbols)) => {
+                        debug!("📄 Processed file without parser: {:?} - created {} tantivy symbols", file_path, tantivy_symbols.len());
+                        for sym in &tantivy_symbols {
+                            debug!("  └─ Symbol: {} (kind: {:?}, code_context length: {})",
+                                sym.name, sym.kind, sym.code_context.as_ref().map(|c| c.len()).unwrap_or(0));
+                        }
+                        *total_files += 1;
+                        files_to_clean.push(file_path.to_string_lossy().to_string());
+                        all_symbols.extend(symbols); // Will be empty
+                        all_relationships.extend(relationships); // Will be empty
+                        all_file_infos.push(file_info);
+                        all_tantivy_symbols.extend(tantivy_symbols); // File content for text search
+                    }
+                    Err(e) => {
+                        warn!("Failed to process file without parser {:?}: {}", file_path, e);
+                    }
+                }
+            }
+        }
+    }
+}
 
         // 🧹 CLEANUP: Remove old data for files being re-processed (incremental updates)
-        if !files_to_clean.is_empty() && !all_symbols.is_empty() {
+        // Run cleanup if we have files to clean AND either extracted symbols OR tantivy symbols
+        if !files_to_clean.is_empty() && (!all_symbols.is_empty() || !all_tantivy_symbols.is_empty()) {
             info!("🧹 Cleaning up old data for {} modified files before bulk storage...", files_to_clean.len());
 
             if let Some(workspace) = handler.get_workspace().await? {
@@ -358,7 +381,25 @@ impl ManageWorkspaceTool {
             // 🚀 MASSIVE BATCH: Index all symbols in Tantivy with single transaction
             if !all_tantivy_symbols.is_empty() {
                 let tantivy_start = std::time::Instant::now();
-                info!("🚀 Starting massive Tantivy batch indexing of {} symbols...", all_tantivy_symbols.len());
+
+                // Debug: Show breakdown of symbol types being indexed
+                let file_content_count = all_tantivy_symbols.iter()
+                    .filter(|s| s.name.starts_with("FILE_CONTENT_"))
+                    .count();
+                let code_symbols_count = all_tantivy_symbols.len() - file_content_count;
+
+                info!("🚀 Starting massive Tantivy batch indexing of {} symbols ({} code symbols, {} FILE_CONTENT symbols)...",
+                    all_tantivy_symbols.len(), code_symbols_count, file_content_count);
+
+                if file_content_count > 0 {
+                    debug!("📄 FILE_CONTENT symbols being indexed:");
+                    for sym in all_tantivy_symbols.iter().filter(|s| s.name.starts_with("FILE_CONTENT_")).take(5) {
+                        debug!("  └─ {} from {}", sym.name, sym.file_path);
+                    }
+                    if file_content_count > 5 {
+                        debug!("  └─ ... and {} more", file_content_count - 5);
+                    }
+                }
 
                 {
                     let mut search_engine_lock = search_engine.write().await;
@@ -449,6 +490,22 @@ impl ManageWorkspaceTool {
                 },
                 tantivy_symbols, // Return empty tantivy symbols for empty files
             ));
+        }
+
+        // Skip symbol extraction for CSS/HTML (text search only)
+        if !self.should_extract_symbols(language) {
+            debug!(
+                "⏭️  Skipping symbol extraction for {} file (text search only): {}",
+                language,
+                file_path.display()
+            );
+
+            // Calculate file info for database storage
+            let file_path_str = file_path.to_string_lossy().to_string();
+            let file_info = crate::database::create_file_info(&file_path_str, language)?;
+
+            // Return file info and tantivy symbols (for text search), but no extracted symbols
+            return Ok((Vec::new(), Vec::new(), file_info, tantivy_symbols));
         }
 
         let file_path_str = file_path.to_string_lossy().to_string();
@@ -774,7 +831,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         all_files: Vec<PathBuf>,
-        _is_primary_workspace: bool,
+        workspace_path: &Path,
     ) -> Result<Vec<PathBuf>> {
         // Get workspace ID for database queries
         let workspace_id = if let Some(workspace) = handler.get_workspace().await? {
@@ -783,8 +840,10 @@ impl ManageWorkspaceTool {
                     workspace.root.clone(),
                 );
 
-            if let Some(existing_id) = registry_service.get_primary_workspace_id().await? {
-                existing_id
+            // Look up the workspace ID by path (works for both primary and reference workspaces)
+            let workspace_path_str = workspace_path.to_string_lossy().to_string();
+            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&workspace_path_str).await? {
+                workspace_entry.id
             } else {
                 // No workspace registered yet - all files are new
                 info!("No existing workspace found - indexing all {} files", all_files.len());
@@ -861,6 +920,59 @@ impl ManageWorkspaceTool {
         // This would require comparing existing_file_hashes against all_files
 
         Ok(files_to_process)
+    }
+
+    /// Determine if we should extract symbols from a file based on language
+    /// CSS and HTML are indexed for text search only - no symbol extraction
+    fn should_extract_symbols(&self, language: &str) -> bool {
+        !matches!(language, "css" | "html")
+    }
+
+    /// Process a file without a tree-sitter parser (text indexing only, no symbol extraction)
+    /// This ensures ALL non-binary files are searchable, even without language extractors
+    async fn process_file_without_parser(
+        &self,
+        file_path: &Path,
+        language: &str,
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo, Vec<Symbol>)> {
+        // Read file content for text indexing
+        let content = fs::read_to_string(file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
+
+        let file_path_str = file_path.to_string_lossy().to_string();
+
+        // Create file_content_symbol for Tantivy text search
+        let mut tantivy_symbols = Vec::new();
+        if !content.trim().is_empty() {
+            let file_content_symbol = crate::extractors::Symbol {
+                id: format!("file_content_{}", file_path_str.replace(['/', '\\'], "_")),
+                name: format!("FILE_CONTENT_{}", std::path::Path::new(&file_path_str).file_name().unwrap_or_default().to_string_lossy()),
+                kind: crate::extractors::SymbolKind::Module,
+                language: "text".to_string(), // Generic text for full content
+                file_path: file_path_str.clone(),
+                signature: Some(format!("Full content of {}", file_path_str)),
+                doc_comment: None,
+                code_context: Some(content.clone()), // Full file content for text search
+                start_line: 1,
+                end_line: content.lines().count() as u32,
+                start_column: 1,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: content.len() as u32,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: Some("file_content".to_string()),
+                confidence: Some(1.0),
+            };
+            tantivy_symbols.push(file_content_symbol);
+        }
+
+        // Calculate file info for database storage
+        let file_info = crate::database::create_file_info(&file_path_str, language)?;
+
+        // Return: no symbols extracted, no relationships, but file indexed for text search
+        Ok((Vec::new(), Vec::new(), file_info, tantivy_symbols))
     }
 }
 

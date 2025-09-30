@@ -77,10 +77,11 @@ The TODOs in the code suggested the implementation was unsafe:
 ```
 
 **Actual Reality** (VERIFIED):
-- ✅ Uses AST-aware replacement via tree-sitter
-- ✅ Proper identifier boundary detection
-- ✅ Skips string literals and comments correctly
+- ✅ Uses smart character-level parsing with identifier awareness (NOT tree-sitter AST)
+- ✅ Full identifier collection before matching (prevents partial matches)
+- ✅ Skips string literals and comments correctly via boundary tracking
 - ✅ NO partial identifier matches (UserService stays UserService when renaming User)
+- ✅ Proven safe by 5/5 comprehensive SOURCE/CONTROL tests
 
 **Comprehensive Testing**:
 ```bash
@@ -265,14 +266,122 @@ After comprehensive audit, 5 remaining `get_all_symbols()` calls are architectur
 
 ---
 
+### 10. **Registry Terminology Confusion: Files vs Symbols** 📊 UX CLARITY
+**Status**: 🆕 New issue (2025-09-30)
+**Location**: `src/workspace/registry_service.rs`, `src/tools/workspace/commands/registry.rs`
+**Impact**: User confusion - "68k documents" sounds like files, but means symbols
+
+**Problem**:
+The workspace registry uses "Documents" to refer to indexed symbols, borrowed from search engine terminology. This is confusing for users:
+- User sees: "Documents: 68,542"
+- User thinks: "68k files?!"
+- Reality: 496 files, 68,542 extracted symbols
+
+**Real-World Example (coa-intranet workspace)**:
+```
+Current display:        What users expect:
+Documents: 68,542       Files: 496
+                        Symbols: 68,542
+```
+
+**Current Registry Structure**:
+```rust
+pub struct WorkspaceEntry {
+    pub document_count: usize,  // Actually symbol count!
+    pub index_size: u64,
+    // Missing: file_count field
+}
+```
+
+**Fix Required**:
+1. [ ] Add `file_count` field to `WorkspaceEntry` struct
+2. [ ] Track file count during indexing (separate from symbol count)
+3. [ ] Update `update_workspace_statistics()` to accept both counts
+4. [ ] Change display format:
+   ```
+   Files: 496 files indexed
+   Symbols: 68,542 symbols extracted
+   Size: 91.2 MB
+   ```
+5. [ ] Update MCP tool responses to show both metrics
+6. [ ] Deprecate `document_count` field or rename to `symbol_count`
+
+**User Feedback** (2025-09-30):
+> "68k documents in coa-intranet?" - questioning the count
+> "we should make a clearer distinction in the workspace registry between file count and symbol count"
+
+**Estimated Effort**: 2-3 hours (schema change + display updates)
+
+---
+
+### 11. **MCP Progress Indicators Missing** 📡 LONG-RUNNING OPS
+**Status**: 🆕 New issue (2025-09-30)
+**Location**: `src/tools/workspace/commands/registry.rs`, `src/tools/workspace/indexing.rs`
+**Impact**: Poor UX during long indexing operations (60s+ with no feedback)
+
+**Problem**:
+Large workspace indexing can take 60+ seconds with zero user feedback:
+- Indexing coa-intranet: ~60 seconds, 496 files, 68k symbols
+- User sees: nothing (appears frozen)
+- User wants: "Processing file 250/496 (50%)..."
+
+**Current Experience**:
+```bash
+User: Add coa-intranet workspace
+Julie: [60 seconds of silence]
+Julie: ✅ Indexed 68,542 symbols
+```
+
+**Desired Experience**:
+```bash
+User: Add coa-intranet workspace
+Julie: 🔍 Discovering files...
+Julie: 📊 Found 496 files to index
+Julie: ⚙️  Processing: 100/496 (20%)...
+Julie: ⚙️  Processing: 250/496 (50%)...
+Julie: ⚙️  Processing: 496/496 (100%)
+Julie: ✅ Indexed 68,542 symbols from 496 files
+```
+
+**MCP SDK Support**:
+```rust
+// rust-mcp-sdk v0.7.0 supports progress notifications
+handler.send_progress(ProgressNotification {
+    progress_token: token,
+    progress: 50.0,  // 0-100
+    total: Some(100.0),
+});
+```
+
+**Fix Required**:
+1. [ ] Add progress token parameter to `index_workspace_files()`
+2. [ ] Send progress updates every N files (e.g., every 10 files)
+3. [ ] Show: "Processing file X/Y (Z%)"
+4. [ ] Add progress for embedding generation phase
+5. [ ] Add progress for HNSW index building phase
+6. [ ] Test with large workspace (500+ files)
+
+**Locations Needing Progress**:
+- `src/tools/workspace/indexing.rs:234` - File processing loop
+- `src/tools/workspace/indexing.rs:933` - Embedding batch loop
+- `src/tools/workspace/commands/registry.rs:48` - Add command
+- `src/tools/workspace/commands/registry.rs:470` - Refresh command
+
+**User Feedback** (2025-09-30):
+> "it took a really long time to index that workspace, we should do further performance optimization research and we should see if the new claude code 2.0 that we're using supports mcp progress indicators"
+
+**Estimated Effort**: 1-2 hours (progress tracking + MCP integration)
+
+---
+
 ## 📊 Metrics & Statistics
 
-### Current Codebase Debt (Updated 2025-09-29 Evening)
+### Current Codebase Debt (Updated 2025-09-30)
 - **Total TODOs**: 142 across codebase (aspirational improvements, not bugs)
 - **✅ Fixed Critical Issues**: 7 (semantic search, schema, embeddings, statistics, initialization, refactoring safety, O(n) scans)
 - **❌ Remaining Critical Issues**: 0 🎉
 - **High Priority**: 0 🎉
-- **Medium Priority**: 2 (reference workspaces, orphan cleanup)
+- **Medium Priority**: 4 (reference workspaces, orphan cleanup, registry terminology, MCP progress indicators)
 
 ### Test Coverage Gaps
 - [x] ✅ Semantic search tests (now working with HNSW)
@@ -342,14 +451,18 @@ After comprehensive audit, 5 remaining `get_all_symbols()` calls are architectur
 
 ---
 
-**Last Updated**: 2025-09-30 02:00
-**Status**: 🎉 **ALL PHASES COMPLETE** - Julie is Production-Ready!
-**Major Achievements Today**:
-- ✅ HNSW disk loading implementation
-- ✅ Database schema completion (5 new fields)
-- ✅ Registry statistics auto-update
-- ✅ Workspace initialization self-healing
-- ✅ Build warnings eliminated (0 warnings)
-- ✅ O(n) database scans optimized (indexed queries)
-- ✅ Refactoring safety verified (5/5 SOURCE/CONTROL tests pass)
-**Next Action**: Optional enhancements (reference workspaces, orphan cleanup)
+**Last Updated**: 2025-09-30 02:30
+**Status**: 🎉 **ALL CRITICAL PHASES COMPLETE** - Julie is Production-Ready!
+**Major Achievements (2025-09-29 to 2025-09-30)**:
+- ✅ HNSW disk loading implementation - Semantic search operational
+- ✅ Database schema completion (5 new fields) - Full metadata persistence
+- ✅ Registry statistics auto-update - Accurate workspace reporting
+- ✅ Workspace initialization self-healing - Robust startup
+- ✅ Build warnings eliminated (0 warnings) - Clean professional build
+- ✅ O(n) database scans optimized (indexed queries) - Performance gains
+- ✅ Refactoring safety verified (5/5 SOURCE/CONTROL tests pass) - **Comprehensively tested!**
+- ✅ Documentation synchronized - ARCHITECTURE_DEBT.md and REALITY_CHECK.md now consistent
+
+**Production Status**: ✅ **11/13 features complete and verified** (85%)
+
+**Next Action**: Optional enhancements (reference workspaces, orphan cleanup, cross-language tracing verification)

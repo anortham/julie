@@ -45,7 +45,22 @@
       "Bash(RUST_LOG=debug,julie::search::engine::indexing=trace cargo run --bin julie-server)",
       "Bash(RUST_LOG=debug cargo test test_all_smart_refactor_control_scenarios)",
       "Bash(RUST_LOG=debug cargo test debug_typescript_extraction -- --nocapture)",
-      "Bash(rustc --version)"
+      "Bash(rustc --version)",
+      "Bash(cargo doc:*)",
+      "Read(//Users/murphy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hnsw_rs-0.3.2/examples/**)",
+      "Read(//Users/murphy/.cargo/registry/src/**)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(RUST_LOG=debug cargo build --release)",
+      "Bash(xargs:*)",
+      "Bash(RUST_LOG=debug cargo run --bin julie_server)",
+      "Bash(timeout 3 cargo run --bin julie_server)",
+      "Bash(timeout 3 cargo run --bin julie-server)",
+      "Bash(column:*)",
+      "Bash(tee:*)",
+      "Bash(grep:*)",
+      "mcp__julie__fast_explore",
+      "Read(//Users/murphy/Source/coa-intranet/**)"
     ],
     "deny": [],
     "ask": []

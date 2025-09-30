@@ -89,6 +89,12 @@ impl ManageWorkspaceTool {
         blacklisted_exts: &HashSet<&str>,
         max_file_size: u64,
     ) -> Result<bool> {
+        // Skip minified files (they're generated, not source code)
+        if self.is_minified_file(file_path) {
+            debug!("⏭️  Skipping minified file: {}", file_path.display());
+            return Ok(false);
+        }
+
         // Get file extension
         let extension = file_path
             .extension()
@@ -172,5 +178,17 @@ impl ManageWorkspaceTool {
 
         let text_ratio = printable_count as f64 / bytes_read as f64;
         Ok(text_ratio > 0.8) // At least 80% printable characters
+    }
+
+    /// Check if a file is minified (generated code we should skip)
+    pub(crate) fn is_minified_file(&self, file_path: &Path) -> bool {
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+
+        file_name.contains(".min.") ||
+        file_name.ends_with(".min.js") ||
+        file_name.ends_with(".min.css")
     }
 }
