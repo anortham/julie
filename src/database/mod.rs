@@ -466,6 +466,21 @@ impl SymbolDatabase {
         }
     }
 
+    /// Get symbol count for a file (for detecting files that need FILE_CONTENT symbols)
+    pub fn get_file_symbol_count(&self, file_path: &str) -> Result<i32> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT symbol_count FROM files WHERE path = ?1")?;
+
+        let result = stmt.query_row(params![file_path], |row| row.get::<_, i32>(0));
+
+        match result {
+            Ok(count) => Ok(count),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
+            Err(e) => Err(anyhow!("Database error: {}", e)),
+        }
+    }
+
     /// Update file hash for incremental change detection
     pub fn update_file_hash(&self, file_path: &str, new_hash: &str) -> Result<()> {
         let now = std::time::SystemTime::now()

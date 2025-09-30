@@ -882,7 +882,7 @@ impl ManageWorkspaceTool {
 
         for file_path in all_files {
             let file_path_str = file_path.to_string_lossy().to_string();
-            let _language = self.detect_language(&file_path);
+            let language = self.detect_language(&file_path);
 
             // Calculate current file hash
             let current_hash = match crate::database::calculate_file_hash(&file_path) {
@@ -897,7 +897,36 @@ impl ManageWorkspaceTool {
             // Check if file exists in database and if hash matches
             if let Some(stored_hash) = existing_file_hashes.get(&file_path_str) {
                 if stored_hash == &current_hash {
-                    // File unchanged - skip
+                    // File unchanged by hash, but check if it needs FILE_CONTENT symbols
+                    // For files without parsers (text, json, etc.), we need to ensure they have
+                    // FILE_CONTENT symbols in Tantivy. This is a migration for existing workspaces.
+
+                    // Check if this is a language without a parser
+                    let needs_file_content = matches!(
+                        language.as_str(),
+                        "text" | "json" | "toml" | "yaml" | "yml" | "xml" | "markdown" | "md" | "txt" | "config"
+                    );
+
+                    if needs_file_content {
+                        // Check if it has symbols (should be 0 for files without parsers)
+                        if let Some(workspace) = handler.get_workspace().await? {
+                            if let Some(db) = &workspace.db {
+                                let db_lock = db.lock().await;
+                                let symbol_count = db_lock.get_file_symbol_count(&file_path_str).unwrap_or(0);
+                                drop(db_lock);
+
+                                if symbol_count == 0 {
+                                    // File has no symbols - needs FILE_CONTENT symbol created
+                                    debug!("File {} has no symbols, re-indexing to create FILE_CONTENT symbol", file_path_str);
+                                    modified_count += 1;
+                                    files_to_process.push(file_path);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    // File truly unchanged - skip
                     unchanged_count += 1;
                 } else {
                     // File modified - needs re-indexing
@@ -935,9 +964,13 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         language: &str,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo, Vec<Symbol>)> {
+        info!("🔍 ENTERING process_file_without_parser for {:?} (language: {})", file_path, language);
+
         // Read file content for text indexing
         let content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
+
+        info!("📖 Read {} bytes from {:?}", content.len(), file_path);
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
@@ -965,11 +998,16 @@ impl ManageWorkspaceTool {
                 semantic_group: Some("file_content".to_string()),
                 confidence: Some(1.0),
             };
+            info!("✅ Created FILE_CONTENT symbol: {} for {:?}", file_content_symbol.name, file_path);
             tantivy_symbols.push(file_content_symbol);
+        } else {
+            warn!("⚠️  File {:?} has empty content, skipping FILE_CONTENT symbol creation", file_path);
         }
 
         // Calculate file info for database storage
         let file_info = crate::database::create_file_info(&file_path_str, language)?;
+
+        info!("🎯 Returning from process_file_without_parser: {} tantivy_symbols", tantivy_symbols.len());
 
         // Return: no symbols extracted, no relationships, but file indexed for text search
         Ok((Vec::new(), Vec::new(), file_info, tantivy_symbols))
