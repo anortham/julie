@@ -272,7 +272,7 @@ impl FastGotoTool {
                             if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
                                 // Access vector store
                                 if let Some(vector_store_arc) = &workspace.vector_store {
-                                    let mut vector_store = vector_store_arc.write().await;
+                                    let vector_store = vector_store_arc.read().await;
 
                                     // Lazy load embeddings and build HNSW index if needed
                                     if !vector_store.has_hnsw_index() {

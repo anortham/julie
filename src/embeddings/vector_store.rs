@@ -12,13 +12,18 @@ use std::path::Path;
 
 const HNSW_MAX_LAYERS: usize = 16; // hnsw_rs NB_LAYER_MAX; required for dump persistence
 
+use hnsw_rs::hnswio::{HnswIo, ReloadOptions};
+
 /// High-performance vector store for embedding similarity search
 pub struct VectorStore {
     dimensions: usize,
     vectors: HashMap<String, Vec<f32>>,
     /// HNSW index for fast approximate nearest neighbor search
-    /// Note: Using 'static lifetime since index owns its data
+    /// Stored alongside HnswIo to satisfy lifetime requirements for disk-loaded indexes
     hnsw_index: Option<Hnsw<'static, f32, DistCosine>>,
+    /// HnswIo instance for loading from disk - kept alive to satisfy Hnsw lifetime when using mmap
+    /// In non-mmap mode (default), this is None since data is copied into Hnsw
+    _hnsw_io: Option<Box<HnswIo>>,
     /// Mapping from HNSW numeric IDs to symbol IDs
     /// Needed because HNSW uses usize indices but we use String symbol IDs
     id_mapping: Vec<String>,
@@ -31,6 +36,7 @@ impl VectorStore {
             dimensions,
             vectors: HashMap::new(),
             hnsw_index: None,
+            _hnsw_io: None,
             id_mapping: Vec::new(),
         })
     }
@@ -302,10 +308,11 @@ impl VectorStore {
     /// Load HNSW index from disk using hnsw_rs HnswIo
     /// Expects files: {path}/hnsw_index.hnsw.graph and {path}/hnsw_index.hnsw.data
     ///
-    /// Note: Currently we rebuild from database instead of loading persisted index
-    /// due to lifetime constraints with HnswIo. This is a known limitation that
-    /// will be addressed in a future update. For now, save_hnsw_index() is implemented
-    /// but load_hnsw_index() falls back to rebuild.
+    /// SAFETY: Uses unsafe transmute to extend lifetime to 'static. This is safe because:
+    /// 1. We use ReloadOptions::default() which has datamap: false (no mmap)
+    /// 2. With datamap: false, all vector data is copied into Hnsw during load
+    /// 3. After load_hnsw returns, Hnsw owns all its data with no references to HnswIo
+    /// 4. The lifetime constraint 'b: 'a in load_hnsw is overly conservative for non-mmap case
     pub fn load_hnsw_index(&mut self, path: &Path) -> Result<()> {
         let filename = "hnsw_index";
         let graph_file = path.join(format!("{}.hnsw.graph", filename));
@@ -321,12 +328,39 @@ impl VectorStore {
             ));
         }
 
-        tracing::warn!("📂 HNSW persistence loading not yet fully implemented due to lifetime constraints");
-        tracing::info!("💡 Using rebuild from database instead (works, but slower)");
+        tracing::info!("📂 Loading HNSW index from disk: {}", path.display());
 
-        // For now, return an error to trigger rebuild path
-        // TODO: Solve lifetime issue with HnswIo and 'static requirement
-        Err(anyhow::anyhow!("HNSW loading temporarily disabled - will rebuild from database"))
+        // Create HnswIo for loading (with default options = no mmap, data is copied)
+        let mut hnsw_io = HnswIo::new(path, filename);
+        let reload_options = ReloadOptions::default(); // datamap: false - copies data
+        hnsw_io.set_options(reload_options);
+
+        // Load the index - returns Hnsw<'a, ...> where 'a is tied to hnsw_io lifetime
+        let loaded_hnsw: Hnsw<'_, f32, DistCosine> = hnsw_io
+            .load_hnsw::<f32, DistCosine>()
+            .map_err(|e| anyhow::anyhow!("Failed to load HNSW from disk: {}", e))?;
+
+        // SAFETY: With datamap: false, all data is copied into Hnsw.
+        // The lifetime 'a -> 'b constraint is overly conservative.
+        // We can safely transmute to 'static because Hnsw owns its data.
+        let static_hnsw: Hnsw<'static, f32, DistCosine> = unsafe {
+            std::mem::transmute(loaded_hnsw)
+        };
+
+        // Load the ID mapping from vectors HashMap keys (sorted for determinism)
+        self.id_mapping.clear();
+        let mut sorted_ids: Vec<_> = self.vectors.keys().cloned().collect();
+        sorted_ids.sort();
+        self.id_mapping = sorted_ids;
+
+        tracing::info!("✅ HNSW index loaded from disk with {} vectors", self.vectors.len());
+
+        // Store the loaded index
+        self.hnsw_index = Some(static_hnsw);
+
+        // Note: hnsw_io is dropped here, but that's safe because data was copied
+
+        Ok(())
     }
 
     /// Add a vector to existing HNSW index (incremental update)

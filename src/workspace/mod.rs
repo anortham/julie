@@ -458,20 +458,8 @@ impl JulieWorkspace {
         // Create empty vector store (384 dimensions for BGE-Small model)
         let mut store = VectorIndex::new(384)?;
 
-        // Try to load persisted HNSW index from disk first (fast path)
-        let vectors_dir = self.julie_dir.join("vectors");
-        let mut loaded_from_disk = false;
-
-        if vectors_dir.exists() {
-            info!("📂 Checking for persisted HNSW index...");
-            // TODO: Implement load_hnsw_index() - currently has lifetime issues
-            // For now, we'll rebuild from database which is still reasonably fast
-            info!("⚠️  HNSW loading from disk not yet implemented - rebuilding from database");
-        }
-
-        // Load embeddings from database and build index
-        if !loaded_from_disk {
-            if let Some(db) = &self.db {
+        // ALWAYS load embeddings from database first (needed for vector lookups and id_mapping)
+        if let Some(db) = &self.db {
             // Use blocking lock since this is a synchronous initialization function
             match db.try_lock() {
                 Ok(db_lock) => {
@@ -491,25 +479,44 @@ impl JulieWorkspace {
 
                             info!("✅ Loaded {} embeddings into vector store", count);
 
-                            // Build HNSW index for fast similarity search
-                            info!("🏗️  Building HNSW index from {} embeddings...", count);
-                            match store.build_hnsw_index() {
-                                Ok(_) => {
-                                    info!("✅ HNSW index built successfully - semantic search ready!");
+                            // Now try to load HNSW index from disk (fast path)
+                            let vectors_dir = self.julie_dir.join("vectors");
+                            let mut loaded_from_disk = false;
 
-                                    // Save HNSW index to disk for faster startup next time
-                                    let vectors_dir = self.julie_dir.join("vectors");
-                                    match store.save_hnsw_index(&vectors_dir) {
-                                        Ok(_) => {
-                                            info!("💾 HNSW index persisted to disk successfully");
-                                        }
-                                        Err(e) => {
-                                            warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
-                                        }
+                            if vectors_dir.exists() {
+                                info!("📂 Attempting to load HNSW index from disk...");
+                                match store.load_hnsw_index(&vectors_dir) {
+                                    Ok(_) => {
+                                        info!("✅ HNSW index loaded from disk - semantic search ready!");
+                                        loaded_from_disk = true;
+                                    }
+                                    Err(e) => {
+                                        info!("⚠️  Failed to load HNSW from disk: {}. Rebuilding...", e);
                                     }
                                 }
-                                Err(e) => {
-                                    warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
+                            }
+
+                            // If disk load failed, build HNSW from embeddings (slower path)
+                            if !loaded_from_disk {
+                                info!("🏗️  Building HNSW index from {} embeddings...", count);
+                                match store.build_hnsw_index() {
+                                    Ok(_) => {
+                                        info!("✅ HNSW index built successfully - semantic search ready!");
+
+                                        // Save HNSW index to disk for faster startup next time
+                                        let vectors_dir = self.julie_dir.join("vectors");
+                                        match store.save_hnsw_index(&vectors_dir) {
+                                            Ok(_) => {
+                                                info!("💾 HNSW index persisted to disk successfully");
+                                            }
+                                            Err(e) => {
+                                                warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
+                                    }
                                 }
                             }
                         }
@@ -522,10 +529,9 @@ impl JulieWorkspace {
                     warn!("Could not acquire database lock during initialization. Starting with empty store.");
                 }
             }
-            } else {
-                warn!("Database not initialized. Vector store will start empty.");
-            }
-        } // end if !loaded_from_disk
+        } else {
+            warn!("Database not initialized. Vector store will start empty.");
+        }
 
         self.vector_store = Some(Arc::new(RwLock::new(store)));
         info!("✅ Vector store initialized and ready for semantic search");
