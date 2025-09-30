@@ -52,7 +52,7 @@ pub struct FastSearchTool {
     /// Supports: directories, extensions, nested paths, exclusions with !
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum results to return (default: 50, range: 1-500).
+    /// Maximum results to return (default: 15, range: 1-500).
     /// Lower = faster response, Higher = more comprehensive
     /// Tip: Start with default, increase if you need more results
     #[serde(default = "default_limit")]
@@ -65,7 +65,7 @@ pub struct FastSearchTool {
 }
 
 fn default_limit() -> u32 {
-    50
+    15
 }
 fn default_text() -> String {
     "text".to_string()

@@ -75,7 +75,7 @@ impl SearchEngine {
         let term = Term::from_field_text(fields.symbol_name_exact, clean_query);
         let term_query = TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
 
-        let mut top_docs = searcher.search(&term_query, &TopDocs::with_limit(50))?;
+        let mut top_docs = searcher.search(&term_query, &TopDocs::with_limit(20))?;
 
         if top_docs.is_empty() {
             let variations = vec![
@@ -92,7 +92,7 @@ impl SearchEngine {
                     let variation_query =
                         TermQuery::new(term, tantivy::schema::IndexRecordOption::WithFreqs);
                     let variation_docs =
-                        searcher.search(&variation_query, &TopDocs::with_limit(50))?;
+                        searcher.search(&variation_query, &TopDocs::with_limit(20))?;
 
                     if !variation_docs.is_empty() {
                         top_docs = variation_docs;
@@ -114,7 +114,7 @@ impl SearchEngine {
                 match query_parser.parse_query(&variant) {
                     Ok(wildcard_query) => {
                         let wildcard_docs =
-                            searcher.search(&*wildcard_query, &TopDocs::with_limit(50))?;
+                            searcher.search(&*wildcard_query, &TopDocs::with_limit(20))?;
                         if !wildcard_docs.is_empty() {
                             debug!(
                                 "🎯 CamelCase wildcard found {} results with pattern: '{}'",
@@ -170,7 +170,7 @@ impl SearchEngine {
         let combined_query = search_terms.join(" OR ");
         let parsed_query = query_parser.parse_query(&combined_query)?;
 
-        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
+        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(30))?;
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
@@ -230,7 +230,7 @@ impl SearchEngine {
             Err(_) => Box::new(term_query) as Box<dyn Query>,
         };
 
-        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
+        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(30))?;
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
@@ -257,7 +257,7 @@ impl SearchEngine {
         let query_parser = QueryParser::for_index(&self.index, vec![fields.file_path]);
         let parsed_query = query_parser.parse_query(query)?;
 
-        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(50))?;
+        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(20))?;
 
         let mut results = Vec::new();
         for (_score, doc_address) in top_docs {
@@ -339,7 +339,7 @@ impl SearchEngine {
             query_parser.parse_query(query)?
         };
 
-        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(100))?;
+        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(30))?;
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
