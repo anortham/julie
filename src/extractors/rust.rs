@@ -23,7 +23,9 @@ pub struct RustExtractor {
 
 #[derive(Debug, Clone)]
 struct ImplBlockInfo {
-    node: Node<'static>, // TODO: Fix unsafe lifetime - this is a bug but not THE bug
+    /// Byte range of the impl block in the source file (safe to store)
+    start_byte: usize,
+    end_byte: usize,
     type_name: String,
     #[allow(dead_code)]
     parent_id: Option<String>,
@@ -50,8 +52,9 @@ impl RustExtractor {
         self.walk_tree(tree.root_node(), &mut symbols, None);
 
         // Phase 2: Process impl blocks after all symbols are extracted
+        // SAFETY FIX: Pass tree reference so we can reconstruct nodes from byte ranges
         self.is_processing_impl_blocks = true;
-        self.process_impl_blocks(&mut symbols);
+        self.process_impl_blocks(tree, &mut symbols);
 
         symbols
     }
@@ -266,18 +269,17 @@ impl RustExtractor {
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "anonymous".to_string());
 
-        // TODO: Fix this unsafe transmute - it's undefined behavior!
-        // Convert Node to Node<'static> (this is NOT actually safe!)
-        let static_node = unsafe { std::mem::transmute(node) };
-
+        // SAFETY FIX: Store byte ranges instead of Node references
+        // This avoids unsafe lifetime transmutation and is safe to store
         self.impl_blocks.push(ImplBlockInfo {
-            node: static_node,
+            start_byte: node.start_byte(),
+            end_byte: node.end_byte(),
             type_name,
             parent_id,
         });
     }
 
-    fn process_impl_blocks(&mut self, symbols: &mut Vec<Symbol>) {
+    fn process_impl_blocks(&mut self, tree: &Tree, symbols: &mut Vec<Symbol>) {
         let impl_blocks = self.impl_blocks.clone();
 
         for impl_block in impl_blocks {
@@ -290,18 +292,25 @@ impl RustExtractor {
             if let Some(struct_symbol) = struct_symbol {
                 let parent_id = struct_symbol.id.clone();
 
-                // Extract methods with correct parent_id
-                if let Some(declaration_list) = impl_block
-                    .node
-                    .children(&mut impl_block.node.walk())
-                    .find(|c| c.kind() == "declaration_list")
-                {
-                    for child in declaration_list.children(&mut declaration_list.walk()) {
-                        if child.kind() == "function_item" {
-                            let mut method_symbol =
-                                self.extract_function(child, Some(parent_id.clone()));
-                            method_symbol.kind = SymbolKind::Method;
-                            symbols.push(method_symbol);
+                // SAFETY FIX: Reconstruct node from byte range using the tree
+                // This is safe because we have a valid tree reference with proper lifetime
+                let node = tree
+                    .root_node()
+                    .descendant_for_byte_range(impl_block.start_byte, impl_block.end_byte);
+
+                if let Some(node) = node {
+                    // Extract methods with correct parent_id
+                    if let Some(declaration_list) = node
+                        .children(&mut node.walk())
+                        .find(|c| c.kind() == "declaration_list")
+                    {
+                        for child in declaration_list.children(&mut declaration_list.walk()) {
+                            if child.kind() == "function_item" {
+                                let mut method_symbol =
+                                    self.extract_function(child, Some(parent_id.clone()));
+                                method_symbol.kind = SymbolKind::Method;
+                                symbols.push(method_symbol);
+                            }
                         }
                     }
                 }

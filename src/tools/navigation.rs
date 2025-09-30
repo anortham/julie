@@ -7,7 +7,11 @@ use tracing::debug;
 
 use crate::extractors::{Relationship, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
+use crate::utils::{
+    cross_language_intelligence::generate_naming_variants,
+    progressive_reduction::ProgressiveReducer,
+    token_estimation::TokenEstimator,
+};
 use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //*********************//
@@ -182,39 +186,28 @@ impl FastGotoTool {
         };
 
         // Strategy 2: Use relationships to find actual definitions
-        // Get relationships TO these matching symbols (much smaller set than all relationships)
+        // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
+        // This changes from O(n) linear scan to O(k * log n) indexed queries where k = matching_symbols.len()
         if !matching_symbols.is_empty() {
             if let Ok(workspace) = handler.get_workspace().await {
                 if let Some(workspace) = workspace {
                     if let Some(db) = workspace.db.as_ref() {
                         let db_lock = db.lock().await;
-                        let all_relationships = db_lock.get_all_relationships().unwrap_or_default();
 
-                        // Filter relationships that point to our matching symbols
-                        let symbol_ids: std::collections::HashSet<_> = matching_symbols.iter().map(|s| s.id.as_str()).collect();
-                        for relationship in all_relationships.iter() {
-                            if symbol_ids.contains(relationship.to_symbol_id.as_str()) {
-                                // Check if this relationship represents a definition or import
-                                match &relationship.kind {
-                                    crate::extractors::base::RelationshipKind::Imports => {
-                                        // Find the target symbol from our matching set
-                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
-                                            exact_matches.push(target_symbol.clone());
+                        // Query relationships for each matching symbol using indexed query
+                        for symbol in &matching_symbols {
+                            if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id) {
+                                for relationship in relationships {
+                                    // Check if this relationship represents a definition or import
+                                    match &relationship.kind {
+                                        crate::extractors::base::RelationshipKind::Imports |
+                                        crate::extractors::base::RelationshipKind::Defines |
+                                        crate::extractors::base::RelationshipKind::Extends => {
+                                            // The symbol itself is the definition we want
+                                            exact_matches.push(symbol.clone());
                                         }
+                                        _ => {}
                                     }
-                                    crate::extractors::base::RelationshipKind::Defines => {
-                                        // Find the target symbol from our matching set
-                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
-                                            exact_matches.push(target_symbol.clone());
-                                        }
-                                    }
-                                    crate::extractors::base::RelationshipKind::Extends => {
-                                        // Find the target symbol from our matching set
-                                        if let Some(target_symbol) = matching_symbols.iter().find(|s| s.id == relationship.to_symbol_id) {
-                                            exact_matches.push(target_symbol.clone());
-                                        }
-                                    }
-                                    _ => {}
                                 }
                             }
                         }
@@ -227,41 +220,55 @@ impl FastGotoTool {
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
         exact_matches.dedup_by(|a, b| a.id == b.id);
 
-        // Strategy 3: Cross-language resolution using additional indexed searches
+        // Strategy 3: Cross-language resolution with naming conventions + semantic search
+        // This leverages Julie's unique CASCADE architecture:
+        // - Fast: Naming convention variants (Tantivy indexed search)
+        // - Smart: Semantic embeddings (HNSW similarity)
         if exact_matches.is_empty() {
             debug!(
                 "🌍 Attempting cross-language resolution for '{}'",
                 self.symbol
             );
 
-            // Use indexed search for naming convention variants instead of O(n) linear scan
-            // TODO: Re-implement with proper search engine access
-            /*
-            let variants = vec![
-                self.to_snake_case(&self.symbol),
-                self.to_camel_case(&self.symbol),
-                self.to_pascal_case(&self.symbol),
-            ];
+            // 3a. Try naming convention variants (fast, works across Python/JS/C#/Rust)
+            // Examples: getUserData -> get_user_data (Python), GetUserData (C#)
+            // Uses Julie's Intelligence Layer for smart variant generation
+            match handler.active_search_engine().await {
+                Ok(search_engine) => {
+                    let search_engine = search_engine.read().await;
 
-            for variant in variants {
-                if variant != self.symbol {
-                    // Avoid duplicate searches
-                    match search_engine.search(&variant).await {
-                        Ok(search_results) => {
-                            for search_result in search_results {
-                                if search_result.symbol.name == variant {
-                                    exact_matches.push(search_result.symbol);
+                    // Generate all naming convention variants using shared intelligence module
+                    let variants = generate_naming_variants(&self.symbol);
+
+                    for variant in variants {
+                        if variant != self.symbol {
+                            // Avoid duplicate searches
+                            match search_engine.search(&variant).await {
+                                Ok(search_results) => {
+                                    for search_result in search_results {
+                                        if search_result.symbol.name == variant {
+                                            debug!("🎯 Found cross-language match: {} -> {}", self.symbol, variant);
+                                            exact_matches.push(search_result.symbol);
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    // Skip failed variant searches - not critical
+                                    debug!("Variant search failed for: {}", variant);
                                 }
                             }
                         }
-                        Err(_) => {
-                            // Skip failed variant searches - not critical
-                            debug!("Variant search failed for: {}", variant);
-                        }
                     }
                 }
+                Err(e) => {
+                    debug!("Search engine not available for cross-language resolution: {}", e);
+                    // Fall through to semantic search (Strategy 4)
+                }
             }
-            */
+
+            // 3b. If still no matches, embeddings will catch semantically similar symbols
+            // (e.g., getUserData -> fetchUserInfo, retrieveUserDetails)
+            // This happens automatically in Strategy 4 below
         }
 
         // Strategy 4: HNSW-powered semantic matching (FAST!)
@@ -280,30 +287,44 @@ impl FastGotoTool {
                                 if let Some(vector_store_arc) = &workspace.vector_store {
                                     let vector_store = vector_store_arc.read().await;
 
-                                    // Lazy load embeddings and build HNSW index if needed
-                                    if !vector_store.has_hnsw_index() {
-                                        debug!("Building HNSW index on first use...");
-                                        // TODO: Load embeddings from database here
-                                        // For now, skip semantic search if index not built
-                                        debug!("HNSW index not yet built - skipping semantic search");
-                                    } else {
-                                        // Use HNSW for fast similarity search!
+                                    // CASCADE fallback: HNSW (fast) → Brute-force (slower but works)
+                                    let similar_symbols = if vector_store.has_hnsw_index() {
+                                        // Fast path: Use HNSW for O(log n) approximate search
+                                        debug!("🚀 Using HNSW index for fast semantic search");
                                         match vector_store.search_similar_hnsw(&query_embedding, 10, 0.7) {
-                                            Ok(similar_symbols) => {
-                                                debug!("Found {} semantically similar symbols", similar_symbols.len());
-
-                                                // Get actual symbol data from database
-                                                if let Some(db_arc) = &workspace.db {
-                                                    let db = db_arc.lock().await;
-                                                    for result in similar_symbols {
-                                                        if let Ok(Some(symbol)) = db.get_symbol_by_id(&result.symbol_id) {
-                                                            exact_matches.push(symbol);
-                                                        }
-                                                    }
-                                                }
+                                            Ok(results) => {
+                                                debug!("Found {} semantically similar symbols via HNSW", results.len());
+                                                results
                                             }
                                             Err(e) => {
-                                                debug!("HNSW search failed: {}", e);
+                                                debug!("HNSW search failed: {}, falling back to brute-force", e);
+                                                // Fallback to brute-force if HNSW fails
+                                                vector_store.search_similar(&query_embedding, 10, 0.7)
+                                                    .unwrap_or_else(|e| {
+                                                        debug!("Brute-force search also failed: {}", e);
+                                                        Vec::new()
+                                                    })
+                                            }
+                                        }
+                                    } else {
+                                        // Fallback path: Use brute-force O(n) search when HNSW not available
+                                        debug!("⚠️ HNSW index not available - using brute-force semantic search");
+                                        vector_store.search_similar(&query_embedding, 10, 0.7)
+                                            .unwrap_or_else(|e| {
+                                                debug!("Brute-force semantic search failed: {}", e);
+                                                Vec::new()
+                                            })
+                                    };
+
+                                    // Get actual symbol data from database for all results
+                                    if !similar_symbols.is_empty() {
+                                        debug!("📊 Processing {} similar symbols from semantic search", similar_symbols.len());
+                                        if let Some(db_arc) = &workspace.db {
+                                            let db = db_arc.lock().await;
+                                            for result in similar_symbols {
+                                                if let Ok(Some(symbol)) = db.get_symbol_by_id(&result.symbol_id) {
+                                                    exact_matches.push(symbol);
+                                                }
                                             }
                                         }
                                     }
@@ -581,10 +602,44 @@ impl FastGotoTool {
 
         // Find exact matches by name with workspace filtering
         let mut exact_matches =
-            db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids))?;
+            db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids.clone()))?;
 
         // Filter for exact name matches (find_symbols_by_pattern uses LIKE)
         exact_matches.retain(|symbol| symbol.name == self.symbol);
+
+        // Strategy 2: Cross-language Intelligence Layer - naming convention variants
+        // This enables workspace-filtered searches to find getUserData -> get_user_data -> GetUserData
+        if exact_matches.is_empty() {
+            debug!(
+                "🌍 Attempting cross-language resolution for '{}' in workspace-filtered search",
+                self.symbol
+            );
+
+            // Generate all naming convention variants using shared intelligence module
+            let variants = generate_naming_variants(&self.symbol);
+
+            for variant in variants {
+                if variant != self.symbol {
+                    // Try each variant with workspace filtering
+                    if let Ok(mut variant_matches) =
+                        db_lock.find_symbols_by_pattern(&variant, Some(workspace_ids.clone()))
+                    {
+                        // Filter for exact variant matches
+                        variant_matches.retain(|symbol| symbol.name == variant);
+
+                        if !variant_matches.is_empty() {
+                            debug!("🎯 Found cross-language match: {} -> {} ({} results)",
+                                self.symbol, variant, variant_matches.len());
+                            exact_matches.extend(variant_matches);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove duplicates based on symbol id
+        exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
+        exact_matches.dedup_by(|a, b| a.id == b.id);
 
         // Prioritize results
         exact_matches.sort_by(|a, b| {

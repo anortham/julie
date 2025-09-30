@@ -202,7 +202,13 @@ impl TypeScriptExtractor {
     }
 
     fn extract_interface(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "Anonymous".to_string(); // TODO: implement
+        let name_node = node.child_by_field_name("name");
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "Anonymous".to_string()
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Interface, SymbolOptions::default())
@@ -295,42 +301,100 @@ impl TypeScriptExtractor {
     }
 
     fn extract_type_alias(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "Anonymous".to_string(); // TODO: implement
+        let name_node = node.child_by_field_name("name");
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "Anonymous".to_string()
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Type, SymbolOptions::default())
     }
 
     fn extract_enum(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "Anonymous".to_string(); // TODO: implement
+        let name_node = node.child_by_field_name("name");
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "Anonymous".to_string()
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Enum, SymbolOptions::default())
     }
 
     fn extract_import(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "import".to_string(); // TODO: implement
+        // For imports, extract the source (what's being imported from)
+        // Example: import { foo } from './bar' -> name should be './bar' or 'foo'
+        let name = if let Some(source_node) = node.child_by_field_name("source") {
+            self.base.get_node_text(&source_node).trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+        } else {
+            // Try to get import clause for named imports
+            node.children(&mut node.walk())
+                .find(|c| c.kind() == "import_clause")
+                .and_then(|clause| clause.child_by_field_name("name"))
+                .map(|n| self.base.get_node_text(&n))
+                .unwrap_or_else(|| "import".to_string())
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Import, SymbolOptions::default())
     }
 
     fn extract_export(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "export".to_string(); // TODO: implement
+        // For exports, extract what's being exported
+        // Example: export class Foo -> name should be 'Foo'
+        // Example: export { bar } from './baz' -> name should be 'bar'
+        let name = if let Some(declaration_node) = node.child_by_field_name("declaration") {
+            // export class/function/const/etc
+            declaration_node.child_by_field_name("name")
+                .map(|n| self.base.get_node_text(&n))
+                .unwrap_or_else(|| "export".to_string())
+        } else if let Some(source_node) = node.child_by_field_name("source") {
+            // export { ... } from '...'
+            self.base.get_node_text(&source_node).trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+        } else {
+            // export { ... }
+            node.children(&mut node.walk())
+                .find(|c| c.kind() == "export_clause")
+                .and_then(|clause| clause.named_child(0))
+                .and_then(|spec| spec.child_by_field_name("name"))
+                .map(|n| self.base.get_node_text(&n))
+                .unwrap_or_else(|| "export".to_string())
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Export, SymbolOptions::default())
     }
 
     fn extract_namespace(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "Anonymous".to_string(); // TODO: implement
+        let name_node = node.child_by_field_name("name");
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "Anonymous".to_string()
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Namespace, SymbolOptions::default())
     }
 
     fn extract_property(&mut self, node: tree_sitter::Node) -> Symbol {
-        let name = "Anonymous".to_string(); // TODO: implement
+        // Properties can have their name in different field names depending on context
+        let name_node = node.child_by_field_name("name")
+            .or_else(|| node.child_by_field_name("key"));
+        let name = if let Some(name_node) = name_node {
+            self.base.get_node_text(&name_node)
+        } else {
+            "Anonymous".to_string()
+        };
+
         use crate::extractors::base::SymbolOptions;
         self.base
             .create_symbol(&node, name, SymbolKind::Property, SymbolOptions::default())

@@ -19,7 +19,7 @@ use tracing::{debug, info, warn};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// Current schema version - increment when adding migrations
-const LATEST_SCHEMA_VERSION: i32 = 2;
+const LATEST_SCHEMA_VERSION: i32 = 3;
 
 /// The main database connection and operations
 pub struct SymbolDatabase {
@@ -170,6 +170,7 @@ impl SymbolDatabase {
         match version {
             1 => self.migration_001_initial_schema()?,
             2 => self.migration_002_add_content_column()?,
+            3 => self.migration_003_add_relationship_location()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -180,6 +181,7 @@ impl SymbolDatabase {
         let description = match version {
             1 => "Initial schema",
             2 => "Add content column for CASCADE FTS5",
+            3 => "Add file_path and line_number to relationships",
             _ => "Unknown migration",
         };
 
@@ -265,6 +267,49 @@ impl SymbolDatabase {
 
         // Recreate FTS table and triggers (will be done by initialize_schema)
         // Note: We let initialize_schema handle this to avoid duplication
+
+        Ok(())
+    }
+
+    /// Migration 003: Add file_path and line_number to relationships table
+    fn migration_003_add_relationship_location(&mut self) -> Result<()> {
+        info!("Migration 003: Adding file_path and line_number to relationships table");
+
+        // Check if relationships table exists (fresh database won't have it yet)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name='relationships'",
+            [],
+            |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            },
+        )?;
+
+        if !table_exists {
+            debug!("Relationships table doesn't exist yet (fresh database), skipping migration");
+            return Ok(());
+        }
+
+        // Check if file_path column already exists (idempotency)
+        if self.has_column("relationships", "file_path")? {
+            warn!("file_path column already exists in relationships table, skipping migration");
+            return Ok(());
+        }
+
+        // Add file_path column (TEXT, empty string default for existing rows)
+        self.conn.execute(
+            "ALTER TABLE relationships ADD COLUMN file_path TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+
+        // Add line_number column (INTEGER, 0 default for existing rows)
+        self.conn.execute(
+            "ALTER TABLE relationships ADD COLUMN line_number INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+
+        info!("✅ file_path and line_number columns added to relationships table");
 
         Ok(())
     }
@@ -505,6 +550,8 @@ impl SymbolDatabase {
                 from_symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
                 to_symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
                 kind TEXT NOT NULL,
+                file_path TEXT NOT NULL DEFAULT '',  -- Location where relationship occurs
+                line_number INTEGER NOT NULL DEFAULT 0,  -- Line number where relationship occurs (1-based)
                 confidence REAL DEFAULT 1.0,
                 metadata TEXT,  -- JSON blob
                 created_at INTEGER DEFAULT 0,
@@ -1248,13 +1295,15 @@ impl SymbolDatabase {
 
             tx.execute(
                 "INSERT OR REPLACE INTO relationships
-                 (id, from_symbol_id, to_symbol_id, kind, confidence, metadata, workspace_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata, workspace_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     rel.id,
                     rel.from_symbol_id,
                     rel.to_symbol_id,
                     rel.kind.to_string(),
+                    rel.file_path,
+                    rel.line_number,
                     rel.confidence,
                     metadata_json,
                     workspace_id
@@ -1290,8 +1339,8 @@ impl SymbolDatabase {
         let tx = self.conn.transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO relationships
-             (id, from_symbol_id, to_symbol_id, kind, confidence, metadata, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
 
         for rel in relationships {
@@ -1306,6 +1355,8 @@ impl SymbolDatabase {
                 rel.from_symbol_id,
                 rel.to_symbol_id,
                 rel.kind.to_string(),
+                rel.file_path,
+                rel.line_number,
                 rel.confidence,
                 metadata_json,
                 workspace_id
@@ -1543,7 +1594,7 @@ impl SymbolDatabase {
     /// Get outgoing relationships from a symbol
     pub fn get_outgoing_relationships(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
+            "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
              FROM relationships
              WHERE from_symbol_id = ?1",
         )?;
@@ -1681,8 +1732,8 @@ impl SymbolDatabase {
             from_symbol_id: row.get("from_symbol_id")?,
             to_symbol_id: row.get("to_symbol_id")?,
             kind,
-            file_path: String::new(), // TODO: Add file_path to relationship storage
-            line_number: 0,           // TODO: Add line_number to relationship storage
+            file_path: row.get("file_path").unwrap_or_else(|_| String::new()), // Support old DBs without migration
+            line_number: row.get("line_number").unwrap_or(0),                  // Support old DBs without migration
             confidence: row.get("confidence").unwrap_or(1.0),
             metadata,
         })
@@ -1692,7 +1743,7 @@ impl SymbolDatabase {
     pub fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "
-            SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
+            SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
             FROM relationships
             WHERE from_symbol_id = ?1
         ",
@@ -1793,7 +1844,7 @@ impl SymbolDatabase {
     pub fn get_all_relationships(&self) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "
-            SELECT id, from_symbol_id, to_symbol_id, kind, confidence, metadata
+            SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
             FROM relationships
             ORDER BY from_symbol_id
         ",

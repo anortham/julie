@@ -60,6 +60,9 @@ pub mod context_truncation;
 /// Progressive reduction utilities
 pub mod progressive_reduction;
 
+/// Cross-language intelligence utilities (THE secret sauce!)
+pub mod cross_language_intelligence;
+
 /// Path relevance scoring utilities
 pub mod path_relevance;
 
