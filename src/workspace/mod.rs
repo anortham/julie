@@ -12,7 +12,7 @@
 pub mod registry;
 pub mod registry_service;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -306,14 +306,16 @@ impl JulieWorkspace {
         for dir in &required_dirs {
             let path = self.julie_dir.join(dir);
             if !path.exists() {
-                return Err(anyhow!("Missing required directory: {}", path.display()));
+                info!("Creating missing directory: {}", path.display());
+                std::fs::create_dir_all(&path)
+                    .context(format!("Failed to create directory: {}", path.display()))?;
             }
         }
 
         // Check if config file exists
         let config_path = self.julie_dir.join("config").join("julie.toml");
         if !config_path.exists() {
-            warn!("Configuration file missing, will create with defaults");
+            info!("Configuration file missing, creating with defaults");
             Self::save_config(&self.julie_dir, &self.config)?;
         }
 

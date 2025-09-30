@@ -11,6 +11,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 use julie::handler::JulieServerHandler;
 use julie::tools::workspace::ManageWorkspaceTool;
+use julie::workspace::registry::WorkspaceType;
 use julie::workspace::registry_service::WorkspaceRegistryService;
 use rust_mcp_sdk::schema::{
     Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
@@ -255,6 +256,10 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
 
     if !needs_indexing {
         info!("📋 Workspace is up-to-date, no indexing needed");
+
+        // Even though no indexing is needed, update statistics to keep registry in sync
+        update_workspace_statistics(&current_dir, handler).await?;
+
         return Ok(());
     }
 
@@ -370,4 +375,95 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
         debug!("No database connection - indexing needed");
         Ok(true)
     }
+}
+
+/// Update workspace registry statistics with current database state
+/// This ensures the registry stays in sync even when no indexing is performed
+async fn update_workspace_statistics(
+    workspace_path: &std::path::Path,
+    handler: &JulieServerHandler,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    debug!("🔄 Updating workspace statistics...");
+
+    // Get workspace
+    let workspace = match handler.get_workspace().await? {
+        Some(ws) => ws,
+        None => {
+            debug!("No workspace found - skipping statistics update");
+            return Ok(());
+        }
+    };
+
+    // Get registry service
+    let registry_service = WorkspaceRegistryService::new(workspace_path.to_path_buf());
+
+    // Get or register primary workspace
+    let workspace_id = match registry_service
+        .register_workspace(
+            workspace_path.to_string_lossy().to_string(),
+            WorkspaceType::Primary,
+        )
+        .await
+    {
+        Ok(entry) => entry.id,
+        Err(_) => {
+            // Already registered - get existing ID
+            match registry_service.get_primary_workspace_id().await? {
+                Some(id) => id,
+                None => {
+                    debug!("Failed to get primary workspace ID - skipping statistics update");
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    // Count symbols in database
+    let symbol_count = if let Some(db_arc) = &workspace.db {
+        let db = db_arc.lock().await;
+        db.count_symbols_for_workspace(&workspace_id).unwrap_or(0)
+    } else {
+        0
+    };
+
+    // Calculate Tantivy index size
+    let tantivy_path = workspace.julie_dir.join("index/tantivy");
+    let index_size = if tantivy_path.exists() {
+        calculate_dir_size(&tantivy_path)
+    } else {
+        0
+    };
+
+    // Update registry statistics
+    registry_service
+        .update_workspace_statistics(&workspace_id, symbol_count, index_size)
+        .await
+        .context("Failed to update workspace statistics")?;
+
+    info!(
+        "📊 Updated workspace statistics: {} symbols, {:.2} MB index",
+        symbol_count,
+        index_size as f64 / 1_048_576.0
+    );
+
+    Ok(())
+}
+
+/// Calculate total size of a directory recursively
+fn calculate_dir_size(path: &std::path::Path) -> u64 {
+    let mut total_size = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    total_size += metadata.len();
+                } else if metadata.is_dir() {
+                    total_size += calculate_dir_size(&entry.path());
+                }
+            }
+        }
+    }
+    total_size
 }

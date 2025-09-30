@@ -60,27 +60,6 @@ impl ManageWorkspaceTool {
             files_to_index.len()
         );
 
-        // Get SearchEngine for single-pass indexing (Tantivy + SQLite together)
-        match handler.active_search_engine().await {
-            Ok(search_engine) => {
-                // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
-                self.process_files_optimized(
-                    handler,
-                    files_to_index,
-                    is_primary_workspace,
-                    &mut total_files,
-                    search_engine,
-                )
-                .await?;
-            }
-            Err(e) => {
-                debug!("Search engine unavailable during indexing: {}", e);
-                // For now, return error since indexing requires search engine
-                // TODO: Implement fallback indexing without search engine
-                return Err(e);
-            }
-        }
-
         // Get workspace ID early for use throughout the function
         // CRITICAL: Ensure workspace is properly registered before indexing
         let workspace_id = if let Some(workspace) = handler.get_workspace().await? {
@@ -104,6 +83,28 @@ impl ManageWorkspaceTool {
         } else {
             return Err(anyhow::anyhow!("No workspace available for indexing"));
         };
+
+        // Get SearchEngine for single-pass indexing (Tantivy + SQLite together)
+        match handler.active_search_engine().await {
+            Ok(search_engine) => {
+                // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
+                self.process_files_optimized(
+                    handler,
+                    files_to_index,
+                    is_primary_workspace,
+                    &mut total_files,
+                    search_engine,
+                    workspace_id.clone(),  // Pass workspace_id to avoid re-lookup
+                )
+                .await?;
+            }
+            Err(e) => {
+                debug!("Search engine unavailable during indexing: {}", e);
+                // For now, return error since indexing requires search engine
+                // TODO: Implement fallback indexing without search engine
+                return Err(e);
+            }
+        }
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         let (total_symbols, total_relationships) =
@@ -178,6 +179,7 @@ impl ManageWorkspaceTool {
         is_primary_workspace: bool,
         total_files: &mut usize,
         search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
+        workspace_id: String,  // Pass workspace_id instead of re-looking it up
     ) -> Result<()> {
         // Group files by language for batch processing
         let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -281,19 +283,7 @@ impl ManageWorkspaceTool {
                 if let Some(db) = &workspace.db {
                     let db_lock = db.lock().await;
 
-                    // Get workspace ID for cleanup
-                    let workspace_id = if is_primary_workspace {
-                        let registry_service =
-                            crate::workspace::registry_service::WorkspaceRegistryService::new(
-                                workspace.root.clone(),
-                            );
-                        registry_service
-                            .get_primary_workspace_id()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("Primary workspace not registered"))?
-                    } else {
-                        return Err(anyhow::anyhow!("Reference workspace cleanup not supported"));
-                    };
+                    // Use the workspace_id that was passed in (already validated)
 
                     // Clean up database entries for modified files
                     for file_path in &files_to_clean {
@@ -329,21 +319,7 @@ impl ManageWorkspaceTool {
                 if let Some(db) = &workspace.db {
                     let mut db_lock = db.lock().await;
 
-                    // Get actual workspace ID from registry (should already be registered)
-                    let workspace_id = if is_primary_workspace {
-                        let registry_service =
-                            crate::workspace::registry_service::WorkspaceRegistryService::new(
-                                workspace.root.clone(),
-                            );
-                        registry_service
-                            .get_primary_workspace_id()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("Primary workspace not registered - this should not happen after earlier registration"))?
-                    } else {
-                        return Err(anyhow::anyhow!(
-                            "Reference workspace not supported in optimized path"
-                        ));
-                    };
+                    // Use the workspace_id that was passed in (already validated and registered)
 
                     // 🔥 BULK OPERATIONS for maximum speed
                     let bulk_start = std::time::Instant::now();

@@ -182,6 +182,11 @@ impl SymbolDatabase {
                 start_col INTEGER,
                 end_line INTEGER,
                 end_col INTEGER,
+                start_byte INTEGER,
+                end_byte INTEGER,
+                doc_comment TEXT,
+                visibility TEXT,
+                code_context TEXT,
                 parent_id TEXT REFERENCES symbols(id),
                 metadata TEXT,  -- JSON blob
 
@@ -508,11 +513,19 @@ impl SymbolDatabase {
                 .map(serde_json::to_string)
                 .transpose()?;
 
+            // Serialize visibility enum to string
+            let visibility_str = symbol.visibility.as_ref().map(|v| match v {
+                crate::extractors::base::Visibility::Public => "public",
+                crate::extractors::base::Visibility::Private => "private",
+                crate::extractors::base::Visibility::Protected => "protected",
+            });
+
             tx.execute(
                 "INSERT OR REPLACE INTO symbols
                  (id, name, kind, language, file_path, signature, start_line, start_col,
-                  end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                  end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                  parent_id, metadata, semantic_group, confidence, workspace_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 params![
                     symbol.id,
                     symbol.name,
@@ -524,6 +537,11 @@ impl SymbolDatabase {
                     symbol.start_column, // This matches start_col in table
                     symbol.end_line,
                     symbol.end_column, // This matches end_col in table
+                    symbol.start_byte,
+                    symbol.end_byte,
+                    symbol.doc_comment,
+                    visibility_str,
+                    symbol.code_context,
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
@@ -569,8 +587,9 @@ impl SymbolDatabase {
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO symbols
              (id, name, kind, language, file_path, signature, start_line, start_col,
-              end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+              end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+              parent_id, metadata, semantic_group, confidence, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         )?;
 
         // STEP 5: Sort symbols in parent-first order to avoid foreign key violations
@@ -669,6 +688,13 @@ impl SymbolDatabase {
                     .map(serde_json::to_string)
                     .transpose()?;
 
+                // Serialize visibility enum to string
+                let visibility_str = symbol.visibility.as_ref().map(|v| match v {
+                    crate::extractors::base::Visibility::Public => "public",
+                    crate::extractors::base::Visibility::Private => "private",
+                    crate::extractors::base::Visibility::Protected => "protected",
+                });
+
                 match stmt.execute(params![
                     symbol.id,
                     symbol.name,
@@ -680,6 +706,11 @@ impl SymbolDatabase {
                     symbol.start_column,
                     symbol.end_line,
                     symbol.end_column,
+                    symbol.start_byte,
+                    symbol.end_byte,
+                    symbol.doc_comment,
+                    visibility_str,
+                    symbol.code_context,
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
@@ -944,7 +975,8 @@ impl SymbolDatabase {
     pub fn get_symbol_by_id(&self, id: &str) -> Result<Option<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, parent_id, metadata, semantic_group, confidence
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
              FROM symbols WHERE id = ?1",
         )?;
 
@@ -961,7 +993,8 @@ impl SymbolDatabase {
     pub fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, parent_id, metadata, semantic_group, confidence
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE name = ?1
              ORDER BY language, file_path",
@@ -998,7 +1031,8 @@ impl SymbolDatabase {
 
             let query = format!(
                 "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id
+                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                        parent_id, metadata, semantic_group, confidence, workspace_id
                  FROM symbols
                  WHERE name LIKE ?1 AND workspace_id IN ({})
                  ORDER BY workspace_id, language, file_path",
@@ -1011,7 +1045,8 @@ impl SymbolDatabase {
         } else {
             // No workspace filter - search all
             let query = "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                               end_line, end_col, parent_id, metadata, semantic_group, confidence, workspace_id
+                               end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                               parent_id, metadata, semantic_group, confidence, workspace_id
                          FROM symbols
                          WHERE name LIKE ?1
                          ORDER BY workspace_id, language, file_path".to_string();
@@ -1046,7 +1081,8 @@ impl SymbolDatabase {
     pub fn get_symbols_for_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, parent_id, metadata, semantic_group, confidence
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE file_path = ?1
              ORDER BY start_line, start_col",
@@ -1199,6 +1235,15 @@ impl SymbolDatabase {
         let metadata_json: Option<String> = row.get("metadata")?;
         let metadata = metadata_json.and_then(|json| serde_json::from_str(&json).ok());
 
+        // Deserialize visibility string to enum
+        let visibility_str: Option<String> = row.get("visibility")?;
+        let visibility = visibility_str.and_then(|v| match v.as_str() {
+            "public" => Some(crate::extractors::base::Visibility::Public),
+            "private" => Some(crate::extractors::base::Visibility::Private),
+            "protected" => Some(crate::extractors::base::Visibility::Protected),
+            _ => None,
+        });
+
         Ok(Symbol {
             id: row.get("id")?,
             name: row.get("name")?,
@@ -1210,15 +1255,15 @@ impl SymbolDatabase {
             start_column: row.get("start_col")?,
             end_line: row.get("end_line")?,
             end_column: row.get("end_col")?,
-            start_byte: 0,     // TODO: Add start_byte to database
-            end_byte: 0,       // TODO: Add end_byte to database
-            doc_comment: None, // TODO: Add doc_comment to database
-            visibility: None,  // TODO: Add visibility to database
+            start_byte: row.get("start_byte")?,
+            end_byte: row.get("end_byte")?,
+            doc_comment: row.get("doc_comment")?,
+            visibility,
             parent_id: row.get("parent_id")?,
             metadata,
             semantic_group: row.get("semantic_group")?,
             confidence: row.get("confidence")?,
-            code_context: None, // TODO: Add code_context to database schema
+            code_context: row.get("code_context")?,
         })
     }
 
@@ -1267,7 +1312,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "
             SELECT id, name, kind, language, file_path, signature,
-                   start_line, start_col, end_line, end_col, parent_id,
+                   start_line, start_col, end_line, end_col, start_byte, end_byte,
+                   doc_comment, visibility, code_context, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             WHERE semantic_group = ?1
@@ -1289,7 +1335,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "
             SELECT id, name, kind, language, file_path, signature,
-                   start_line, start_col, end_line, end_col, parent_id,
+                   start_line, start_col, end_line, end_col, start_byte, end_byte,
+                   doc_comment, visibility, code_context, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             ORDER BY workspace_id, file_path, start_line
@@ -1316,7 +1363,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "
             SELECT id, name, kind, language, file_path, signature,
-                   start_line, start_col, end_line, end_col, parent_id,
+                   start_line, start_col, end_line, end_col, start_byte, end_byte,
+                   doc_comment, visibility, code_context, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             WHERE name = ?1
@@ -1576,7 +1624,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "
             SELECT id, name, kind, language, file_path, signature,
-                   start_line, start_col, end_line, end_col, parent_id,
+                   start_line, start_col, end_line, end_col, start_byte, end_byte,
+                   doc_comment, visibility, code_context, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             WHERE workspace_id = ?1
@@ -1641,7 +1690,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "
             SELECT id, name, kind, language, file_path, signature,
-                   start_line, start_col, end_line, end_col, parent_id,
+                   start_line, start_col, end_line, end_col, start_byte, end_byte,
+                   doc_comment, visibility, code_context, parent_id,
                    metadata, semantic_group, confidence
             FROM symbols
             WHERE workspace_id = ?1
@@ -1690,6 +1740,17 @@ impl SymbolDatabase {
         )?;
 
         Ok(exists > 0)
+    }
+
+    /// Count total symbols for a workspace (for statistics)
+    pub fn count_symbols_for_workspace(&self, workspace_id: &str) -> Result<usize> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(count as usize)
     }
 
     /// Delete all data for a specific workspace (for workspace cleanup)
@@ -2433,5 +2494,84 @@ mod tests {
             metadata.get("returnType").unwrap().as_str().unwrap(),
             "Promise<User>"
         );
+    }
+
+    /// 🔴 TDD TEST: This test SHOULD FAIL until schema is complete
+    /// Tests that all missing database fields are properly persisted and retrieved
+    #[tokio::test]
+    async fn test_complete_symbol_field_persistence() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("complete_fields.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Create file record first (FK requirement)
+        let file_info = FileInfo {
+            path: "complete_test.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "complete-hash".to_string(),
+            size: 500,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 1,
+        };
+        db.store_file_info(&file_info, "test_workspace").unwrap();
+
+        // Create symbol with ALL fields populated (including the missing ones)
+        let symbol = Symbol {
+            id: "complete-symbol-id".to_string(),
+            name: "complete_function".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "complete_test.rs".to_string(),
+            start_line: 10,
+            start_column: 4,
+            end_line: 20,
+            end_column: 5,
+            // 🔴 THESE FIELDS ARE CURRENTLY LOST (not in database schema):
+            start_byte: 150,
+            end_byte: 450,
+            doc_comment: Some("/// This function does something important".to_string()),
+            visibility: Some(crate::extractors::base::Visibility::Public),
+            code_context: Some("  // line before\n  fn complete_function() {\n  // line after".to_string()),
+            // Regular fields that work:
+            signature: Some("fn complete_function() -> Result<()>".to_string()),
+            parent_id: None,
+            metadata: None,
+            semantic_group: Some("test-group".to_string()),
+            confidence: Some(0.95),
+        };
+
+        // Store the symbol
+        db.store_symbols(&[symbol.clone()], "test_workspace").unwrap();
+
+        // Retrieve and verify ALL fields are preserved
+        let retrieved = db.get_symbol_by_id("complete-symbol-id").unwrap()
+            .expect("Symbol should exist in database");
+
+        // Basic fields (these already work)
+        assert_eq!(retrieved.name, "complete_function");
+        assert_eq!(retrieved.start_line, 10);
+        assert_eq!(retrieved.end_line, 20);
+
+        // 🔴 CRITICAL MISSING FIELDS - These assertions will FAIL until schema is fixed:
+        assert_eq!(retrieved.start_byte, 150, "start_byte should be persisted");
+        assert_eq!(retrieved.end_byte, 450, "end_byte should be persisted");
+        assert_eq!(
+            retrieved.doc_comment,
+            Some("/// This function does something important".to_string()),
+            "doc_comment should be persisted"
+        );
+        assert_eq!(
+            retrieved.visibility,
+            Some(crate::extractors::base::Visibility::Public),
+            "visibility should be persisted"
+        );
+        assert_eq!(
+            retrieved.code_context,
+            Some("  // line before\n  fn complete_function() {\n  // line after".to_string()),
+            "code_context should be persisted"
+        );
+
+        println!("✅ ALL FIELDS PERSISTED CORRECTLY!");
     }
 }

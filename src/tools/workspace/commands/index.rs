@@ -4,7 +4,27 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use std::path::Path;
 use tracing::{debug, error, info, warn};
+
+/// Calculate the total size of a directory recursively
+fn calculate_dir_size(path: &Path) -> u64 {
+    let mut total_size = 0u64;
+
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    total_size += metadata.len();
+                } else if metadata.is_dir() {
+                    total_size += calculate_dir_size(&entry.path());
+                }
+            }
+        }
+    }
+
+    total_size
+}
 
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace
@@ -83,32 +103,50 @@ impl ManageWorkspaceTool {
                 // Mark as indexed
                 *handler.is_indexed.write().await = true;
 
-                // Register as primary workspace
+                // Register as primary workspace and update statistics
                 if let Some(workspace) = handler.get_workspace().await? {
                     let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
                     let workspace_path_str = workspace.root.to_string_lossy().to_string();
 
-                    match registry_service
+                    // Try to register (may fail if already registered - that's OK)
+                    let workspace_id = match registry_service
                         .register_workspace(workspace_path_str, WorkspaceType::Primary)
                         .await
                     {
                         Ok(entry) => {
                             info!("✅ Registered primary workspace: {}", entry.id);
-
-                            // Update workspace statistics with actual counts
-                            let index_size = 0; // TODO: Calculate actual index size from Tantivy
-                            if let Err(e) = registry_service
-                                .update_workspace_statistics(&entry.id, file_count, index_size)
-                                .await
-                            {
-                                warn!("Failed to update workspace statistics: {}", e);
-                            } else {
-                                debug!("✅ Updated workspace statistics: {} files, {} symbols", file_count, symbol_count);
+                            entry.id
+                        }
+                        Err(_) => {
+                            // Already registered - get the existing ID
+                            match registry_service.get_primary_workspace_id().await? {
+                                Some(id) => id,
+                                None => {
+                                    warn!("Failed to get primary workspace ID after registration");
+                                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                                        "⚠️ Indexing completed but could not update workspace statistics",
+                                    )]));
+                                }
                             }
                         }
-                        Err(e) => {
-                            debug!("Primary workspace registration: {}", e);
-                        }
+                    };
+
+                    // ALWAYS update statistics after indexing (regardless of registration status)
+                    // Calculate actual Tantivy index size
+                    let index_size = workspace.julie_dir
+                        .join("index/tantivy")
+                        .metadata()
+                        .map(|m| calculate_dir_size(&workspace.julie_dir.join("index/tantivy")))
+                        .unwrap_or(0);
+
+                    if let Err(e) = registry_service
+                        .update_workspace_statistics(&workspace_id, symbol_count, index_size)
+                        .await
+                    {
+                        warn!("Failed to update workspace statistics: {}", e);
+                    } else {
+                        info!("✅ Updated workspace statistics: {} symbols, {} files, {} bytes index",
+                              symbol_count, file_count, index_size);
                     }
                 }
 
