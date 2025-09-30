@@ -67,12 +67,24 @@ impl ManageWorkspaceTool {
         if !force_reindex {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
-                // Get symbol count from database (persistent storage)
+                // Get symbol count from database using efficient COUNT(*) query
                 let symbol_count = if let Ok(workspace) = handler.get_workspace().await {
                     if let Some(workspace) = workspace {
                         if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            db_lock.get_all_symbols().unwrap_or_default().len()
+                            // Use registry service to get primary workspace ID
+                            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+                            match registry_service.get_primary_workspace_id().await {
+                                Ok(Some(workspace_id)) => {
+                                    let db_lock = db.lock().await;
+                                    // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
+                                    db_lock.count_symbols_for_workspace(&workspace_id).unwrap_or(0)
+                                }
+                                _ => {
+                                    // Fallback: if no workspace ID, count all symbols
+                                    let db_lock = db.lock().await;
+                                    db_lock.get_all_symbols().unwrap_or_default().len()
+                                }
+                            }
                         } else {
                             0
                         }
