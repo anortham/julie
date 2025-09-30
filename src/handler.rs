@@ -57,8 +57,20 @@ impl JulieServerHandler {
     /// This avoids expensive repeated initialization of the ONNX model
     /// Ensure vector store is initialized (lazy initialization for semantic search)
     pub async fn ensure_vector_store(&self) -> Result<()> {
+        // Fast path: check with read lock first (avoids blocking concurrent searches)
+        {
+            let workspace_guard = self.workspace.read().await;
+            if let Some(ref ws) = workspace_guard.as_ref() {
+                if ws.vector_store.is_some() {
+                    return Ok(()); // Already initialized
+                }
+            }
+        } // Drop read lock before acquiring write lock
+
+        // Slow path: acquire write lock only if initialization needed
         let mut workspace_guard = self.workspace.write().await;
         if let Some(ref mut ws) = workspace_guard.as_mut() {
+            // Double-check: another thread might have initialized while we waited for write lock
             if ws.vector_store.is_none() {
                 info!("🔄 Lazy-initializing vector store for semantic search...");
                 ws.initialize_vector_store()?;
@@ -68,8 +80,18 @@ impl JulieServerHandler {
     }
 
     pub async fn ensure_embedding_engine(&self) -> Result<()> {
+        // Fast path: check with read lock first (avoids blocking concurrent searches)
+        {
+            let embedding_guard = self.embedding_engine.read().await;
+            if embedding_guard.is_some() {
+                return Ok(()); // Already initialized
+            }
+        } // Drop read lock before acquiring write lock
+
+        // Slow path: acquire write lock only if initialization needed
         let mut embedding_guard = self.embedding_engine.write().await;
 
+        // Double-check: another thread might have initialized while we waited
         if embedding_guard.is_none() {
             debug!("🧠 Initializing cached embedding engine");
 
