@@ -18,6 +18,9 @@ use tracing::{debug, info, warn};
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
+/// Current schema version - increment when adding migrations
+const LATEST_SCHEMA_VERSION: i32 = 2;
+
 /// The main database connection and operations
 pub struct SymbolDatabase {
     conn: Connection,
@@ -78,11 +81,197 @@ impl SymbolDatabase {
             Connection::open(&file_path).map_err(|e| anyhow!("Failed to open database: {}", e))?;
 
         let mut db = Self { conn, file_path };
+
+        // Run schema migrations BEFORE initializing schema
+        db.run_migrations()?;
+
         db.initialize_schema()?;
 
         info!("Database initialized successfully");
         Ok(db)
     }
+
+    // ============================================================
+    // SCHEMA MIGRATION SYSTEM
+    // ============================================================
+
+    /// Run all pending schema migrations
+    fn run_migrations(&mut self) -> Result<()> {
+        // Create schema_version table if it doesn't exist
+        self.create_schema_version_table()?;
+
+        let current_version = self.get_schema_version()?;
+        let target_version = LATEST_SCHEMA_VERSION;
+
+        if current_version >= target_version {
+            debug!("Database schema is up-to-date at version {}", current_version);
+            return Ok(());
+        }
+
+        info!(
+            "Running schema migrations: version {} -> {}",
+            current_version, target_version
+        );
+
+        // Run migrations sequentially
+        for version in (current_version + 1)..=target_version {
+            info!("Applying migration to version {}", version);
+            self.apply_migration(version)?;
+            self.record_migration(version)?;
+            info!("✅ Migration to version {} completed", version);
+        }
+
+        Ok(())
+    }
+
+    /// Create the schema_version table
+    fn create_schema_version_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at INTEGER NOT NULL,
+                description TEXT NOT NULL
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Get the current schema version
+    pub fn get_schema_version(&self) -> Result<i32> {
+        // Check if schema_version table exists
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name='schema_version'",
+            [],
+            |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            },
+        )?;
+
+        if !table_exists {
+            // Fresh database - will be at latest version after init
+            return Ok(0);
+        }
+
+        // Get the latest migration version
+        let version: Result<i32, rusqlite::Error> = self.conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        );
+
+        Ok(version.unwrap_or(0))
+    }
+
+    /// Apply a specific migration
+    fn apply_migration(&mut self, version: i32) -> Result<()> {
+        match version {
+            1 => self.migration_001_initial_schema()?,
+            2 => self.migration_002_add_content_column()?,
+            _ => return Err(anyhow!("Unknown migration version: {}", version)),
+        }
+        Ok(())
+    }
+
+    /// Record a completed migration
+    fn record_migration(&self, version: i32) -> Result<()> {
+        let description = match version {
+            1 => "Initial schema",
+            2 => "Add content column for CASCADE FTS5",
+            _ => "Unknown migration",
+        };
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version, applied_at, description)
+             VALUES (?, ?, ?)",
+            params![
+                version,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64,
+                description
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Helper: Check if a column exists in a table
+    pub fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
+
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(columns.contains(&column.to_string()))
+    }
+
+    // ============================================================
+    // INDIVIDUAL MIGRATIONS
+    // ============================================================
+
+    /// Migration 001: Initial schema (for tracking purposes)
+    /// Note: This is a no-op as the schema is created by initialize_schema
+    fn migration_001_initial_schema(&self) -> Result<()> {
+        // No-op: Schema is created by initialize_schema()
+        // This migration exists only for version tracking
+        Ok(())
+    }
+
+    /// Migration 002: Add content column to files table for CASCADE FTS5
+    fn migration_002_add_content_column(&mut self) -> Result<()> {
+        info!("Migration 002: Adding content column to files table");
+
+        // Check if files table exists (fresh database won't have it yet)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name='files'",
+            [],
+            |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            },
+        )?;
+
+        if !table_exists {
+            debug!("Files table doesn't exist yet (fresh database), skipping migration");
+            return Ok(());
+        }
+
+        // Check if column already exists (idempotency)
+        if self.has_column("files", "content")? {
+            warn!("Content column already exists, skipping migration");
+            return Ok(());
+        }
+
+        // Drop existing FTS triggers that reference the content column
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
+
+        // Add the content column
+        self.conn.execute(
+            "ALTER TABLE files ADD COLUMN content TEXT",
+            [],
+        )?;
+
+        info!("✅ Content column added to files table");
+
+        // Recreate FTS table and triggers (will be done by initialize_schema)
+        // Note: We let initialize_schema handle this to avoid duplication
+
+        Ok(())
+    }
+
+    // ============================================================
+    // END MIGRATION SYSTEM
+    // ============================================================
 
     /// Initialize the complete database schema
     fn initialize_schema(&mut self) -> Result<()> {
@@ -3185,5 +3374,168 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "file1.md");
+    }
+
+    // ============================================================
+    // SCHEMA MIGRATION TESTS
+    // ============================================================
+
+    #[test]
+    fn test_migration_fresh_database_at_latest_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Fresh database should be at latest version
+        let version = db.get_schema_version().unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_migration_version_table_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Verify schema_version table exists
+        let result: Result<i64, rusqlite::Error> = db.conn.query_row(
+            "SELECT COUNT(*) FROM schema_version",
+            [],
+            |row| row.get(0)
+        );
+
+        assert!(result.is_ok(), "schema_version table should exist");
+    }
+
+    #[test]
+    fn test_migration_adds_content_column() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Verify content column exists in files table
+        let has_content = db.has_column("files", "content").unwrap();
+        assert!(has_content, "files table should have content column after migration");
+    }
+
+    #[test]
+    fn test_migration_from_legacy_v1_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        // Create a legacy V1 database (without content column)
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+            // Create old schema WITHOUT content column
+            conn.execute(
+                "CREATE TABLE files (
+                    path TEXT PRIMARY KEY,
+                    language TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    last_modified INTEGER NOT NULL,
+                    last_indexed INTEGER DEFAULT 0,
+                    parse_cache BLOB,
+                    symbol_count INTEGER DEFAULT 0,
+                    workspace_id TEXT NOT NULL DEFAULT 'primary'
+                )",
+                [],
+            ).unwrap();
+
+            // Insert test data
+            conn.execute(
+                "INSERT INTO files (path, language, hash, size, last_modified)
+                 VALUES ('test.rs', 'rust', 'abc123', 1024, 1234567890)",
+                [],
+            ).unwrap();
+        }
+
+        // Now open with new code - should trigger migration
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Verify migration occurred
+        let version = db.get_schema_version().unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION, "Database should be migrated to latest version");
+
+        // Verify content column exists
+        let has_content = db.has_column("files", "content").unwrap();
+        assert!(has_content, "Migration should have added content column");
+
+        // Verify existing data is preserved
+        let file_count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE path = 'test.rs'",
+            [],
+            |row| row.get(0)
+        ).unwrap();
+        assert_eq!(file_count, 1, "Existing data should be preserved after migration");
+    }
+
+    #[test]
+    fn test_migration_idempotent() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        // Create database (runs migrations)
+        {
+            let _db = SymbolDatabase::new(&db_path).unwrap();
+        }
+
+        // Open again (should handle already-migrated database)
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let version = db.get_schema_version().unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+
+        // Should not error or change version
+        let has_content = db.has_column("files", "content").unwrap();
+        assert!(has_content);
+    }
+
+    #[test]
+    fn test_fts_triggers_work_after_migration() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        // Create legacy V1 database (with workspace_id but without content)
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute(
+                "CREATE TABLE files (
+                    path TEXT PRIMARY KEY,
+                    language TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    last_modified INTEGER NOT NULL,
+                    last_indexed INTEGER DEFAULT 0,
+                    parse_cache BLOB,
+                    symbol_count INTEGER DEFAULT 0,
+                    workspace_id TEXT NOT NULL DEFAULT 'primary'
+                )",
+                [],
+            ).unwrap();
+        }
+
+        // Open and migrate
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Store file with content (should trigger FTS5 sync via triggers)
+        db.store_file_with_content(
+            "test.rs",
+            "rust",
+            "hash123",
+            1024,
+            1234567890,
+            "fn main() { println!(\"hello\"); }",
+            "primary"
+        ).unwrap();
+
+        // Verify FTS5 search works (triggers populated FTS table)
+        let results = db.search_file_content_fts("main", None, 10).unwrap();
+        assert_eq!(results.len(), 1, "FTS search should work after migration");
+        assert_eq!(results[0].path, "test.rs");
     }
 }

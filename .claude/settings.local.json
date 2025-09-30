@@ -60,7 +60,13 @@
       "Bash(tee:*)",
       "Bash(grep:*)",
       "mcp__julie__fast_explore",
-      "Read(//Users/murphy/Source/coa-intranet/**)"
+      "Read(//Users/murphy/Source/coa-intranet/**)",
+      "Bash(git log:*)",
+      "Bash(RUST_LOG=info cargo test test_cascade_flow_fresh_index -- --nocapture)",
+      "Bash(RUST_LOG=warn cargo test test_cascade_flow_fresh_index -- --nocapture)",
+      "Read(//Users/murphy/Source/tusk/**)",
+      "Read(//Users/murphy/Source/sherpa/**)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []
