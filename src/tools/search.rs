@@ -240,54 +240,13 @@ impl FastSearchTool {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                debug!("🚀 Indexed search returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", matched_symbols.len());
+                debug!("🚀 Tantivy search returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", matched_symbols.len());
                 Ok(matched_symbols)
             }
             Err(_) => {
-                // Fallback to database search if index fails (persistent, no data loss)
-                warn!("⚠️  Search engine failed, using SQLite database fallback");
-
-                let workspace = handler
-                    .get_workspace()
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized for search fallback"))?;
-
-                let db = workspace
-                    .db
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("No database available for search fallback"))?;
-
-                // Use indexed query instead of O(n) scan
-                let db_lock = db.lock().await;
-                let workspace_ids = vec![]; // Empty = search all workspaces
-                let mut results: Vec<Symbol> = db_lock.query_symbols_by_name_pattern(
-                    &self.query,
-                    self.language.as_deref(),
-                    &workspace_ids,
-                )?;
-                drop(db_lock); // Release lock early
-
-                // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
-                let path_scorer = PathRelevanceScorer::new(&self.query);
-                let exact_match_booster = ExactMatchBoost::new(&self.query);
-                results.sort_by(|a, b| {
-                    // Combine path relevance (production vs test) with exact match boost
-                    let path_score_a = path_scorer.calculate_score(&a.file_path);
-                    let exact_boost_a = exact_match_booster.calculate_boost(&a.name);
-                    let combined_score_a = path_score_a * exact_boost_a;
-
-                    let path_score_b = path_scorer.calculate_score(&b.file_path);
-                    let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
-                    let combined_score_b = path_score_b * exact_boost_b;
-
-                    // Sort in descending order (higher combined scores first)
-                    combined_score_b
-                        .partial_cmp(&combined_score_a)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                debug!("💾 SQLite database fallback returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", results.len());
-                Ok(results)
+                // CASCADE: Fallback to SQLite FTS5 (file content search)
+                warn!("⚠️  Tantivy search failed, using SQLite FTS5 fallback");
+                self.sqlite_fts_search(handler).await
             }
         }
     }
@@ -867,6 +826,69 @@ impl FastSearchTool {
     }
 
     /// 🔄 Graceful degradation: SQLite-based search when Tantivy isn't ready
+    /// CASCADE: Search using SQLite FTS5 (file content full-text search)
+    /// This is the final fallback that always works
+    async fn sqlite_fts_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        debug!("🔍 CASCADE: Using SQLite FTS5 search (file content)");
+
+        // Get workspace and database
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized for FTS search"))?;
+
+        let db = workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available for FTS search"))?;
+
+        // Get workspace ID for filtering
+        let workspace_id = {
+            let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+            registry_service.get_primary_workspace_id().await?.unwrap_or_else(|| "primary".to_string())
+        };
+
+        // Use FTS5 for file content search
+        let db_lock = db.lock().await;
+        let file_results = db_lock.search_file_content_fts(
+            &self.query,
+            Some(&workspace_id),
+            self.limit as usize,
+        )?;
+        drop(db_lock);
+
+        // Convert FileSearchResult → Symbol (FILE_CONTENT symbols for consistency)
+        let mut symbols = Vec::new();
+        for result in file_results {
+            // Create a FILE_CONTENT symbol from the FTS result
+            let symbol = crate::extractors::Symbol {
+                id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
+                name: format!("FILE_CONTENT: {}", std::path::Path::new(&result.path).file_name().unwrap_or_default().to_string_lossy()),
+                kind: crate::extractors::SymbolKind::Module,
+                language: "text".to_string(),
+                file_path: result.path.clone(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
+                doc_comment: Some(result.snippet.clone()),
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: Some("file_content".to_string()),
+                confidence: Some(result.rank),
+                code_context: Some(result.snippet),
+            };
+            symbols.push(symbol);
+        }
+
+        debug!("📄 CASCADE: FTS5 returned {} file content matches", symbols.len());
+        Ok(symbols)
+    }
+
     async fn fallback_sqlite_search(
         &self,
         handler: &JulieServerHandler,

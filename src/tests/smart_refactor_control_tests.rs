@@ -393,6 +393,7 @@ mod smart_refactor_control_tests {
                                     last_modified: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
                                     last_indexed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
                                     symbol_count: symbols.len() as i32,
+                                    content: Some(original_content.clone()), // CASCADE: Include content
                                 };
 
                                 if let Err(e) = db_lock.store_file_info(&file_info, &workspace_id) {

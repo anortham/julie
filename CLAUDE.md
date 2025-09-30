@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, Tantivy search, and semantic embeddings.
+**Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite → Tantivy → Semantic), and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, true cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
-- **Architecture**: Single binary, no external dependencies
+- **Architecture**: CASCADE (SQLite FTS5 → Tantivy → HNSW Semantic) - single source of truth with progressive enhancement
 - **Origin**: Rebuilt from Miller (TypeScript/Bun) due to Windows compatibility issues
 - **Crown Jewels**: 26 tree-sitter extractors with comprehensive test suites (100% Miller parity)
 
@@ -95,10 +95,11 @@ We will be using Julie to develop Julie (eating our own dog food):
 ```
 <project>/.julie/
 ├── db/
-│   └── symbols.db           # SQLite database with all symbols
-├── index/                   # Tantivy search indexes
-├── vectors/                 # Semantic embeddings (HNSW)
-├── cache/                   # Query caches
+│   └── symbols.db           # SQLite database (single source of truth)
+├── index/                   # Tantivy search indexes (rebuilt from SQLite)
+├── vectors/                 # Semantic embeddings HNSW (rebuilt from SQLite)
+├── cache/
+│   └── embeddings/          # ONNX model cache (~128MB, one-time download)
 ├── logs/                    # Debug logs
 └── workspace_registry.json  # Workspace metadata
 ```
@@ -118,16 +119,18 @@ When implementing new features, the agent should say:
 
 ### 📚 Architecture Documentation
 **IMPORTANT**: Read these documents to understand Julie's architecture:
-- **[SEARCH_FLOW.md](docs/SEARCH_FLOW.md)** - How searches flow through the system (KEEP THIS UPDATED!)
+- **[SEARCH_FLOW.md](docs/SEARCH_FLOW.md)** - CASCADE architecture and search flow (★ UPDATED 2025-09-30)
 - **TODO.md** - Current observations and ideas
 - **ARCHITECTURE_DEBT.md** - Known issues and technical debt
 
 ### Core Design Decisions
-1. **Native Rust**: No FFI, no CGO, no external dependencies
-2. **Tree-sitter Native**: Direct Rust bindings for all language parsers
-3. **Tantivy Search**: 2x faster than Lucene, pure Rust
-4. **ONNX Embeddings**: ort crate for semantic understanding
-5. **Single Binary**: Deploy anywhere, no runtime required
+1. **CASCADE Architecture**: SQLite single source of truth → Tantivy (background) → HNSW Semantic (background)
+2. **Native Rust**: No FFI, no CGO, no external dependencies
+3. **Tree-sitter Native**: Direct Rust bindings for all language parsers
+4. **Tantivy Search**: 2x faster than Lucene, pure Rust, <10ms queries
+5. **ONNX Embeddings**: ort crate for semantic understanding
+6. **Single Binary**: Deploy anywhere, no runtime required
+7. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement to Tantivy/Semantic
 
 ### Module Structure
 ```
@@ -314,11 +317,12 @@ cargo test --release
 Julie must significantly outperform Miller:
 
 ### Benchmarks
-- **Search Latency**: <10ms (vs Miller's 50ms)
+- **Search Latency**: <10ms Tantivy, <5ms SQLite FTS5, <50ms Semantic (vs Miller's 50ms)
 - **Parsing Speed**: 5-10x faster than Miller
 - **Memory Usage**: <100MB typical (vs Miller's ~500MB)
-- **Startup Time**: <1s cold start
-- **Indexing Speed**: Process 1000 files in <30s
+- **Startup Time**: <2s (CASCADE SQLite only), 30-60x faster than old blocking approach
+- **Background Indexing**: Tantivy 5-10s, HNSW Semantic 20-30s (non-blocking)
+- **Indexing Speed**: Process 1000 files in <2s (SQLite), background Tantivy <10s
 
 ### Performance Testing
 ```bash
@@ -509,14 +513,18 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 *This document should be updated as the project evolves. All contributors must follow these guidelines without exception.*
 
-**Project Status**: Phase 3.1 - Professional Testing Infrastructure Complete ✅
+**Project Status**: Phase 4 - CASCADE Architecture Complete ✅
 **Current Achievements**:
 - ✅ All 26 Language Extractors Operational (Miller Parity)
+- ✅ CASCADE Architecture Complete (SQLite → Tantivy → HNSW Semantic)
+- ✅ <2s Startup Time with Background Indexing (30-60x improvement)
+- ✅ Three-Tier Progressive Enhancement (FTS5 → Tantivy → Semantic)
+- ✅ Graceful Degradation with Fallback Chain
 - ✅ SOURCE/CONTROL Testing Methodology Implemented
 - ✅ Code Coverage Tooling (tarpaulin) Configured
 - ✅ FastEditTool + LineEditTool Control Tests Operational
 - ✅ Real-World Validation Against GitHub Repositories
 - ✅ Professional Error Detection (File Corruption Prevention)
 
-**Next Milestone**: Complete SmartRefactorTool Control Tests + Test Organization Cleanup
-**Last Updated**: 2025-01-28 - Professional Testing Infrastructure Achievement
+**Next Milestone**: SmartRefactorTool Control Tests + Test Organization Cleanup + Production Dogfooding
+**Last Updated**: 2025-09-30 - CASCADE Architecture Achievement

@@ -180,3 +180,6 @@ pub mod workspace_mod_tests; // Tests for workspace module functionality // Test
 
 // HNSW Vector Store Tests (TDD for semantic search infrastructure)
 pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search
+
+// CASCADE Architecture Integration Tests (Phase 1-4 validation)
+pub mod cascade_integration_tests; // Tests for SQLite → Tantivy → Semantic cascade flow

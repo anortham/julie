@@ -5,6 +5,7 @@ use rust_mcp_sdk::schema::{
     ListToolsResult, RpcError,
 };
 use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
@@ -13,6 +14,39 @@ use crate::search::SearchEngine;
 use crate::tools::JulieTools;
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
+
+/// CASCADE: Tracks which indexes are ready for search operations
+///
+/// This enables progressive enhancement and graceful degradation:
+/// - SQLite FTS5: Available immediately after indexing (~2s)
+/// - Tantivy: Available after background build (~5-10s)
+/// - Semantic (HNSW): Available after embedding generation (~20-30s)
+#[derive(Debug)]
+pub struct IndexingStatus {
+    /// SQLite FTS5 full-text search is ready
+    pub sqlite_fts_ready: AtomicBool,
+    /// Tantivy advanced search is ready
+    pub tantivy_ready: AtomicBool,
+    /// HNSW semantic search is ready
+    pub semantic_ready: AtomicBool,
+}
+
+impl IndexingStatus {
+    /// Create new indexing status with all indexes not ready
+    pub fn new() -> Self {
+        Self {
+            sqlite_fts_ready: AtomicBool::new(false),
+            tantivy_ready: AtomicBool::new(false),
+            semantic_ready: AtomicBool::new(false),
+        }
+    }
+}
+
+impl Default for IndexingStatus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Julie's custom handler for MCP messages
 ///
@@ -30,6 +64,8 @@ pub struct JulieServerHandler {
     pub is_indexed: Arc<RwLock<bool>>,
     /// Cached embedding engine for semantic search (expensive to initialize)
     pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
+    /// CASCADE: Tracks which indexes are ready for search operations
+    pub indexing_status: Arc<IndexingStatus>,
 }
 
 impl JulieServerHandler {
@@ -45,6 +81,7 @@ impl JulieServerHandler {
             search_engine: Arc::new(RwLock::new(SearchEngine::in_memory().unwrap())),  // Temporary until workspace overrides
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
+            indexing_status: Arc::new(IndexingStatus::new()),
         })
     }
 

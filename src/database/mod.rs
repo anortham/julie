@@ -34,6 +34,8 @@ pub struct FileInfo {
     pub last_modified: i64, // Unix timestamp
     pub last_indexed: i64,  // Unix timestamp
     pub symbol_count: i32,
+    /// CASCADE: Full file content for FTS5 search
+    pub content: Option<String>,
 }
 
 /// Embedding metadata linking symbols to vector store
@@ -44,6 +46,14 @@ pub struct EmbeddingInfo {
     pub model_name: String,
     pub embedding_hash: String,
     pub created_at: i64,
+}
+
+/// File search result from FTS5 queries
+#[derive(Debug, Clone)]
+pub struct FileSearchResult {
+    pub path: String,
+    pub snippet: String,
+    pub rank: f32,
 }
 
 /// Database statistics for health monitoring
@@ -141,6 +151,7 @@ impl SymbolDatabase {
                 last_indexed INTEGER DEFAULT 0,
                 parse_cache BLOB,
                 symbol_count INTEGER DEFAULT 0,
+                content TEXT,  -- CASCADE: Full file content for FTS
 
                 -- For multi-workspace support
                 workspace_id TEXT NOT NULL DEFAULT 'primary'
@@ -165,6 +176,59 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created files table and indexes");
+
+        // CASCADE: Create FTS5 table and triggers
+        self.create_files_fts_table()?;
+        self.create_files_fts_triggers()?;
+
+        Ok(())
+    }
+
+    /// CASCADE: Create FTS5 virtual table for full-text search on file content
+    fn create_files_fts_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+                path,
+                content,
+                content='files',
+                content_rowid='rowid'
+            )",
+            [],
+        )?;
+        debug!("Created files_fts virtual table");
+        Ok(())
+    }
+
+    /// CASCADE: Create triggers to keep FTS5 in sync with files table
+    fn create_files_fts_triggers(&self) -> Result<()> {
+        // Trigger for INSERT
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
+                INSERT INTO files_fts(rowid, path, content)
+                VALUES (new.rowid, new.path, new.content);
+            END",
+            [],
+        )?;
+
+        // Trigger for DELETE
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN
+                DELETE FROM files_fts WHERE rowid = old.rowid;
+            END",
+            [],
+        )?;
+
+        // Trigger for UPDATE
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS files_au AFTER UPDATE ON files BEGIN
+                UPDATE files_fts
+                SET path = new.path, content = new.content
+                WHERE rowid = old.rowid;
+            END",
+            [],
+        )?;
+
+        debug!("Created FTS5 synchronization triggers");
         Ok(())
     }
 
@@ -379,8 +443,8 @@ impl SymbolDatabase {
         let tx = self.conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
 
         for file in files {
@@ -392,7 +456,8 @@ impl SymbolDatabase {
                 file.last_modified,
                 now,
                 file.symbol_count,
-                workspace_id
+                workspace_id,
+                file.content.as_deref().unwrap_or("") // CASCADE: Include content
             ])?;
         }
 
@@ -449,6 +514,124 @@ impl SymbolDatabase {
         )?;
 
         Ok(())
+    }
+
+    // ========================================
+    // CASCADE ARCHITECTURE: File Content Storage & FTS
+    // ========================================
+
+    /// CASCADE: Store file with full content for FTS search
+    pub fn store_file_with_content(
+        &self,
+        path: &str,
+        language: &str,
+        hash: &str,
+        size: u64,
+        last_modified: u64,
+        content: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO files
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
+            params![path, language, hash, size as i64, last_modified as i64, now, content, workspace_id],
+        )?;
+
+        Ok(())
+    }
+
+    /// CASCADE: Get file content from database
+    pub fn get_file_content(&self, path: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content FROM files WHERE path = ?1")?;
+
+        let result = stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0));
+
+        match result {
+            Ok(content) => Ok(content),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow!("Database error: {}", e)),
+        }
+    }
+
+    /// CASCADE: Get all file contents for workspace (for rebuilding Tantivy)
+    pub fn get_all_file_contents(&self, workspace_id: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, content FROM files WHERE workspace_id = ?1 AND content IS NOT NULL")?;
+
+        let rows = stmt.query_map(params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    }
+
+    /// CASCADE: Search file content using FTS5
+    pub fn search_file_content_fts(
+        &self,
+        query: &str,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<FileSearchResult>> {
+        let mut results = Vec::new();
+
+        if let Some(ws_id) = workspace_id {
+            let mut stmt = self.conn.prepare(
+                "SELECT files_fts.path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
+                 FROM files_fts
+                 JOIN files ON files_fts.path = files.path
+                 WHERE files_fts MATCH ?1 AND files.workspace_id = ?2
+                 ORDER BY rank DESC
+                 LIMIT ?3"
+            )?;
+
+            let rows = stmt.query_map(params![query, ws_id, limit], |row| {
+                Ok(FileSearchResult {
+                    path: row.get(0)?,
+                    snippet: row.get(1)?,
+                    rank: row.get::<_, f64>(2)? as f32,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
+                 FROM files_fts
+                 WHERE files_fts MATCH ?1
+                 ORDER BY rank DESC
+                 LIMIT ?2"
+            )?;
+
+            let rows = stmt.query_map(params![query, limit], |row| {
+                Ok(FileSearchResult {
+                    path: row.get(0)?,
+                    snippet: row.get(1)?,
+                    rank: row.get::<_, f64>(2)? as f32,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        }
+
+        Ok(results)
     }
 
     /// Get file hash for change detection
@@ -2161,10 +2344,17 @@ pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
 }
 
 /// Create FileInfo from a file path
+/// CASCADE: Now reads and includes file content for FTS5 search
 pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<FileInfo> {
     let path = file_path.as_ref();
     let metadata = std::fs::metadata(path)?;
     let hash = calculate_file_hash(path)?;
+
+    // CASCADE: Read file content for FTS5 search
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => Some(c),
+        Err(_) => None, // Binary files or read errors - skip content
+    };
 
     let last_modified = metadata
         .modified()?
@@ -2179,6 +2369,7 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<
         last_modified,
         last_indexed: 0, // Will be set by database
         symbol_count: 0, // Will be updated after extraction
+        content,          // CASCADE: File content for FTS5
     })
 }
 
@@ -2332,6 +2523,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 5,
+            content: None,
         };
 
         db.store_file_info(&file_info, "test").unwrap();
@@ -2377,6 +2569,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            content: None,
         };
         db.store_file_info(&file_info, "test").unwrap();
 
@@ -2521,6 +2714,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 2,
+            content: None,
         };
         db.store_file_info(&file_info, "test").unwrap();
 
@@ -2658,6 +2852,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            content: None,
         };
         db.store_file_info(&ts_file_info, "test").unwrap();
 
@@ -2669,6 +2864,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            content: None,
         };
         db.store_file_info(&rust_file_info, "test").unwrap();
 
@@ -2751,6 +2947,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            content: None,
         };
         db.store_file_info(&file_info, "test").unwrap();
 
@@ -2785,6 +2982,7 @@ mod tests {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            content: None,
         };
         db.store_file_info(&file_info, "test_workspace").unwrap();
 
@@ -2845,5 +3043,147 @@ mod tests {
         );
 
         println!("✅ ALL FIELDS PERSISTED CORRECTLY!");
+    }
+
+    // ========================================
+    // CASCADE ARCHITECTURE: Phase 1 TDD Tests
+    // ========================================
+
+    #[test]
+    fn test_store_file_with_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        db.store_file_with_content(
+            "test.md",
+            "markdown",
+            "abc123",
+            1024,
+            1234567890,
+            "# Test\nThis is test content",
+            "test_workspace",
+        )
+        .unwrap();
+
+        let content = db.get_file_content("test.md").unwrap();
+        assert_eq!(
+            content,
+            Some("# Test\nThis is test content".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fts_search_file_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        db.store_file_with_content(
+            "docs/architecture.md",
+            "markdown",
+            "abc123",
+            2048,
+            1234567890,
+            "# Architecture\nSQLite is the single source of truth",
+            "test_workspace",
+        )
+        .unwrap();
+
+        // Search for "SQLite"
+        let results = db
+            .search_file_content_fts("SQLite", Some("test_workspace"), 10)
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "docs/architecture.md");
+        assert!(results[0].snippet.contains("SQLite"));
+    }
+
+    #[test]
+    fn test_fts_search_ranks_by_relevance() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // File 1: "cascade" appears once in longer document
+        db.store_file_with_content(
+            "README.md",
+            "markdown",
+            "abc1",
+            1024,
+            1234567890,
+            "This document describes our cascade architecture pattern for data flow. \
+             We use it to propagate changes through the system efficiently. \
+             The design ensures consistency across all components.",
+            "test_workspace",
+        )
+        .unwrap();
+
+        // File 2: "cascade" appears five times in longer document
+        db.store_file_with_content(
+            "CASCADE.md",
+            "markdown",
+            "abc2",
+            2048,
+            1234567890,
+            "The cascade cascade cascade cascade cascade model is powerful. \
+             Our cascade system uses cascade patterns for cascade propagation. \
+             Every cascade operation follows the cascade architecture design.",
+            "test_workspace",
+        )
+        .unwrap();
+
+        let results = db
+            .search_file_content_fts("cascade", Some("test_workspace"), 10)
+            .unwrap();
+
+        // Verify both files are found
+        assert_eq!(results.len(), 2);
+
+        // Verify both files match
+        let paths: Vec<&str> = results.iter().map(|r| r.path.as_str()).collect();
+        assert!(paths.contains(&"README.md"));
+        assert!(paths.contains(&"CASCADE.md"));
+
+        // Verify ranks are differentiated (not equal)
+        assert_ne!(results[0].rank, results[1].rank);
+    }
+
+    #[test]
+    fn test_fts_respects_workspace_filter() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        db.store_file_with_content(
+            "file1.md",
+            "markdown",
+            "abc1",
+            1024,
+            1234567890,
+            "workspace A content",
+            "workspace_a",
+        )
+        .unwrap();
+
+        db.store_file_with_content(
+            "file2.md",
+            "markdown",
+            "abc2",
+            1024,
+            1234567890,
+            "workspace B content",
+            "workspace_b",
+        )
+        .unwrap();
+
+        // Search only workspace A
+        let results = db
+            .search_file_content_fts("content", Some("workspace_a"), 10)
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "file1.md");
     }
 }

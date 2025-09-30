@@ -137,15 +137,20 @@ impl ManageWorkspaceTool {
 
             // Clone necessary references for background task
             let embedding_engine = handler.embedding_engine.clone();
-            let workspace_db = handler.get_workspace().await?.and_then(|ws| ws.db.clone());
+            let workspace = handler.get_workspace().await?;
+            let workspace_db = workspace.as_ref().and_then(|ws| ws.db.clone());
+            let workspace_root = workspace.as_ref().map(|ws| ws.root.clone());
             let workspace_id_clone = workspace_id.clone();
+            let indexing_status_clone = handler.indexing_status.clone();
 
             tokio::spawn(async move {
                 let task_start = std::time::Instant::now();
                 match generate_embeddings_from_sqlite(
                     embedding_engine,
                     workspace_db,
+                    workspace_root,
                     workspace_id_clone,
+                    indexing_status_clone,
                 )
                 .await
                 {
@@ -375,45 +380,39 @@ impl ManageWorkspaceTool {
                         "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
                         bulk_duration.as_secs_f64()
                     );
+
+                    // CASCADE: Mark SQLite FTS5 as ready
+                    handler.indexing_status.sqlite_fts_ready.store(true, std::sync::atomic::Ordering::Release);
+                    debug!("🔍 CASCADE: SQLite FTS5 search now available");
                 }
             }
 
-            // 🚀 MASSIVE BATCH: Index all symbols in Tantivy with single transaction
-            if !all_tantivy_symbols.is_empty() {
-                let tantivy_start = std::time::Instant::now();
+            // 🔥 CASCADE: Launch background Tantivy indexing from SQLite
+            info!("🚀 CASCADE: SQLite storage complete - launching background Tantivy indexing...");
 
-                // Debug: Show breakdown of symbol types being indexed
-                let file_content_count = all_tantivy_symbols.iter()
-                    .filter(|s| s.name.starts_with("FILE_CONTENT_"))
-                    .count();
-                let code_symbols_count = all_tantivy_symbols.len() - file_content_count;
+            // Clone necessary references for background task
+            let search_engine_clone = search_engine.clone();
+            let workspace_db = handler.get_workspace().await?.and_then(|ws| ws.db.clone());
+            let workspace_id_clone = workspace_id.clone();
+            let indexing_status_clone = handler.indexing_status.clone();
 
-                info!("🚀 Starting massive Tantivy batch indexing of {} symbols ({} code symbols, {} FILE_CONTENT symbols)...",
-                    all_tantivy_symbols.len(), code_symbols_count, file_content_count);
-
-                if file_content_count > 0 {
-                    debug!("📄 FILE_CONTENT symbols being indexed:");
-                    for sym in all_tantivy_symbols.iter().filter(|s| s.name.starts_with("FILE_CONTENT_")).take(5) {
-                        debug!("  └─ {} from {}", sym.name, sym.file_path);
-                    }
-                    if file_content_count > 5 {
-                        debug!("  └─ ... and {} more", file_content_count - 5);
-                    }
-                }
-
+            tokio::spawn(async move {
+                match build_tantivy_from_sqlite(
+                    search_engine_clone,
+                    workspace_db,
+                    workspace_id_clone,
+                    indexing_status_clone,
+                )
+                .await
                 {
-                    let mut search_engine_lock = search_engine.write().await;
-                    if let Err(e) = search_engine_lock.index_symbols(all_tantivy_symbols).await {
-                        warn!("Failed to index symbols in Tantivy: {}", e);
-                    } else {
-                        let tantivy_duration = tantivy_start.elapsed();
-                        info!(
-                            "✅ Massive Tantivy batch complete in {:.2}s - search index now available!",
-                            tantivy_duration.as_secs_f64()
-                        );
+                    Ok(_) => {
+                        // Success message logged by build_tantivy_from_sqlite
+                    }
+                    Err(e) => {
+                        error!("❌ CASCADE: Background Tantivy indexing failed: {}", e);
                     }
                 }
-            }
+            });
 
             // Store in handler memory for compatibility (primary workspace only)
             if is_primary_workspace {
@@ -487,6 +486,7 @@ impl ManageWorkspaceTool {
                     last_modified: 0,
                     last_indexed: 0,
                     symbol_count: 0,
+                    content: Some(String::new()), // CASCADE: Empty content
                 },
                 tantivy_symbols, // Return empty tantivy symbols for empty files
             ));
@@ -1016,13 +1016,121 @@ impl ManageWorkspaceTool {
     }
 }
 
+/// 🔥 CASCADE BACKGROUND TASK: Build Tantivy index from SQLite database
+/// This runs asynchronously after SQLite storage completes, enabling fast startup
+async fn build_tantivy_from_sqlite(
+    search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
+    workspace_db: Option<Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    workspace_id: String,
+    indexing_status: Arc<crate::handler::IndexingStatus>,
+) -> Result<()> {
+    use anyhow::Context;
+
+    let start_time = std::time::Instant::now();
+    info!("🚀 CASCADE: Building Tantivy index from SQLite...");
+
+    // Get database connection
+    let db = match workspace_db {
+        Some(db_arc) => db_arc,
+        None => {
+            warn!("No database available for Tantivy indexing");
+            return Ok(());
+        }
+    };
+
+    // 1. Pull symbols from SQLite
+    let symbols = {
+        let db_lock = db.lock().await;
+        db_lock
+            .get_symbols_for_workspace(&workspace_id)
+            .context("Failed to read symbols from database")?
+    };
+
+    // 2. Pull file contents from SQLite (for FILE_CONTENT symbols)
+    let file_contents = {
+        let db_lock = db.lock().await;
+        db_lock
+            .get_all_file_contents(&workspace_id)
+            .context("Failed to read file contents from database")?
+    };
+
+    if symbols.is_empty() && file_contents.is_empty() {
+        info!("No symbols or files to index in Tantivy");
+        return Ok(());
+    }
+
+    info!(
+        "📦 Indexing {} symbols + {} file contents into Tantivy...",
+        symbols.len(),
+        file_contents.len()
+    );
+
+    // 3. Create FILE_CONTENT symbols from file contents
+    let mut file_content_symbols = Vec::new();
+    for (path, content) in file_contents {
+        let file_content_symbol = crate::extractors::Symbol {
+            id: format!("file_content_{}", path.replace(['/', '\\'], "_")),
+            name: format!("FILE_CONTENT_{}", std::path::Path::new(&path).file_name().unwrap_or_default().to_string_lossy()),
+            kind: crate::extractors::SymbolKind::Module, // Use Module for files
+            language: "text".to_string(), // Generic text for full content
+            file_path: path.clone(),
+            signature: Some(format!("Full content of {}", path)),
+            doc_comment: None,
+            code_context: Some(content.clone()), // Put full file content in code_context
+            start_line: 1,
+            end_line: content.lines().count() as u32,
+            start_column: 1,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: content.len() as u32,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: Some("file_content".to_string()),
+            confidence: Some(1.0),
+        };
+
+        file_content_symbols.push(file_content_symbol);
+    }
+
+    info!("📄 Created {} FILE_CONTENT symbols", file_content_symbols.len());
+
+    // 4. Combine all symbols
+    let mut all_symbols = symbols;
+    all_symbols.extend(file_content_symbols);
+
+    info!("🔍 Total symbols for Tantivy: {}", all_symbols.len());
+
+    // 5. Index into Tantivy
+    {
+        let mut search_engine_lock = search_engine.write().await;
+        search_engine_lock
+            .index_symbols(all_symbols)
+            .await
+            .context("Failed to index symbols in Tantivy")?;
+    }
+
+    let duration = start_time.elapsed();
+    info!(
+        "✅ CASCADE: Tantivy index built from SQLite in {:.2}s - advanced search available!",
+        duration.as_secs_f64()
+    );
+
+    // CASCADE: Mark Tantivy as ready
+    indexing_status.tantivy_ready.store(true, std::sync::atomic::Ordering::Release);
+    debug!("🚀 CASCADE: Tantivy search now available");
+
+    Ok(())
+}
 
 /// 🔥 BACKGROUND TASK: Generate embeddings from SQLite database
 /// This runs asynchronously to provide fast indexing response times
 async fn generate_embeddings_from_sqlite(
     embedding_engine: Arc<tokio::sync::RwLock<Option<crate::embeddings::EmbeddingEngine>>>,
     workspace_db: Option<Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    workspace_root: Option<std::path::PathBuf>,
     workspace_id: String,
+    indexing_status: Arc<crate::handler::IndexingStatus>,
 ) -> Result<()> {
     use anyhow::Context;
 
@@ -1058,9 +1166,21 @@ async fn generate_embeddings_from_sqlite(
         let mut embedding_guard = embedding_engine.write().await;
         if embedding_guard.is_none() {
             info!("🔧 Initializing embedding engine for background generation...");
+
+            // 🔧 FIX: Use workspace .julie/cache directory instead of polluting CWD
+            let cache_dir = if let Some(ref root) = workspace_root {
+                root.join(".julie").join("cache").join("embeddings")
+            } else {
+                // Fallback to temp directory if workspace root not available
+                std::env::temp_dir().join("julie_cache").join("embeddings")
+            };
+
+            std::fs::create_dir_all(&cache_dir)?;
+            info!("📁 Using embedding cache directory: {}", cache_dir.display());
+
             match crate::embeddings::EmbeddingEngine::new(
                 "bge-small",
-                std::path::PathBuf::from("./cache"),
+                cache_dir,
                 db.clone(),
             ) {
                 Ok(engine) => {
@@ -1195,6 +1315,11 @@ async fn generate_embeddings_from_sqlite(
     }
 
     info!("✅ Background task complete - semantic search ready via lazy loading!");
+
+    // CASCADE: Mark semantic search as ready
+    indexing_status.semantic_ready.store(true, std::sync::atomic::Ordering::Release);
+    debug!("🧠 CASCADE: Semantic search now available");
+
     Ok(())
 }
 
