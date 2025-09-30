@@ -11,7 +11,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 use julie::handler::JulieServerHandler;
 use julie::tools::workspace::ManageWorkspaceTool;
-use julie::workspace::registry::WorkspaceType;
+use julie::workspace::registry::{EmbeddingStatus, WorkspaceType};
 use julie::workspace::registry_service::WorkspaceRegistryService;
 use rust_mcp_sdk::schema::{
     Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
@@ -420,12 +420,14 @@ async fn update_workspace_statistics(
         }
     };
 
-    // Count symbols in database
-    let symbol_count = if let Some(db_arc) = &workspace.db {
+    // Count symbols and files in database
+    let (symbol_count, file_count) = if let Some(db_arc) = &workspace.db {
         let db = db_arc.lock().await;
-        db.count_symbols_for_workspace(&workspace_id).unwrap_or(0)
+        let symbols = db.get_symbol_count_for_workspace(&workspace_id).unwrap_or(0) as usize;
+        let files = db.get_file_count_for_workspace(&workspace_id).unwrap_or(0) as usize;
+        (symbols, files)
     } else {
-        0
+        (0, 0)
     };
 
     // Calculate Tantivy index size
@@ -438,12 +440,33 @@ async fn update_workspace_statistics(
 
     // Update registry statistics
     registry_service
-        .update_workspace_statistics(&workspace_id, symbol_count, index_size)
+        .update_workspace_statistics(&workspace_id, symbol_count, file_count, index_size)
         .await
         .context("Failed to update workspace statistics")?;
 
+    // Reconcile embedding status - fix registry if embeddings exist but status is wrong
+    let embedding_count = if let Some(db_arc) = &workspace.db {
+        let db = db_arc.lock().await;
+        db.count_embeddings(&workspace_id).unwrap_or(0)
+    } else {
+        0
+    };
+
+    if embedding_count > 0 {
+        // Embeddings exist, ensure registry shows "Ready"
+        if let Err(e) = registry_service
+            .update_embedding_status(&workspace_id, EmbeddingStatus::Ready)
+            .await
+        {
+            warn!("Failed to reconcile embedding status: {}", e);
+        } else {
+            debug!("📝 Reconciled embedding status: {} embeddings found, registry updated to Ready", embedding_count);
+        }
+    }
+
     info!(
-        "📊 Updated workspace statistics: {} symbols, {:.2} MB index",
+        "📊 Updated workspace statistics: {} files, {} symbols, {:.2} MB index",
+        file_count,
         symbol_count,
         index_size as f64 / 1_048_576.0
     );

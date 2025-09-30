@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use tree_sitter::{Parser, Tree};
 
 impl ManageWorkspaceTool {
@@ -23,18 +23,18 @@ impl ManageWorkspaceTool {
         let current_dir = std::env::current_dir().unwrap_or_default();
         let is_primary_workspace = workspace_path == current_dir;
 
-        // DEBUG: Log workspace path comparison
-        info!(
-            "🔍 DEBUG: workspace_path={:?}, current_dir={:?}, is_primary_workspace={}",
+        // Log workspace path comparison for debugging
+        debug!(
+            "Workspace comparison: path={:?}, current_dir={:?}, is_primary={}",
             workspace_path, current_dir, is_primary_workspace
         );
 
         // Only clear existing data for primary workspace reindex to preserve workspace isolation
         if force_reindex && is_primary_workspace {
-            info!("🧹 Clearing primary workspace for force reindex");
+            debug!("Clearing primary workspace for force reindex");
             // Database will be cleared during workspace initialization
         } else if force_reindex {
-            info!("🔄 Force reindexing reference workspace");
+            debug!("Force reindexing reference workspace");
         }
 
         let mut total_files = 0;
@@ -49,7 +49,7 @@ impl ManageWorkspaceTool {
 
         // 🚀 INCREMENTAL UPDATE: Filter files that need re-indexing based on hash changes
         let files_to_index = if force_reindex {
-            info!("🔄 Force reindex requested - processing all {} files", all_discovered_files.len());
+            debug!("Force reindex mode - processing all {} files", all_discovered_files.len());
             all_discovered_files
         } else {
             self.filter_changed_files(handler, all_discovered_files, workspace_path).await?
@@ -71,7 +71,7 @@ impl ManageWorkspaceTool {
             // Look up the workspace ID by path (works for both primary and reference workspaces)
             let workspace_path_str = workspace_path.to_string_lossy().to_string();
             if let Some(workspace_entry) = registry_service.get_workspace_by_path(&workspace_path_str).await? {
-                info!("✅ Using existing workspace ID: {} for path: {}", workspace_entry.id, workspace_path_str);
+                debug!("Using existing workspace ID: {} for path: {}", workspace_entry.id, workspace_path_str);
                 workspace_entry.id
             } else {
                 // Register workspace if not registered yet
@@ -169,11 +169,6 @@ impl ManageWorkspaceTool {
             );
         }
 
-        info!(
-            "✅ Indexing complete: {} files, {} symbols, {} relationships",
-            total_files, total_symbols, total_relationships
-        );
-
         Ok((total_symbols, total_files, total_relationships))
     }
 
@@ -220,8 +215,8 @@ impl ManageWorkspaceTool {
                 continue;
             }
 
-            info!(
-                "🔧 Processing {} {} files with reused parser",
+            debug!(
+                "Processing {} {} files with reused parser",
                 file_paths.len(),
                 language
             );
@@ -238,9 +233,9 @@ impl ManageWorkspaceTool {
                     Ok((symbols, relationships, file_info, tantivy_symbols)) => {
                         *total_files += 1;
 
-                        // Debug output removed to prevent stdio flooding
-                        info!(
-                            "📦 File {} returned {} symbols, {} for Tantivy",
+                        // Per-file processing details at trace level
+                        trace!(
+                            "File {} extracted {} symbols, {} for Tantivy",
                             file_path.display(),
                             symbols.len(),
                             tantivy_symbols.len()
@@ -250,20 +245,14 @@ impl ManageWorkspaceTool {
                         files_to_clean.push(file_path.to_string_lossy().to_string());
 
                         // Collect data for bulk storage
-                        let prev_count = all_symbols.len();
                         all_symbols.extend(symbols);
-                        info!(
-                            "📦 Symbol collection: had {}, now have {}",
-                            prev_count,
-                            all_symbols.len()
-                        );
                         all_relationships.extend(relationships);
                         all_file_infos.push(file_info);
                         all_tantivy_symbols.extend(tantivy_symbols); // Collect for single big transaction
 
                         if (*total_files).is_multiple_of(50) {
-                            info!(
-                                "📈 Processed {} files, collected {} symbols so far...",
+                            debug!(
+                                "Progress: {} files processed, {} symbols collected",
                                 total_files,
                                 all_symbols.len()
                             );
@@ -277,7 +266,7 @@ impl ManageWorkspaceTool {
         }
         Err(e) => {
             // No parser: index files for text search only (no symbol extraction)
-            info!("🔍 No parser for {} ({}) - indexing {} files for text search only", language, e, file_paths.len());
+            debug!("No parser for {} ({}) - indexing {} files for text search only", language, e, file_paths.len());
             for file_path in file_paths {
                 match self.process_file_without_parser(&file_path, &language).await {
                     Ok((symbols, relationships, file_info, tantivy_symbols)) => {
@@ -305,7 +294,7 @@ impl ManageWorkspaceTool {
         // 🧹 CLEANUP: Remove old data for files being re-processed (incremental updates)
         // Run cleanup if we have files to clean AND either extracted symbols OR tantivy symbols
         if !files_to_clean.is_empty() && (!all_symbols.is_empty() || !all_tantivy_symbols.is_empty()) {
-            info!("🧹 Cleaning up old data for {} modified files before bulk storage...", files_to_clean.len());
+            debug!("Cleaning up old data for {} modified files before bulk storage", files_to_clean.len());
 
             if let Some(workspace) = handler.get_workspace().await? {
                 if let Some(db) = &workspace.db {
@@ -333,7 +322,7 @@ impl ManageWorkspaceTool {
                         }
                     }
 
-                    info!("✅ Cleanup complete for {} files", files_to_clean.len());
+                    debug!("Cleanup complete for {} files", files_to_clean.len());
                 }
             }
         }
@@ -416,13 +405,13 @@ impl ManageWorkspaceTool {
 
             // Store in handler memory for compatibility (primary workspace only)
             if is_primary_workspace {
-                info!(
-                    "📦 Storing {} symbols in memory for compatibility...",
+                debug!(
+                    "Storing {} symbols in memory for compatibility",
                     all_symbols.len()
                 );
                 // Symbols and relationships already persisted to SQLite database
                 // No need for in-memory storage - all reads now query database directly
-                info!("✅ Database storage complete");
+                debug!("Database storage complete");
             }
         }
 
@@ -549,8 +538,8 @@ impl ManageWorkspaceTool {
         content: &str,
         language: &str,
     ) -> Result<(Vec<Symbol>, Vec<crate::extractors::base::Relationship>)> {
-        info!(
-            "🔍🔍 EXTRACTION STARTING for language: {} file: {}",
+        debug!(
+            "Extracting symbols: language={}, file={}",
             language, file_path
         );
         debug!("    Tree root node: {:?}", tree.root_node().kind());
@@ -567,11 +556,6 @@ impl ManageWorkspaceTool {
                 );
                 debug!("    Calling extract_symbols...");
                 let symbols = extractor.extract_symbols(tree);
-                info!(
-                    "    ✅ RustExtractor returned {} symbols for {}",
-                    symbols.len(),
-                    file_path
-                );
                 debug!("    ✅ RustExtractor returned {} symbols", symbols.len());
                 let relationships = extractor.extract_relationships(tree, &symbols);
                 (symbols, relationships)
@@ -846,7 +830,7 @@ impl ManageWorkspaceTool {
                 workspace_entry.id
             } else {
                 // No workspace registered yet - all files are new
-                info!("No existing workspace found - indexing all {} files", all_files.len());
+                debug!("No existing workspace found - indexing all {} files", all_files.len());
                 return Ok(all_files);
             }
         } else {
@@ -873,23 +857,23 @@ impl ManageWorkspaceTool {
             return Ok(all_files);
         };
 
-        info!("🔍 Checking {} files against {} existing file hashes", all_files.len(), existing_file_hashes.len());
+        debug!("Checking {} files against {} existing file hashes", all_files.len(), existing_file_hashes.len());
 
         let mut files_to_process = Vec::new();
         let mut unchanged_count = 0;
         let mut new_count = 0;
         let mut modified_count = 0;
 
-        for file_path in all_files {
+        for file_path in &all_files {
             let file_path_str = file_path.to_string_lossy().to_string();
-            let language = self.detect_language(&file_path);
+            let language = self.detect_language(file_path);
 
             // Calculate current file hash
-            let current_hash = match crate::database::calculate_file_hash(&file_path) {
+            let current_hash = match crate::database::calculate_file_hash(file_path) {
                 Ok(hash) => hash,
                 Err(e) => {
                     warn!("Failed to calculate hash for {}: {} - including for re-indexing", file_path_str, e);
-                    files_to_process.push(file_path);
+                    files_to_process.push(file_path.clone());
                     continue;
                 }
             };
@@ -919,7 +903,7 @@ impl ManageWorkspaceTool {
                                     // File has no symbols - needs FILE_CONTENT symbol created
                                     debug!("File {} has no symbols, re-indexing to create FILE_CONTENT symbol", file_path_str);
                                     modified_count += 1;
-                                    files_to_process.push(file_path);
+                                    files_to_process.push(file_path.clone());
                                     continue;
                                 }
                             }
@@ -931,12 +915,12 @@ impl ManageWorkspaceTool {
                 } else {
                     // File modified - needs re-indexing
                     modified_count += 1;
-                    files_to_process.push(file_path);
+                    files_to_process.push(file_path.clone());
                 }
             } else {
                 // New file - needs indexing
                 new_count += 1;
-                files_to_process.push(file_path);
+                files_to_process.push(file_path.clone());
             }
         }
 
@@ -945,10 +929,90 @@ impl ManageWorkspaceTool {
             unchanged_count, modified_count, new_count, files_to_process.len()
         );
 
-        // TODO: Clean up orphaned entries for files that no longer exist
-        // This would require comparing existing_file_hashes against all_files
+        // 🧹 ORPHAN CLEANUP: Remove database entries for files that no longer exist
+        let orphaned_count = self.clean_orphaned_files(
+            handler,
+            &existing_file_hashes,
+            &all_files,
+            &workspace_id
+        ).await?;
+
+        if orphaned_count > 0 {
+            info!("🧹 Cleaned up {} orphaned file entries from database", orphaned_count);
+        }
 
         Ok(files_to_process)
+    }
+
+    /// Clean up orphaned database entries for files that no longer exist on disk
+    /// This prevents database bloat from accumulating deleted files
+    async fn clean_orphaned_files(
+        &self,
+        handler: &JulieServerHandler,
+        existing_file_hashes: &std::collections::HashMap<String, String>,
+        current_disk_files: &[PathBuf],
+        workspace_id: &str,
+    ) -> Result<usize> {
+        // Build set of current disk file paths for fast lookup
+        let current_files: std::collections::HashSet<String> = current_disk_files
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        // Find files that are in database but not on disk (orphans)
+        let orphaned_files: Vec<String> = existing_file_hashes
+            .keys()
+            .filter(|db_path| !current_files.contains(*db_path))
+            .cloned()
+            .collect();
+
+        if orphaned_files.is_empty() {
+            return Ok(0);
+        }
+
+        debug!("Found {} orphaned files to clean up", orphaned_files.len());
+
+        // Get database connection
+        let workspace = match handler.get_workspace().await? {
+            Some(ws) => ws,
+            None => return Ok(0),
+        };
+
+        let db = match &workspace.db {
+            Some(db_arc) => db_arc,
+            None => return Ok(0),
+        };
+
+        // Delete orphaned entries
+        let mut cleaned_count = 0;
+        {
+            let db_lock = db.lock().await;
+
+            for file_path in &orphaned_files {
+                // Delete relationships first (referential integrity)
+                if let Err(e) = db_lock.delete_relationships_for_file(file_path, workspace_id) {
+                    warn!("Failed to delete relationships for orphaned file {}: {}", file_path, e);
+                    continue;
+                }
+
+                // Delete symbols
+                if let Err(e) = db_lock.delete_symbols_for_file_in_workspace(file_path, workspace_id) {
+                    warn!("Failed to delete symbols for orphaned file {}: {}", file_path, e);
+                    continue;
+                }
+
+                // Delete file record
+                if let Err(e) = db_lock.delete_file_record_in_workspace(file_path, workspace_id) {
+                    warn!("Failed to delete file record for orphaned file {}: {}", file_path, e);
+                    continue;
+                }
+
+                cleaned_count += 1;
+                trace!("Cleaned up orphaned file: {}", file_path);
+            }
+        }
+
+        Ok(cleaned_count)
     }
 
     /// Determine if we should extract symbols from a file based on language
@@ -964,13 +1028,13 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         language: &str,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo, Vec<Symbol>)> {
-        info!("🔍 ENTERING process_file_without_parser for {:?} (language: {})", file_path, language);
+        trace!("Processing file without parser: {:?} (language: {})", file_path, language);
 
         // Read file content for text indexing
         let content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
 
-        info!("📖 Read {} bytes from {:?}", content.len(), file_path);
+        trace!("Read {} bytes from {:?}", content.len(), file_path);
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
@@ -998,7 +1062,7 @@ impl ManageWorkspaceTool {
                 semantic_group: Some("file_content".to_string()),
                 confidence: Some(1.0),
             };
-            info!("✅ Created FILE_CONTENT symbol: {} for {:?}", file_content_symbol.name, file_path);
+            trace!("Created FILE_CONTENT symbol: {} for {:?}", file_content_symbol.name, file_path);
             tantivy_symbols.push(file_content_symbol);
         } else {
             warn!("⚠️  File {:?} has empty content, skipping FILE_CONTENT symbol creation", file_path);
@@ -1007,7 +1071,7 @@ impl ManageWorkspaceTool {
         // Calculate file info for database storage
         let file_info = crate::database::create_file_info(&file_path_str, language)?;
 
-        info!("🎯 Returning from process_file_without_parser: {} tantivy_symbols", tantivy_symbols.len());
+        trace!("Returning from process_file_without_parser: {} tantivy_symbols", tantivy_symbols.len());
 
         // Return: FILE_CONTENT symbols for BOTH database storage AND Tantivy indexing
         // Clone is necessary because both database and Tantivy need the symbols
@@ -1027,7 +1091,7 @@ async fn build_tantivy_from_sqlite(
     use anyhow::Context;
 
     let start_time = std::time::Instant::now();
-    info!("🚀 CASCADE: Building Tantivy index from SQLite...");
+    debug!("CASCADE: Building Tantivy index from SQLite");
 
     // Get database connection
     let db = match workspace_db {
@@ -1055,12 +1119,12 @@ async fn build_tantivy_from_sqlite(
     };
 
     if symbols.is_empty() && file_contents.is_empty() {
-        info!("No symbols or files to index in Tantivy");
+        debug!("No symbols or files to index in Tantivy");
         return Ok(());
     }
 
-    info!(
-        "📦 Indexing {} symbols + {} file contents into Tantivy...",
+    debug!(
+        "Indexing {} symbols + {} file contents into Tantivy",
         symbols.len(),
         file_contents.len()
     );
@@ -1093,13 +1157,13 @@ async fn build_tantivy_from_sqlite(
         file_content_symbols.push(file_content_symbol);
     }
 
-    info!("📄 Created {} FILE_CONTENT symbols", file_content_symbols.len());
+    debug!("Created {} FILE_CONTENT symbols", file_content_symbols.len());
 
     // 4. Combine all symbols
     let mut all_symbols = symbols;
     all_symbols.extend(file_content_symbols);
 
-    info!("🔍 Total symbols for Tantivy: {}", all_symbols.len());
+    debug!("Total symbols for Tantivy: {}", all_symbols.len());
 
     // 5. Index into Tantivy
     {
@@ -1135,7 +1199,18 @@ async fn generate_embeddings_from_sqlite(
     use anyhow::Context;
 
     let start_time = std::time::Instant::now();
-    info!("🚀 Starting embedding generation from SQLite...");
+    debug!("Starting embedding generation from SQLite");
+
+    // Update registry status to "Generating"
+    if let Some(ref root) = workspace_root {
+        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
+        if let Err(e) = registry_service
+            .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Generating)
+            .await
+        {
+            warn!("Failed to update embedding status to Generating: {}", e);
+        }
+    }
 
     // Get database connection
     let db = match workspace_db {
@@ -1155,7 +1230,7 @@ async fn generate_embeddings_from_sqlite(
     };
 
     if symbols.is_empty() {
-        info!("No symbols to embed");
+        debug!("No symbols to embed");
         return Ok(());
     }
 
@@ -1319,6 +1394,19 @@ async fn generate_embeddings_from_sqlite(
     // CASCADE: Mark semantic search as ready
     indexing_status.semantic_ready.store(true, std::sync::atomic::Ordering::Release);
     debug!("🧠 CASCADE: Semantic search now available");
+
+    // Update registry status to "Ready"
+    if let Some(ref root) = workspace_root {
+        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
+        if let Err(e) = registry_service
+            .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Ready)
+            .await
+        {
+            warn!("Failed to update embedding status to Ready: {}", e);
+        } else {
+            debug!("📝 Updated registry: embedding_status = Ready");
+        }
+    }
 
     Ok(())
 }

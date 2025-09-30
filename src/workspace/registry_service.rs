@@ -362,7 +362,8 @@ impl WorkspaceRegistryService {
     pub async fn update_workspace_statistics(
         &self,
         workspace_id: &str,
-        document_count: usize,
+        symbol_count: usize,
+        file_count: usize,
         index_size_bytes: u64,
     ) -> Result<()> {
         let mut registry = self.load_registry().await?;
@@ -371,7 +372,8 @@ impl WorkspaceRegistryService {
         // Update primary workspace
         if let Some(ref mut primary) = registry.primary_workspace {
             if primary.id == workspace_id {
-                primary.document_count = document_count;
+                primary.symbol_count = symbol_count;
+                primary.file_count = file_count;
                 primary.index_size_bytes = index_size_bytes;
                 updated = true;
             }
@@ -379,8 +381,39 @@ impl WorkspaceRegistryService {
 
         // Update reference workspace
         if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
-            workspace.document_count = document_count;
+            workspace.symbol_count = symbol_count;
+            workspace.file_count = file_count;
             workspace.index_size_bytes = index_size_bytes;
+            updated = true;
+        }
+
+        if updated {
+            self.save_registry(registry).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Update embedding status for a workspace
+    pub async fn update_embedding_status(
+        &self,
+        workspace_id: &str,
+        status: crate::workspace::registry::EmbeddingStatus,
+    ) -> Result<()> {
+        let mut registry = self.load_registry().await?;
+        let mut updated = false;
+
+        // Update primary workspace
+        if let Some(ref mut primary) = registry.primary_workspace {
+            if primary.id == workspace_id {
+                primary.embedding_status = status.clone();
+                updated = true;
+            }
+        }
+
+        // Update reference workspace
+        if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
+            workspace.embedding_status = status;
             updated = true;
         }
 
@@ -424,7 +457,8 @@ impl WorkspaceRegistryService {
     /// Update registry statistics
     async fn update_registry_statistics(&self, registry: &mut WorkspaceRegistry) -> Result<()> {
         let mut total_workspaces = 0;
-        let mut total_documents = 0;
+        let mut total_symbols = 0;
+        let mut total_files = 0;
         let mut total_size = 0;
 
         if registry.primary_workspace.is_some() {
@@ -434,18 +468,21 @@ impl WorkspaceRegistryService {
         total_workspaces += registry.reference_workspaces.len();
 
         for workspace in registry.reference_workspaces.values() {
-            total_documents += workspace.document_count;
+            total_symbols += workspace.symbol_count;
+            total_files += workspace.file_count;
             total_size += workspace.index_size_bytes;
         }
 
         if let Some(ref primary) = registry.primary_workspace {
-            total_documents += primary.document_count;
+            total_symbols += primary.symbol_count;
+            total_files += primary.file_count;
             total_size += primary.index_size_bytes;
         }
 
         registry.statistics.total_workspaces = total_workspaces;
         registry.statistics.total_orphans = registry.orphaned_indexes.len();
-        registry.statistics.total_documents = total_documents;
+        registry.statistics.total_symbols = total_symbols;
+        registry.statistics.total_files = total_files;
         registry.statistics.total_index_size_bytes = total_size;
 
         Ok(())

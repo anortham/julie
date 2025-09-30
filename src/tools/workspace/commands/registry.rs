@@ -76,13 +76,13 @@ impl ManageWorkspaceTool {
                                 .unwrap_or(0);
 
                             if let Err(e) = registry_service
-                                .update_workspace_statistics(&entry.id, symbol_count, index_size)
+                                .update_workspace_statistics(&entry.id, symbol_count, file_count, index_size)
                                 .await
                             {
                                 warn!("Failed to update workspace statistics: {}", e);
                             } else {
-                                info!("✅ Updated workspace statistics for {}: {} symbols, {} bytes index",
-                                      entry.id, symbol_count, index_size);
+                                info!("✅ Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
+                                      entry.id, file_count, symbol_count, index_size);
                             }
                         }
 
@@ -279,14 +279,15 @@ impl ManageWorkspaceTool {
                         "🏷️ **{}** ({})\n\
                         📁 Path: {}\n\
                         🔍 Type: {:?}\n\
-                        📊 Documents: {} | Size: {:.1} KB\n\
+                        📊 Files: {} | Symbols: {} | Size: {:.1} KB\n\
                         ⏰ Expires: {}\n\
                         📅 Status: {}\n\n",
                         workspace.display_name,
                         workspace.id,
                         workspace.original_path,
                         workspace.workspace_type,
-                        workspace.document_count,
+                        workspace.file_count,
+                        workspace.symbol_count,
                         workspace.index_size_bytes as f64 / 1024.0,
                         expires,
                         status
@@ -498,13 +499,13 @@ impl ManageWorkspaceTool {
                                 .unwrap_or(0);
 
                             if let Err(e) = registry_service
-                                .update_workspace_statistics(workspace_id, symbol_count, index_size)
+                                .update_workspace_statistics(workspace_id, symbol_count, file_count, index_size)
                                 .await
                             {
                                 warn!("Failed to update workspace statistics: {}", e);
                             } else {
-                                info!("✅ Updated workspace statistics for {}: {} symbols, {} bytes index",
-                                      workspace_id, symbol_count, index_size);
+                                info!("✅ Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
+                                      workspace_id, file_count, symbol_count, index_size);
                             }
                         }
 
@@ -591,7 +592,7 @@ impl ManageWorkspaceTool {
                             🏷️ **{}** ({})\n\
                             📁 Path: {}\n\
                             🔍 Type: {:?}\n\
-                            📊 Documents: {}\n\
+                            📊 Files: {} | Symbols: {}\n\
                             💾 Index Size: {:.2} MB\n\
                             📅 Created: {} (timestamp)\n\
                             🕐 Last Accessed: {} (timestamp)\n\
@@ -601,7 +602,8 @@ impl ManageWorkspaceTool {
                             workspace.id,
                             workspace.original_path,
                             workspace.workspace_type,
-                            workspace.document_count,
+                            workspace.file_count,
+                            workspace.symbol_count,
                             workspace.index_size_bytes as f64 / (1024.0 * 1024.0),
                             workspace.created_at,
                             workspace.last_accessed,
@@ -634,7 +636,8 @@ impl ManageWorkspaceTool {
                     📚 Reference Workspaces: {}\n\
                     🗑️ Orphaned Indexes: {}\n\n\
                     💾 **Storage Usage**\n\
-                    📊 Total Documents: {}\n\
+                    📁 Total Files: {}\n\
+                    📊 Total Symbols: {}\n\
                     💽 Total Index Size: {:.2} MB\n\
                     📅 Last Updated: {} (timestamp)\n\n\
                     ⚙️ **Configuration**\n\
@@ -649,7 +652,8 @@ impl ManageWorkspaceTool {
                     },
                     registry.reference_workspaces.len(),
                     registry.statistics.total_orphans,
-                    registry.statistics.total_documents,
+                    registry.statistics.total_files,
+                    registry.statistics.total_symbols,
                     registry.statistics.total_index_size_bytes as f64 / (1024.0 * 1024.0),
                     registry.last_updated,
                     registry.config.default_ttl_seconds / (24 * 60 * 60), // Convert to days

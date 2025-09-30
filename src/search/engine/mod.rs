@@ -48,9 +48,10 @@ impl SearchEngine {
 
         register_code_tokenizers(&index)?;
 
-        let mut reader = index.reader()?;
+        let reader = index.reader()?;
         // CRITICAL: Reload reader to see existing index segments
         // Without this, get_indexed_document_count() returns 0 even for existing indexes
+        // Note: reload() is called on &IndexReader, not &mut, so no mut needed
         reader.reload()?;
 
         let writer = index.writer(50_000_000)?; // 50MB heap

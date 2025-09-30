@@ -83,8 +83,13 @@ pub struct RegistryStatistics {
     /// Total size of all indexes in bytes
     pub total_index_size_bytes: u64,
 
-    /// Total number of documents across all workspaces
-    pub total_documents: usize,
+    /// Total number of symbols (functions, classes, etc.) across all workspaces
+    #[serde(alias = "total_documents")] // Backward compatibility
+    pub total_symbols: usize,
+
+    /// Total number of files indexed across all workspaces
+    #[serde(default)] // Default to 0 for old registry.json files
+    pub total_files: usize,
 
     /// Last cleanup time
     pub last_cleanup: u64, // Unix timestamp
@@ -96,7 +101,8 @@ impl Default for RegistryStatistics {
             total_workspaces: 0,
             total_orphans: 0,
             total_index_size_bytes: 0,
-            total_documents: 0,
+            total_symbols: 0,
+            total_files: 0,
             last_cleanup: current_timestamp(),
         }
     }
@@ -129,8 +135,14 @@ pub struct WorkspaceEntry {
     /// When this workspace expires (None = never expires)
     pub expires_at: Option<u64>, // Unix timestamp
 
-    /// Number of documents in the index
-    pub document_count: usize,
+    /// Number of symbols (functions, classes, etc.) in the index
+    /// Note: Previously called "document_count" which was confusing
+    #[serde(alias = "document_count")] // Backward compatibility with old registry.json files
+    pub symbol_count: usize,
+
+    /// Number of files indexed in this workspace
+    #[serde(default)] // Default to 0 for old registry.json files
+    pub file_count: usize,
 
     /// Size of index in bytes
     pub index_size_bytes: u64,
@@ -280,7 +292,8 @@ impl WorkspaceEntry {
             created_at: current_timestamp(),
             last_accessed: current_timestamp(),
             expires_at,
-            document_count: 0,
+            symbol_count: 0,
+            file_count: 0,
             index_size_bytes: 0,
             status: WorkspaceStatus::Active,
             embedding_status: EmbeddingStatus::NotStarted,

@@ -152,13 +152,13 @@ impl ManageWorkspaceTool {
                         .unwrap_or(0);
 
                     if let Err(e) = registry_service
-                        .update_workspace_statistics(&workspace_id, symbol_count, index_size)
+                        .update_workspace_statistics(&workspace_id, symbol_count, file_count, index_size)
                         .await
                     {
                         warn!("Failed to update workspace statistics: {}", e);
                     } else {
-                        info!("✅ Updated workspace statistics: {} symbols, {} files, {} bytes index",
-                              symbol_count, file_count, index_size);
+                        info!("✅ Updated workspace statistics: {} files, {} symbols, {} bytes index",
+                              file_count, symbol_count, index_size);
                     }
                 }
 

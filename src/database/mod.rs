@@ -883,6 +883,20 @@ impl SymbolDatabase {
         Ok(())
     }
 
+    /// Delete file record for a specific workspace (workspace-aware cleanup)
+    pub fn delete_file_record_in_workspace(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+        let count = self.conn.execute(
+            "DELETE FROM files WHERE path = ?1 AND workspace_id = ?2",
+            params![file_path, workspace_id],
+        )?;
+
+        debug!(
+            "Deleted file record for '{}' in workspace '{}' ({} rows affected)",
+            file_path, workspace_id, count
+        );
+        Ok(())
+    }
+
     /// Store symbols in a transaction (regular method for incremental updates)
     pub fn store_symbols(&self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
         if symbols.is_empty() {
@@ -2006,6 +2020,19 @@ impl SymbolDatabase {
         Ok(embeddings)
     }
 
+    /// Count total embeddings for a workspace (for registry status reconciliation)
+    pub fn count_embeddings(&self, workspace_id: &str) -> Result<i64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM embeddings e
+             JOIN symbols s ON e.symbol_id = s.id
+             WHERE s.workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(count)
+    }
+
     /// Get symbols for a specific workspace (optimized for background tasks)
     pub fn get_symbols_for_workspace(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
@@ -2111,6 +2138,17 @@ impl SymbolDatabase {
     pub fn get_symbol_count_for_workspace(&self, workspace_id: &str) -> Result<i64> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM symbols WHERE workspace_id = ?1",
+            params![workspace_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(count)
+    }
+
+    /// Get total file count for a workspace (for registry statistics)
+    pub fn get_file_count_for_workspace(&self, workspace_id: &str) -> Result<i64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = ?1",
             params![workspace_id],
             |row| row.get(0),
         )?;
