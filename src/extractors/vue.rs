@@ -203,6 +203,7 @@ impl VueExtractor {
 
     /// Helper to create symbols manually (without Parser.SyntaxNode)
     /// Port of Miller's createSymbolManual logic
+    #[allow(clippy::too_many_arguments)] // Matches Miller's API for compatibility
     fn create_symbol_manual(
         &self,
         name: &str,

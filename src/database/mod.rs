@@ -757,6 +757,7 @@ impl SymbolDatabase {
     // ========================================
 
     /// CASCADE: Store file with full content for FTS search
+    #[allow(clippy::too_many_arguments)] // Legacy API, refactor later
     pub fn store_file_with_content(
         &self,
         path: &str,

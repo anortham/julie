@@ -9,7 +9,7 @@
 
 use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
 use anyhow::Result;
-use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
+use diff_match_patch_rs::{DiffMatchPatch, PatchInput};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -587,21 +587,21 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
             temp_path.to_str().unwrap()
         )?;
 
-        // Verify using DMP
+        // Verify using DMP (convert errors to anyhow)
         let dmp = DiffMatchPatch::new();
-        let patches = dmp.patch_make(PatchInput::Texts(&expected_content, &result_content))?;
+        let patches = dmp.patch_make(PatchInput::Texts(&expected_content, &result_content))
+            .map_err(|e| anyhow::anyhow!("Failed to create patches: {:?}", e))?;
 
         if !patches.is_empty() {
-            let diff = dmp.diff_main::<Efficient>(&expected_content, &result_content)?;
-            let formatted_diff = dmp.diff_pretty_text(&diff)?;
-
             println!("❌ AST-aware rename FAILED!");
-            println!("Expected vs Actual diff:");
-            println!("{}", formatted_diff);
+            println!("Expected content length: {}", expected_content.len());
+            println!("Actual content length: {}", result_content.len());
             println!("\n🔍 This means Julie is NOT using tree-sitter AST properly!");
             println!("String literals or comments were renamed (they shouldn't be).");
+            println!("\n📝 First 500 chars of expected:\n{}", &expected_content[..500.min(expected_content.len())]);
+            println!("\n📝 First 500 chars of actual:\n{}", &result_content[..500.min(result_content.len())]);
 
-            panic!("AST-aware rename test failed - see diff above");
+            panic!("AST-aware rename test failed - contents don't match control file");
         }
 
         // Verify specific conditions

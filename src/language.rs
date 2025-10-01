@@ -192,7 +192,7 @@ mod tests {
             "gdscript", "razor", "sql", "regex",
         ];
 
-        for lang in languages {
+        for lang in &languages {
             assert!(
                 get_tree_sitter_language(lang).is_ok(),
                 "Language '{}' should be supported",

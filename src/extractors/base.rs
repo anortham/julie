@@ -145,35 +145,36 @@ impl SymbolKind {
         }
     }
 
-    /// Convert to string representation (for database serialization)
-    #[allow(dead_code)] // TODO: Used for database serialization
-    pub fn to_string(&self) -> String {
+    // Note: to_string() is provided by Display trait implementation below
+}
+
+impl std::fmt::Display for SymbolKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SymbolKind::Class => "class",
-            SymbolKind::Interface => "interface",
-            SymbolKind::Function => "function",
-            SymbolKind::Method => "method",
-            SymbolKind::Variable => "variable",
-            SymbolKind::Constant => "constant",
-            SymbolKind::Property => "property",
-            SymbolKind::Enum => "enum",
-            SymbolKind::EnumMember => "enum_member",
-            SymbolKind::Module => "module",
-            SymbolKind::Namespace => "namespace",
-            SymbolKind::Type => "type",
-            SymbolKind::Trait => "trait",
-            SymbolKind::Struct => "struct",
-            SymbolKind::Union => "union",
-            SymbolKind::Field => "field",
-            SymbolKind::Constructor => "constructor",
-            SymbolKind::Destructor => "destructor",
-            SymbolKind::Operator => "operator",
-            SymbolKind::Import => "import",
-            SymbolKind::Export => "export",
-            SymbolKind::Event => "event",
-            SymbolKind::Delegate => "delegate",
+            SymbolKind::Class => write!(f, "class"),
+            SymbolKind::Interface => write!(f, "interface"),
+            SymbolKind::Function => write!(f, "function"),
+            SymbolKind::Method => write!(f, "method"),
+            SymbolKind::Variable => write!(f, "variable"),
+            SymbolKind::Constant => write!(f, "constant"),
+            SymbolKind::Property => write!(f, "property"),
+            SymbolKind::Enum => write!(f, "enum"),
+            SymbolKind::EnumMember => write!(f, "enum_member"),
+            SymbolKind::Module => write!(f, "module"),
+            SymbolKind::Namespace => write!(f, "namespace"),
+            SymbolKind::Type => write!(f, "type"),
+            SymbolKind::Trait => write!(f, "trait"),
+            SymbolKind::Struct => write!(f, "struct"),
+            SymbolKind::Union => write!(f, "union"),
+            SymbolKind::Field => write!(f, "field"),
+            SymbolKind::Constructor => write!(f, "constructor"),
+            SymbolKind::Destructor => write!(f, "destructor"),
+            SymbolKind::Operator => write!(f, "operator"),
+            SymbolKind::Import => write!(f, "import"),
+            SymbolKind::Export => write!(f, "export"),
+            SymbolKind::Event => write!(f, "event"),
+            SymbolKind::Delegate => write!(f, "delegate"),
         }
-        .to_string()
     }
 }
 
@@ -284,27 +285,8 @@ impl RelationshipKind {
         }
     }
 
-    /// Convert to string representation (for database serialization)
-    #[allow(dead_code)] // TODO: Used for database serialization
-    pub fn to_string(&self) -> String {
-        match self {
-            RelationshipKind::Calls => "calls",
-            RelationshipKind::Extends => "extends",
-            RelationshipKind::Implements => "implements",
-            RelationshipKind::Uses => "uses",
-            RelationshipKind::Returns => "returns",
-            RelationshipKind::Parameter => "parameter",
-            RelationshipKind::Imports => "imports",
-            RelationshipKind::Instantiates => "instantiates",
-            RelationshipKind::References => "references",
-            RelationshipKind::Defines => "defines",
-            RelationshipKind::Overrides => "overrides",
-            RelationshipKind::Contains => "contains",
-            RelationshipKind::Joins => "joins",
-            RelationshipKind::Composition => "composition",
-        }
-        .to_string()
-    }
+    // Note: to_string() is provided automatically by the Display trait implementation above
+    // No need for an inherent method that shadows it
 }
 
 /// Type information for a symbol - direct port from Miller
