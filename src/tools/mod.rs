@@ -7,6 +7,7 @@ pub mod shared;
 // Tool modules organized by functionality
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
 pub mod safe_editing; // Consolidated safe_edit tool (DMP-powered, 6 modes)
+pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
 pub mod exploration;
 pub mod navigation;
 pub mod refactoring;

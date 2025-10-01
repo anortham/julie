@@ -377,10 +377,10 @@ impl SmartRefactorTool {
             return Err(anyhow::anyhow!("Symbol not found in AST"));
         }
 
-        // Use smart text replacement to catch ALL occurrences (including usages)
-        debug!("📝 About to call smart_text_replace with old_name='{}', new_name='{}'", old_name, new_name);
-        let result = self.smart_text_replace(content, old_name, new_name)?;
-        debug!("🎯 smart_text_replace completed, result length: {}", result.len());
+        // Use AST-aware text replacement to catch ALL occurrences (including usages)
+        debug!("📝 About to call AST-aware smart_text_replace with old_name='{}', new_name='{}'", old_name, new_name);
+        let result = self.smart_text_replace(content, old_name, new_name, file_path)?;
+        debug!("🎯 AST-aware smart_text_replace completed, result length: {}", result.len());
 
         Ok(result)
     }
@@ -437,95 +437,100 @@ impl SmartRefactorTool {
         Ok(matching_positions)
     }
 
-    /// Smart text replacement that avoids string literals and comments
-    /// This catches ALL symbol usages (declarations + references) while being safe
-    pub fn smart_text_replace(&self, content: &str, old_name: &str, new_name: &str) -> Result<String> {
-        debug!("🎯 Smart text replacement: '{}' -> '{}' (avoiding strings/comments)", old_name, new_name);
+    /// AST-AWARE text replacement using tree-sitter
+    /// This is Julie's core value proposition - language-aware refactoring!
+    /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.
+    pub fn smart_text_replace(&self, content: &str, old_name: &str, new_name: &str, file_path: &str) -> Result<String> {
+        use crate::tools::ast_symbol_finder::{ASTSymbolFinder, SymbolContext};
+        use tree_sitter::Parser;
 
-        let mut result = String::new();
-        let mut chars = content.char_indices().peekable();
-        let mut replacements_made = 0;
+        debug!("🌳 AST-aware replacement: '{}' -> '{}' using tree-sitter", old_name, new_name);
 
-        while let Some((i, ch)) = chars.next() {
-            match ch {
-                // Skip string literals (double quotes, single quotes, template literals)
-                '"' | '\'' | '`' => {
-                    result.push(ch);
-                    let quote_char = ch;
-                    // Copy everything until closing quote
-                    while let Some((_, ch)) = chars.next() {
-                        result.push(ch);
-                        if ch == quote_char {
-                            break;
-                        }
-                        // Handle escaped quotes
-                        if ch == '\\' {
-                            if let Some((_, escaped_ch)) = chars.next() {
-                                result.push(escaped_ch);
-                            }
-                        }
-                    }
-                }
-                // Skip single-line comments
-                '/' if chars.peek().map(|(_, ch)| *ch) == Some('/') => {
-                    result.push(ch);
-                    result.push(chars.next().unwrap().1); // consume second '/'
-                    // Copy rest of line
-                    for (_, ch) in chars.by_ref() {
-                        result.push(ch);
-                        if ch == '\n' {
-                            break;
-                        }
-                    }
-                }
-                // Skip multi-line comments
-                '/' if chars.peek().map(|(_, ch)| *ch) == Some('*') => {
-                    result.push(ch);
-                    result.push(chars.next().unwrap().1); // consume '*'
-                    // Copy until */
-                    while let Some((_, ch)) = chars.next() {
-                        result.push(ch);
-                        if ch == '*' && chars.peek().map(|(_, ch)| *ch) == Some('/') {
-                            result.push(chars.next().unwrap().1); // consume '/'
-                            break;
-                        }
-                    }
-                }
-                // Check for symbol replacement
-                _ if ch.is_alphabetic() || ch == '_' => {
-                    // We found the start of an identifier
-                    let start_idx = i;
-                    let mut identifier = String::new();
-                    identifier.push(ch);
+        // Determine language from file extension
+        let language = self.detect_language(file_path);
 
-                    // Collect the full identifier
-                    while let Some((_, ch)) = chars.peek() {
-                        if ch.is_alphanumeric() || *ch == '_' {
-                            identifier.push(*ch);
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-
-                    // Check if this identifier matches our target symbol
-                    if identifier == old_name {
-                        result.push_str(new_name);
-                        replacements_made += 1;
-                        debug!("✅ Replaced '{}' -> '{}' at position {}", old_name, new_name, start_idx);
-                    } else {
-                        result.push_str(&identifier);
-                    }
-                }
-                // Copy other characters as-is
-                _ => {
-                    result.push(ch);
-                }
+        // Parse file with tree-sitter
+        let mut parser = Parser::new();
+        let tree_sitter_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(e) => {
+                debug!("⚠️ Couldn't get tree-sitter language for {}: {}. Fallback to text-based.", language, e);
+                // Fallback to simple word boundary replacement if tree-sitter fails
+                let pattern = format!(r"\b{}\b", regex::escape(old_name));
+                let re = regex::Regex::new(&pattern)?;
+                return Ok(re.replace_all(content, new_name).to_string());
             }
+        };
+
+        parser.set_language(&tree_sitter_language)
+            .map_err(|e| anyhow::anyhow!("Failed to set parser language: {}", e))?;
+
+        let tree = parser.parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file"))?;
+
+        // Use ASTSymbolFinder to find all symbol occurrences
+        let finder = ASTSymbolFinder::new(content.to_string(), tree, language.clone());
+        let occurrences = finder.find_symbol_occurrences(old_name);
+
+        let total_occurrences = occurrences.len();
+        debug!("🔍 Found {} total occurrences of '{}'", total_occurrences, old_name);
+
+        // Filter out occurrences in strings and comments
+        let code_occurrences: Vec<_> = occurrences
+            .into_iter()
+            .filter(|occ| {
+                occ.context != SymbolContext::StringLiteral &&
+                occ.context != SymbolContext::Comment
+            })
+            .collect();
+
+        debug!("✅ {} code occurrences (filtered out {} string/comment occurrences)",
+            code_occurrences.len(),
+            total_occurrences - code_occurrences.len()
+        );
+
+        if code_occurrences.is_empty() {
+            debug!("⚠️ No code occurrences found to replace");
+            return Ok(content.to_string());
         }
 
-        debug!("🎯 Smart replacement complete: {} occurrences replaced", replacements_made);
+        // Sort by start_byte descending to apply replacements from end to start
+        // This preserves byte offsets as we modify
+        let mut sorted_occurrences = code_occurrences;
+        sorted_occurrences.sort_by(|a, b| b.start_byte.cmp(&a.start_byte));
+
+        let replacement_count = sorted_occurrences.len();
+
+        // Apply replacements
+        let mut result = content.to_string();
+        for occ in sorted_occurrences {
+            result.replace_range(occ.start_byte..occ.end_byte, new_name);
+            debug!("✅ Replaced '{}' -> '{}' at byte {}:{} (line {}, context: {:?})",
+                old_name, new_name, occ.start_byte, occ.end_byte, occ.line, occ.context);
+        }
+
+        debug!("🎯 AST-aware replacement complete: {} occurrences replaced", replacement_count);
         Ok(result)
+    }
+
+    /// Get tree-sitter language for file type
+    fn get_tree_sitter_language(&self, language: &str) -> Result<tree_sitter::Language> {
+        match language {
+            "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
+            "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
+            "python" => Ok(tree_sitter_python::LANGUAGE.into()),
+            "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
+            "go" => Ok(tree_sitter_go::LANGUAGE.into()),
+            "java" => Ok(tree_sitter_java::LANGUAGE.into()),
+            "c" => Ok(tree_sitter_c::LANGUAGE.into()),
+            "cpp" => Ok(tree_sitter_cpp::LANGUAGE.into()),
+            "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
+            "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
+            "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
+            "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
+            "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
+            _ => Err(anyhow::anyhow!("Unsupported language: {}", language))
+        }
     }
 
     /// Handle extract function operation

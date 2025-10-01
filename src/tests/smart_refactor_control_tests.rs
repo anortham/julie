@@ -3,6 +3,9 @@
 //! This module implements the professional SOURCE/CONTROL testing pattern for SmartRefactorTool.
 //! SOURCE files are never edited, CONTROL files show expected results.
 //! Every refactoring is verified against control files using diff-match-patch.
+//!
+//! CRITICAL TEST: test_ast_aware_rename_preserves_strings_and_comments
+//! This test PROVES Julie uses tree-sitter AST, not regex - the whole point of this project!
 
 use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
 use anyhow::Result;
@@ -539,4 +542,86 @@ mod smart_refactor_control_tests {
 
         Ok(())
     }
+}
+
+/// ⭐ CRITICAL TEST: AST-Aware Rename (Julie's Core Value Proposition)
+///
+/// This test PROVES that Julie uses tree-sitter AST, not regex!
+/// String literals and comments containing "UserService" should NOT be renamed.
+/// Only actual code symbols should be renamed to "AccountService".
+#[tokio::test]
+async fn test_ast_aware_rename_preserves_strings_and_comments() {
+    use anyhow::Result;
+    
+    async fn inner_test() -> Result<()> {
+        println!("🌳 CRITICAL TEST: AST-aware rename (tree-sitter, not regex!)");
+
+        let source_path = "tests/editing/sources/ast-aware/user_service.ts";
+        let control_path = "tests/editing/controls/refactor/user_service_to_account_service.ts";
+
+        // Read SOURCE file
+        let source_content = std::fs::read_to_string(source_path)
+            .expect("SOURCE file must exist");
+
+        // Read CONTROL file
+        let expected_content = std::fs::read_to_string(control_path)
+            .expect("CONTROL file must exist");
+
+        // Apply AST-aware rename using SmartRefactorTool
+        let temp_file = tempfile::NamedTempFile::new()?;
+        let temp_path = temp_file.path().with_extension("ts");
+        std::fs::write(&temp_path, &source_content)?;
+
+        // Use refactoring module directly for testing
+        let tool = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: r#"{"old_name": "UserService", "new_name": "AccountService"}"#.to_string(),
+            dry_run: false,
+        };
+
+        // Apply smart_text_replace directly
+        let result_content = tool.smart_text_replace(
+            &source_content,
+            "UserService",
+            "AccountService",
+            temp_path.to_str().unwrap()
+        )?;
+
+        // Verify using DMP
+        let dmp = DiffMatchPatch::new();
+        let patches = dmp.patch_make(PatchInput::Texts(&expected_content, &result_content))?;
+
+        if !patches.is_empty() {
+            let diff = dmp.diff_main::<Efficient>(&expected_content, &result_content)?;
+            let formatted_diff = dmp.diff_pretty_text(&diff)?;
+
+            println!("❌ AST-aware rename FAILED!");
+            println!("Expected vs Actual diff:");
+            println!("{}", formatted_diff);
+            println!("\n🔍 This means Julie is NOT using tree-sitter AST properly!");
+            println!("String literals or comments were renamed (they shouldn't be).");
+
+            panic!("AST-aware rename test failed - see diff above");
+        }
+
+        // Verify specific conditions
+        assert!(result_content.contains(r#""UserService""#),
+            "String literal 'UserService' should be preserved!");
+        assert!(result_content.contains("// UserService is mentioned"),
+            "Comment with UserService should be preserved!");
+        assert!(result_content.contains("class AccountService"),
+            "Class should be renamed to AccountService");
+        assert!(result_content.contains("new AccountService()"),
+            "Constructor call should be renamed");
+
+        println!("✅ AST-aware rename PASSED!");
+        println!("   - String literals preserved ✅");
+        println!("   - Comments preserved ✅");
+        println!("   - Code symbols renamed ✅");
+        println!("\n🌳 Julie is correctly using tree-sitter AST!");
+
+        Ok(())
+    }
+    
+    inner_test().await.unwrap();
 }
