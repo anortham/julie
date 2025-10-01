@@ -912,11 +912,18 @@ impl FastRefsTool {
                                     if let Some(db) = workspace.db.as_ref() {
                                         let db_lock = db.lock().await;
 
+                                        // Build HashSet of existing IDs for O(1) lookups instead of O(n) linear search
+                                        // Clone IDs to avoid holding immutable borrows while pushing
+                                        let existing_def_ids: std::collections::HashSet<_> =
+                                            definitions.iter().map(|d| d.id.clone()).collect();
+                                        let existing_ref_ids: std::collections::HashSet<_> =
+                                            references.iter().map(|r| r.to_symbol_id.clone()).collect();
+
                                         for result in hnsw_results {
                                             if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
-                                                // Skip if already in definitions or references
-                                                if !definitions.iter().any(|d| d.id == symbol.id) &&
-                                                   !references.iter().any(|r| r.to_symbol_id == symbol.id) {
+                                                // Skip if already in definitions or references (O(1) HashSet lookup!)
+                                                if !existing_def_ids.contains(&symbol.id) &&
+                                                   !existing_ref_ids.contains(&symbol.id) {
                                                     // Create metadata HashMap with similarity score
                                                     let mut metadata = std::collections::HashMap::new();
                                                     metadata.insert(

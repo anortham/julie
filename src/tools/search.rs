@@ -478,7 +478,10 @@ impl FastSearchTool {
         }
 
         if lang_counts.len() > 1 {
-            let main_lang = lang_counts.iter().max_by_key(|(_, count)| *count).unwrap();
+            // Safe: We checked lang_counts.len() > 1, so max_by_key will find a value
+            let main_lang = lang_counts.iter()
+                .max_by_key(|(_, count)| *count)
+                .expect("lang_counts must have entries since len > 1");
             insights.push(format!(
                 "Found across {} languages (mainly {})",
                 lang_counts.len(),

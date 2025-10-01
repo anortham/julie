@@ -31,7 +31,9 @@ impl LanguageParserPool {
             self.parsers.insert(language.to_string(), parser);
             debug!("🔧 Created new parser for language: {}", language);
         }
-        Ok(self.parsers.get_mut(language).unwrap())
+        // Safe: We just ensured the key exists above
+        Ok(self.parsers.get_mut(language)
+            .expect("Parser must exist after insert"))
     }
 
     /// Static version of get_tree_sitter_language (delegates to shared language module)
