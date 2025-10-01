@@ -8,6 +8,7 @@ pub mod embeddings;
 pub mod extractors;
 pub mod handler;
 pub mod health;
+pub mod language; // Shared language support (tree-sitter configuration)
 pub mod search;
 pub mod tools;
 pub mod tracing;

@@ -513,24 +513,9 @@ impl SmartRefactorTool {
         Ok(result)
     }
 
-    /// Get tree-sitter language for file type
+    /// Get tree-sitter language for file type (delegates to shared language module)
     fn get_tree_sitter_language(&self, language: &str) -> Result<tree_sitter::Language> {
-        match language {
-            "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
-            "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
-            "python" => Ok(tree_sitter_python::LANGUAGE.into()),
-            "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
-            "go" => Ok(tree_sitter_go::LANGUAGE.into()),
-            "java" => Ok(tree_sitter_java::LANGUAGE.into()),
-            "c" => Ok(tree_sitter_c::LANGUAGE.into()),
-            "cpp" => Ok(tree_sitter_cpp::LANGUAGE.into()),
-            "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
-            "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
-            "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
-            "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
-            "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
-            _ => Err(anyhow::anyhow!("Unsupported language: {}", language))
-        }
+        crate::language::get_tree_sitter_language(language)
     }
 
     /// Handle extract function operation

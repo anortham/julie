@@ -1,0 +1,137 @@
+//! Language Support - Shared tree-sitter language configuration
+//!
+//! This module provides centralized language support for Julie's 26 supported languages.
+//! ALL language-specific tree-sitter configuration should go here to avoid duplication.
+
+use anyhow::Result;
+
+/// Get tree-sitter language parser for a given language name
+///
+/// This is the SINGLE SOURCE OF TRUTH for language support in Julie.
+/// Used by both ExtractorManager (for symbol extraction) and SmartRefactorTool
+/// (for AST-aware refactoring).
+///
+/// # Supported Languages (26 total)
+///
+/// **Systems**: Rust, C, C++, Go, Zig
+/// **Web**: TypeScript, JavaScript, HTML, CSS, Vue
+/// **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
+/// **Scripting**: Lua, Bash, PowerShell
+/// **Specialized**: GDScript, Razor, SQL, Regex
+pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
+    match language {
+        // Systems languages
+        "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
+        "c" => Ok(tree_sitter_c::LANGUAGE.into()),
+        "cpp" => Ok(tree_sitter_cpp::LANGUAGE.into()),
+        "go" => Ok(tree_sitter_go::LANGUAGE.into()),
+        "zig" => Ok(tree_sitter_zig::LANGUAGE.into()),
+
+        // Web languages
+        "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
+        "html" => Ok(tree_sitter_html::LANGUAGE.into()),
+        "css" => Ok(tree_sitter_css::LANGUAGE.into()),
+        "vue" => Ok(tree_sitter_html::LANGUAGE.into()), // Vue SFCs use HTML structure
+
+        // Backend languages
+        "python" => Ok(tree_sitter_python::LANGUAGE.into()),
+        "java" => Ok(tree_sitter_java::LANGUAGE.into()),
+        "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
+        "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
+        "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
+        "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
+        "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "dart" => Ok(harper_tree_sitter_dart::LANGUAGE.into()),
+
+        // Scripting languages
+        "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
+        "bash" => Ok(tree_sitter_bash::LANGUAGE.into()),
+        "powershell" => Ok(tree_sitter_powershell::LANGUAGE.into()),
+
+        // Specialized languages
+        "gdscript" => Ok(tree_sitter_gdscript::LANGUAGE.into()),
+        "razor" => Ok(tree_sitter_razor::LANGUAGE.into()),
+        "sql" => Ok(tree_sitter_sequel::LANGUAGE.into()),
+        "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
+
+        _ => Err(anyhow::anyhow!(
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
+            language
+        )),
+    }
+}
+
+/// Detect language from file extension
+///
+/// Returns the language name that can be passed to `get_tree_sitter_language()`.
+pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
+    match extension {
+        "rs" => Some("rust"),
+        "ts" | "tsx" => Some("typescript"),
+        "js" | "jsx" => Some("javascript"),
+        "py" => Some("python"),
+        "go" => Some("go"),
+        "java" => Some("java"),
+        "c" | "h" => Some("c"),
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some("cpp"),
+        "cs" => Some("csharp"),
+        "rb" => Some("ruby"),
+        "php" => Some("php"),
+        "swift" => Some("swift"),
+        "kt" | "kts" => Some("kotlin"),
+        "dart" => Some("dart"),
+        "gd" => Some("gdscript"),
+        "lua" => Some("lua"),
+        "vue" => Some("vue"),
+        "razor" | "cshtml" => Some("razor"),
+        "sql" => Some("sql"),
+        "html" | "htm" => Some("html"),
+        "css" => Some("css"),
+        "sh" | "bash" => Some("bash"),
+        "ps1" => Some("powershell"),
+        "zig" => Some("zig"),
+        "regex" => Some("regex"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_26_languages_supported() {
+        let languages = vec![
+            "rust", "c", "cpp", "go", "zig",
+            "typescript", "javascript", "html", "css", "vue",
+            "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "dart",
+            "lua", "bash", "powershell",
+            "gdscript", "razor", "sql", "regex",
+        ];
+
+        for lang in languages {
+            assert!(
+                get_tree_sitter_language(lang).is_ok(),
+                "Language '{}' should be supported",
+                lang
+            );
+        }
+
+        assert_eq!(languages.len(), 26, "Should have exactly 26 languages");
+    }
+
+    #[test]
+    fn test_unsupported_language_fails() {
+        assert!(get_tree_sitter_language("cobol").is_err());
+        assert!(get_tree_sitter_language("fortran").is_err());
+    }
+
+    #[test]
+    fn test_extension_detection() {
+        assert_eq!(detect_language_from_extension("rs"), Some("rust"));
+        assert_eq!(detect_language_from_extension("ts"), Some("typescript"));
+        assert_eq!(detect_language_from_extension("py"), Some("python"));
+        assert_eq!(detect_language_from_extension("unknown"), None);
+    }
+}

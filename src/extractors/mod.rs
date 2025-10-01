@@ -141,39 +141,12 @@ impl ExtractorManager {
         Ok(symbols)
     }
 
-    /// Get tree-sitter language for given language name
+    /// Get tree-sitter language for given language name (delegates to shared module)
     fn get_tree_sitter_language(
         &self,
         language: &str,
     ) -> Result<tree_sitter::Language, anyhow::Error> {
-        match language {
-            "rust" => Ok(tree_sitter_rust::LANGUAGE.into()),
-            "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
-            "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
-            "python" => Ok(tree_sitter_python::LANGUAGE.into()),
-            "go" => Ok(tree_sitter_go::LANGUAGE.into()),
-            "java" => Ok(tree_sitter_java::LANGUAGE.into()),
-            "c" => Ok(tree_sitter_c::LANGUAGE.into()),
-            "cpp" => Ok(tree_sitter_cpp::LANGUAGE.into()),
-            "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
-            "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
-            "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
-            "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
-            "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
-            "dart" => Ok(harper_tree_sitter_dart::LANGUAGE.into()),
-            "gdscript" => Ok(tree_sitter_gdscript::LANGUAGE.into()),
-            "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
-            "vue" => Ok(tree_sitter_html::LANGUAGE.into()), // Vue SFCs use HTML structure
-            "razor" => Ok(tree_sitter_razor::LANGUAGE.into()),
-            "sql" => Ok(tree_sitter_sequel::LANGUAGE.into()),
-            "html" => Ok(tree_sitter_html::LANGUAGE.into()),
-            "css" => Ok(tree_sitter_css::LANGUAGE.into()),
-            "bash" => Ok(tree_sitter_bash::LANGUAGE.into()),
-            "powershell" => Ok(tree_sitter_powershell::LANGUAGE.into()),
-            "zig" => Ok(tree_sitter_zig::LANGUAGE.into()),
-            "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
-            _ => Err(anyhow::anyhow!("Unsupported language: {}", language)),
-        }
+        crate::language::get_tree_sitter_language(language)
     }
 
     /// Extract symbols using the appropriate extractor for the detected language
