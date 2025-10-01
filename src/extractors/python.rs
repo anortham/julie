@@ -564,16 +564,7 @@ impl PythonExtractor {
                         let mut docstring = self.base.get_node_text(&expr_child);
 
                         // Remove quotes (single, double, or triple quotes)
-                        if docstring.starts_with("\"\"\"") && docstring.ends_with("\"\"\"") {
-                            docstring = docstring[3..docstring.len() - 3].to_string();
-                        } else if docstring.starts_with("'''") && docstring.ends_with("'''") {
-                            docstring = docstring[3..docstring.len() - 3].to_string();
-                        } else if docstring.starts_with('"') && docstring.ends_with('"') {
-                            docstring = docstring[1..docstring.len() - 1].to_string();
-                        } else if docstring.starts_with('\'') && docstring.ends_with('\'') {
-                            docstring = docstring[1..docstring.len() - 1].to_string();
-                        }
-
+                        docstring = Self::strip_string_delimiters(&docstring);
                         return Some(docstring.trim().to_string());
                     }
                 }
@@ -583,16 +574,7 @@ impl PythonExtractor {
                 let mut docstring = self.base.get_node_text(&child);
 
                 // Remove quotes (single, double, or triple quotes)
-                if docstring.starts_with("\"\"\"") && docstring.ends_with("\"\"\"") {
-                    docstring = docstring[3..docstring.len() - 3].to_string();
-                } else if docstring.starts_with("'''") && docstring.ends_with("'''") {
-                    docstring = docstring[3..docstring.len() - 3].to_string();
-                } else if docstring.starts_with('"') && docstring.ends_with('"') {
-                    docstring = docstring[1..docstring.len() - 1].to_string();
-                } else if docstring.starts_with('\'') && docstring.ends_with('\'') {
-                    docstring = docstring[1..docstring.len() - 1].to_string();
-                }
-
+                docstring = Self::strip_string_delimiters(&docstring);
                 return Some(docstring.trim().to_string());
             }
         }
@@ -1013,5 +995,26 @@ impl PythonExtractor {
             current = parent;
         }
         None
+    }
+
+    /// Helper to strip string delimiters (quotes) from Python strings
+    /// Handles triple quotes (""" or '''), double quotes ("), and single quotes (')
+    fn strip_string_delimiters(s: &str) -> String {
+        // Try delimiters in order: triple quotes first (3 chars), then single quotes (1 char)
+        let delimiters = [
+            ("\"\"\"", 3),
+            ("'''", 3),
+            ("\"", 1),
+            ("'", 1),
+        ];
+
+        for (delimiter, strip_count) in &delimiters {
+            if s.starts_with(delimiter) && s.ends_with(delimiter) && s.len() >= strip_count * 2 {
+                return s[*strip_count..s.len() - strip_count].to_string();
+            }
+        }
+
+        // No matching delimiter found, return as-is
+        s.to_string()
     }
 }

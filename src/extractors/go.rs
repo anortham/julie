@@ -1156,16 +1156,8 @@ impl GoExtractor {
     }
 
     fn extract_variable_type_from_signature(&self, signature: &str) -> Option<String> {
-        // Extract type from variable signatures like "var name string = value"
-        if signature.starts_with("var ") {
-            let parts: Vec<&str> = signature.split_whitespace().collect();
-            if parts.len() >= 3 {
-                let potential_type = parts[2];
-                if potential_type != "=" {
-                    return Some(potential_type.to_string());
-                }
-            }
-        } else if signature.starts_with("const ") {
+        // Extract type from variable signatures like "var name string = value" or "const name string = value"
+        if signature.starts_with("var ") || signature.starts_with("const ") {
             let parts: Vec<&str> = signature.split_whitespace().collect();
             if parts.len() >= 3 {
                 let potential_type = parts[2];
