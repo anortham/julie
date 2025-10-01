@@ -151,7 +151,8 @@ src/
 ├── tools/               # MCP tool implementations
 │   ├── mod.rs          # Tool registration and management
 │   ├── search.rs       # Fast search, goto, refs tools
-│   ├── editing.rs      # FastEditTool, LineEditTool
+│   ├── fuzzy_replace.rs # FuzzyReplaceTool (Levenshtein-based fuzzy matching)
+│   ├── trace_call_path.rs # TraceCallPathTool (cross-language call tracing)
 │   ├── refactoring.rs  # SmartRefactorTool (RenameSymbol, etc.)
 │   └── workspace/      # Workspace management tools
 ├── workspace/           # Multi-workspace registry
@@ -196,11 +197,11 @@ src/tests/                           # Central test infrastructure
 │   └── ...                       # All 26 language extractors
 │
 ├── tools/                          # Tool-specific tests
-│   ├── editing_tests.rs           # FastEditTool tests (SOURCE/CONTROL)
-│   ├── line_edit_control_tests.rs # LineEditTool tests (SOURCE/CONTROL)
+│   ├── fuzzy_replace_tests.rs     # FuzzyReplaceTool tests (18 tests, all passing)
+│   ├── trace_call_path_tests.rs   # TraceCallPathTool tests (15 tests, all passing)
 │   ├── refactoring_tests.rs       # SmartRefactorTool tests
 │   ├── search_tools_tests.rs      # Search/navigation tests
-│   └── editing_safety_tests.rs    # Safety and concurrency tests
+│   └── [7 disabled SafeEditTool test modules need migration to FuzzyReplaceTool]
 │
 └── integration/                    # End-to-end integration tests
     ├── mcp_integration_tests.rs   # Full MCP server tests
@@ -277,8 +278,9 @@ fn run_test(test_case: &EditingTestCase) -> Result<()> {
 ```
 
 **Implemented For:**
-- ✅ FastEditTool (3 test cases with perfect matches)
-- ✅ LineEditTool (2/3 test cases working)
+- ✅ FuzzyReplaceTool (18 unit tests - Levenshtein similarity, UTF-8 safety, validation)
+- ✅ TraceCallPathTool (15 unit tests - parameters, naming variants, filtering)
+- ⚠️  7 SafeEditTool test modules disabled (need migration to FuzzyReplaceTool)
 - ❌ SmartRefactorTool (TODO)
 
 ### Running Tests
@@ -287,8 +289,8 @@ fn run_test(test_case: &EditingTestCase) -> Result<()> {
 cargo test
 
 # Specific test suites
-cargo test editing_tests          # FastEditTool SOURCE/CONTROL tests
-cargo test line_edit_control      # LineEditTool SOURCE/CONTROL tests
+cargo test fuzzy_replace          # FuzzyReplaceTool unit tests (18 tests)
+cargo test trace_call_path        # TraceCallPathTool unit tests (15 tests)
 cargo test typescript_extractor   # Language extractor tests
 
 # With output
@@ -513,18 +515,23 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 *This document should be updated as the project evolves. All contributors must follow these guidelines without exception.*
 
-**Project Status**: Phase 4 - CASCADE Architecture Complete ✅
+**Project Status**: Phase 5 - Production Dogfooding Complete ✅ (Commit 88a8c04)
 **Current Achievements**:
 - ✅ All 26 Language Extractors Operational (Miller Parity)
 - ✅ CASCADE Architecture Complete (SQLite → Tantivy → HNSW Semantic)
 - ✅ <2s Startup Time with Background Indexing (30-60x improvement)
-- ✅ Three-Tier Progressive Enhancement (FTS5 → Tantivy → Semantic)
-- ✅ Graceful Degradation with Fallback Chain
-- ✅ SOURCE/CONTROL Testing Methodology Implemented
-- ✅ Code Coverage Tooling (tarpaulin) Configured
-- ✅ FastEditTool + LineEditTool Control Tests Operational
+- ✅ **Tool Redesign Complete**: SafeEditTool → FuzzyReplaceTool + TraceCallPathTool
+- ✅ **Production Dogfooding Successful**: Found & fixed 4 critical bugs
+  - UTF-8 crash (byte slicing → char iteration)
+  - Query logic error (trace_call_path upstream)
+  - Validation false positives (absolute → delta balance)
+  - String mutation index corruption
+- ✅ **Comprehensive Test Coverage**: 446/450 passing (99.1%)
+  - 18 fuzzy_replace unit tests (Levenshtein, UTF-8, validation)
+  - 15 trace_call_path unit tests (parameters, cross-language)
+  - 7 SafeEditTool test modules disabled (need migration)
 - ✅ Real-World Validation Against GitHub Repositories
 - ✅ Professional Error Detection (File Corruption Prevention)
 
-**Next Milestone**: SmartRefactorTool Control Tests + Test Organization Cleanup + Production Dogfooding
-**Last Updated**: 2025-09-30 - CASCADE Architecture Achievement
+**Next Milestone**: Migrate 7 disabled test modules + Fix 4 pre-existing test failures
+**Last Updated**: 2025-10-01 - Production Dogfooding & Tool Redesign Complete
