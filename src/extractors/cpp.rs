@@ -1346,12 +1346,8 @@ impl CppExtractor {
         modifier_types: &[&str],
     ) {
         for child in node.children(&mut node.walk()) {
-            if modifier_types.contains(&child.kind()) {
-                let modifier = self.base.get_node_text(&child);
-                if !modifiers.contains(&modifier) {
-                    modifiers.push(modifier);
-                }
-            } else if child.kind() == "storage_class_specifier" {
+            // Collect modifiers from both modifier_types and storage_class_specifier
+            if modifier_types.contains(&child.kind()) || child.kind() == "storage_class_specifier" {
                 let modifier = self.base.get_node_text(&child);
                 if !modifiers.contains(&modifier) {
                     modifiers.push(modifier);
@@ -1521,9 +1517,7 @@ impl CppExtractor {
         let storage_types = ["static", "extern", "mutable", "thread_local"];
 
         for child in node.children(&mut node.walk()) {
-            if storage_types.contains(&child.kind()) {
-                storage_classes.push(self.base.get_node_text(&child));
-            } else if child.kind() == "storage_class_specifier" {
+            if storage_types.contains(&child.kind()) || child.kind() == "storage_class_specifier" {
                 storage_classes.push(self.base.get_node_text(&child));
             }
         }
@@ -1536,9 +1530,7 @@ impl CppExtractor {
         let type_kinds = ["const", "constexpr", "volatile"];
 
         for child in node.children(&mut node.walk()) {
-            if type_kinds.contains(&child.kind()) {
-                type_specifiers.push(self.base.get_node_text(&child));
-            } else if child.kind() == "type_qualifier" {
+            if type_kinds.contains(&child.kind()) || child.kind() == "type_qualifier" {
                 type_specifiers.push(self.base.get_node_text(&child));
             }
         }

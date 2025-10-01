@@ -683,7 +683,7 @@ impl KotlinExtractor {
 
         if let Some(modifiers_list) = modifiers_list {
             for child in modifiers_list.children(&mut modifiers_list.walk()) {
-                // Handle modifier nodes by extracting their text content
+                // Handle modifier and annotation nodes by extracting their text content
                 if matches!(
                     child.kind(),
                     "class_modifier"
@@ -692,11 +692,8 @@ impl KotlinExtractor {
                         | "visibility_modifier"
                         | "inheritance_modifier"
                         | "member_modifier"
+                        | "annotation"
                 ) {
-                    modifiers.push(self.base.get_node_text(&child));
-                }
-                // Handle annotation nodes
-                else if child.kind() == "annotation" {
                     modifiers.push(self.base.get_node_text(&child));
                 }
                 // Fallback: check for direct modifier keywords (backward compatibility)
