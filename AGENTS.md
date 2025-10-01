@@ -125,7 +125,7 @@ src/
 ├── tools/               # MCP tool implementations
 │   ├── mod.rs          # Tool registration and management
 │   ├── search.rs       # Fast search, goto, refs tools
-│   ├── editing.rs      # FastEditTool, LineEditTool
+│   ├── safe_editing.rs # SafeEditTool (DMP-powered, 6 modes)
 │   ├── refactoring.rs  # SmartRefactorTool (RenameSymbol, etc.)
 │   └── workspace/      # Workspace management tools
 ├── workspace/           # Multi-workspace registry
@@ -170,8 +170,8 @@ src/tests/                           # Central test infrastructure
 │   └── ...                       # All 26 language extractors
 │
 ├── tools/                          # Tool-specific tests
-│   ├── editing_tests.rs           # FastEditTool tests (SOURCE/CONTROL)
-│   ├── line_edit_control_tests.rs # LineEditTool tests (SOURCE/CONTROL)
+│   ├── editing_tests.rs           # SafeEditTool tests (SOURCE/CONTROL)
+│   ├── line_edit_control_tests.rs # SafeEditTool line mode tests (SOURCE/CONTROL)
 │   ├── refactoring_tests.rs       # SmartRefactorTool tests
 │   ├── search_tools_tests.rs      # Search/navigation tests
 │   └── editing_safety_tests.rs    # Safety and concurrency tests
@@ -251,8 +251,7 @@ fn run_test(test_case: &EditingTestCase) -> Result<()> {
 ```
 
 **Implemented For:**
-- ✅ FastEditTool (3 test cases with perfect matches)
-- ✅ LineEditTool (2/3 test cases working)
+- ✅ SafeEditTool (all modes tested with perfect matches)
 - ❌ SmartRefactorTool (TODO)
 
 ### Running Tests
@@ -261,8 +260,8 @@ fn run_test(test_case: &EditingTestCase) -> Result<()> {
 cargo test
 
 # Specific test suites
-cargo test editing_tests          # FastEditTool SOURCE/CONTROL tests
-cargo test line_edit_control      # LineEditTool SOURCE/CONTROL tests
+cargo test editing_tests          # SafeEditTool SOURCE/CONTROL tests
+cargo test line_edit_control      # SafeEditTool line mode SOURCE/CONTROL tests
 cargo test typescript_extractor   # Language extractor tests
 
 # With output
@@ -491,7 +490,7 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 - ✅ All 26 Language Extractors Operational (Miller Parity)
 - ✅ SOURCE/CONTROL Testing Methodology Implemented
 - ✅ Code Coverage Tooling (tarpaulin) Configured
-- ✅ FastEditTool + LineEditTool Control Tests Operational
+- ✅ SafeEditTool Control Tests Operational (6 modes, DMP-powered)
 - ✅ Real-World Validation Against GitHub Repositories
 - ✅ Professional Error Detection (File Corruption Prevention)
 

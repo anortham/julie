@@ -5,8 +5,8 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod editing; // Legacy editing tools (FastEditTool, LineEditTool) - kept for EditingTransaction infrastructure
-pub mod safe_editing; // New consolidated safe_edit tool
+pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
+pub mod safe_editing; // Consolidated safe_edit tool (DMP-powered, 6 modes)
 pub mod exploration;
 pub mod navigation;
 pub mod refactoring;

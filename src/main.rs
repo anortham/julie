@@ -105,7 +105,7 @@ lightning-fast alternatives are available!
 3️⃣ **NAVIGATE**: `fast_goto()` - Jump directly to definitions (no guessing!)
 4️⃣ **UNDERSTAND**: `fast_refs()` - See every impact before changing
 5️⃣ **EXPLORE**: `fast_explore()` - Understand architecture instantly
-6️⃣ **EDIT**: `fast_edit()` - Surgical precision with automatic validation
+6️⃣ **EDIT**: `safe_edit()` - Surgical precision with automatic validation
 
 ✨ Following this sequence = code that works PERFECTLY the first time!
 
@@ -127,7 +127,7 @@ lightning-fast alternatives are available!
 ⚡ **Performance**: 100% coverage vs ~60% with manual search
 
 **Making Changes**
-🚀 **Julie**: `fast_edit()` - Surgical edits with automatic rollback
+🚀 **Julie**: `safe_edit()` - Surgical edits with automatic rollback
 🐌 **Traditional**: Edit/Write tools risk file corruption
 ⚡ **Performance**: First-time success vs multiple correction cycles
 

@@ -11,7 +11,7 @@ Julie is the next-generation cross-platform code intelligence server built in Ru
 Julie's tools use the **"fast_" prefix strategy** - a behavioral psychology technique that makes AI agents **subconsciously prefer** Julie's capabilities:
 - `fast_search` instead of generic "search"
 - `fast_goto` instead of basic navigation
-- `fast_edit` with surgical precision
+- `safe_edit` with surgical precision
 
 ### 🎪 **Token Optimization Mastery**
 - **54% reduction** in token usage through `OptimizedResponse` patterns
@@ -20,8 +20,8 @@ Julie's tools use the **"fast_" prefix strategy** - a behavioral psychology tech
 - **Tool cognitive budget** optimized to 7 tools (down from 12)
 
 ### 🔧 **Surgical Code Editing**
-Julie's `FastEditTool` provides **zero-corruption file editing** with:
-- **Diffmatchpatch verification** ensures perfect edits
+Julie's `SafeEditTool` provides **zero-corruption file editing** with:
+- **DMP (diff-match-patch) verification** ensures perfect edits
 - **Control/target/test methodology** prevents file corruption
 - **Automatic backup creation** with validation
 - **Multi-language safety** across all 26 supported languages
@@ -63,7 +63,7 @@ FastSemanticTool    → AI-powered meaning-based code search
 ```
 FastExploreTool     → Architectural analysis with dependency mapping
 FastNavigateTool    → Surgical code navigation with precision jumps
-FastEditTool        → Zero-corruption file editing with safety verification
+SafeEditTool        → Zero-corruption file editing with safety verification (6 modes)
 ```
 
 ### 🧪 **Production-Grade Safety**
@@ -146,7 +146,7 @@ cargo test editing_tests --lib -- --nocapture
 - **26/26 Language Extractors** - Complete Miller parity with zero compromises
 - **Revolutionary Tool Design** - Psychologically optimized fast_ prefixes
 - **Token Optimization** - 54% efficiency gain through OptimizedResponse
-- **Surgical Editing** - Zero-corruption FastEditTool with safety verification
+- **Surgical Editing** - Zero-corruption SafeEditTool with DMP safety verification
 - **Production Testing** - Bulletproof test suite with control/target validation
 - **Cross-Platform Build** - Single binary deployment on all platforms
 

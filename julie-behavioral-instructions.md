@@ -10,7 +10,7 @@ With Julie's native Rust architecture, you get:
 - 🚀 **fast_goto**: Jump to definitions instantly (no IPC overhead!)
 - 🎯 **fast_refs**: See all references before you blink
 - ✨ **fast_explore**: Architecture understanding at native speed
-- 🔧 **fast_edit**: Surgical precision with zero corruption risk
+- 🔧 **safe_edit**: Surgical precision with zero corruption risk
 
 **There's something deeply satisfying about tools that respond faster than you can think.**
 
@@ -21,7 +21,7 @@ With Julie's native Rust architecture, you get:
 2. **Then investigate** - Use `fast_search` to understand the codebase instantly
 3. **Navigate with confidence** - `fast_goto` shows you exact definitions
 4. **Analyze impact** - `fast_refs` reveals the full scope before you change anything
-5. **Edit with precision** - `fast_edit` makes surgical changes with automatic backup
+5. **Edit with precision** - `safe_edit` makes surgical changes with automatic backup
 6. **Celebrate the green checkmark** - That passing test is your victory!
 
 This approach brings immediate satisfaction - you've not just fixed a bug, you've permanently prevented its return while understanding the codebase deeply.
@@ -30,7 +30,7 @@ This approach brings immediate satisfaction - you've not just fixed a bug, you'v
 
 **Experience the satisfaction of:**
 - ⚡ **Lightning-fast discovery** - `fast_search` finds patterns in milliseconds across millions of lines
-- 🎯 **Surgical precision** - `fast_edit` makes exact changes with diffy validation and rollback
+- 🎯 **Surgical precision** - `safe_edit` makes exact changes with DMP validation and rollback
 - 🔍 **Complete understanding** - `fast_refs` shows every impact before you change code
 - 🚀 **First-time success** - `fast_goto` ensures you never guess about definitions
 - 🧭 **Architectural insight** - `fast_explore` reveals code structure instantly
@@ -45,7 +45,7 @@ This approach brings immediate satisfaction - you've not just fixed a bug, you'v
 3️⃣ **NAVIGATE**: `fast_goto` for precise definition jumping (no more hunting!)
 4️⃣ **ANALYZE**: `fast_refs` reveals full impact before changes (sleep well knowing nothing breaks)
 5️⃣ **EXPLORE**: `fast_explore` for architectural understanding (see the big picture)
-6️⃣ **EDIT**: `fast_edit` with surgical precision (automatic backup and validation)
+6️⃣ **EDIT**: `safe_edit` with surgical precision (automatic backup and validation)
 7️⃣ **VALIDATE**: Run tests to confirm success (celebrate those green checkmarks!)
 
 **✨ This sequence has a 95% first-time success rate - you'll love how smooth it feels.**
@@ -77,7 +77,7 @@ This approach brings immediate satisfaction - you've not just fixed a bug, you'v
 - ⚡ **Advantage**: **100% accuracy** across language boundaries
 
 ### Code Editing
-- 🚀 **Julie's `fast_edit`**: Surgical precision with diffy visualization and auto-rollback
+- 🚀 **Julie's `safe_edit`**: Surgical precision with DMP validation and auto-rollback
 - 🐌 **Built-in Edit**: Risk of corruption, no validation, no change preview
 - ⚡ **Safety**: **Zero corruption risk** with intelligent validation
 
@@ -131,7 +131,7 @@ Instead of testing implementation details, you test behavior that users actually
 - Search existing patterns first with confidence scoring (build on proven solutions)
 
 ### 🔧 Surgical Editing That Inspires Confidence
-- Use `fast_edit` with dry-run mode first (see exactly what will change)
+- Use `safe_edit` with dry-run mode first (see exactly what will change)
 - Leverage automatic backup creation (edit fearlessly knowing you can revert)
 - Trust syntax validation to catch structural errors (brace/bracket matching prevents silly mistakes)
 

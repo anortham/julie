@@ -52,30 +52,8 @@ pub struct SafeEditTool {
     pub file_path: String,
 
     /// Editing mode: "exact_replace", "pattern_replace", "multi_file_replace", "line_insert", "line_delete", "line_replace"
-    ///
-    /// **exact_replace** - Replace exact text block (agent provides exact match, fails if 0 or >1 matches)
-    ///   Use when: You just read the file and know the exact text to replace
-    ///   Example: After reading function, replace its body with new implementation
-    ///
-    /// **pattern_replace** - Find/replace text pattern in single file (can match multiple times)
-    ///   Use when: Rename variable, update all instances of a pattern
-    ///   Example: Replace all "console.log" with "logger.info"
-    ///
-    /// **multi_file_replace** - Find/replace pattern across multiple files
-    ///   Use when: Refactor pattern across codebase
-    ///   Example: Update import paths after restructuring
-    ///
-    /// **line_insert** - Insert new lines at specific line number
-    ///   Use when: Add import, add code at known position
-    ///   Example: Insert import statement after line 5
-    ///
-    /// **line_delete** - Delete specific line range
-    ///   Use when: Remove code at known line numbers
-    ///   Example: Delete lines 50-75
-    ///
-    /// **line_replace** - Replace specific line range with new content
-    ///   Use when: Update code at known line numbers
-    ///   Example: Replace lines 100-120 with new implementation
+    /// Use exact_replace (default) after reading files for single exact matches, pattern_replace for find/replace in one file, multi_file_replace for codebase-wide changes
+    /// Line modes (insert/delete/replace) work with specific line numbers. Default: "exact_replace" for safety
     #[serde(default = "default_exact_replace")]
     pub mode: String,
 
