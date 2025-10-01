@@ -8,7 +8,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
+use crate::tools::refactoring::SmartRefactorTool;
 use rust_mcp_sdk::schema::CallToolResult;
 
 /// Extract text from CallToolResult safely

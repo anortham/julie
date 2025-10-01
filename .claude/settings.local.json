@@ -67,7 +67,10 @@
       "Read(//Users/murphy/Source/tusk/**)",
       "Read(//Users/murphy/Source/sherpa/**)",
       "Bash(awk:*)",
-      "Read(//Users/murphy/Source/MyraNext/**)"
+      "Read(//Users/murphy/Source/MyraNext/**)",
+      "Read(//Users/murphy/Library/Logs/DiagnosticReports/**)",
+      "Bash(RUST_BACKTRACE=full cargo run --bin julie-server)",
+      "Read(//private/tmp/**)"
     ],
     "deny": [],
     "ask": []

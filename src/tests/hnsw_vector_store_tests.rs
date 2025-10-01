@@ -14,7 +14,8 @@
 #[cfg(test)]
 mod hnsw_tests {
     use crate::embeddings::vector_store::VectorStore;
-    use crate::embeddings::cosine_similarity;
+    // cosine_similarity not used in these tests
+    // use crate::embeddings::cosine_similarity;
     use anyhow::Result;
     use std::time::Instant;
     use tempfile::TempDir;

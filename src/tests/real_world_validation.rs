@@ -871,7 +871,7 @@ mod real_world_tests {
 mod real_world_refactoring_tests {
     use super::real_world_tests::get_files_with_extension;
     use crate::handler::JulieServerHandler;
-    use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
+    use crate::tools::refactoring::SmartRefactorTool;
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;

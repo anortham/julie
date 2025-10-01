@@ -1413,10 +1413,11 @@ async fn generate_embeddings_from_sqlite(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::database::SymbolDatabase;
-    use crate::tools::workspace::WorkspaceCommand;
-    use tempfile::TempDir;
+    // Imports commented out since test is disabled
+    // use super::*;
+    // use crate::database::SymbolDatabase;
+    // use crate::tools::workspace::WorkspaceCommand;
+    // use tempfile::TempDir;
 
     #[tokio::test]
     #[ignore] // TODO: Fix ManageWorkspaceTool struct field mismatch
