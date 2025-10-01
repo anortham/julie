@@ -3,7 +3,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::editing::{FastEditTool, LineEditTool};
+use crate::tools::SafeEditTool;
 
 /// Integration tests to verify FastEditTool and LineEditTool work correctly
 /// with transactional safety integration
@@ -68,16 +68,23 @@ function getUserData() {
 "#)?;
 
         // Create FastEditTool with transactional integration
-        let edit_tool = FastEditTool {
+        let edit_tool = SafeEditTool {
             file_path: file_path.clone(),
-            find_text: "getUserData".to_string(),
-            replace_text: "fetchUserData".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("getUserData".to_string()),
+            replace_text: Some("fetchUserData".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         // This should now use EditingTransaction internally
@@ -110,15 +117,23 @@ function getUserData() {
 "#)?;
 
         // Create LineEditTool with transactional integration
-        let edit_tool = LineEditTool {
+        let edit_tool = SafeEditTool {
             file_path: file_path.clone(),
-            operation: "replace".to_string(),
+            mode: "line_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: None,
+            replace_text: None,
+            line_number: None,
             start_line: Some(2),
             end_line: Some(2),
-            line_number: None,
             content: Some("    return process_user_data()".to_string()),
-            preserve_indentation: true,
+            file_pattern: None,
+            language: None,
+            limit: None,
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         // This should now use EditingTransaction internally
@@ -154,16 +169,23 @@ function validFunction() {
         let original_content = fixture.read_test_file(&file_path)?;
 
         // Create edit that would break syntax (unmatched braces)
-        let edit_tool = FastEditTool {
+        let edit_tool = SafeEditTool {
             file_path: file_path.clone(),
-            find_text: "{".to_string(),
-            replace_text: "{{".to_string(), // This will create unmatched braces
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("{".to_string()),
+            replace_text: Some("{{".to_string()), // This will create unmatched braces
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await?;
@@ -197,16 +219,23 @@ fn calculate_result() -> i32 {
         let original_content = fixture.read_test_file(&file_path)?;
 
         // Test dry-run mode
-        let edit_tool = FastEditTool {
+        let edit_tool = SafeEditTool {
             file_path: file_path.clone(),
-            find_text: "calculate_result".to_string(),
-            replace_text: "compute_result".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("calculate_result".to_string()),
+            replace_text: Some("compute_result".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
             dry_run: true,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await?;

@@ -1,9 +1,9 @@
-//! Comprehensive editing tests for FastEditTool
+//! Comprehensive editing tests for SafeEditTool pattern_replace mode
 //!
-//! This module contains bulletproof tests to ensure FastEditTool never corrupts files.
+//! This module contains bulletproof tests to ensure SafeEditTool never corrupts files.
 //! Uses control/target/test pattern with Google's diff-match-patch verification for safety.
 
-use crate::tools::FastEditTool;
+use crate::tools::SafeEditTool;
 use anyhow::Result;
 use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
 use std::fs;
@@ -112,7 +112,7 @@ fn verify_edit_result(result_content: &str, expected_content: &str, test_name: &
         "❌ EDIT VERIFICATION FAILED: {}\n\
         🚨 FILE CORRUPTION DETECTED! Edit result does not match expected target.\n\
         \n📊 Detailed Diff:\n{}\n\
-        \n⚠️ This is a CRITICAL safety failure - FastEditTool would have corrupted the file!",
+        \n⚠️ This is a CRITICAL safety failure - SafeEditTool would have corrupted the file!",
         test_name,
         patch
     ));
@@ -123,10 +123,10 @@ mod comprehensive_editing_tests {
     use super::*;
     // use tokio_test;  // Currently unused
 
-    /// Test that FastEditTool performs exact edits without file corruption
+    /// Test that SafeEditTool pattern_replace mode performs exact edits without file corruption
     #[tokio::test]
     async fn test_all_editing_scenarios_comprehensive() -> Result<()> {
-        println!("🧪 Starting comprehensive editing safety tests...");
+        println!("🧪 Starting comprehensive SafeEditTool pattern_replace tests...");
         println!(
             "🛡️ Testing {} scenarios for file corruption prevention",
             EDITING_TEST_CASES.len()
@@ -171,7 +171,7 @@ mod comprehensive_editing_tests {
         println!("❌ Failed: {}/{}", failed_tests, EDITING_TEST_CASES.len());
 
         if failed_tests == 0 {
-            println!("🛡️ ALL TESTS PASSED - FastEditTool is safe for production use!");
+            println!("🛡️ ALL TESTS PASSED - SafeEditTool pattern_replace mode is safe for production use!");
             println!("💯 Zero file corruption detected across all test scenarios");
         }
 
@@ -188,17 +188,24 @@ mod comprehensive_editing_tests {
         let expected_content = load_control_file(test_case.control_file)?;
         println!("🎯 Control state loaded from: {}", test_case.control_file);
 
-        // Step 3: Create FastEditTool and perform edit
-        let edit_tool = FastEditTool {
+        // Step 3: Create SafeEditTool and perform edit using pattern_replace mode
+        let edit_tool = SafeEditTool {
             file_path: test_file_path.to_string_lossy().to_string(),
-            find_text: test_case.find_text.to_string(),
-            replace_text: test_case.replace_text.to_string(),
-            mode: None, // Single file mode (original behavior)
-            language: None,
+            mode: "pattern_replace".to_string(), // Pattern replacement mode
+            old_text: None, // Not used in pattern_replace mode
+            new_text: None, // Not used in pattern_replace mode
+            find_text: Some(test_case.find_text.to_string()),
+            replace_text: Some(test_case.replace_text.to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
             dry_run: false, // Actually perform the edit
+            validate: true,
+            preserve_indentation: true,
         };
 
         // Create a mock handler for the edit operation
@@ -206,20 +213,22 @@ mod comprehensive_editing_tests {
         // For now, we'll test the edit logic directly
         let original_content = fs::read_to_string(&test_file_path)?;
 
-        // Perform the replacement (same logic as FastEditTool)
-        if !original_content.contains(&edit_tool.find_text) {
+        // Perform the replacement (same logic as SafeEditTool pattern_replace mode)
+        let find_text = edit_tool.find_text.as_ref().unwrap();
+        let replace_text = edit_tool.replace_text.as_ref().unwrap();
+
+        if !original_content.contains(find_text.as_str()) {
             return Err(anyhow::anyhow!(
-                "Find text '{}' not found in control file",
-                edit_tool.find_text
+                "Find text '{}' not found in source file",
+                find_text
             ));
         }
 
-        let modified_content =
-            original_content.replace(&edit_tool.find_text, &edit_tool.replace_text);
+        let modified_content = original_content.replace(find_text.as_str(), replace_text.as_str());
 
         // Write the result
         fs::write(&test_file_path, &modified_content)?;
-        println!("✏️ Edit operation completed");
+        println!("✏️ SafeEditTool pattern_replace operation completed");
 
         // Step 4: Load actual result
         let actual_content = fs::read_to_string(&test_file_path)?;
@@ -241,16 +250,23 @@ mod comprehensive_editing_tests {
         let empty_file = temp_dir.join("empty.txt");
         fs::write(&empty_file, "")?;
 
-        let edit_tool = FastEditTool {
+        let edit_tool = SafeEditTool {
             file_path: empty_file.to_string_lossy().to_string(),
-            find_text: "nonexistent".to_string(),
-            replace_text: "replacement".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("nonexistent".to_string()),
+            replace_text: Some("replacement".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
             validate: true,
             dry_run: false,
+            preserve_indentation: true,
         };
 
         // This should fail safely without corruption
@@ -269,13 +285,15 @@ mod comprehensive_editing_tests {
         Ok(())
     }
 
-    async fn edit_empty_file_test(edit_tool: &FastEditTool) -> Result<()> {
-        // Simulate the FastEditTool logic for empty file
+    async fn edit_empty_file_test(edit_tool: &SafeEditTool) -> Result<()> {
+        // Simulate the SafeEditTool pattern_replace logic for empty file
         let content = fs::read_to_string(&edit_tool.file_path)?;
 
-        if !content.contains(&edit_tool.find_text) {
-            // This is expected behavior - should fail gracefully
-            return Ok(());
+        if let Some(find_text) = &edit_tool.find_text {
+            if !content.contains(find_text.as_str()) {
+                // This is expected behavior - should fail gracefully
+                return Ok(());
+            }
         }
 
         Ok(())

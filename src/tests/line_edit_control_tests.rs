@@ -1,10 +1,10 @@
 //! Comprehensive LINE EDIT control tests following SOURCE/CONTROL methodology
 //!
-//! This module implements the professional SOURCE/CONTROL testing pattern for LineEditTool.
+//! This module implements the professional SOURCE/CONTROL testing pattern for SafeEditTool line modes.
 //! SOURCE files are never edited, CONTROL files show expected results.
 //! Every edit is verified against control files using diff-match-patch.
 
-use crate::tools::LineEditTool;
+use crate::tools::SafeEditTool;
 use anyhow::Result;
 use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
 use std::fs;
@@ -42,8 +42,8 @@ const LINE_EDIT_TEST_CASES: &[LineEditTestCase] = &[
         content: None,
         description: "Delete comment line from function",
     },
-    // NOTE: Complex function renaming removed - that's a job for SmartRefactorTool, not LineEditTool
-    // LineEditTool should handle simple line-by-line operations only
+    // NOTE: Complex function renaming removed - that's a job for SmartRefactorTool, not SafeEditTool line modes
+    // SafeEditTool line modes should handle simple line-by-line operations only
 ];
 
 /// Test helper to set up temp directories and files
@@ -111,7 +111,7 @@ fn verify_line_edit_result(
         "❌ LINE EDIT VERIFICATION FAILED: {}\n\
         🚨 FILE CORRUPTION DETECTED! Line edit result does not match expected control.\n\
         \n📊 Detailed Diff:\n{}\n\
-        \n⚠️ This is a CRITICAL safety failure - LineEditTool would have corrupted the file!",
+        \n⚠️ This is a CRITICAL safety failure - SafeEditTool line mode would have corrupted the file!",
         test_name,
         patch
     ));
@@ -121,10 +121,10 @@ fn verify_line_edit_result(
 mod line_edit_control_tests {
     use super::*;
 
-    /// Test that LineEditTool performs exact line edits without file corruption
+    /// Test that SafeEditTool line modes perform exact line edits without file corruption
     #[tokio::test]
     async fn test_all_line_edit_control_scenarios() -> Result<()> {
-        println!("🧪 Starting comprehensive LINE EDIT control tests...");
+        println!("🧪 Starting comprehensive SafeEditTool LINE EDIT control tests...");
         println!(
             "🛡️ Testing {} line edit scenarios with SOURCE/CONTROL verification",
             LINE_EDIT_TEST_CASES.len()
@@ -153,7 +153,7 @@ mod line_edit_control_tests {
                     // For line editing, we should fail hard on ANY corruption
                     return Err(anyhow::anyhow!(
                         "🚨 CRITICAL LINE EDIT FAILURE: Test '{}' detected file corruption!\n\
-                        LineEditTool must be 100% reliable for production use.\n\
+                        SafeEditTool line modes must be 100% reliable for production use.\n\
                         Error: {}",
                         test_case.name,
                         e
@@ -166,7 +166,7 @@ mod line_edit_control_tests {
         println!("✅ Passed: {}/{}", passed_tests, LINE_EDIT_TEST_CASES.len());
 
         if passed_tests == LINE_EDIT_TEST_CASES.len() {
-            println!("🛡️ ALL LINE EDIT TESTS PASSED - LineEditTool is safe for production use!");
+            println!("🛡️ ALL LINE EDIT TESTS PASSED - SafeEditTool line modes are safe for production use!");
             println!("💯 Zero file corruption detected across all line editing scenarios");
         }
 
@@ -186,16 +186,27 @@ mod line_edit_control_tests {
         let expected_content = load_line_edit_control_file(test_case.control_file)?;
         println!("🎯 Control state loaded from: {}", test_case.control_file);
 
-        // Step 3: Create LineEditTool and perform edit
-        let _line_edit_tool = LineEditTool {
+        // Step 3: Create SafeEditTool with appropriate line mode and perform edit
+        // Map old operation names to new mode names: "insert" → "line_insert", "delete" → "line_delete"
+        let mode = format!("line_{}", test_case.operation);
+
+        let _line_edit_tool = SafeEditTool {
             file_path: test_file_path.to_string_lossy().to_string(),
-            operation: test_case.operation.to_string(),
+            mode,
+            old_text: None, // Not used in line modes
+            new_text: None, // Not used in line modes
+            find_text: None, // Not used in line modes
+            replace_text: None, // Not used in line modes
             line_number: test_case.line_number,
+            start_line: None, // Would be used for line_delete/line_replace
+            end_line: None, // Would be used for line_delete/line_replace
             content: test_case.content.map(|s| s.to_string()),
-            start_line: None,
-            end_line: None,
-            preserve_indentation: true,
+            file_pattern: None,
+            language: None,
+            limit: None,
             dry_run: false, // Actually perform the edit
+            validate: true,
+            preserve_indentation: true,
         };
 
         // Step 4: Simulate the line edit operation

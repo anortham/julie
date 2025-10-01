@@ -10,7 +10,7 @@ use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
 
 use crate::handler::JulieServerHandler;
-use crate::tools::editing::{FastEditTool, LineEditTool};
+use crate::tools::SafeEditTool;
 use rust_mcp_sdk::schema::CallToolResult;
 
 /// Extract text from CallToolResult safely
@@ -84,36 +84,82 @@ mod concurrency_tests {
 
         let task1 = tokio::spawn(async move {
             let handler_1 = JulieServerHandler::new().await.unwrap();
-            let tool = FastEditTool {
+            let tool = SafeEditTool {
+
                 file_path: file_path_1,
-                find_text: "original".to_string(),
-                replace_text: "modified1".to_string(),
-                mode: None,
-                language: None,
+
+                mode: "pattern_replace".to_string(),
+
+                old_text: None,
+
+                new_text: None,
+
+                find_text: Some("original".to_string()),
+
+                replace_text: Some("modified1".to_string()),
+
+                line_number: None,
+
+                start_line: None,
+
+                end_line: None,
+
+                content: None,
+
                 file_pattern: None,
+
+                language: None,
+
                 limit: None,
-                validate: true,
 
                 dry_run: false,
-            };
+
+                validate: true,
+
+                preserve_indentation: true,
+
+            }
             tool.call_tool(&handler_1).await
         });
 
         let task2 = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await; // Slight delay
             let handler_2 = JulieServerHandler::new().await.unwrap();
-            let tool = FastEditTool {
+            let tool = SafeEditTool {
+
                 file_path: file_path_2,
-                find_text: "line 2".to_string(),
-                replace_text: "modified2".to_string(),
-                mode: None,
-                language: None,
+
+                mode: "pattern_replace".to_string(),
+
+                old_text: None,
+
+                new_text: None,
+
+                find_text: Some("line 2".to_string()),
+
+                replace_text: Some("modified2".to_string()),
+
+                line_number: None,
+
+                start_line: None,
+
+                end_line: None,
+
+                content: None,
+
                 file_pattern: None,
+
+                language: None,
+
                 limit: None,
-                validate: true,
 
                 dry_run: false,
-            };
+
+                validate: true,
+
+                preserve_indentation: true,
+
+            }
             tool.call_tool(&handler_2).await
         });
 
@@ -144,34 +190,82 @@ mod concurrency_tests {
 
         let task1 = tokio::spawn(async move {
             let handler_1 = JulieServerHandler::new().await.unwrap();
-            let tool = LineEditTool {
+            let tool = SafeEditTool {
+
                 file_path: file_path_1,
-                operation: "replace".to_string(),
-                start_line: Some(1),
-                end_line: Some(1),
+
+                mode: "line_replace".to_string(),
+
+                old_text: None,
+
+                new_text: None,
+
+                find_text: None,
+
+                replace_text: None,
+
                 line_number: None,
+
+                start_line: Some(1),
+
+                end_line: Some(1),
+
                 content: Some("REPLACED1".to_string()),
-                preserve_indentation: true,
+
+                file_pattern: None,
+
+                language: None,
+
+                limit: None,
 
                 dry_run: false,
-            };
+
+                validate: true,
+
+                preserve_indentation: true,
+
+            }
             tool.call_tool(&handler_1).await
         });
 
         let task2 = tokio::spawn(async move {
             sleep(Duration::from_millis(5)).await;
             let handler_2 = JulieServerHandler::new().await.unwrap();
-            let tool = LineEditTool {
+            let tool = SafeEditTool {
+
                 file_path: file_path_2,
-                operation: "replace".to_string(),
-                start_line: Some(5),
-                end_line: Some(5),
+
+                mode: "line_replace".to_string(),
+
+                old_text: None,
+
+                new_text: None,
+
+                find_text: None,
+
+                replace_text: None,
+
                 line_number: None,
+
+                start_line: Some(5),
+
+                end_line: Some(5),
+
                 content: Some("REPLACED5".to_string()),
-                preserve_indentation: true,
+
+                file_pattern: None,
+
+                language: None,
+
+                limit: None,
 
                 dry_run: false,
-            };
+
+                validate: true,
+
+                preserve_indentation: true,
+
+            }
             tool.call_tool(&handler_2).await
         });
 
@@ -206,18 +300,58 @@ mod permission_tests {
         // Make file read-only
         fixture.make_readonly(&file_path).unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            find_text: "readonly".to_string(),
-            replace_text: "modified".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("readonly".to_string()),
+
+
+            replace_text: Some("modified".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
-            validate: true,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -245,18 +379,58 @@ mod permission_tests {
         perms.set_mode(0o555); // Read-only directory
         fs::set_permissions(parent_dir, perms).unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            find_text: "content".to_string(),
-            replace_text: "new content".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("content".to_string()),
+
+
+            replace_text: Some("new content".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
-            validate: true,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await;
@@ -285,18 +459,58 @@ mod encoding_tests {
         let utf8_content = "Hello 世界 🌍 café naïve résumé";
         let file_path = fixture.create_test_file("utf8.txt", utf8_content).unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            find_text: "世界".to_string(),
-            replace_text: "world".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("世界".to_string()),
+
+
+            replace_text: Some("world".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
-            validate: true,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -321,18 +535,58 @@ mod encoding_tests {
         let file_path = fixture.temp_dir.path().join("binary.dat");
         fs::write(&file_path, binary_data).unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.to_string_lossy().to_string(),
-            find_text: "text".to_string(),
-            replace_text: "replacement".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("text".to_string()),
+
+
+            replace_text: Some("replacement".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
-            validate: true,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -359,18 +613,58 @@ mod security_tests {
         // Try to edit a file outside the temp directory
         let malicious_path = "../../../etc/passwd";
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: malicious_path.to_string(),
-            find_text: "root".to_string(),
-            replace_text: "hacked".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("root".to_string()),
+
+
+            replace_text: Some("hacked".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
-            validate: true,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -400,18 +694,58 @@ mod security_tests {
         {
             std::os::unix::fs::symlink(&target_file, &symlink_path).unwrap();
 
-            let tool = FastEditTool {
+            let tool = SafeEditTool {
+
+
                 file_path: symlink_path.to_string_lossy().to_string(),
-                find_text: "target".to_string(),
-                replace_text: "modified".to_string(),
-                mode: None,
-                language: None,
+
+
+                mode: "pattern_replace".to_string(),
+
+
+                old_text: None,
+
+
+                new_text: None,
+
+
+                find_text: Some("target".to_string()),
+
+
+                replace_text: Some("modified".to_string()),
+
+
+                line_number: None,
+
+
+                start_line: None,
+
+
+                end_line: None,
+
+
+                content: None,
+
+
                 file_pattern: None,
+
+
+                language: None,
+
+
                 limit: None,
-                validate: true,
+
 
                 dry_run: false,
-            };
+
+
+                validate: true,
+
+
+                preserve_indentation: true,
+
+
+            }
 
             let handler = JulieServerHandler::new().await.unwrap();
             let result = tool.call_tool(&handler).await.unwrap();
@@ -444,18 +778,58 @@ mod performance_tests {
             .create_test_file("large.txt", &large_content)
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            find_text: "line of text".to_string(),
-            replace_text: "modified line".to_string(),
-            mode: None,
-            language: None,
+
+
+            mode: "pattern_replace".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: Some("line of text".to_string()),
+
+
+            replace_text: Some("modified line".to_string()),
+
+
+            line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
+            content: None,
+
+
             file_pattern: None,
+
+
+            language: None,
+
+
             limit: None,
+
+
+            dry_run: true,
+
+
             validate: true,
 
-            dry_run: true, // Dry run to avoid huge file modification
-        };
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let start_time = std::time::Instant::now();
@@ -481,17 +855,58 @@ mod performance_tests {
             .create_test_file("long_lines.txt", &content)
             .unwrap();
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            operation: "read".to_string(),
-            start_line: Some(2),
-            end_line: Some(2),
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: Some(2),
+
+
+            end_line: Some(2),
+
+
             content: None,
-            preserve_indentation: true,
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();

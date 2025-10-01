@@ -20,6 +20,7 @@ use std::fs;
 use tracing::{debug, info};
 
 use crate::handler::JulieServerHandler;
+use crate::tools::editing::EditingTransaction; // Atomic file operations
 use crate::tools::navigation::FastRefsTool;
 use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
@@ -336,8 +337,9 @@ impl SmartRefactorTool {
                 return Err(anyhow::anyhow!("Some patches failed to apply"));
             }
 
-            // Write the final content
-            fs::write(file_path, &final_content)?;
+            // Write the final content atomically using EditingTransaction
+            let transaction = EditingTransaction::begin(file_path)?;
+            transaction.commit(&final_content)?;
         }
 
         Ok(changes_count)
@@ -631,8 +633,9 @@ impl SmartRefactorTool {
             &function_call,
         )?;
 
-        // Write the modified file
-        fs::write(file_path, &new_content)?;
+        // Write the modified file atomically using EditingTransaction
+        let transaction = EditingTransaction::begin(file_path)?;
+        transaction.commit(&new_content)?;
 
         let message = format!(
             "✅ Extract function successful: '{}'\n\
@@ -975,8 +978,9 @@ impl SmartRefactorTool {
             new_body,
         )?;
 
-        // Write the modified file
-        fs::write(file_path, &new_content)?;
+        // Write the modified file atomically using EditingTransaction
+        let transaction = EditingTransaction::begin(file_path)?;
+        transaction.commit(&new_content)?;
 
         let message = format!(
             "✅ Replace symbol body successful: '{}'\n\

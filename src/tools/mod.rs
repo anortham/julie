@@ -5,7 +5,8 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod editing;
+pub mod editing; // Legacy editing tools (FastEditTool, LineEditTool) - kept for EditingTransaction infrastructure
+pub mod safe_editing; // New consolidated safe_edit tool
 pub mod exploration;
 pub mod navigation;
 pub mod refactoring;
@@ -13,7 +14,8 @@ pub mod search;
 pub mod workspace;
 
 // Re-export all tools for external use
-pub use editing::{FastEditTool, LineEditTool};
+pub use editing::EditingTransaction; // Shared transaction infrastructure
+pub use safe_editing::SafeEditTool; // New consolidated editing tool
 pub use exploration::{FastExploreTool, FindLogicTool};
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use refactoring::SmartRefactorTool;
@@ -32,16 +34,15 @@ use rust_mcp_sdk::tool_box;
 tool_box!(
     JulieTools,
     [
-        // Core tools - all migrated
+        // Search & Navigation tools
         FastSearchTool,
         FastGotoTool,
         FastRefsTool,
         FastExploreTool,
         FindLogicTool,
-        // Editing tools
-        FastEditTool,
-        LineEditTool,
-        // Refactoring tools
+        // Direct editing tool (DMP-powered, 6 modes)
+        SafeEditTool,
+        // Semantic refactoring tool
         SmartRefactorTool,
         // Workspace management
         ManageWorkspaceTool,

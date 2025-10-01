@@ -1,14 +1,13 @@
-//! TDD tests for FastEditTool search_and_replace enhancement
+//! Multi-file replacement tests for SafeEditTool multi_file_replace mode
 //!
-//! CRITICAL: These tests define the enhanced FastEditTool behavior BEFORE implementation
-//!
-//! Enhancement: Add search_and_replace capability that delegates to:
+//! These tests verify that SafeEditTool's multi_file_replace mode safely performs
+//! find/replace operations across multiple files using:
 //! - fast_search: Find files/patterns matching criteria
-//! - fast_edit: Perform replacements on found files
+//! - safe_edit multi_file_replace: Perform replacements on found files
 //!
 //! Following TDD methodology:
 //! 1. RED: Write failing tests that define expected behavior
-//! 2. GREEN: Enhance FastEditTool to make tests pass
+//! 2. GREEN: Implement SafeEditTool to make tests pass
 //! 3. REFACTOR: Improve code while keeping tests green
 
 use anyhow::Result;
@@ -18,16 +17,16 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-// Import enhanced FastEditTool for testing
+// Import SafeEditTool for testing
 use crate::handler::JulieServerHandler;
-use crate::tools::editing::FastEditTool;
+use crate::tools::SafeEditTool;
 
-/// Test fixture for enhanced FastEditTool tests
-struct FastEditTestFixture {
+/// Test fixture for SafeEditTool multi_file_replace mode tests
+struct SafeEditTestFixture {
     temp_dir: TempDir,
 }
 
-impl FastEditTestFixture {
+impl SafeEditTestFixture {
     fn new() -> Result<Self> {
         Ok(Self {
             temp_dir: TempDir::new()?,
@@ -74,9 +73,8 @@ impl Drop for EnvVarGuard {
     }
 }
 
-// Enhanced FastEditTool should support both modes:
-// 1. Original mode: single file editing (existing behavior)
-// 2. New mode: search_and_replace across multiple files
+// SafeEditTool multi_file_replace mode:
+// Searches across multiple files and performs safe replacements
 
 #[cfg(test)]
 mod backwards_compatibility_tests {
@@ -84,23 +82,28 @@ mod backwards_compatibility_tests {
 
     #[tokio::test]
     async fn test_original_single_file_mode_still_works() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let file_path = fixture.create_test_file("test.txt", "Hello world").unwrap();
 
-        // Original FastEditTool usage should still work
-        let tool = FastEditTool {
+        // SafeEditTool pattern_replace mode for single file
+        let tool = SafeEditTool {
             file_path: file_path.to_string_lossy().to_string(),
-            find_text: "Hello".to_string(),
-            replace_text: "Hi".to_string(),
-            // Enhanced fields should have sensible defaults
-            mode: None, // None = original single-file mode
-            language: None,
+            mode: "pattern_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("Hello".to_string()),
+            replace_text: Some("Hi".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -122,7 +125,7 @@ mod search_and_replace_mode_tests {
     #[ignore = "search_and_replace mode requires indexed search output"]
     #[tokio::test]
     async fn test_search_and_replace_across_multiple_files() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let file1 = fixture
             .create_test_file("src/file1.js", "const userName = 'test';")
@@ -134,18 +137,24 @@ mod search_and_replace_mode_tests {
             .create_test_file("test.py", "user_name = 'test'")
             .unwrap();
 
-        // New search_and_replace mode
-        let tool = FastEditTool {
-            file_path: "".to_string(), // Empty for search mode
-            find_text: "userName".to_string(),
-            replace_text: "accountName".to_string(),
-            mode: Some("search_and_replace".to_string()), // New mode
-            language: Some("javascript".to_string()),
+        // SafeEditTool multi_file_replace mode
+        let tool = SafeEditTool {
+            file_path: "".to_string(), // Empty triggers multi-file mode
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("userName".to_string()),
+            replace_text: Some("accountName".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: Some("src/**".to_string()),
+            language: Some("javascript".to_string()),
             limit: Some(50),
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -184,7 +193,7 @@ mod search_and_replace_mode_tests {
     #[ignore = "search_and_replace mode requires indexed search output"]
     #[tokio::test]
     async fn test_search_and_replace_dry_run() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let file1 = fixture
             .create_test_file("test1.js", "const hello = 'world';")
@@ -193,17 +202,23 @@ mod search_and_replace_mode_tests {
             .create_test_file("test2.js", "function hello() {}")
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "".to_string(),
-            find_text: "hello".to_string(),
-            replace_text: "greeting".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: Some("javascript".to_string()),
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("hello".to_string()),
+            replace_text: Some("greeting".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: Some("*.js".to_string()),
+            language: Some("javascript".to_string()),
             limit: Some(50),
-            validate: true,
-
             dry_run: true, // Should not modify files
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -230,7 +245,7 @@ mod search_and_replace_mode_tests {
     #[ignore = "search_and_replace mode requires indexed search output"]
     #[tokio::test]
     async fn test_search_and_replace_with_file_pattern() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let test_file = fixture
             .create_test_file("component.test.js", "const value = 'test';")
@@ -239,17 +254,23 @@ mod search_and_replace_mode_tests {
             .create_test_file("component.js", "const value = 'production';")
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "".to_string(),
-            find_text: "value".to_string(),
-            replace_text: "data".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: None,
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("value".to_string()),
+            replace_text: Some("data".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: Some("*.test.js".to_string()), // Only test files
+            language: None,
             limit: Some(50),
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -272,7 +293,7 @@ mod delegation_behavior_tests {
     #[ignore = "search_and_replace mode requires indexed search output"]
     #[tokio::test]
     async fn test_delegates_to_fast_search_for_file_discovery() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let _file1 = fixture
             .create_test_file("utils/helper.ts", "export const API_URL = 'old';")
@@ -284,17 +305,23 @@ mod delegation_behavior_tests {
             .create_test_file("tests/api.test.js", "const API_URL = 'old';")
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "".to_string(),
-            find_text: "API_URL".to_string(),
-            replace_text: "API_ENDPOINT".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: Some("typescript".to_string()), // Should delegate to fast_search
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("API_URL".to_string()),
+            replace_text: Some("API_ENDPOINT".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: Some("typescript".to_string()), // Should delegate to fast_search
             limit: Some(50),
-            validate: true,
-
             dry_run: true, // Just test discovery
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -317,7 +344,7 @@ mod delegation_behavior_tests {
     #[ignore = "search_and_replace mode requires indexed search output"]
     #[tokio::test]
     async fn test_delegates_to_fast_edit_logic_for_replacements() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let file_path = fixture
             .create_test_file(
@@ -326,17 +353,24 @@ mod delegation_behavior_tests {
             )
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "".to_string(),
-            find_text: "hello".to_string(),
-            replace_text: "world".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: None,
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("hello".to_string()),
+            replace_text: Some("world".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: Some("*.js".to_string()),
+            language: None,
             limit: Some(50),
-            validate: true, // Should use fast_edit validation logic
-            // Should use fast_edit backup logic
             dry_run: false,
+            validate: true, // Should use safe_edit validation logic
+            preserve_indentation: true,
+            // Should use safe_edit backup logic
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -370,19 +404,25 @@ mod error_handling_tests {
 
     #[tokio::test]
     async fn test_search_mode_requires_empty_file_path() {
-        let _fixture = FastEditTestFixture::new().unwrap();
+        let _fixture = SafeEditTestFixture::new().unwrap();
 
-        let tool = FastEditTool {
-            file_path: "/some/specific/file.js".to_string(), // Should be empty for search mode
-            find_text: "test".to_string(),
-            replace_text: "demo".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: None,
+        let tool = SafeEditTool {
+            file_path: "/some/specific/file.js".to_string(), // Should be empty for multi-file mode
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("test".to_string()),
+            replace_text: Some("demo".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: Some("*.js".to_string()),
+            language: None,
             limit: Some(50),
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -395,19 +435,25 @@ mod error_handling_tests {
 
     #[tokio::test]
     async fn test_single_file_mode_requires_file_path() {
-        let _fixture = FastEditTestFixture::new().unwrap();
+        let _fixture = SafeEditTestFixture::new().unwrap();
 
-        let tool = FastEditTool {
-            file_path: "".to_string(), // Empty for single file mode is invalid
-            find_text: "test".to_string(),
-            replace_text: "demo".to_string(),
-            mode: None, // Single file mode
-            language: None,
+        let tool = SafeEditTool {
+            file_path: "".to_string(), // Empty triggers multi-file mode
+            mode: "pattern_replace".to_string(), // Use pattern_replace for single file behavior
+            old_text: None,
+            new_text: None,
+            find_text: Some("test".to_string()),
+            replace_text: Some("demo".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -420,23 +466,29 @@ mod error_handling_tests {
 
     #[tokio::test]
     async fn test_no_files_found_in_search_mode() {
-        let fixture = FastEditTestFixture::new().unwrap();
+        let fixture = SafeEditTestFixture::new().unwrap();
         let _env_guard = fixture.set_search_root();
         let _file = fixture
             .create_test_file("test.py", "print('hello')")
             .unwrap();
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "".to_string(),
-            find_text: "hello".to_string(),
-            replace_text: "world".to_string(),
-            mode: Some("search_and_replace".to_string()),
-            language: Some("javascript".to_string()), // No JS files exist
+            mode: "multi_file_replace".to_string(),
+            old_text: None,
+            new_text: None,
+            find_text: Some("hello".to_string()),
+            replace_text: Some("world".to_string()),
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: Some("javascript".to_string()), // No JS files exist
             limit: Some(50),
-            validate: true,
-
             dry_run: false,
+            validate: true,
+            preserve_indentation: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();

@@ -167,14 +167,18 @@
 
 ### 🟡 Performance Issues (Medium Priority)
 
-4. **N+1 Query Pattern in Navigation** - 🔧 **PARTIALLY FIXED** (2025-09-30)
-   - **Location**: `src/tools/navigation.rs:191` ✅ FIXED, line 735 still needs review
-   - **Issue**: `get_all_relationships()` loads ALL relationships, then filters in memory
-   - **Solution**: Replaced with `get_relationships_for_symbol()` targeted queries in find_definitions()
-   - **Performance**: Changed from O(n) linear scan to O(k * log n) indexed queries
-   - **Status**: Main navigation path fixed, exploration tools may legitimately need full scans
-   - **Tests**: Compiles successfully ✅
-   - **Related**: 6 instances in exploration.rs (under review - may be legitimate for full codebase analysis)
+4. ~~**N+1 Query Pattern in Navigation**~~ - ✅ **FULLY FIXED** (2025-09-30)
+   - **Locations Fixed**:
+     - `navigation.rs:191` - FastGotoTool ✅ (uses get_relationships_for_symbol)
+     - `navigation.rs:801` - FastRefsTool ✅ (now uses get_relationships_to_symbol)
+   - **Solution**: Added new `get_relationships_to_symbol()` database method
+   - **Performance**: O(n) linear scan → O(k * log n) indexed queries
+   - **Optimization**: Leverages existing `idx_rel_to` index on to_symbol_id column
+   - **Tests**: All 6 navigation tests passing ✅
+   - **Exploration Tools**: 6 instances in exploration.rs are **LEGITIMATE**
+     - `fast_explore` modes (overview/dependencies/hotspots/trace) NEED full codebase data
+     - Cannot optimize without changing feature purpose
+     - These are architectural analysis tools, not symbol lookups
 
 5. ~~**HNSW Lazy Loading Not Implemented**~~ - ✅ **FIXED** (2025-09-30)
    - **Location**: `src/tools/navigation.rs:290-330`

@@ -352,12 +352,8 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🏢 Find business logic: {:?}", tool);
                 tool.call_tool(self).await
             }
-            JulieTools::FastEditTool(tool) => {
-                debug!("⚡ Fast edit: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::LineEditTool(tool) => {
-                debug!("📝 Line edit: {:?}", tool);
+            JulieTools::SafeEditTool(tool) => {
+                debug!("✏️ Safe edit: {:?}", tool);
                 tool.call_tool(self).await
             }
             JulieTools::SmartRefactorTool(tool) => {

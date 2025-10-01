@@ -14,7 +14,7 @@ use tempfile::TempDir;
 
 // Import the LineEditTool for testing
 use crate::handler::JulieServerHandler;
-use crate::tools::editing::LineEditTool;
+use crate::tools::SafeEditTool;
 use rust_mcp_sdk::schema::CallToolResult;
 
 /// Helper function to extract text content from CallToolResult properly
@@ -71,17 +71,58 @@ mod count_operation_tests {
         let fixture = EditingTestFixture::new().unwrap();
         let file_path = fixture.create_test_file("empty.txt", "").unwrap();
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            operation: "count".to_string(),
-            start_line: None,
-            end_line: None,
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
             content: None,
-            preserve_indentation: true,
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -98,17 +139,58 @@ mod count_operation_tests {
             .create_test_file("single.txt", "single line")
             .unwrap();
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            operation: "count".to_string(),
-            start_line: None,
-            end_line: None,
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
             content: None,
-            preserve_indentation: true,
-            // No backup needed for count
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
+
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -133,17 +215,58 @@ mod count_operation_tests {
         let content = "line 1\nline 2\nline 3\n";
         let file_path = fixture.create_test_file("multi.txt", content).unwrap();
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            operation: "count".to_string(),
-            start_line: None,
-            end_line: None,
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
             content: None,
-            preserve_indentation: true,
-            // No backup needed for count
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
+
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -167,17 +290,58 @@ mod count_operation_tests {
         let fixture = EditingTestFixture::new().unwrap();
         let non_existent = fixture.temp_dir.path().join("missing.txt");
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: non_existent.to_string_lossy().to_string(),
-            operation: "count".to_string(),
-            start_line: None,
-            end_line: None,
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: None,
+
+
+            end_line: None,
+
+
             content: None,
-            preserve_indentation: true,
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await;
@@ -216,17 +380,58 @@ mod read_operation_tests {
         let content = "line 1\nline 2\nline 3\nline 4\nline 5\n";
         let file_path = fixture.create_test_file("test.txt", content).unwrap();
 
-        let tool = LineEditTool {
+        let tool = SafeEditTool {
+
+
             file_path: file_path.clone(),
-            operation: "read".to_string(),
-            start_line: Some(2),
-            end_line: Some(4),
+
+
+            mode: "line_insert".to_string(),
+
+
+            old_text: None,
+
+
+            new_text: None,
+
+
+            find_text: None,
+
+
+            replace_text: None,
+
+
             line_number: None,
+
+
+            start_line: Some(2),
+
+
+            end_line: Some(4),
+
+
             content: None,
-            preserve_indentation: true,
+
+
+            file_pattern: None,
+
+
+            language: None,
+
+
+            limit: None,
+
 
             dry_run: false,
-        };
+
+
+            validate: true,
+
+
+            preserve_indentation: true,
+
+
+        }
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();

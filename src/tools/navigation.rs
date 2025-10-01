@@ -793,21 +793,8 @@ impl FastRefsTool {
             self.symbol
         );
 
-        // Get relationships from database (persistent storage)
-        let relationships = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    db_lock.get_all_relationships().unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+        // No longer load ALL relationships here - we'll use targeted queries below
+        // This fixes the N+1 query pattern identified in STATUS.md #4
 
         // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
         let mut definitions = Vec::new();
@@ -892,16 +879,25 @@ impl FastRefsTool {
         definitions.dedup_by(|a, b| a.id == b.id);
 
         // Strategy 2: Find direct relationships - REFERENCES TO this symbol (not FROM it)
-        let symbol_ids: Vec<String> = definitions.iter().map(|s| s.id.clone()).collect();
-        let mut references: Vec<Relationship> = relationships
-            .iter()
-            .filter(|rel| {
-                // INFLATION FIX: Only count relationships where target is REFERENCED (to_symbol_id)
-                // NOT where target does the referencing (from_symbol_id)
-                symbol_ids.contains(&rel.to_symbol_id)
-            })
-            .cloned()
-            .collect();
+        // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
+        // This changes from O(n) linear scan to O(k * log n) indexed queries where k = definitions.len()
+        let mut references: Vec<Relationship> = Vec::new();
+
+        if let Ok(workspace) = handler.get_workspace().await {
+            if let Some(workspace) = workspace {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
+
+                    // For each definition, query relationships TO that symbol using indexed query
+                    for definition in &definitions {
+                        if let Ok(symbol_references) = db_lock.get_relationships_to_symbol(&definition.id) {
+                            // INFLATION FIX: get_relationships_to_symbol already filters for to_symbol_id
+                            references.extend(symbol_references);
+                        }
+                    }
+                }
+            }
+        }
 
         // Strategy 3: Semantic similarity matching DISABLED to prevent false positives
         // TODO: Re-enable with better similarity thresholds and validation

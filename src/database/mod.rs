@@ -1759,6 +1759,28 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
+    /// Get relationships TO a symbol (where symbol is the target/referenced)
+    /// Uses indexed query on to_symbol_id for O(log n) performance
+    /// Complements get_relationships_for_symbol() which finds relationships FROM a symbol
+    pub fn get_relationships_to_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
+            FROM relationships
+            WHERE to_symbol_id = ?1
+        ",
+        )?;
+
+        let rows = stmt.query_map([symbol_id], |row| self.row_to_relationship(row))?;
+
+        let mut relationships = Vec::new();
+        for row_result in rows {
+            relationships.push(row_result?);
+        }
+
+        Ok(relationships)
+    }
+
     /// Get symbols grouped by semantic_group field
     pub fn get_symbols_by_semantic_group(&self, semantic_group: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
