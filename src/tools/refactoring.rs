@@ -1101,14 +1101,8 @@ impl SmartRefactorTool {
         language: &str,
     ) -> Option<tree_sitter::Node<'a>> {
         // Language-specific function node types
-        let function_kinds = match language {
-            "rust" => vec!["function_item", "impl_item"],
-            "typescript" | "javascript" => vec!["function_declaration", "method_definition", "arrow_function"],
-            "python" => vec!["function_definition"],
-            "java" => vec!["method_declaration"],
-            "cpp" | "c" => vec!["function_definition"],
-            _ => vec!["function"], // Generic fallback
-        };
+        // Use shared language configuration for AST node types
+        let function_kinds = crate::language::get_function_node_kinds(language);
 
         // Check if this node is a function containing the target line
         if function_kinds.contains(&node.kind()) {
@@ -1133,13 +1127,8 @@ impl SmartRefactorTool {
 
     /// Find the line number after imports/use statements
     fn find_end_of_imports(&self, root: tree_sitter::Node, language: &str) -> Option<u32> {
-        let import_kinds = match language {
-            "rust" => vec!["use_declaration"],
-            "typescript" | "javascript" => vec!["import_statement"],
-            "python" => vec!["import_statement", "import_from_statement"],
-            "java" => vec!["import_declaration"],
-            _ => vec!["import"], // Generic fallback
-        };
+        // Use shared language configuration for AST node types
+        let import_kinds = crate::language::get_import_node_kinds(language);
 
         let mut last_import_line = 0u32;
 
@@ -1457,14 +1446,8 @@ impl SmartRefactorTool {
         language: &str,
     ) -> Option<tree_sitter::Node<'a>> {
         // Language-specific symbol definition node types
-        let symbol_kinds = match language {
-            "rust" => vec!["function_item", "struct_item", "enum_item", "impl_item", "trait_item"],
-            "typescript" | "javascript" => vec!["function_declaration", "class_declaration", "method_definition", "interface_declaration"],
-            "python" => vec!["function_definition", "class_definition"],
-            "java" => vec!["method_declaration", "class_declaration", "interface_declaration"],
-            "cpp" | "c" => vec!["function_definition", "class_specifier", "struct_specifier"],
-            _ => vec!["function", "class", "method"], // Generic fallback
-        };
+        // Use shared language configuration for AST node types
+        let symbol_kinds = crate::language::get_symbol_node_kinds(language);
 
         // Check if this node is a symbol definition
         if symbol_kinds.contains(&node.kind()) {
@@ -1492,17 +1475,17 @@ impl SmartRefactorTool {
 
     /// Get the name node of a symbol definition (language-specific)
     fn get_symbol_name_node<'a>(&self, node: tree_sitter::Node<'a>, language: &str) -> Option<tree_sitter::Node<'a>> {
-        match language {
-            "rust" => node.child_by_field_name("name"),
-            "typescript" | "javascript" => node.child_by_field_name("name"),
-            "python" => node.child_by_field_name("name"),
-            "java" => node.child_by_field_name("name"),
-            "cpp" | "c" => node.child_by_field_name("declarator").and_then(|d| d.child_by_field_name("declarator")),
-            _ => {
-                // Generic fallback: try common field names
-                node.child_by_field_name("name")
-                    .or_else(|| node.child_by_field_name("identifier"))
-            }
+        // Use shared language configuration for field name
+        let field_name = crate::language::get_symbol_name_field(language);
+
+        // C/C++ use nested declarator nodes, handle specially
+        if matches!(language, "cpp" | "c") {
+            node.child_by_field_name("declarator")
+                .and_then(|d| d.child_by_field_name("declarator"))
+        } else {
+            // Most languages use simple "name" field
+            node.child_by_field_name(field_name)
+                .or_else(|| node.child_by_field_name("identifier")) // Fallback
         }
     }
 
