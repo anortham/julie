@@ -292,7 +292,7 @@ mod hnsw_tests {
     fn test_hnsw_incremental_updates() -> Result<()> {
         // GIVEN: A VectorStore with HNSW index
         let mut store = VectorStore::new(384)?;
-        let mut dataset = generate_test_dataset(100, 384);
+        let dataset = generate_test_dataset(100, 384);
 
         for (id, vector) in &dataset {
             store.store_vector(id.clone(), vector.clone())?;

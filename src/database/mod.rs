@@ -2287,24 +2287,22 @@ impl SymbolDatabase {
                     workspace_placeholders
                 )
             }
+        } else if language.is_some() {
+            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
+             FROM symbols
+             WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2
+             ORDER BY name, file_path
+             LIMIT 1000".to_string()
         } else {
-            if language.is_some() {
-                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                        parent_id, metadata, semantic_group, confidence
-                 FROM symbols
-                 WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2
-                 ORDER BY name, file_path
-                 LIMIT 1000".to_string()
-            } else {
-                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                        parent_id, metadata, semantic_group, confidence
-                 FROM symbols
-                 WHERE (name LIKE ?1 OR code_context LIKE ?1)
-                 ORDER BY name, file_path
-                 LIMIT 1000".to_string()
-            }
+            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
+             FROM symbols
+             WHERE (name LIKE ?1 OR code_context LIKE ?1)
+             ORDER BY name, file_path
+             LIMIT 1000".to_string()
         };
 
         let mut stmt = self.conn.prepare(&query)?;
@@ -2784,10 +2782,7 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<
     let hash = calculate_file_hash(path)?;
 
     // CASCADE: Read file content for FTS5 search
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => Some(c),
-        Err(_) => None, // Binary files or read errors - skip content
-    };
+    let content = std::fs::read_to_string(path).ok(); // Binary files or read errors - skip content
 
     let last_modified = metadata
         .modified()?

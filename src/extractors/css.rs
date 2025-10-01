@@ -189,11 +189,9 @@ impl CSSExtractor {
             "ruleName".to_string(),
             serde_json::Value::String(rule_name.clone()),
         );
-        let at_rule_type = if rule_name.starts_with('@') {
-            &rule_name[1..]
-        } else {
-            &rule_name
-        };
+        let at_rule_type = rule_name
+            .strip_prefix('@')
+            .unwrap_or(&rule_name);
         metadata.insert(
             "atRuleType".to_string(),
             serde_json::Value::String(at_rule_type.to_string()),
@@ -611,6 +609,7 @@ impl CSSExtractor {
                 let mut query_parts = Vec::new();
 
                 // Get the query parts after @media
+                #[allow(clippy::needless_range_loop)] // Index needed for conditional break logic
                 for j in (i + 1)..children.len() {
                     let child = &children[j];
                     if child.kind() == "block" {

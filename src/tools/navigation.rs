@@ -142,12 +142,10 @@ impl FastGotoTool {
                 Err(e) => {
                     debug!("Search engine failed, falling back to SQLite database: {}", e);
                     // Fallback to database search for exact name lookup (indexed, fast)
-                    if let Ok(workspace) = handler.get_workspace().await {
-                        if let Some(workspace) = workspace {
-                            if let Some(db) = workspace.db.as_ref() {
-                                let db_lock = db.lock().await;
-                                exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
-                            }
+                    if let Ok(Some(workspace)) = handler.get_workspace().await {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
                         }
                     }
                 }
@@ -156,12 +154,10 @@ impl FastGotoTool {
             Err(e) => {
                 debug!("Search engine unavailable, using SQLite database: {}", e);
                 // Fallback to database search for exact name lookup (indexed, fast)
-                if let Ok(workspace) = handler.get_workspace().await {
-                    if let Some(workspace) = workspace {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
-                        }
+                if let Ok(Some(workspace)) = handler.get_workspace().await {
+                    if let Some(db) = workspace.db.as_ref() {
+                        let db_lock = db.lock().await;
+                        exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
                     }
                 }
             }
@@ -169,15 +165,11 @@ impl FastGotoTool {
 
         // OPTIMIZED: Query symbols by name FIRST using indexed query, then get relationships
         // This avoids loading ALL symbols and relationships (O(n) → O(log n))
-        let matching_symbols = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    // Use exact name match to find symbols
-                    db_lock.find_symbols_by_name(&self.symbol).unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
+        let matching_symbols = if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
+                // Use exact name match to find symbols
+                db_lock.find_symbols_by_name(&self.symbol).unwrap_or_default()
             } else {
                 Vec::new()
             }
@@ -189,25 +181,23 @@ impl FastGotoTool {
         // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
         // This changes from O(n) linear scan to O(k * log n) indexed queries where k = matching_symbols.len()
         if !matching_symbols.is_empty() {
-            if let Ok(workspace) = handler.get_workspace().await {
-                if let Some(workspace) = workspace {
-                    if let Some(db) = workspace.db.as_ref() {
-                        let db_lock = db.lock().await;
+            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
 
-                        // Query relationships for each matching symbol using indexed query
-                        for symbol in &matching_symbols {
-                            if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id) {
-                                for relationship in relationships {
-                                    // Check if this relationship represents a definition or import
-                                    match &relationship.kind {
-                                        crate::extractors::base::RelationshipKind::Imports |
-                                        crate::extractors::base::RelationshipKind::Defines |
-                                        crate::extractors::base::RelationshipKind::Extends => {
-                                            // The symbol itself is the definition we want
-                                            exact_matches.push(symbol.clone());
-                                        }
-                                        _ => {}
+                    // Query relationships for each matching symbol using indexed query
+                    for symbol in &matching_symbols {
+                        if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id) {
+                            for relationship in relationships {
+                                // Check if this relationship represents a definition or import
+                                match &relationship.kind {
+                                    crate::extractors::base::RelationshipKind::Imports |
+                                    crate::extractors::base::RelationshipKind::Defines |
+                                    crate::extractors::base::RelationshipKind::Extends => {
+                                        // The symbol itself is the definition we want
+                                        exact_matches.push(symbol.clone());
                                     }
+                                    _ => {}
                                 }
                             }
                         }
@@ -277,8 +267,7 @@ impl FastGotoTool {
 
             // Get embedding engine and vector store from workspace
             if let Ok(()) = handler.ensure_embedding_engine().await {
-                if let Ok(workspace_opt) = handler.get_workspace().await {
-                    if let Some(workspace) = workspace_opt {
+                if let Ok(Some(workspace)) = handler.get_workspace().await {
                         // Get embedding for query
                         let mut embedding_guard = handler.embedding_engine.write().await;
                         if let Some(embedding_engine) = embedding_guard.as_mut() {
@@ -331,7 +320,6 @@ impl FastGotoTool {
                                 }
                             }
                         }
-                    }
                 }
             }
         }
@@ -769,12 +757,10 @@ impl FastRefsTool {
                 Err(e) => {
                     debug!("Search engine failed, falling back to SQLite database: {}", e);
                     // Fallback to database search for exact name lookup (indexed, fast)
-                    if let Ok(workspace) = handler.get_workspace().await {
-                        if let Some(workspace) = workspace {
-                            if let Some(db) = workspace.db.as_ref() {
-                                let db_lock = db.lock().await;
-                                definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
-                            }
+                    if let Ok(Some(workspace)) = handler.get_workspace().await {
+                        if let Some(db) = workspace.db.as_ref() {
+                            let db_lock = db.lock().await;
+                            definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
                         }
                     }
                 }
@@ -783,12 +769,10 @@ impl FastRefsTool {
             Err(e) => {
                 debug!("Search engine unavailable, using SQLite database: {}", e);
                 // Fallback to database search for exact name lookup (indexed, fast)
-                if let Ok(workspace) = handler.get_workspace().await {
-                    if let Some(workspace) = workspace {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
-                        }
+                if let Ok(Some(workspace)) = handler.get_workspace().await {
+                    if let Some(db) = workspace.db.as_ref() {
+                        let db_lock = db.lock().await;
+                        definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
                     }
                 }
             }
@@ -833,17 +817,15 @@ impl FastRefsTool {
         // This changes from O(n) linear scan to O(k * log n) indexed queries where k = definitions.len()
         let mut references: Vec<Relationship> = Vec::new();
 
-        if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
 
-                    // For each definition, query relationships TO that symbol using indexed query
-                    for definition in &definitions {
-                        if let Ok(symbol_references) = db_lock.get_relationships_to_symbol(&definition.id) {
-                            // INFLATION FIX: get_relationships_to_symbol already filters for to_symbol_id
-                            references.extend(symbol_references);
-                        }
+                // For each definition, query relationships TO that symbol using indexed query
+                for definition in &definitions {
+                    if let Ok(symbol_references) = db_lock.get_relationships_to_symbol(&definition.id) {
+                        // INFLATION FIX: get_relationships_to_symbol already filters for to_symbol_id
+                        references.extend(symbol_references);
                     }
                 }
             }

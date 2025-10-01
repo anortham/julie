@@ -230,7 +230,7 @@ mod transactional_editing_tests {
         // Second transaction should either:
         // 1. Fail safely, or
         // 2. Succeed with proper conflict resolution
-        let result2 = transaction2.commit("from transaction 2");
+        let _result2 = transaction2.commit("from transaction 2");
 
         // Verify file is in a consistent state (not corrupted)
         let final_content = fs::read_to_string(&file_path)?;

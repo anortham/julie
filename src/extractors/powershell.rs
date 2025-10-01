@@ -1268,6 +1268,7 @@ impl PowerShellExtractor {
         signature
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_nodes_by_type<'a>(&self, node: Node<'a>, node_type: &str) -> Vec<Node<'a>> {
         let mut result = Vec::new();
         let mut cursor = node.walk();

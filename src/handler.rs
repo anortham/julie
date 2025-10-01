@@ -97,7 +97,7 @@ impl JulieServerHandler {
         // Fast path: check with read lock first (avoids blocking concurrent searches)
         {
             let workspace_guard = self.workspace.read().await;
-            if let Some(ref ws) = workspace_guard.as_ref() {
+            if let Some(ws) = workspace_guard.as_ref() {
                 if ws.vector_store.is_some() {
                     return Ok(()); // Already initialized
                 }

@@ -951,8 +951,8 @@ impl RustExtractor {
                     if prev_sibling.kind() == "line_comment" {
                         let comment_text = self.base.get_node_text(&prev_sibling);
                         // Rust doc comments start with ///
-                        if comment_text.starts_with("///") {
-                            return Some(comment_text[3..].trim().to_string());
+                        if let Some(doc_text) = comment_text.strip_prefix("///") {
+                            return Some(doc_text.trim().to_string());
                         }
                     }
                 }

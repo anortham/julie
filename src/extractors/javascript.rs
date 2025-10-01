@@ -1228,6 +1228,7 @@ impl JavaScriptExtractor {
     }
 
     /// Visit node for relationships - placeholder for relationship extraction
+    #[allow(clippy::only_used_in_recursion)] // &self, symbols, relationships all used in recursive calls
     fn visit_node_for_relationships(
         &self,
         node: tree_sitter::Node,

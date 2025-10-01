@@ -469,7 +469,7 @@ mod read_operation_tests {
     async fn test_read_single_line() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: read operation, start_line=2, end_line=2
         // Expected: "line 2"
@@ -481,7 +481,7 @@ mod read_operation_tests {
     async fn test_read_beyond_file_end() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: read operation, start_line=1, end_line=10
         // Expected: Returns available lines (1-2), no error
@@ -493,7 +493,7 @@ mod read_operation_tests {
     async fn test_read_invalid_range() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: read operation, start_line=3, end_line=1 (invalid)
         // Expected: Error about invalid range
@@ -505,7 +505,7 @@ mod read_operation_tests {
     async fn test_read_zero_line_numbers() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: read operation, start_line=0 (invalid, 1-based indexing)
         // Expected: Error about line numbers must be >= 1
@@ -526,7 +526,7 @@ mod insert_operation_tests {
     async fn test_insert_at_beginning() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: insert operation, line_number=1, content="line 1\n"
         // Expected: "line 1\nline 2\nline 3\n"
@@ -538,7 +538,7 @@ mod insert_operation_tests {
     async fn test_insert_at_middle() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: insert operation, line_number=2, content="line 2"
         // Expected: "line 1\nline 2\nline 3\n"
@@ -550,7 +550,7 @@ mod insert_operation_tests {
     async fn test_insert_at_end() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: insert operation, line_number=3, content="line 3"
         // Expected: "line 1\nline 2\nline 3"
@@ -562,7 +562,7 @@ mod insert_operation_tests {
     async fn test_insert_beyond_file_end() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: insert operation, line_number=10 (beyond end)
         // Expected: Error about line number exceeding file length + 1
@@ -574,7 +574,7 @@ mod insert_operation_tests {
     async fn test_insert_with_indentation_preservation() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "function test() {\n    existing_line();\n}\n";
-        let file_path = fixture.create_test_file("test.js", content).unwrap();
+        let _file_path = fixture.create_test_file("test.js", content).unwrap();
 
         // TODO: insert operation, line_number=3, content="new_line();", preserve_indentation=true
         // Expected: "function test() {\n    existing_line();\n    new_line();\n}\n"
@@ -586,7 +586,7 @@ mod insert_operation_tests {
     async fn test_insert_multiline_content() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 4\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: insert operation, line_number=2, content="line 2\nline 3"
         // Expected: "line 1\nline 2\nline 3\nline 4\n"
@@ -598,7 +598,7 @@ mod insert_operation_tests {
     async fn test_insert_dry_run_mode() {
         let fixture = EditingTestFixture::new().unwrap();
         let original_content = "line 1\nline 2\n";
-        let file_path = fixture
+        let _file_path = fixture
             .create_test_file("test.txt", original_content)
             .unwrap();
 
@@ -612,7 +612,7 @@ mod insert_operation_tests {
     async fn test_insert_with_backup() {
         let fixture = EditingTestFixture::new().unwrap();
         let original_content = "line 1\nline 2\n";
-        let file_path = fixture
+        let _file_path = fixture
             .create_test_file("test.txt", original_content)
             .unwrap();
 
@@ -635,7 +635,7 @@ mod delete_operation_tests {
     async fn test_delete_single_line() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=2, end_line=2
         // Expected: "line 1\nline 3\n"
@@ -647,7 +647,7 @@ mod delete_operation_tests {
     async fn test_delete_line_range() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\nline 4\nline 5\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=2, end_line=4
         // Expected: "line 1\nline 5\n"
@@ -659,7 +659,7 @@ mod delete_operation_tests {
     async fn test_delete_first_line() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=1, end_line=1
         // Expected: "line 2\nline 3\n"
@@ -671,7 +671,7 @@ mod delete_operation_tests {
     async fn test_delete_last_line() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=3, end_line=3
         // Expected: "line 1\nline 2\n"
@@ -683,7 +683,7 @@ mod delete_operation_tests {
     async fn test_delete_entire_file() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=1, end_line=3
         // Expected: "" (empty file)
@@ -695,7 +695,7 @@ mod delete_operation_tests {
     async fn test_delete_beyond_file_end() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nline 2\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: delete operation, start_line=1, end_line=10
         // Expected: Deletes available lines (1-2), no error
@@ -716,7 +716,7 @@ mod replace_operation_tests {
     async fn test_replace_single_line() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nold line\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: replace operation, start_line=2, end_line=2, content="new line"
         // Expected: "line 1\nnew line\nline 3\n"
@@ -728,7 +728,7 @@ mod replace_operation_tests {
     async fn test_replace_multiple_lines() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nold line 2\nold line 3\nline 4\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: replace operation, start_line=2, end_line=3, content="new line 2\nnew line 3"
         // Expected: "line 1\nnew line 2\nnew line 3\nline 4\n"
@@ -740,7 +740,7 @@ mod replace_operation_tests {
     async fn test_replace_with_different_line_count() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\nold line\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: replace operation, start_line=2, end_line=2, content="new line A\nnew line B\nnew line C"
         // Expected: "line 1\nnew line A\nnew line B\nnew line C\nline 3\n"
@@ -752,7 +752,7 @@ mod replace_operation_tests {
     async fn test_replace_with_empty_content() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "line 1\ndelete me\nline 3\n";
-        let file_path = fixture.create_test_file("test.txt", content).unwrap();
+        let _file_path = fixture.create_test_file("test.txt", content).unwrap();
 
         // TODO: replace operation, start_line=2, end_line=2, content=""
         // Expected: Same as delete operation - "line 1\nline 3\n"
@@ -764,7 +764,7 @@ mod replace_operation_tests {
     async fn test_replace_with_indentation_preservation() {
         let fixture = EditingTestFixture::new().unwrap();
         let content = "function test() {\n    old_function_call();\n    another_line();\n}\n";
-        let file_path = fixture.create_test_file("test.js", content).unwrap();
+        let _file_path = fixture.create_test_file("test.js", content).unwrap();
 
         // TODO: replace operation, start_line=2, end_line=2, content="new_function_call();", preserve_indentation=true
         // Expected: "function test() {\n    new_function_call();\n    another_line();\n}\n"
@@ -787,7 +787,7 @@ mod edge_cases_tests {
     #[tokio::test]
     async fn test_empty_file_operations() {
         let fixture = EditingTestFixture::new().unwrap();
-        let file_path = fixture.create_test_file("empty.txt", "").unwrap();
+        let _file_path = fixture.create_test_file("empty.txt", "").unwrap();
 
         // TODO: Various operations on empty file should handle gracefully
         // GREEN phase: Basic test placeholder - implementation exists
@@ -797,7 +797,7 @@ mod edge_cases_tests {
     #[tokio::test]
     async fn test_single_line_file_operations() {
         let fixture = EditingTestFixture::new().unwrap();
-        let file_path = fixture.create_test_file("single.txt", "only line").unwrap();
+        let _file_path = fixture.create_test_file("single.txt", "only line").unwrap();
 
         // TODO: Operations on single-line file should work correctly
         // GREEN phase: Basic test placeholder - implementation exists
@@ -808,7 +808,7 @@ mod edge_cases_tests {
     async fn test_large_file_performance() {
         let fixture = EditingTestFixture::new().unwrap();
         let large_content = "line\n".repeat(10000); // 10K lines
-        let file_path = fixture
+        let _file_path = fixture
             .create_test_file("large.txt", &large_content)
             .unwrap();
 
@@ -820,7 +820,7 @@ mod edge_cases_tests {
     #[tokio::test]
     async fn test_invalid_operation() {
         let fixture = EditingTestFixture::new().unwrap();
-        let file_path = fixture.create_test_file("test.txt", "content").unwrap();
+        let _file_path = fixture.create_test_file("test.txt", "content").unwrap();
 
         // TODO: LineEditTool with operation="invalid" should return error
         // GREEN phase: Basic test placeholder - implementation exists

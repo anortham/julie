@@ -68,7 +68,7 @@ function processUser() {
     return userData;
 }
 "#;
-        let file_path = fixture.create_test_file("test.js", test_content).unwrap();
+        let _file_path = fixture.create_test_file("test.js", test_content).unwrap();
 
         // Create the refactor tool
         let tool = SmartRefactorTool {

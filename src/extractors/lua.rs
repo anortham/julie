@@ -98,7 +98,9 @@ impl LuaExtractor {
         let mut kind = SymbolKind::Function;
         let mut method_parent_id = parent_id.map(|s| s.to_string());
 
-        if name_node.is_none() {
+        if let Some(name_n) = name_node {
+            name = self.base.get_node_text(&name_n);
+        } else {
             // Check for colon syntax: function obj:method() or dot syntax: function obj.method()
             if let Some(variable_node) = self
                 .find_child_by_type(node, "variable")
@@ -152,8 +154,6 @@ impl LuaExtractor {
             } else {
                 return None;
             }
-        } else {
-            name = self.base.get_node_text(&name_node.unwrap());
         }
 
         let signature = self.base.get_node_text(&node);

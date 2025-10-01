@@ -929,7 +929,8 @@ impl HTMLExtractor {
         let mut symbols = Vec::new();
 
         // Enhanced regex for HTML elements - handles both self-closing and container elements
-        let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</\1>|>)"#)
+        // Note: Rust regex doesn't support backreferences, so we match any closing tag
+        let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</[^>]+>|>)"#)
             .unwrap();
 
         for captures in re.captures_iter(content) {

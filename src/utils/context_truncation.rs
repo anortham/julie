@@ -1,6 +1,5 @@
 /// Context truncation utilities for limiting code context while preserving essential structure
 /// Based on battle-tested patterns from COA.CodeSearch.McpServer
-
 pub struct ContextTruncator {
     // Placeholder - implement after tests
 }

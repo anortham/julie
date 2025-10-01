@@ -1461,6 +1461,7 @@ impl DartExtractor {
         None
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn traverse_tree<F>(&self, node: Node, callback: &mut F)
     where
         F: FnMut(Node),

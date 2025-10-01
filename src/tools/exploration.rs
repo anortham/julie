@@ -888,7 +888,7 @@ impl FindLogicTool {
         let business_relationships = self.get_business_relationships(&business_symbols, handler).await?;
 
         // Format with intelligence insights
-        let mut message = format!("🧠 SUPER GENIUS Business Logic Discovery\n");
+        let mut message = "🧠 SUPER GENIUS Business Logic Discovery\n".to_string();
         message.push_str(&format!("🔬 Intelligence Layers: {}\n\n", search_insights.join(" | ")));
         message.push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
 
@@ -916,7 +916,7 @@ impl FindLogicTool {
                     for search_result in results {
                         let mut symbol = search_result.symbol;
                         // Initial score based on search relevance
-                        symbol.confidence = Some(search_result.score as f32);
+                        symbol.confidence = Some(search_result.score);
                         keyword_results.push(symbol);
                     }
                 }
@@ -1068,13 +1068,13 @@ impl FindLogicTool {
         let mut semantic_matches: Vec<Symbol> = Vec::new();
 
         // Ensure embedding engine is ready
-        if let Err(_) = handler.ensure_embedding_engine().await {
+        if handler.ensure_embedding_engine().await.is_err() {
             debug!("🧠 Embedding engine not available, skipping semantic search");
             return Ok(semantic_matches);
         }
 
         // Ensure vector store is ready
-        if let Err(_) = handler.ensure_vector_store().await {
+        if handler.ensure_vector_store().await.is_err() {
             debug!("🧠 Vector store not available, skipping semantic search");
             return Ok(semantic_matches);
         }

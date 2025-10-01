@@ -412,9 +412,14 @@ impl BaseExtractor {
             let line_num = i + 1; // 1-based line numbers
             let mut line_content = lines.get(i).unwrap_or(&"").to_string();
 
-            // Truncate long lines if configured
+            // Truncate long lines if configured (respecting UTF-8 boundaries)
             if line_content.len() > self.context_config.max_line_length {
-                line_content.truncate(self.context_config.max_line_length - 3);
+                // Find a valid UTF-8 boundary near the target length
+                let mut truncate_len = self.context_config.max_line_length.saturating_sub(3);
+                while truncate_len > 0 && !line_content.is_char_boundary(truncate_len) {
+                    truncate_len -= 1;
+                }
+                line_content.truncate(truncate_len);
                 line_content.push_str("...");
             }
 
@@ -642,6 +647,7 @@ impl BaseExtractor {
     }
 
     /// Walk tree with visitor - exact port of Miller's walkTree
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     pub fn walk_tree<F>(&self, node: &Node, visitor: &mut F, depth: u32)
     where
         F: FnMut(&Node, u32),
@@ -662,6 +668,7 @@ impl BaseExtractor {
         nodes
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_nodes_by_type_recursive<'a>(
         &self,
         node: &Node<'a>,
@@ -723,6 +730,7 @@ impl BaseExtractor {
     }
 
     /// Traverse tree with error handling - exact port of Miller's traverseTree
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     pub fn traverse_tree<F>(&self, node: &Node, callback: &mut F)
     where
         F: FnMut(&Node),

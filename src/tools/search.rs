@@ -116,7 +116,7 @@ impl FastSearchTool {
         let symbols = match self.mode.as_str() {
             "semantic" => self.semantic_search(handler).await?,
             "hybrid" => self.hybrid_search(handler).await?,
-            "text" | _ => self.text_search(handler).await?,
+            _ => self.text_search(handler).await?, // "text" or any other mode defaults to text search
         };
 
         // Create optimized response with confidence scoring
@@ -394,9 +394,9 @@ impl FastSearchTool {
                     .file_pattern
                     .as_ref()
                     .map(|pattern| {
-                        if pattern.starts_with('!') {
+                        if let Some(exclusion) = pattern.strip_prefix('!') {
                             // Exclusion pattern
-                            !symbol.file_path.contains(&pattern[1..])
+                            !symbol.file_path.contains(exclusion)
                         } else {
                             // Inclusion pattern
                             symbol.file_path.contains(pattern)

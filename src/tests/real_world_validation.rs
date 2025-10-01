@@ -863,6 +863,13 @@ mod real_world_tests {
             total_files_processed > 0,
             "Integration test should process at least some real-world files"
         );
+
+        // Validate that we extracted symbols from the processed files
+        assert!(
+            total_symbols_extracted > 0,
+            "Should extract symbols from real-world files (found {} files but {} symbols)",
+            total_files_processed, total_symbols_extracted
+        );
     }
 }
 

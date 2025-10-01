@@ -9,7 +9,7 @@
 
 use crate::tools::refactoring::{RefactorOperation, SmartRefactorTool};
 use anyhow::Result;
-use diff_match_patch_rs::{DiffMatchPatch, PatchInput};
+use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -158,6 +158,7 @@ fn simulate_rename_operation(file_content: &str, old_name: &str, new_name: &str)
 
 /// 🔴 RED: Simulate ReplaceSymbolBody operation for TDD testing
 /// This represents what our implementation SHOULD do (will fail initially)
+#[allow(dead_code)] // TDD placeholder for future implementation
 fn simulate_replace_symbol_body_operation(file_content: &str, params: &str) -> Result<String> {
     // Parse parameters
     let params: serde_json::Value = serde_json::from_str(params)?;
@@ -589,7 +590,9 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
 
         // Verify using DMP (convert errors to anyhow)
         let dmp = DiffMatchPatch::new();
-        let patches = dmp.patch_make(PatchInput::Texts(&expected_content, &result_content))
+        let diffs = dmp.diff_main::<Efficient>(&expected_content, &result_content)
+            .map_err(|e| anyhow::anyhow!("Failed to create diffs: {:?}", e))?;
+        let patches = dmp.patch_make(PatchInput::new_diffs(&diffs))
             .map_err(|e| anyhow::anyhow!("Failed to create patches: {:?}", e))?;
 
         if !patches.is_empty() {

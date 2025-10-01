@@ -745,6 +745,7 @@ impl SmartRefactorTool {
     }
 
     /// Recursively collect all identifier references and definitions
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn collect_identifiers(
         &self,
         node: tree_sitter::Node,
@@ -756,72 +757,63 @@ impl SmartRefactorTool {
         // Language-specific AST node handling
         match language {
             "rust" => {
-                match node.kind() {
-                    // Variable references
-                    "identifier" => {
-                        if let Ok(name) = node.utf8_text(source) {
-                            // Check if this identifier is being defined or referenced
-                            if let Some(parent) = node.parent() {
-                                match parent.kind() {
-                                    "let_declaration" | "parameter" | "closure_parameters" => {
-                                        definitions.insert(name.to_string());
-                                    }
-                                    _ => {
-                                        all_references.insert(name.to_string());
-                                    }
+                // Variable references
+                if node.kind() == "identifier" {
+                    if let Ok(name) = node.utf8_text(source) {
+                        // Check if this identifier is being defined or referenced
+                        if let Some(parent) = node.parent() {
+                            match parent.kind() {
+                                "let_declaration" | "parameter" | "closure_parameters" => {
+                                    definitions.insert(name.to_string());
                                 }
-                            } else {
-                                all_references.insert(name.to_string());
+                                _ => {
+                                    all_references.insert(name.to_string());
+                                }
                             }
+                        } else {
+                            all_references.insert(name.to_string());
                         }
                     }
-                    _ => {}
                 }
             }
             "typescript" | "javascript" => {
-                match node.kind() {
-                    "identifier" => {
-                        if let Ok(name) = node.utf8_text(source) {
-                            if let Some(parent) = node.parent() {
-                                match parent.kind() {
-                                    "variable_declarator" | "formal_parameters" | "arrow_function" => {
-                                        if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
-                                            definitions.insert(name.to_string());
-                                        } else {
-                                            all_references.insert(name.to_string());
-                                        }
-                                    }
-                                    _ => {
+                if node.kind() == "identifier" {
+                    if let Ok(name) = node.utf8_text(source) {
+                        if let Some(parent) = node.parent() {
+                            match parent.kind() {
+                                "variable_declarator" | "formal_parameters" | "arrow_function" => {
+                                    if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                                        definitions.insert(name.to_string());
+                                    } else {
                                         all_references.insert(name.to_string());
                                     }
                                 }
-                            } else {
-                                all_references.insert(name.to_string());
+                                _ => {
+                                    all_references.insert(name.to_string());
+                                }
                             }
+                        } else {
+                            all_references.insert(name.to_string());
                         }
                     }
-                    _ => {}
                 }
             }
             "python" => {
-                match node.kind() {
-                    "identifier" => {
-                        if let Ok(name) = node.utf8_text(source) {
-                            if let Some(parent) = node.parent() {
-                                match parent.kind() {
-                                    "assignment" | "parameters" | "lambda_parameters" => {
-                                        definitions.insert(name.to_string());
-                                    }
-                                    _ => {
-                                        all_references.insert(name.to_string());
-                                    }
+                if node.kind() == "identifier" {
+                    if let Ok(name) = node.utf8_text(source) {
+                        if let Some(parent) = node.parent() {
+                            match parent.kind() {
+                                "assignment" | "parameters" | "lambda_parameters" => {
+                                    definitions.insert(name.to_string());
                                 }
-                            } else {
-                                all_references.insert(name.to_string());
+                                _ => {
+                                    all_references.insert(name.to_string());
+                                }
                             }
+                        } else {
+                            all_references.insert(name.to_string());
                         }
                     }
-                    _ => {}
                 }
             }
             // Add more languages as needed
@@ -1094,6 +1086,7 @@ impl SmartRefactorTool {
     }
 
     /// Find the function node containing the specified line
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_containing_function<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -1144,6 +1137,7 @@ impl SmartRefactorTool {
     }
 
     /// Helper to recursively find the last import line
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_last_import_line<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -1356,11 +1350,9 @@ impl SmartRefactorTool {
 
         // More robust emoji removal - find the first non-emoji, non-whitespace character
         let cleaned_line = line.trim();
-        let cleaned_line = if cleaned_line.starts_with("📁") {
-            &cleaned_line[4..] // 📁 emoji is 4 bytes in UTF-8
-        } else {
-            cleaned_line
-        };
+        let cleaned_line = cleaned_line
+            .strip_prefix("📁") // 📁 emoji is 4 bytes in UTF-8
+            .unwrap_or(cleaned_line);
         let cleaned_line = cleaned_line.trim();
 
         println!("🔍 extract_file_location cleaned: '{}'", cleaned_line);
@@ -1570,6 +1562,7 @@ impl SmartRefactorTool {
                 let start_line = lines[start_idx];
                 let base_indent = start_line.len() - start_line.trim_start().len();
 
+                #[allow(clippy::needless_range_loop)] // Index needed for return statement
                 for i in (start_idx + 1)..lines.len() {
                     let line = lines[i];
                     if !line.trim().is_empty() {
@@ -1586,6 +1579,7 @@ impl SmartRefactorTool {
                 let mut brace_count = 0;
                 let mut found_opening_brace = false;
 
+                #[allow(clippy::needless_range_loop)] // Index needed for return statement
                 for i in start_idx..lines.len() {
                     let line = lines[i];
                     for ch in line.chars() {

@@ -884,6 +884,7 @@ impl CppExtractor {
         Some(symbol)
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_function_declarator_in_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
         // Recursively search for function_declarator in the node tree
         if node.kind() == "function_declarator" {
@@ -1671,7 +1672,7 @@ impl CppExtractor {
         Visibility::Public
     }
 
-    fn is_static_member_variable(&self, node: Node, storage_class: &Vec<String>) -> bool {
+    fn is_static_member_variable(&self, node: Node, storage_class: &[String]) -> bool {
         // Check if this is a static member variable inside a class
 
         // First check if it has static storage class

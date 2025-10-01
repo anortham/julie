@@ -153,6 +153,7 @@ impl BashExtractor {
         parameters
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn collect_parameter_nodes<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -714,6 +715,7 @@ impl BashExtractor {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn walk_tree<'a, F>(&self, node: tree_sitter::Node<'a>, callback: &mut F)
     where
         F: FnMut(tree_sitter::Node<'a>),

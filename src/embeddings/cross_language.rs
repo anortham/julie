@@ -230,6 +230,7 @@ impl SemanticGrouper {
 
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
+        #[allow(clippy::needless_range_loop)] // Index required for matrix initialization
         for i in 0..=len1 {
             matrix[i][0] = i;
         }

@@ -71,12 +71,13 @@ impl CodeTokenizer {
 }
 
 fn new_token(text: String, offset_from: usize, offset_to: usize, position: usize) -> Token {
-    let mut token = Token::default();
-    token.text = text;
-    token.offset_from = offset_from;
-    token.offset_to = offset_to;
-    token.position = position;
-    token
+    Token {
+        text,
+        offset_from,
+        offset_to,
+        position,
+        ..Default::default()
+    }
 }
 
 fn collect_word_bounds(text: &str) -> Vec<(usize, usize)> {

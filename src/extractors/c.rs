@@ -769,6 +769,7 @@ impl CExtractor {
             .unwrap_or_else(|| "unknown".to_string())
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_deepest_identifier<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -1328,6 +1329,7 @@ impl CExtractor {
         "unknown".to_string()
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn contains_struct(&self, node: tree_sitter::Node) -> bool {
         if node.kind() == "struct_specifier" {
             return true;
@@ -1760,6 +1762,7 @@ impl CExtractor {
             .is_some()
     }
 
+    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     fn find_node_by_type<'a>(
         &self,
         node: tree_sitter::Node<'a>,
