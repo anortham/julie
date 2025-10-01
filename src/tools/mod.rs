@@ -6,21 +6,25 @@ pub mod shared;
 
 // Tool modules organized by functionality
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
-pub mod safe_editing; // Consolidated safe_edit tool (DMP-powered, 6 modes)
+pub mod fuzzy_replace; // DMP fuzzy matching tool
 pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
 pub mod exploration;
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
+pub mod symbols; // Symbol overview tools
+pub mod trace_call_path; // Cross-language call path tracing
 pub mod workspace;
 
 // Re-export all tools for external use
 pub use editing::EditingTransaction; // Shared transaction infrastructure
-pub use safe_editing::SafeEditTool; // New consolidated editing tool
+pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use exploration::{FastExploreTool, FindLogicTool};
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use refactoring::SmartRefactorTool;
 pub use search::FastSearchTool;
+pub use symbols::GetSymbolsTool;
+pub use trace_call_path::TraceCallPathTool;
 pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types
@@ -39,10 +43,12 @@ tool_box!(
         FastSearchTool,
         FastGotoTool,
         FastRefsTool,
+        GetSymbolsTool,
+        TraceCallPathTool,
         FastExploreTool,
         FindLogicTool,
-        // Direct editing tool (DMP-powered, 6 modes)
-        SafeEditTool,
+        // Fuzzy matching tool (DMP-powered)
+        FuzzyReplaceTool,
         // Semantic refactoring tool
         SmartRefactorTool,
         // Workspace management

@@ -70,7 +70,9 @@
       "Read(//Users/murphy/Source/MyraNext/**)",
       "Read(//Users/murphy/Library/Logs/DiagnosticReports/**)",
       "Bash(RUST_BACKTRACE=full cargo run --bin julie-server)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "mcp__julie__trace_call_path",
+      "mcp__julie__fuzzy_replace"
     ],
     "deny": [],
     "ask": []

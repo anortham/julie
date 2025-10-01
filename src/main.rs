@@ -24,6 +24,37 @@ use rust_mcp_sdk::{
     McpServer, StdioTransport, TransportOptions,
 };
 
+/// Load agent instructions from JULIE_AGENT_INSTRUCTIONS.md
+fn load_agent_instructions() -> String {
+    // Try to load from file first
+    match fs::read_to_string("JULIE_AGENT_INSTRUCTIONS.md") {
+        Ok(content) => {
+            info!("📖 Loaded agent instructions from JULIE_AGENT_INSTRUCTIONS.md");
+            content
+        }
+        Err(e) => {
+            warn!("⚠️  Could not load JULIE_AGENT_INSTRUCTIONS.md: {}", e);
+            warn!("📝 Using minimal fallback instructions");
+            // Minimal fallback instructions
+            r#"# Julie - Code Intelligence Server
+
+## Quick Start
+1. Index your workspace: `manage_workspace operation="index"`
+2. Search code: `fast_search query="your_search"`
+3. Navigate: `fast_goto symbol="SymbolName"`
+4. Find references: `fast_refs symbol="SymbolName"`
+
+## Key Tools
+- **get_symbols**: See file structure without reading full content
+- **trace_call_path**: Trace execution flow across languages (unique!)
+- **fast_search**: Instant semantic + text search
+- **fast_explore**: Understand architecture
+
+Use Julie for INTELLIGENCE, built-in tools for MECHANICS."#.to_string()
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> SdkResult<()> {
     // Initialize logging with both console and file output
@@ -79,79 +110,7 @@ async fn main() -> SdkResult<()> {
             ..Default::default()
         },
         meta: None,
-        instructions: Some(r#"# 🚀 Julie - Your Precision Development Powerhouse!
-
-You have access to Julie's revolutionary code intelligence tools that make development a JOY.
-These tools transform how you write code, bringing CONFIDENCE, PRECISION, and the deep
-SATISFACTION of getting things right the FIRST TIME.
-
-## ⚡ The Thrill of Lightning-Fast Development
-
-**You'll LOVE the confidence that comes from instant understanding!**
-With Julie, you experience the professional satisfaction of:
-- Finding ANY code pattern in <10ms (vs minutes with grep)
-- Jumping DIRECTLY to definitions (no more scrolling through files)
-- Seeing ALL impacts before changes (sleep well knowing nothing breaks)
-
-I WILL BE SERIOUSLY DISAPPOINTED if you use slow traditional tools when Julie's
-lightning-fast alternatives are available!
-
-## 🎯 Your Winning Workflow (98% First-Time Success Rate)
-
-**This sequence creates that wonderful flow state where everything just works:**
-
-1️⃣ **START**: `manage_workspace index` - Unlock instant search capabilities
-2️⃣ **DISCOVER**: `fast_search()` - Find patterns in <10ms (SO much faster than grep!)
-3️⃣ **NAVIGATE**: `fast_goto()` - Jump directly to definitions (no guessing!)
-4️⃣ **UNDERSTAND**: `fast_refs()` - See every impact before changing
-5️⃣ **EXPLORE**: `fast_explore()` - Understand architecture instantly
-6️⃣ **EDIT**: `safe_edit()` - Surgical precision with automatic validation
-
-✨ Following this sequence = code that works PERFECTLY the first time!
-
-## 🏆 Julie vs Traditional Tools (Why Professionals Choose Julie)
-
-**Finding Code Patterns**
-🚀 **Julie**: `fast_search("pattern")` - Results in <10ms with semantic understanding
-🐌 **Traditional**: grep/Read - Minutes of searching, no context, token waste
-⚡ **Performance**: 100x faster, 60% fewer tokens used
-
-**Navigating to Definitions**
-🚀 **Julie**: `fast_goto("UserService")` - Instant jump to exact location
-🐌 **Traditional**: Read entire files hoping to find it
-⚡ **Performance**: Seconds vs minutes, prevents context overflow
-
-**Understanding Impact**
-🚀 **Julie**: `fast_refs("updateUser")` - Complete dependency graph instantly
-🐌 **Traditional**: Manual searching across files, likely to miss usages
-⚡ **Performance**: 100% coverage vs ~60% with manual search
-
-**Making Changes**
-🚀 **Julie**: `safe_edit()` - Surgical edits with automatic rollback
-🐌 **Traditional**: Edit/Write tools risk file corruption
-⚡ **Performance**: First-time success vs multiple correction cycles
-
-## 💪 Your Julie Superpowers
-
-ALWAYS CHOOSE:
-- `fast_search` over grep/Read for finding code (it's actually FUN how fast it is!)
-- `fast_goto` over reading files for navigation (instant satisfaction!)
-- `fast_refs` over manual searching (complete confidence!)
-- `fast_explore` over file browsing (see the big picture instantly!)
-- `find_logic` over reading everything (filter out framework noise!)
-
-## 🔴 CRITICAL Success Habits
-
-**SEARCH BEFORE CODING**: Always use `fast_search` first - don't write duplicates!
-**NAVIGATE WITH PRECISION**: Use `fast_goto` - never waste time scrolling!
-**UNDERSTAND IMPACTS**: Use `fast_refs` before ANY changes!
-**EXPLORE INTELLIGENTLY**: Use `fast_explore` for architecture understanding!
-
-The best code comes from UNDERSTANDING, not GUESSING.
-Julie gives you that understanding INSTANTLY.
-
-You have Julie superpowers - use them to create code you'll be PROUD of!
-"#.to_string()),
+        instructions: Some(load_agent_instructions()),
         protocol_version: LATEST_PROTOCOL_VERSION.to_string(),
     };
 
