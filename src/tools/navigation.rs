@@ -5,7 +5,7 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::extractors::{Relationship, Symbol, SymbolKind};
+use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::utils::{
     cross_language_intelligence::generate_naming_variants,
@@ -373,57 +373,6 @@ impl FastGotoTool {
             self.symbol
         );
         Ok(exact_matches)
-    }
-
-    // Helper functions for cross-language naming convention conversion
-    #[allow(dead_code)]
-    fn to_snake_case(&self, s: &str) -> String {
-        let mut result = String::new();
-        let mut chars = s.chars().peekable();
-
-        while let Some(ch) = chars.next() {
-            if ch.is_uppercase() {
-                if !result.is_empty() && chars.peek().is_some_and(|c| c.is_lowercase()) {
-                    result.push('_');
-                }
-                result.push(ch.to_lowercase().next().unwrap());
-            } else {
-                result.push(ch);
-            }
-        }
-        result
-    }
-
-    #[allow(dead_code)]
-    fn to_camel_case(&self, s: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = false;
-
-        for ch in s.chars() {
-            if ch == '_' {
-                capitalize_next = true;
-            } else if capitalize_next {
-                result.push(ch.to_uppercase().next().unwrap());
-                capitalize_next = false;
-            } else {
-                result.push(ch);
-            }
-        }
-        result
-    }
-
-    #[allow(dead_code)]
-    fn to_pascal_case(&self, s: &str) -> String {
-        let camel = self.to_camel_case(s);
-        if camel.is_empty() {
-            return camel;
-        }
-
-        let mut chars = camel.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
     }
 
     fn definition_priority(&self, kind: &SymbolKind) -> u8 {
@@ -845,34 +794,35 @@ impl FastRefsTool {
             }
         }
 
-        // Cross-language naming convention matching using additional searches
-        // TODO: Re-implement with proper search engine access
-        /*
-        let variants = vec![
-            self.to_snake_case(&self.symbol),
-            self.to_camel_case(&self.symbol),
-            self.to_pascal_case(&self.symbol),
-        ];
+        // ✨ INTELLIGENCE: Cross-language naming convention matching
+        // Use our shared utility to generate variants (snake_case, camelCase, PascalCase)
+        let variants = generate_naming_variants(&self.symbol);
+        debug!("🔍 Cross-language search variants: {:?}", variants);
 
-        for variant in variants {
-            if variant != self.symbol {
-                // Avoid duplicate searches
-                match search_engine.search(&variant).await {
-                    Ok(search_results) => {
-                        for search_result in search_results {
-                            if search_result.symbol.name == variant {
-                                definitions.push(search_result.symbol);
+        if let Ok(search_engine) = handler.active_search_engine().await {
+            let search_engine = search_engine.read().await;
+
+            for variant in variants {
+                if variant != self.symbol {
+                    // Avoid duplicate searches
+                    match search_engine.search(&variant).await {
+                        Ok(search_results) => {
+                            for search_result in search_results {
+                                // Exact match on variant name
+                                if search_result.symbol.name == variant {
+                                    debug!("✨ Found cross-language match: {} (variant: {})", search_result.symbol.name, variant);
+                                    definitions.push(search_result.symbol);
+                                }
                             }
                         }
-                    }
-                    Err(_) => {
-                        // Skip failed variant searches - not critical
-                        debug!("Variant search failed for: {}", variant);
+                        Err(e) => {
+                            // Skip failed variant searches - not critical
+                            debug!("⚠️ Variant search failed for '{}': {}", variant, e);
+                        }
                     }
                 }
             }
         }
-        */
 
         // Remove duplicates
         definitions.sort_by(|a, b| a.id.cmp(&b.id));
@@ -899,9 +849,112 @@ impl FastRefsTool {
             }
         }
 
-        // Strategy 3: Semantic similarity matching DISABLED to prevent false positives
-        // TODO: Re-enable with better similarity thresholds and validation
-        debug!("⚠️  Semantic similarity analysis disabled to prevent reference inflation");
+        // ✨ INTELLIGENCE: Strategy 3 - Semantic similarity matching with strict thresholds
+        // Only find HIGHLY similar symbols to prevent false positives
+        if let Ok(()) = handler.ensure_vector_store().await {
+            if let Ok(()) = handler.ensure_embedding_engine().await {
+                if let Ok(Some(workspace)) = handler.get_workspace().await {
+                    if let Some(vector_store) = workspace.vector_store.as_ref() {
+                        let store_guard = vector_store.read().await;
+
+                        if store_guard.has_hnsw_index() {
+                            // Generate embedding for the search symbol
+                            let query_embedding = {
+                                let mut embedding_guard = handler.embedding_engine.write().await;
+                                if let Some(embedding_engine) = embedding_guard.as_mut() {
+                                    let query_symbol = Symbol {
+                                        id: "query".to_string(),
+                                        name: self.symbol.clone(),
+                                        kind: SymbolKind::Function,
+                                        language: "query".to_string(),
+                                        file_path: "query".to_string(),
+                                        start_line: 1,
+                                        start_column: 0,
+                                        end_line: 1,
+                                        end_column: self.symbol.len() as u32,
+                                        start_byte: 0,
+                                        end_byte: self.symbol.len() as u32,
+                                        signature: None,
+                                        doc_comment: None,
+                                        visibility: None,
+                                        parent_id: None,
+                                        metadata: None,
+                                        semantic_group: None,
+                                        confidence: None,
+                                        code_context: None,
+                                    };
+
+                                    let context = crate::embeddings::CodeContext {
+                                        parent_symbol: None,
+                                        surrounding_code: None,
+                                        file_context: Some("".to_string()),
+                                    };
+
+                                    embedding_engine.embed_symbol(&query_symbol, &context).ok()
+                                } else {
+                                    None
+                                }
+                            };
+
+                            if let Some(embedding) = query_embedding {
+                                // STRICT threshold: 0.75 = only VERY similar symbols
+                                // This prevents false positives while finding genuine conceptual matches
+                                let similarity_threshold = 0.75;
+                                let max_semantic_matches = 5; // Limit to prevent overwhelming results
+
+                                if let Ok(hnsw_results) = store_guard.search_similar_hnsw(
+                                    &embedding,
+                                    max_semantic_matches,
+                                    similarity_threshold,
+                                ) {
+                                    drop(store_guard);
+
+                                    if let Some(db) = workspace.db.as_ref() {
+                                        let db_lock = db.lock().await;
+
+                                        for result in hnsw_results {
+                                            if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
+                                                // Skip if already in definitions or references
+                                                if !definitions.iter().any(|d| d.id == symbol.id) &&
+                                                   !references.iter().any(|r| r.to_symbol_id == symbol.id) {
+                                                    // Create metadata HashMap with similarity score
+                                                    let mut metadata = std::collections::HashMap::new();
+                                                    metadata.insert(
+                                                        "similarity".to_string(),
+                                                        serde_json::json!(result.similarity_score)
+                                                    );
+
+                                                    // Convert to Relationship for consistency
+                                                    let semantic_ref = Relationship {
+                                                        id: format!("semantic_{}", result.symbol_id),
+                                                        from_symbol_id: self.symbol.clone(),
+                                                        to_symbol_id: symbol.id.clone(),
+                                                        kind: RelationshipKind::References,
+                                                        file_path: symbol.file_path.clone(),
+                                                        line_number: symbol.start_line,
+                                                        confidence: result.similarity_score,
+                                                        metadata: Some(metadata),
+                                                    };
+
+                                                    debug!("✨ Semantic match: {} (similarity: {:.2})",
+                                                        symbol.name, result.similarity_score);
+                                                    references.push(semantic_ref);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    drop(store_guard);
+                                }
+                            }
+                        } else {
+                            drop(store_guard);
+                            debug!("⚠️  HNSW index not available, skipping semantic similarity");
+                        }
+                    }
+                }
+            }
+        }
 
         // Sort references by confidence and location
         references.sort_by(|a, b| {
@@ -930,58 +983,6 @@ impl FastRefsTool {
         );
 
         Ok((definitions, references))
-    }
-
-    // Helper functions for cross-language naming convention conversion
-    // (reuse implementation from GotoDefinitionTool)
-    #[allow(dead_code)]
-    fn to_snake_case(&self, s: &str) -> String {
-        let mut result = String::new();
-        let mut chars = s.chars().peekable();
-
-        while let Some(ch) = chars.next() {
-            if ch.is_uppercase() {
-                if !result.is_empty() && chars.peek().is_some_and(|c| c.is_lowercase()) {
-                    result.push('_');
-                }
-                result.push(ch.to_lowercase().next().unwrap());
-            } else {
-                result.push(ch);
-            }
-        }
-        result
-    }
-
-    #[allow(dead_code)]
-    fn to_camel_case(&self, s: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = false;
-
-        for ch in s.chars() {
-            if ch == '_' {
-                capitalize_next = true;
-            } else if capitalize_next {
-                result.push(ch.to_uppercase().next().unwrap());
-                capitalize_next = false;
-            } else {
-                result.push(ch);
-            }
-        }
-        result
-    }
-
-    #[allow(dead_code)]
-    fn to_pascal_case(&self, s: &str) -> String {
-        let camel = self.to_camel_case(s);
-        if camel.is_empty() {
-            return camel;
-        }
-
-        let mut chars = camel.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
     }
 
     /// Format optimized results with token optimization for FastRefsTool

@@ -67,8 +67,10 @@ pub struct SymbolDefinition {
     pub body_range: (usize, usize),
     /// Kind of symbol (Class, Function, etc.)
     pub kind: SymbolKind,
-    /// Line where definition starts
+    /// Line where definition starts (1-based)
     pub line: usize,
+    /// Line where definition ends (1-based)
+    pub end_line: usize,
 }
 
 /// Scope/range information
@@ -254,6 +256,7 @@ impl ASTSymbolFinder {
                                     body_range: (node.start_byte(), node.end_byte()),
                                     kind: self.node_kind_to_symbol_kind(node.kind()),
                                     line: node.start_position().row + 1,
+                                    end_line: node.end_position().row + 1,
                                 });
                             }
                         }
@@ -282,7 +285,7 @@ impl ASTSymbolFinder {
                 start_byte: def.body_range.0,
                 end_byte: def.body_range.1,
                 start_line: def.line,
-                end_line: 0, // TODO: Calculate from end_byte
+                end_line: def.end_line,
             })
         } else {
             None

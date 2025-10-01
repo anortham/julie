@@ -2462,50 +2462,182 @@ impl SymbolDatabase {
         let mut by_language = HashMap::new();
 
         // Count by kind
-        let kind_query = if !workspace_ids.is_empty() {
+        if !workspace_ids.is_empty() {
             let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            format!(
+            let kind_query = format!(
                 "SELECT kind, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY kind",
                 workspace_placeholders
-            )
+            );
+
+            let mut stmt = self.conn.prepare(&kind_query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (kind, count) = row?;
+                by_kind.insert(kind, count);
+            }
         } else {
-            "SELECT kind, COUNT(*) as count FROM symbols GROUP BY kind".to_string()
-        };
+            let kind_query = "SELECT kind, COUNT(*) as count FROM symbols GROUP BY kind";
+            let mut stmt = self.conn.prepare(kind_query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
 
-        let mut stmt = self.conn.prepare(&kind_query)?;
-        let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-        let rows = stmt.query_map(params.as_slice(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-        })?;
-
-        for row in rows {
-            let (kind, count) = row?;
-            by_kind.insert(kind, count);
+            for row in rows {
+                let (kind, count) = row?;
+                by_kind.insert(kind, count);
+            }
         }
 
         // Count by language
-        let lang_query = if !workspace_ids.is_empty() {
+        if !workspace_ids.is_empty() {
             let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            format!(
+            let lang_query = format!(
                 "SELECT language, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY language",
                 workspace_placeholders
-            )
+            );
+
+            let mut stmt = self.conn.prepare(&lang_query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (language, count) = row?;
+                by_language.insert(language, count);
+            }
         } else {
-            "SELECT language, COUNT(*) as count FROM symbols GROUP BY language".to_string()
-        };
+            let lang_query = "SELECT language, COUNT(*) as count FROM symbols GROUP BY language";
+            let mut stmt = self.conn.prepare(lang_query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
 
-        let mut stmt = self.conn.prepare(&lang_query)?;
-        let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-        let rows = stmt.query_map(params.as_slice(), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-        })?;
-
-        for row in rows {
-            let (language, count) = row?;
-            by_language.insert(language, count);
+            for row in rows {
+                let (language, count) = row?;
+                by_language.insert(language, count);
+            }
         }
 
         Ok((by_kind, by_language))
+    }
+
+    /// Get file-level statistics using SQL GROUP BY (O(log n) instead of O(n))
+    ///
+    /// Returns: HashMap<file_path, symbol_count>
+    pub fn get_file_statistics(&self, workspace_ids: &[String]) -> Result<std::collections::HashMap<String, usize>> {
+        use std::collections::HashMap;
+
+        let mut by_file = HashMap::new();
+
+        // Count symbols per file using SQL GROUP BY
+        if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let file_query = format!(
+                "SELECT file_path, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY file_path",
+                workspace_placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&file_query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (file_path, count) = row?;
+                by_file.insert(file_path, count);
+            }
+        } else {
+            let file_query = "SELECT file_path, COUNT(*) as count FROM symbols GROUP BY file_path";
+            let mut stmt = self.conn.prepare(file_query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (file_path, count) = row?;
+                by_file.insert(file_path, count);
+            }
+        }
+
+        Ok(by_file)
+    }
+
+    /// Get total symbol count using SQL COUNT (O(1) database operation)
+    pub fn get_total_symbol_count(&self, workspace_ids: &[String]) -> Result<usize> {
+        let count: i64 = if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let count_query = format!(
+                "SELECT COUNT(*) FROM symbols WHERE workspace_id IN ({})",
+                workspace_placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&count_query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            stmt.query_row(params.as_slice(), |row| row.get(0))?
+        } else {
+            let count_query = "SELECT COUNT(*) FROM symbols";
+            let mut stmt = self.conn.prepare(count_query)?;
+            stmt.query_row([], |row| row.get(0))?
+        };
+
+        Ok(count as usize)
+    }
+
+    /// Get file-level relationship statistics using SQL (for hotspot analysis)
+    ///
+    /// Returns: HashMap<file_path, relationship_count> counting relationships where symbols from this file participate
+    pub fn get_file_relationship_statistics(&self, workspace_ids: &[String]) -> Result<std::collections::HashMap<String, usize>> {
+        use std::collections::HashMap;
+
+        let mut by_file = HashMap::new();
+
+        // This is a more complex query: count relationships per file
+        // We need to join symbols with relationships to count how many relationships involve symbols from each file
+        if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let rel_query = format!(
+                "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
+                 FROM symbols s \
+                 LEFT JOIN relationships r ON (r.from_symbol_id = s.id OR r.to_symbol_id = s.id) \
+                 WHERE s.workspace_id IN ({}) \
+                 GROUP BY s.file_path",
+                workspace_placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&rel_query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (file_path, count) = row?;
+                by_file.insert(file_path, count);
+            }
+        } else {
+            let rel_query = "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
+                             FROM symbols s \
+                             LEFT JOIN relationships r ON (r.from_symbol_id = s.id OR r.to_symbol_id = s.id) \
+                             GROUP BY s.file_path";
+
+            let mut stmt = self.conn.prepare(rel_query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (file_path, count) = row?;
+                by_file.insert(file_path, count);
+            }
+        }
+
+        Ok(by_file)
     }
 
     /// Delete all data for a specific workspace (for workspace cleanup)

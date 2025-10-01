@@ -621,6 +621,7 @@ impl SmartRefactorTool {
             end_line,
             &function_def,
             &function_call,
+            file_path,
         )?;
 
         // Write the modified file atomically using EditingTransaction
@@ -671,63 +672,238 @@ impl SmartRefactorTool {
             .join("\n")
     }
 
-    /// Analyze what variables/dependencies the extracted code needs
-    async fn analyze_dependencies(&self, code: &str, _file_path: &str) -> Result<Vec<String>> {
-        // Simplified dependency analysis - look for variable patterns
-        // TODO: Use tree-sitter for proper AST analysis
-        let mut dependencies = Vec::new();
+    /// 🌳 AST-AWARE: Analyze what variables/dependencies the extracted code needs
+    ///
+    /// Uses tree-sitter to parse the code and identify external dependencies.
+    /// A dependency is any identifier that is REFERENCED but not DEFINED within the code block.
+    ///
+    /// Example:
+    /// ```rust
+    /// let result = user.name.to_uppercase();  // "user" is a dependency
+    /// println!("{}", result);                 // "result" is defined locally, not a dependency
+    /// ```
+    async fn analyze_dependencies(&self, code: &str, file_path: &str) -> Result<Vec<String>> {
+        use std::collections::HashSet;
+        use tree_sitter::Parser;
 
-        // Basic heuristic: look for variable usage patterns
-        for line in code.lines() {
-            let trimmed = line.trim();
+        debug!("🌳 AST-based dependency analysis for extracted code");
 
-            // Skip comments and empty lines
-            if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.is_empty() {
-                continue;
+        // Detect language from file extension
+        let language = self.detect_language(file_path);
+
+        // Parse code with tree-sitter
+        let mut parser = Parser::new();
+        let tree_sitter_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(e) => {
+                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                return self.analyze_dependencies_fallback(code);
             }
+        };
 
-            // Look for common variable usage patterns (this is very basic)
-            // In a real implementation, we'd use tree-sitter to parse the AST
-            if let Some(var_name) = self.extract_variable_usage(trimmed) {
-                if !dependencies.contains(&var_name) {
-                    dependencies.push(var_name);
-                }
-            }
+        if let Err(e) = parser.set_language(&tree_sitter_language) {
+            debug!("⚠️ Failed to set language: {}. Using fallback.", e);
+            return self.analyze_dependencies_fallback(code);
         }
+
+        let tree = match parser.parse(code, None) {
+            Some(t) => t,
+            None => {
+                debug!("⚠️ Failed to parse code. Using fallback.");
+                return self.analyze_dependencies_fallback(code);
+            }
+        };
+
+        let root = tree.root_node();
+
+        // Track all identifiers referenced and defined
+        let mut all_references = HashSet::new();
+        let mut definitions = HashSet::new();
+
+        // Walk AST to collect identifiers
+        self.collect_identifiers(
+            root,
+            code.as_bytes(),
+            &language,
+            &mut all_references,
+            &mut definitions,
+        );
+
+        // Dependencies = referenced but not defined locally
+        let mut dependencies: Vec<String> = all_references
+            .difference(&definitions)
+            .filter(|name| !self.is_builtin_identifier(name, &language))
+            .cloned()
+            .collect();
+
+        dependencies.sort(); // Consistent ordering
+        dependencies.dedup(); // Remove duplicates
+
+        debug!("🎯 AST analysis found {} dependencies: {:?}", dependencies.len(), dependencies);
 
         Ok(dependencies)
     }
 
-    /// Extract potential variable usage from a line (basic heuristic)
-    fn extract_variable_usage(&self, line: &str) -> Option<String> {
-        // Very basic pattern matching - would be replaced with tree-sitter analysis
-        // Look for patterns like: variable_name.method() or variable_name =
-
-        if let Some(pos) = line.find('.') {
-            let before_dot = &line[..pos];
-            if let Some(word) = before_dot.split_whitespace().last() {
-                if word.chars().all(|c| c.is_alphanumeric() || c == '_') && word.len() > 1 {
-                    return Some(word.to_string());
+    /// Recursively collect all identifier references and definitions
+    fn collect_identifiers(
+        &self,
+        node: tree_sitter::Node,
+        source: &[u8],
+        language: &str,
+        all_references: &mut std::collections::HashSet<String>,
+        definitions: &mut std::collections::HashSet<String>,
+    ) {
+        // Language-specific AST node handling
+        match language {
+            "rust" => {
+                match node.kind() {
+                    // Variable references
+                    "identifier" => {
+                        if let Ok(name) = node.utf8_text(source) {
+                            // Check if this identifier is being defined or referenced
+                            if let Some(parent) = node.parent() {
+                                match parent.kind() {
+                                    "let_declaration" | "parameter" | "closure_parameters" => {
+                                        definitions.insert(name.to_string());
+                                    }
+                                    _ => {
+                                        all_references.insert(name.to_string());
+                                    }
+                                }
+                            } else {
+                                all_references.insert(name.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "typescript" | "javascript" => {
+                match node.kind() {
+                    "identifier" => {
+                        if let Ok(name) = node.utf8_text(source) {
+                            if let Some(parent) = node.parent() {
+                                match parent.kind() {
+                                    "variable_declarator" | "formal_parameters" | "arrow_function" => {
+                                        if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                                            definitions.insert(name.to_string());
+                                        } else {
+                                            all_references.insert(name.to_string());
+                                        }
+                                    }
+                                    _ => {
+                                        all_references.insert(name.to_string());
+                                    }
+                                }
+                            } else {
+                                all_references.insert(name.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "python" => {
+                match node.kind() {
+                    "identifier" => {
+                        if let Ok(name) = node.utf8_text(source) {
+                            if let Some(parent) = node.parent() {
+                                match parent.kind() {
+                                    "assignment" | "parameters" | "lambda_parameters" => {
+                                        definitions.insert(name.to_string());
+                                    }
+                                    _ => {
+                                        all_references.insert(name.to_string());
+                                    }
+                                }
+                            } else {
+                                all_references.insert(name.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Add more languages as needed
+            _ => {
+                // Generic fallback: track all identifiers as references
+                if node.kind() == "identifier" {
+                    if let Ok(name) = node.utf8_text(source) {
+                        all_references.insert(name.to_string());
+                    }
                 }
             }
         }
 
-        None // Return None for now - proper implementation would analyze AST
+        // Recursively process children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_identifiers(child, source, language, all_references, definitions);
+        }
     }
 
-    /// Detect programming language from file extension
-    fn detect_language(&self, file_path: &str) -> String {
-        match std::path::Path::new(file_path).extension().and_then(|ext| ext.to_str()) {
-            Some("rs") => "rust".to_string(),
-            Some("ts") | Some("tsx") => "typescript".to_string(),
-            Some("js") | Some("jsx") => "javascript".to_string(),
-            Some("py") => "python".to_string(),
-            Some("java") => "java".to_string(),
-            Some("cpp") | Some("cc") | Some("cxx") => "cpp".to_string(),
-            Some("c") => "c".to_string(),
-            Some("cs") => "csharp".to_string(),
-            _ => "unknown".to_string(),
+    /// Check if an identifier is a built-in language construct
+    fn is_builtin_identifier(&self, name: &str, language: &str) -> bool {
+        match language {
+            "rust" => matches!(
+                name,
+                "true" | "false" | "None" | "Some" | "Ok" | "Err" |
+                "println" | "print" | "eprintln" | "eprint" | "dbg" | "panic" |
+                "Vec" | "String" | "Option" | "Result" | "Box" | "Rc" | "Arc"
+            ),
+            "typescript" | "javascript" => matches!(
+                name,
+                "console" | "window" | "document" | "undefined" | "null" |
+                "true" | "false" | "this" | "super" | "Promise" | "Array" | "Object" |
+                "String" | "Number" | "Boolean" | "Math" | "JSON" | "Date"
+            ),
+            "python" => matches!(
+                name,
+                "True" | "False" | "None" | "print" | "len" | "range" | "str" |
+                "int" | "float" | "list" | "dict" | "tuple" | "set" | "bool"
+            ),
+            _ => false,
         }
+    }
+
+    /// Fallback dependency analysis when tree-sitter is not available
+    fn analyze_dependencies_fallback(&self, code: &str) -> Result<Vec<String>> {
+        debug!("⚠️ Using fallback string-based dependency analysis");
+
+        let mut dependencies = std::collections::HashSet::new();
+
+        // Simple heuristic: find identifiers before dots (e.g., "user.name")
+        for line in code.lines() {
+            let trimmed = line.trim();
+
+            // Skip comments and empty lines
+            if trimmed.starts_with("//") || trimmed.starts_with("/*") ||
+               trimmed.starts_with("#") || trimmed.is_empty() {
+                continue;
+            }
+
+            // Look for patterns like: identifier.method()
+            if let Some(pos) = trimmed.find('.') {
+                let before_dot = &trimmed[..pos];
+                if let Some(word) = before_dot.split_whitespace().last() {
+                    if word.chars().all(|c| c.is_alphanumeric() || c == '_') && word.len() > 1 {
+                        dependencies.insert(word.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(dependencies.into_iter().collect())
+    }
+
+    /// Detect programming language from file extension using shared language module
+    fn detect_language(&self, file_path: &str) -> String {
+        std::path::Path::new(file_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .and_then(crate::language::detect_language_from_extension)
+            .unwrap_or("unknown")
+            .to_string()
     }
 
     /// Generate function definition and call based on language
@@ -827,11 +1003,12 @@ impl SmartRefactorTool {
         end_line: u32,
         function_def: &str,
         function_call: &str,
+        file_path: &str,
     ) -> Result<(u32, String)> {
         let lines: Vec<&str> = file_content.lines().collect();
 
         // Find a good place to insert the new function (before the current function)
-        let insertion_line = self.find_function_insertion_point(&lines, start_line)?;
+        let insertion_line = self.find_function_insertion_point(&lines, start_line, file_path)?;
 
         let mut new_lines = Vec::new();
 
@@ -858,10 +1035,147 @@ impl SmartRefactorTool {
         Ok((insertion_line, new_lines.join("\n")))
     }
 
-    /// Find appropriate location to insert the new function
-    fn find_function_insertion_point(&self, lines: &[&str], current_line: u32) -> Result<u32> {
-        // Simple heuristic: insert before the current function or at the beginning
-        // TODO: Use tree-sitter to find proper scope boundaries
+    /// 🌳 AST-AWARE: Find appropriate location to insert the new function
+    ///
+    /// Uses tree-sitter to find:
+    /// 1. The containing function (insert extracted function just before it)
+    /// 2. Or the end of imports section (insert after imports at module level)
+    ///
+    /// This is smarter than string matching because it understands code structure.
+    fn find_function_insertion_point(&self, lines: &[&str], current_line: u32, file_path: &str) -> Result<u32> {
+        use tree_sitter::Parser;
+
+        debug!("🌳 AST-based insertion point search for line {}", current_line);
+
+        let content = lines.join("\n");
+        let language = self.detect_language(file_path);
+
+        // Try AST-based approach
+        let mut parser = Parser::new();
+        let tree_sitter_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(e) => {
+                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                return self.find_insertion_point_fallback(lines, current_line);
+            }
+        };
+
+        if let Err(e) = parser.set_language(&tree_sitter_language) {
+            debug!("⚠️ Failed to set language: {}. Using fallback.", e);
+            return self.find_insertion_point_fallback(lines, current_line);
+        }
+
+        let tree = match parser.parse(&content, None) {
+            Some(t) => t,
+            None => {
+                debug!("⚠️ Failed to parse code. Using fallback.");
+                return self.find_insertion_point_fallback(lines, current_line);
+            }
+        };
+
+        let root = tree.root_node();
+
+        // Find the function containing current_line
+        if let Some(containing_function) = self.find_containing_function(root, current_line, &language) {
+            let function_start_line = containing_function.start_position().row + 1; // 1-based
+            debug!("🎯 Found containing function at line {}, inserting before it", function_start_line);
+            return Ok(function_start_line as u32);
+        }
+
+        // If no containing function, find end of imports
+        if let Some(after_imports_line) = self.find_end_of_imports(root, &language) {
+            debug!("🎯 No containing function, inserting after imports at line {}", after_imports_line);
+            return Ok(after_imports_line);
+        }
+
+        // Ultimate fallback: insert at beginning
+        debug!("⚠️ No imports found, inserting at beginning");
+        Ok(1)
+    }
+
+    /// Find the function node containing the specified line
+    fn find_containing_function<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        target_line: u32,
+        language: &str,
+    ) -> Option<tree_sitter::Node<'a>> {
+        // Language-specific function node types
+        let function_kinds = match language {
+            "rust" => vec!["function_item", "impl_item"],
+            "typescript" | "javascript" => vec!["function_declaration", "method_definition", "arrow_function"],
+            "python" => vec!["function_definition"],
+            "java" => vec!["method_declaration"],
+            "cpp" | "c" => vec!["function_definition"],
+            _ => vec!["function"], // Generic fallback
+        };
+
+        // Check if this node is a function containing the target line
+        if function_kinds.contains(&node.kind()) {
+            let start_line = (node.start_position().row + 1) as u32; // 1-based
+            let end_line = (node.end_position().row + 1) as u32; // 1-based
+
+            if start_line <= target_line && target_line <= end_line {
+                return Some(node);
+            }
+        }
+
+        // Recursively search children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if let Some(found) = self.find_containing_function(child, target_line, language) {
+                return Some(found);
+            }
+        }
+
+        None
+    }
+
+    /// Find the line number after imports/use statements
+    fn find_end_of_imports(&self, root: tree_sitter::Node, language: &str) -> Option<u32> {
+        let import_kinds = match language {
+            "rust" => vec!["use_declaration"],
+            "typescript" | "javascript" => vec!["import_statement"],
+            "python" => vec!["import_statement", "import_from_statement"],
+            "java" => vec!["import_declaration"],
+            _ => vec!["import"], // Generic fallback
+        };
+
+        let mut last_import_line = 0u32;
+
+        // Walk the tree to find all imports
+        let mut cursor = root.walk();
+        self.find_last_import_line(root, &import_kinds, &mut last_import_line, &mut cursor);
+
+        if last_import_line > 0 {
+            Some(last_import_line + 2) // Insert 1 blank line after imports
+        } else {
+            None
+        }
+    }
+
+    /// Helper to recursively find the last import line
+    fn find_last_import_line<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        import_kinds: &[&str],
+        last_line: &mut u32,
+        cursor: &mut tree_sitter::TreeCursor<'a>,
+    ) {
+        if import_kinds.contains(&node.kind()) {
+            let node_end_line = (node.end_position().row + 1) as u32; // 1-based
+            *last_line = (*last_line).max(node_end_line);
+        }
+
+        for child in node.children(cursor) {
+            let mut child_cursor = child.walk();
+            self.find_last_import_line(child, import_kinds, last_line, &mut child_cursor);
+        }
+    }
+
+    /// Fallback insertion point finder when tree-sitter is not available
+    fn find_insertion_point_fallback(&self, lines: &[&str], current_line: u32) -> Result<u32> {
+        debug!("⚠️ Using fallback string-based insertion point detection");
 
         // Look backwards from current line to find function start
         for i in (0..(current_line as usize - 1)).rev() {
@@ -1081,8 +1395,121 @@ impl SmartRefactorTool {
         None
     }
 
-    /// Find symbol boundaries using simple heuristics (TODO: upgrade to tree-sitter)
+    /// 🌳 AST-AWARE: Find symbol boundaries using tree-sitter
+    ///
+    /// Uses tree-sitter AST to find the exact start and end lines of a symbol definition.
+    /// This is far more accurate than string matching and brace counting.
+    ///
+    /// Returns: (start_line, end_line) in 1-based indexing
     fn find_symbol_boundaries(&self, file_content: &str, symbol_name: &str, file_path: &str) -> Result<(u32, u32)> {
+        use tree_sitter::Parser;
+
+        debug!("🌳 AST-based symbol boundary detection for '{}'", symbol_name);
+
+        let language = self.detect_language(file_path);
+
+        // Try AST-based approach
+        let mut parser = Parser::new();
+        let tree_sitter_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(e) => {
+                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                return self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path);
+            }
+        };
+
+        if let Err(e) = parser.set_language(&tree_sitter_language) {
+            debug!("⚠️ Failed to set language: {}. Using fallback.", e);
+            return self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path);
+        }
+
+        let tree = match parser.parse(file_content, None) {
+            Some(t) => t,
+            None => {
+                debug!("⚠️ Failed to parse code. Using fallback.");
+                return self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path);
+            }
+        };
+
+        let root = tree.root_node();
+
+        // Find the symbol node in the AST
+        if let Some(symbol_node) = self.find_symbol_node(root, symbol_name, file_content.as_bytes(), &language) {
+            let start_line = (symbol_node.start_position().row + 1) as u32; // 1-based
+            let end_line = (symbol_node.end_position().row + 1) as u32; // 1-based
+
+            debug!("🎯 AST found symbol '{}' at lines {}-{}", symbol_name, start_line, end_line);
+
+            return Ok((start_line, end_line));
+        }
+
+        // If AST search failed, try fallback
+        debug!("⚠️ Symbol '{}' not found in AST, trying fallback", symbol_name);
+        self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path)
+    }
+
+    /// Recursively find a symbol node by name in the AST
+    fn find_symbol_node<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        symbol_name: &str,
+        source: &[u8],
+        language: &str,
+    ) -> Option<tree_sitter::Node<'a>> {
+        // Language-specific symbol definition node types
+        let symbol_kinds = match language {
+            "rust" => vec!["function_item", "struct_item", "enum_item", "impl_item", "trait_item"],
+            "typescript" | "javascript" => vec!["function_declaration", "class_declaration", "method_definition", "interface_declaration"],
+            "python" => vec!["function_definition", "class_definition"],
+            "java" => vec!["method_declaration", "class_declaration", "interface_declaration"],
+            "cpp" | "c" => vec!["function_definition", "class_specifier", "struct_specifier"],
+            _ => vec!["function", "class", "method"], // Generic fallback
+        };
+
+        // Check if this node is a symbol definition
+        if symbol_kinds.contains(&node.kind()) {
+            // Try to get the name of this symbol
+            if let Some(name_node) = self.get_symbol_name_node(node, language) {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    if name == symbol_name {
+                        debug!("✨ Found symbol '{}' as {} node", symbol_name, node.kind());
+                        return Some(node);
+                    }
+                }
+            }
+        }
+
+        // Recursively search children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if let Some(found) = self.find_symbol_node(child, symbol_name, source, language) {
+                return Some(found);
+            }
+        }
+
+        None
+    }
+
+    /// Get the name node of a symbol definition (language-specific)
+    fn get_symbol_name_node<'a>(&self, node: tree_sitter::Node<'a>, language: &str) -> Option<tree_sitter::Node<'a>> {
+        match language {
+            "rust" => node.child_by_field_name("name"),
+            "typescript" | "javascript" => node.child_by_field_name("name"),
+            "python" => node.child_by_field_name("name"),
+            "java" => node.child_by_field_name("name"),
+            "cpp" | "c" => node.child_by_field_name("declarator").and_then(|d| d.child_by_field_name("declarator")),
+            _ => {
+                // Generic fallback: try common field names
+                node.child_by_field_name("name")
+                    .or_else(|| node.child_by_field_name("identifier"))
+            }
+        }
+    }
+
+    /// Fallback boundary detection using primitive string matching
+    fn find_symbol_boundaries_fallback(&self, file_content: &str, symbol_name: &str, file_path: &str) -> Result<(u32, u32)> {
+        debug!("⚠️ Using fallback string-based boundary detection");
+
         let lines: Vec<&str> = file_content.lines().collect();
         let language = self.detect_language(file_path);
 
@@ -1106,13 +1533,7 @@ impl SmartRefactorTool {
         // Find the end of the symbol (simple brace matching)
         let end_line = self.find_symbol_end(&lines, start_line as usize - 1, &language)?;
 
-        println!("🔍 Symbol boundaries for '{}': lines {}-{}", symbol_name, start_line, end_line);
-        if start_line > 0 && (start_line as usize) < lines.len() {
-            println!("🔍 Start line content: '{}'", lines[(start_line as usize) - 1]);
-        }
-        if end_line > 0 && (end_line as usize) < lines.len() {
-            println!("🔍 End line content: '{}'", lines[(end_line as usize) - 1]);
-        }
+        debug!("🎯 Fallback found symbol '{}' at lines {}-{}", symbol_name, start_line, end_line);
 
         Ok((start_line, end_line))
     }

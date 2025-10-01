@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use tracing::debug;
 
 use crate::extractors::base::{Relationship, Symbol};
+use crate::extractors::SymbolKind;
 use crate::handler::JulieServerHandler;
 use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
@@ -44,37 +45,42 @@ fn default_medium() -> String {
 impl FastExploreTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!(
-            "🧭 Exploring codebase: mode={}, focus={:?}",
+            "🧭 🧠 SUPER GENIUS: Exploring codebase mode={}, focus={:?}",
             self.mode, self.focus
         );
 
-        // Get symbols and relationships from database (persistent storage)
-        // Note: get_all_symbols() returns symbols from ALL workspaces, not just primary
-        let (symbols, relationships) = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    let syms = db_lock.get_all_symbols().unwrap_or_default();
-                    let rels = db_lock.get_all_relationships().unwrap_or_default();
-                    (syms, rels)
-                } else {
-                    (Vec::new(), Vec::new())
-                }
-            } else {
-                (Vec::new(), Vec::new())
-            }
-        } else {
-            (Vec::new(), Vec::new())
-        };
+        // 🚀 INTELLIGENT EXPLORATION - No more loading ALL symbols!
+        // Each mode uses optimized queries specific to its needs
 
-        // Use token-optimized formatting for all modes
         let message = match self.mode.as_str() {
-            "overview" | "dependencies" | "hotspots" | "trace" => {
-                self.format_optimized_results(&symbols, &relationships)
+            "overview" => {
+                debug!("📊 Intelligent overview mode - using SQL aggregations");
+                self.intelligent_overview(handler).await?
+            }
+            "dependencies" => {
+                debug!("🔗 Intelligent dependencies mode - using targeted queries");
+                self.intelligent_dependencies(handler).await?
+            }
+            "hotspots" => {
+                debug!("🔥 Intelligent hotspots mode - using GROUP BY aggregations");
+                self.intelligent_hotspots(handler).await?
+            }
+            "trace" => {
+                debug!("🔍 Intelligent trace mode - using focused relationship queries");
+                self.intelligent_trace(handler).await?
+            }
+            "all" => {
+                debug!("🌍 Comprehensive analysis mode");
+                // For "all" mode, combine insights from multiple modes
+                let mut combined = String::new();
+                combined.push_str(&self.intelligent_overview(handler).await?);
+                combined.push_str("\n\n");
+                combined.push_str(&self.intelligent_hotspots(handler).await?);
+                combined
             }
             _ => format!(
                 "❌ Unknown exploration mode: '{}'\n\
-                💡 Supported modes: overview, dependencies, hotspots, trace",
+                💡 Supported modes: overview, dependencies, hotspots, trace, all",
                 self.mode
             ),
         };
@@ -84,390 +90,360 @@ impl FastExploreTool {
         )]))
     }
 
-    #[allow(dead_code)]
-    async fn generate_overview(&self, handler: &JulieServerHandler) -> Result<String> {
-        // Get symbols and relationships from database (persistent storage)
-        let (all_symbols, relationships) = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    let syms = db_lock.get_all_symbols().unwrap_or_default();
-                    let rels = db_lock.get_all_relationships().unwrap_or_default();
-                    (syms, rels)
-                } else {
-                    (Vec::new(), Vec::new())
+    // ═══════════════════════════════════════════════════════════════════
+    // INTELLIGENT OVERVIEW MODE - SQL Aggregations, No Memory Loading
+    // ═══════════════════════════════════════════════════════════════════
+
+    async fn intelligent_overview(&self, handler: &JulieServerHandler) -> Result<String> {
+        let mut message = String::new();
+        message.push_str("🧠 INTELLIGENT Codebase Overview\n");
+        message.push_str("==================================\n");
+
+        // Try using search engine first (fastest path - already indexed!)
+        if let Ok(search_engine) = handler.active_search_engine().await {
+            let search_engine = search_engine.read().await;
+
+            // Use search engine's "*" wildcard to get all symbols efficiently
+            if let Ok(all_results) = search_engine.search("*").await {
+                // Only use search results if we actually got data
+                // (semantic search for "*" returns 0 results since "*" has no semantic meaning)
+                if !all_results.is_empty() {
+                    let total_symbols = all_results.len();
+
+                    // Aggregate by kind and language using in-memory grouping
+                    let mut kind_counts = HashMap::new();
+                    let mut language_counts = HashMap::new();
+                    let mut file_counts = HashMap::new();
+
+                    for result in all_results.iter() {
+                        *kind_counts.entry(format!("{:?}", result.symbol.kind)).or_insert(0) += 1;
+                        *language_counts.entry(&result.symbol.language).or_insert(0) += 1;
+                        *file_counts.entry(&result.symbol.file_path).or_insert(0) += 1;
+                    }
+
+                    message.push_str(&format!("📊 Total Symbols: {}\n", total_symbols));
+                    message.push_str(&format!("📁 Total Files: {}\n", file_counts.len()));
+
+                    // Symbol type breakdown
+                    message.push_str("\n🏷️ Symbol Types:\n");
+                    let mut sorted_kinds: Vec<_> = kind_counts.iter().collect();
+                    sorted_kinds.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+                    for (kind, count) in sorted_kinds.iter().take(15) {
+                        message.push_str(&format!("  {}: {}\n", kind, count));
+                    }
+
+                    // Language breakdown
+                    message.push_str("\n💻 Languages:\n");
+                    let mut sorted_langs: Vec<_> = language_counts.iter().collect();
+                    sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+                    for (lang, count) in sorted_langs.iter().take(10) {
+                        message.push_str(&format!("  {}: {} symbols\n", lang, count));
+                    }
+
+                    // Top files (if medium or deep depth)
+                    if matches!(self.depth.as_str(), "medium" | "deep") {
+                        message.push_str("\n📁 Top Files by Symbol Count:\n");
+                        let mut sorted_files: Vec<_> = file_counts.iter().collect();
+                        sorted_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+                        for (file_path, count) in sorted_files.iter().take(10) {
+                            let file_name = std::path::Path::new(file_path)
+                                .file_name()
+                                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
+                                .to_string_lossy();
+                            message.push_str(&format!("  {}: {} symbols\n", file_name, count));
+                        }
+                    }
+
+                    message.push_str("\n🎯 Intelligence: Using search engine indexed data!");
+                    return Ok(message);
                 }
-            } else {
-                (Vec::new(), Vec::new())
+                // If search returned 0 results, fall through to database path
             }
-        } else {
-            (Vec::new(), Vec::new())
-        };
-
-        // Count by symbol type - from in-memory symbols
-        let mut counts = HashMap::new();
-        let mut file_counts = HashMap::new();
-        let mut language_counts = HashMap::new();
-
-        for symbol in all_symbols.iter() {
-            *counts.entry(&symbol.kind).or_insert(0) += 1;
-            *file_counts.entry(&symbol.file_path).or_insert(0) += 1;
-            *language_counts.entry(&symbol.language).or_insert(0) += 1;
         }
 
-        let mut message = format!(
-            "🧭 Codebase Overview\n\
-            ========================\n\
-            📊 Total Symbols: {}\n\
-            📁 Total Files: {}\n\
-            🔗 Total Relationships: {}\n\n",
-            all_symbols.len(),
-            file_counts.len(),
-            relationships.len()
-        );
+        // Fallback to database if search engine unavailable - use SQL GROUP BY for O(log n) performance
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
 
-        // Symbol breakdown
-        message.push_str("🏷️ Symbol Types:\n");
-        let mut sorted_counts: Vec<_> = counts.iter().collect();
-        sorted_counts.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (kind, count) in sorted_counts {
-            message.push_str(&format!("  {:?}: {}\n", kind, count));
+        // Get the current workspace ID to filter results
+        let workspace_id = crate::workspace::registry::generate_workspace_id(
+            &workspace.root.to_string_lossy()
+        )?;
+
+        // Use SQL GROUP BY aggregations filtered by current workspace
+        let workspace_ids = vec![workspace_id];
+        let (kind_counts, language_counts) = db_lock.get_symbol_statistics(&workspace_ids)?;
+        let file_counts = db_lock.get_file_statistics(&workspace_ids)?;
+        let total_symbols = db_lock.get_total_symbol_count(&workspace_ids)?;
+
+        message.push_str(&format!("📊 Total Symbols: {}\n", total_symbols));
+        message.push_str(&format!("📁 Total Files: {}\n", file_counts.len()));
+
+        // Symbol type breakdown
+        message.push_str("\n🏷️ Symbol Types:\n");
+        let mut sorted_kinds: Vec<_> = kind_counts.iter().collect();
+        sorted_kinds.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+        for (kind, count) in sorted_kinds.iter().take(15) {
+            message.push_str(&format!("  {}: {}\n", kind, count));
         }
 
         // Language breakdown
         message.push_str("\n💻 Languages:\n");
-        let mut sorted_languages: Vec<_> = language_counts.iter().collect();
-        sorted_languages.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (lang, count) in sorted_languages {
+        let mut sorted_langs: Vec<_> = language_counts.iter().collect();
+        sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+        for (lang, count) in sorted_langs.iter().take(10) {
             message.push_str(&format!("  {}: {} symbols\n", lang, count));
         }
 
-        // Top files by symbol count
+        // Top files (if medium or deep depth)
         if matches!(self.depth.as_str(), "medium" | "deep") {
             message.push_str("\n📁 Top Files by Symbol Count:\n");
             let mut sorted_files: Vec<_> = file_counts.iter().collect();
             sorted_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-            for (file, count) in sorted_files.iter().take(10) {
-                let file_name = std::path::Path::new(file)
+            for (file_path, count) in sorted_files.iter().take(10) {
+                let file_name = std::path::Path::new(file_path)
                     .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new(file))
+                    .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
                     .to_string_lossy();
                 message.push_str(&format!("  {}: {} symbols\n", file_name, count));
             }
         }
 
+        message.push_str("\n🎯 Intelligence: Using database fallback");
+
         Ok(message)
     }
 
-    #[allow(dead_code)]
-    async fn analyze_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
-        // Get relationships from database (persistent storage)
-        let relationships = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    db_lock.get_all_relationships().unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+    // ═══════════════════════════════════════════════════════════════════
+    // INTELLIGENT DEPENDENCIES MODE - Targeted Relationship Queries
+    // ═══════════════════════════════════════════════════════════════════
 
-        // Create HashMap for O(1) symbol lookups instead of O(n) linear search
-        let all_symbols = match handler.active_search_engine().await {
-            Ok(search_engine) => {
-                let search_engine = search_engine.read().await;
-                search_engine
-                    .search("*")
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?
-            }
-            Err(_e) => {
-                // Fallback: use database for symbol access (persistent)
-                if let Ok(workspace) = handler.get_workspace().await {
-                    if let Some(workspace) = workspace {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            db_lock.get_all_symbols().unwrap_or_default()
-                                .into_iter()
-                                .map(|symbol| crate::search::SearchResult { symbol, score: 1.0, snippet: String::new() })
-                                .collect()
-                        } else {
-                            Vec::new()
-                        }
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                }
-            }
-        };
-        let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
-            .iter()
-            .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
-            .collect();
+    async fn intelligent_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
 
-        let mut relationship_counts = HashMap::new();
-        let mut symbol_references = HashMap::new();
+        let mut message = String::new();
+        message.push_str("🧠 INTELLIGENT Dependency Analysis\n");
+        message.push_str("====================================\n");
 
-        for rel in relationships.iter() {
-            *relationship_counts.entry(&rel.kind).or_insert(0) += 1;
-            *symbol_references.entry(&rel.to_symbol_id).or_insert(0) += 1;
+        // Get all relationships and aggregate by type
+        let all_relationships = db_lock.get_all_relationships().unwrap_or_default();
+        let mut relationship_counts: HashMap<String, i64> = HashMap::new();
+
+        for rel in all_relationships.iter() {
+            *relationship_counts.entry(rel.kind.to_string()).or_insert(0) += 1;
         }
 
-        let mut message = format!(
-            "🔗 Dependency Analysis\n\
-            =====================\n\
-            Total Relationships: {}\n\n",
-            relationships.len()
-        );
+        let total_relationships: i64 = all_relationships.len() as i64;
+        message.push_str(&format!("Total Relationships: {}\n\n", total_relationships));
 
-        // Relationship type breakdown
         message.push_str("🏷️ Relationship Types:\n");
-        let mut sorted_rels: Vec<_> = relationship_counts.iter().collect();
-        sorted_rels.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (kind, count) in sorted_rels {
+        let mut sorted_rel_types: Vec<_> = relationship_counts.iter().collect();
+        sorted_rel_types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+        for (kind, count) in sorted_rel_types {
             message.push_str(&format!("  {}: {}\n", kind, count));
         }
 
-        // Most referenced symbols
-        if matches!(self.depth.as_str(), "medium" | "deep") {
-            message.push_str("\n🔥 Most Referenced Symbols:\n");
-            let mut sorted_refs: Vec<_> = symbol_references.iter().collect();
-            sorted_refs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+        // If focus is provided, analyze that specific symbol
+        if let Some(focus) = &self.focus {
+            message.push_str(&format!("\n🔍 Focused Analysis: '{}'\n", focus));
 
-            for (symbol_id, count) in sorted_refs.iter().take(10) {
-                if let Some(symbol) = symbol_map.get(&***symbol_id) {
-                    message.push_str(&format!(
-                        "  {} [{}]: {} references\n",
+            // Use search engine to find the symbol
+            if let Ok(search_engine) = handler.active_search_engine().await {
+                let search_engine = search_engine.read().await;
+                if let Ok(results) = search_engine.search(focus).await {
+                    if let Some(target) = results.iter().find(|r| r.symbol.name == *focus) {
+                        let symbol_id = &target.symbol.id;
+
+                        // Get targeted relationship queries for this symbol
+                        let incoming_rels = db_lock.get_relationships_to_symbol(symbol_id).unwrap_or_default();
+                        let outgoing_rels = db_lock.get_relationships_for_symbol(symbol_id).unwrap_or_default();
+
+                        message.push_str(&format!("  ← Incoming: {} references\n", incoming_rels.len()));
+                        message.push_str(&format!("  → Outgoing: {} dependencies\n", outgoing_rels.len()));
+                    } else {
+                        message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
+                    }
+                }
+            }
+        } else {
+            // Count references for each symbol to find most referenced
+            let mut reference_counts: HashMap<String, usize> = HashMap::new();
+            for rel in all_relationships.iter() {
+                *reference_counts.entry(rel.to_symbol_id.clone()).or_insert(0) += 1;
+            }
+
+            let mut top_refs: Vec<_> = reference_counts.into_iter().collect();
+            top_refs.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+
+            message.push_str("\n🔥 Most Referenced Symbols:\n");
+            for (symbol_id, ref_count) in top_refs.iter().take(10) {
+                if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(symbol_id) {
+                    message.push_str(&format!("  {} [{}]: {} references\n",
                         symbol.name,
                         format!("{:?}", symbol.kind).to_lowercase(),
-                        count
+                        ref_count
                     ));
                 }
             }
         }
 
+        message.push_str("\n🎯 Intelligence: Using targeted relationship queries");
+
         Ok(message)
     }
 
-    #[allow(dead_code)]
-    async fn find_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
-        // Get relationships from database (persistent storage)
-        let relationships = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    db_lock.get_all_relationships().unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+    // ═══════════════════════════════════════════════════════════════════
+    // INTELLIGENT HOTSPOTS MODE - SQL GROUP BY Aggregations
+    // ═══════════════════════════════════════════════════════════════════
 
-        // Use SearchEngine instead of O(n) iteration through all symbols
-        let all_symbols = match handler.active_search_engine().await {
-            Ok(search_engine) => {
-                let search_engine = search_engine.read().await;
-                search_engine
-                    .search("*")
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to search for symbols: {}", e))?
-            }
-            Err(_e) => {
-                // Fallback: use database for symbol access (persistent)
-                if let Ok(workspace) = handler.get_workspace().await {
-                    if let Some(workspace) = workspace {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            db_lock.get_all_symbols().unwrap_or_default()
-                                .into_iter()
-                                .map(|symbol| crate::search::SearchResult { symbol, score: 1.0, snippet: String::new() })
-                                .collect()
-                        } else {
-                            Vec::new()
-                        }
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                }
-            }
-        };
+    async fn intelligent_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
 
-        // Find files with most symbols (complexity hotspots)
-        let mut file_symbol_counts = HashMap::new();
-        let mut file_relationship_counts = HashMap::new();
+        let mut message = String::new();
+        message.push_str("🧠 INTELLIGENT Complexity Hotspots\n");
+        message.push_str("===================================\n");
 
-        for search_result in all_symbols.iter() {
-            let symbol = &search_result.symbol;
-            *file_symbol_counts.entry(&symbol.file_path).or_insert(0) += 1;
-        }
+        // Get the current workspace ID to filter results
+        let workspace_id = crate::workspace::registry::generate_workspace_id(
+            &workspace.root.to_string_lossy()
+        )?;
 
-        for rel in relationships.iter() {
-            *file_relationship_counts.entry(&rel.file_path).or_insert(0) += 1;
-        }
+        // Use SQL GROUP BY aggregations filtered by current workspace
+        let workspace_ids = vec![workspace_id];
+        let file_symbol_counts = db_lock.get_file_statistics(&workspace_ids)?;
+        let file_rel_counts = db_lock.get_file_relationship_statistics(&workspace_ids)?;
 
-        let mut message = "🔥 Complexity Hotspots\n=====================\n".to_string();
+        // Top files by symbol count
+        let mut files_by_symbol_count: Vec<_> = file_symbol_counts.iter()
+            .map(|(k, v)| (k.clone(), *v as i64))
+            .collect();
+        files_by_symbol_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
 
-        message.push_str("📁 Files with Most Symbols:\n");
-        let mut sorted_files: Vec<_> = file_symbol_counts.iter().collect();
-        sorted_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (file, count) in sorted_files.iter().take(10) {
-            let file_name = std::path::Path::new(file)
+        // Top files by relationship count
+        let mut files_by_relationship_count: Vec<_> = file_rel_counts.iter()
+            .map(|(k, v)| (k.clone(), *v as i64))
+            .collect();
+        files_by_relationship_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+
+        message.push_str("🔥 Files with Most Symbols:\n");
+        for (file_path, count) in files_by_symbol_count.iter().take(10) {
+            let file_name = std::path::Path::new(file_path)
                 .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(file))
+                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
                 .to_string_lossy();
             message.push_str(&format!("  {}: {} symbols\n", file_name, count));
         }
 
         message.push_str("\n🔗 Files with Most Relationships:\n");
-        let mut sorted_rel_files: Vec<_> = file_relationship_counts.iter().collect();
-        sorted_rel_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (file, count) in sorted_rel_files.iter().take(10) {
-            let file_name = std::path::Path::new(file)
+        for (file_path, count) in files_by_relationship_count.iter().take(10) {
+            let file_name = std::path::Path::new(file_path)
                 .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(file))
+                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
                 .to_string_lossy();
             message.push_str(&format!("  {}: {} relationships\n", file_name, count));
         }
 
+        // Calculate complexity scores
+        message.push_str("\n📊 Complexity Score (symbols × relationships):\n");
+        let mut complexity_scores: Vec<(String, i64)> = Vec::new();
+
+        for (file, symbol_count) in files_by_symbol_count.iter() {
+            let rel_count = files_by_relationship_count.iter()
+                .find(|(f, _)| f == file)
+                .map(|(_, c)| *c)
+                .unwrap_or(0);
+            let complexity = symbol_count * (1 + rel_count);
+            complexity_scores.push((file.clone(), complexity));
+        }
+
+        complexity_scores.sort_by(|a, b| b.1.cmp(&a.1));
+        for (file_path, score) in complexity_scores.iter().take(10) {
+            let file_name = std::path::Path::new(file_path)
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
+                .to_string_lossy();
+            message.push_str(&format!("  {}: {} complexity\n", file_name, score));
+        }
+
+        message.push_str("\n🎯 Intelligence: Using SQL GROUP BY aggregations");
+
         Ok(message)
     }
 
-    #[allow(dead_code)]
-    async fn trace_relationships(&self, handler: &JulieServerHandler) -> Result<String> {
-        // Get relationships from database (persistent storage)
-        let relationships = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    db_lock.get_all_relationships().unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+    // ═══════════════════════════════════════════════════════════════════
+    // INTELLIGENT TRACE MODE - Focused Relationship Graph Analysis
+    // ═══════════════════════════════════════════════════════════════════
 
-        let mut message = "🔍 Relationship Tracing\n=====================\n".to_string();
+    async fn intelligent_trace(&self, handler: &JulieServerHandler) -> Result<String> {
+        let mut message = String::new();
+        message.push_str("🧠 INTELLIGENT Relationship Tracing\n");
+        message.push_str("====================================\n");
 
         if let Some(focus) = &self.focus {
-            // Use SearchEngine to find the focused symbol and get all symbols
-            match handler.active_search_engine().await {
-                Ok(search_engine) => {
-                    let search_engine = search_engine.read().await;
-                    let focus_results = search_engine
-                        .search(focus)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to search for focus symbol: {}", e))?;
+            // Use search engine to find the symbol
+            if let Ok(search_engine) = handler.active_search_engine().await {
+                let search_engine = search_engine.read().await;
+                if let Ok(results) = search_engine.search(focus).await {
+                    if let Some(target) = results.iter().find(|r| r.symbol.name == *focus) {
+                        let workspace = handler.get_workspace().await?
+                            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+                        let db = workspace.db.as_ref()
+                            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+                        let db_lock = db.lock().await;
 
-                    // Find exact match for the focused symbol
-                    if let Some(target_result) = focus_results.iter().find(|sr| sr.symbol.name == *focus) {
-                        let target_symbol = &target_result.symbol;
-                        message.push_str(&format!("Tracing relationships for: {}\n\n", focus));
+                        let symbol_id = &target.symbol.id;
 
-                        // Create HashMap for O(1) symbol lookups instead of O(n) for each relationship
-                        let all_symbols = search_engine
-                            .search("*")
-                            .await
-                            .map_err(|e| anyhow::anyhow!("Failed to get all symbols: {}", e))?;
-                        let symbol_map: HashMap<String, &crate::extractors::Symbol> = all_symbols
-                            .iter()
-                            .map(|sr| (sr.symbol.id.clone(), &sr.symbol))
-                            .collect();
+                        // Targeted queries for this specific symbol
+                        let incoming = db_lock.get_relationships_to_symbol(symbol_id).unwrap_or_default();
+                        let outgoing = db_lock.get_relationships_for_symbol(symbol_id).unwrap_or_default();
 
-                        // Find incoming relationships (what references this symbol)
-                        let incoming: Vec<_> = relationships
-                            .iter()
-                            .filter(|rel| rel.to_symbol_id == target_symbol.id)
-                            .collect();
-
-                        // Find outgoing relationships (what this symbol references)
-                        let outgoing: Vec<_> = relationships
-                            .iter()
-                            .filter(|rel| rel.from_symbol_id == target_symbol.id)
-                            .collect();
+                        message.push_str(&format!("Tracing: '{}' [{}]\n\n", focus, format!("{:?}", target.symbol.kind).to_lowercase()));
 
                         message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
-                        for rel in incoming.iter().take(10) {
-                            if let Some(from_symbol) = symbol_map.get(&rel.from_symbol_id) {
-                                message.push_str(&format!(
-                                    "  {} {} this symbol\n",
-                                    from_symbol.name, rel.kind
-                                ));
+                        for (i, rel) in incoming.iter().take(10).enumerate() {
+                            if let Ok(Some(from_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id) {
+                                message.push_str(&format!("  {}. {} {} this symbol\n",
+                                    i + 1, from_symbol.name, rel.kind));
                             }
                         }
+                        if incoming.len() > 10 {
+                            message.push_str(&format!("  ... and {} more\n", incoming.len() - 10));
+                        }
 
-                        message.push_str(&format!(
-                            "\n→ Outgoing ({} relationships):\n",
-                            outgoing.len()
-                        ));
-                        for rel in outgoing.iter().take(10) {
-                            if let Some(to_symbol) = symbol_map.get(&rel.to_symbol_id) {
-                                message
-                                    .push_str(&format!("  This symbol {} {}\n", rel.kind, to_symbol.name));
+                        message.push_str(&format!("\n→ Outgoing ({} relationships):\n", outgoing.len()));
+                        for (i, rel) in outgoing.iter().take(10).enumerate() {
+                            if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
+                                message.push_str(&format!("  {}. This symbol {} {}\n",
+                                    i + 1, rel.kind, to_symbol.name));
                             }
+                        }
+                        if outgoing.len() > 10 {
+                            message.push_str(&format!("  ... and {} more\n", outgoing.len() - 10));
                         }
                     } else {
                         message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
                     }
-                }
-                Err(_e) => {
-                    // Fallback: use database for relationship tracing (persistent)
-                    let symbols = if let Ok(workspace) = handler.get_workspace().await {
-                        if let Some(workspace) = workspace {
-                            if let Some(db) = workspace.db.as_ref() {
-                                let db_lock = db.lock().await;
-                                db_lock.get_symbols_by_name(focus).unwrap_or_default()
-                            } else {
-                                Vec::new()
-                            }
-                        } else {
-                            Vec::new()
-                        }
-                    } else {
-                        Vec::new()
-                    };
-                    if let Some(target_symbol) = symbols.first() {
-                        message.push_str(&format!("Tracing relationships for: {} (fallback mode)\n\n", focus));
-
-                        // Find incoming relationships (what references this symbol)
-                        let incoming: Vec<_> = relationships
-                            .iter()
-                            .filter(|rel| rel.to_symbol_id == target_symbol.id)
-                            .collect();
-
-                        // Find outgoing relationships (what this symbol references)
-                        let outgoing: Vec<_> = relationships
-                            .iter()
-                            .filter(|rel| rel.from_symbol_id == target_symbol.id)
-                            .collect();
-
-                        message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
-                        message.push_str(&format!("→ Outgoing ({} relationships):\n", outgoing.len()));
-                    } else {
-                        message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
-                    }
+                } else {
+                    message.push_str(&format!("❌ Search failed for '{}'\n", focus));
                 }
             }
         } else {
             message.push_str("💡 Use focus parameter to trace a specific symbol\n");
             message.push_str("Example: { \"mode\": \"trace\", \"focus\": \"functionName\" }");
         }
+
+        message.push_str("\n\n🎯 Intelligence: Using focused relationship queries");
 
         Ok(message)
     }
@@ -826,78 +802,457 @@ pub struct FindLogicTool {
 
 impl FindLogicTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🏢 Finding business logic for domain: {}", self.domain);
+        debug!("🏢 🧠 SUPER GENIUS: Finding business logic for domain: {}", self.domain);
 
-        // Get all symbols and relationships from database for business logic analysis (persistent)
-        // Note: get_all_symbols() returns symbols from ALL workspaces, not just primary
-        let (all_symbols, all_relationships) = if let Ok(workspace) = handler.get_workspace().await {
-            if let Some(workspace) = workspace {
-                if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    let syms = db_lock.get_all_symbols().unwrap_or_default();
-                    let rels = db_lock.get_all_relationships().unwrap_or_default();
-                    (syms, rels)
-                } else {
-                    (Vec::new(), Vec::new())
-                }
-            } else {
-                (Vec::new(), Vec::new())
+        // 🚀 MULTI-TIER INTELLIGENT SEARCH ARCHITECTURE
+        // This replaces primitive O(n) filtering with intelligent indexed queries
+
+        let mut candidates: Vec<Symbol> = Vec::new();
+        let mut search_insights: Vec<String> = Vec::new();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIER 1: Ultra-Fast Keyword Search (Tantivy + FTS5) - <10ms
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("🔍 Tier 1: Ultra-fast keyword search via Tantivy/FTS5");
+        match self.search_by_keywords(handler).await {
+            Ok(keyword_matches) => {
+                search_insights.push(format!("Keyword search: {} matches", keyword_matches.len()));
+                candidates.extend(keyword_matches);
             }
+            Err(e) => {
+                debug!("⚠️ Tier 1 failed: {}", e);
+                search_insights.push("Keyword search: unavailable".to_string());
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIER 2: Tree-Sitter AST Pattern Recognition - Architectural Intelligence
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("🌳 Tier 2: Tree-sitter AST pattern recognition");
+        match self.find_architectural_patterns(handler).await {
+            Ok(ast_matches) => {
+                search_insights.push(format!("AST patterns: {} matches", ast_matches.len()));
+                candidates.extend(ast_matches);
+            }
+            Err(e) => {
+                debug!("⚠️ Tier 2 failed: {}", e);
+                search_insights.push("AST patterns: unavailable".to_string());
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIER 3: Path-Based Architectural Layer Detection
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("🗂️ Tier 3: Applying path-based architectural intelligence");
+        self.apply_path_intelligence(&mut candidates);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIER 4: Semantic HNSW Business Concept Matching - AI-Powered
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("🧠 Tier 4: Semantic HNSW concept matching");
+        match self.semantic_business_search(handler).await {
+            Ok(semantic_matches) => {
+                search_insights.push(format!("Semantic search: {} matches", semantic_matches.len()));
+                candidates.extend(semantic_matches);
+            }
+            Err(e) => {
+                debug!("⚠️ Tier 4 failed: {}", e);
+                search_insights.push("Semantic search: unavailable".to_string());
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIER 5: Relationship Graph Centrality Analysis
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("📊 Tier 5: Analyzing relationship graph for business importance");
+        if let Err(e) = self.analyze_business_importance(&mut candidates, handler).await {
+            debug!("⚠️ Tier 5 failed: {}", e);
+            search_insights.push("Graph analysis: unavailable".to_string());
         } else {
-            (Vec::new(), Vec::new())
-        };
+            search_insights.push("Graph analysis: complete".to_string());
+        }
 
-        // Filter symbols for business logic based on domain keywords and relevance
-        let business_symbols = self.filter_business_logic(&all_symbols);
-        let business_relationships = self.filter_business_relationships(&all_relationships, &business_symbols);
+        // ═══════════════════════════════════════════════════════════════════
+        // FINAL PROCESSING: Deduplicate, Score, Rank, and Limit
+        // ═══════════════════════════════════════════════════════════════════
+        candidates = self.deduplicate_and_rank(candidates);
 
-        // Use token-optimized formatting
-        let message = self.format_optimized_results(&business_symbols, &business_relationships);
+        // Filter by minimum business score threshold
+        let business_symbols: Vec<Symbol> = candidates
+            .into_iter()
+            .filter(|s| s.confidence.unwrap_or(0.0) >= self.min_business_score)
+            .take(self.max_results as usize)
+            .collect();
+
+        // Get relationships between business logic symbols
+        let business_relationships = self.get_business_relationships(&business_symbols, handler).await?;
+
+        // Format with intelligence insights
+        let mut message = format!("🧠 SUPER GENIUS Business Logic Discovery\n");
+        message.push_str(&format!("🔬 Intelligence Layers: {}\n\n", search_insights.join(" | ")));
+        message.push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
             message,
         )]))
     }
 
-    /// Filter symbols to identify business logic based on domain keywords and relevance scoring
-    fn filter_business_logic(&self, symbols: &[Symbol]) -> Vec<Symbol> {
-        let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
-        let mut business_symbols = Vec::new();
+    // ═══════════════════════════════════════════════════════════════════
+    // TIER 1: Ultra-Fast Keyword Search Implementation
+    // ═══════════════════════════════════════════════════════════════════
 
-        for symbol in symbols {
-            let business_score = self.calculate_business_score(symbol, &domain_keywords);
-            if business_score >= self.min_business_score {
-                // Clone the symbol and update its confidence to reflect business score
-                let mut business_symbol = symbol.clone();
-                business_symbol.confidence = Some(business_score);
-                business_symbols.push(business_symbol);
+    /// Tier 1: Search using Tantivy index or SQLite FTS5 for ultra-fast keyword matching
+    async fn search_by_keywords(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
+        let mut keyword_results: Vec<Symbol> = Vec::new();
+
+        // Try Tantivy search engine first (fastest path)
+        if let Ok(search_engine) = handler.active_search_engine().await {
+            let search_engine = search_engine.read().await;
+
+            // Search for each keyword and combine results
+            for keyword in &domain_keywords {
+                if let Ok(results) = search_engine.search(keyword).await {
+                    for search_result in results {
+                        let mut symbol = search_result.symbol;
+                        // Initial score based on search relevance
+                        symbol.confidence = Some(search_result.score as f32);
+                        keyword_results.push(symbol);
+                    }
+                }
+            }
+
+            debug!("🔍 Tantivy keyword search found {} candidates", keyword_results.len());
+            return Ok(keyword_results);
+        }
+
+        // Fallback to SQLite FTS5 if Tantivy unavailable
+        debug!("🔍 Falling back to SQLite FTS5 keyword search");
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
+
+                // Search by each keyword using indexed database queries
+                for keyword in &domain_keywords {
+                    if let Ok(results) = db_lock.find_symbols_by_pattern(keyword, None) {
+                        for mut symbol in results {
+                            symbol.confidence = Some(0.5); // Base FTS5 score
+                            keyword_results.push(symbol);
+                        }
+                    }
+                }
             }
         }
 
-        // Sort by business score (confidence) descending and limit results
-        business_symbols.sort_by(|a, b| {
+        debug!("🔍 SQLite FTS5 keyword search found {} candidates", keyword_results.len());
+        Ok(keyword_results)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TIER 2: Tree-Sitter AST Pattern Recognition
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Tier 2: Find architectural patterns using tree-sitter AST analysis
+    async fn find_architectural_patterns(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        let mut pattern_matches: Vec<Symbol> = Vec::new();
+        let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
+
+        // Get database for querying
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
+
+        // Pattern 1: Find Service/Controller/Handler classes
+        let architectural_patterns = vec![
+            "Service", "Controller", "Handler", "Manager", "Processor",
+            "Repository", "Provider", "Factory", "Builder", "Validator"
+        ];
+
+        for pattern in &architectural_patterns {
+            for keyword in &domain_keywords {
+                // Search for classes like "PaymentService", "UserController", etc.
+                let query = format!("{}{}", keyword, pattern);
+                if let Ok(results) = db_lock.find_symbols_by_pattern(&query, None) {
+                    for mut symbol in results {
+                        // High score for architectural pattern matches
+                        if matches!(symbol.kind, SymbolKind::Class | SymbolKind::Struct) {
+                            symbol.confidence = Some(0.8);
+                            symbol.semantic_group = Some(pattern.to_lowercase());
+                            pattern_matches.push(symbol);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pattern 2: Find business logic method names
+        let business_method_prefixes = vec![
+            "process", "validate", "calculate", "execute", "handle",
+            "create", "update", "delete", "get", "find", "fetch"
+        ];
+
+        for prefix in &business_method_prefixes {
+            for keyword in &domain_keywords {
+                // Search for methods like "processPayment", "validateUser", etc.
+                let query = format!("{}{}", prefix, keyword);
+                if let Ok(results) = db_lock.find_symbols_by_pattern(&query, None) {
+                    for mut symbol in results {
+                        if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+                            symbol.confidence = Some(0.7);
+                            pattern_matches.push(symbol);
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!("🌳 AST pattern recognition found {} architectural matches", pattern_matches.len());
+        Ok(pattern_matches)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TIER 3: Path-Based Architectural Intelligence
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Tier 3: Apply path-based intelligence to boost business layer symbols
+    fn apply_path_intelligence(&self, symbols: &mut [Symbol]) {
+        for symbol in symbols.iter_mut() {
+            let path_lower = symbol.file_path.to_lowercase();
+            let mut path_boost: f32 = 0.0;
+
+            // Business logic layers (HIGH priority)
+            if path_lower.contains("/services/") || path_lower.contains("/service/") {
+                path_boost += 0.25;
+                symbol.semantic_group = Some("service".to_string());
+            } else if path_lower.contains("/domain/") || path_lower.contains("/models/") || path_lower.contains("/entities/") {
+                path_boost += 0.2;
+                symbol.semantic_group = Some("domain".to_string());
+            } else if path_lower.contains("/controllers/") || path_lower.contains("/handlers/") || path_lower.contains("/api/") {
+                path_boost += 0.15;
+                symbol.semantic_group = Some("controller".to_string());
+            } else if path_lower.contains("/repositories/") || path_lower.contains("/dao/") {
+                path_boost += 0.1;
+                symbol.semantic_group = Some("repository".to_string());
+            }
+
+            // Infrastructure/utilities (PENALTY - not business logic)
+            if path_lower.contains("/utils/") || path_lower.contains("/helpers/") ||
+               path_lower.contains("/lib/") || path_lower.contains("/vendor/") {
+                path_boost -= 0.3;
+                symbol.semantic_group = Some("utility".to_string());
+            }
+
+            // Tests (PENALTY - not production business logic)
+            if path_lower.contains("/test") || path_lower.contains("_test") ||
+               path_lower.contains(".test.") || path_lower.contains(".spec.") {
+                path_boost -= 0.5;
+                symbol.semantic_group = Some("test".to_string());
+            }
+
+            // Apply boost to confidence score
+            let current_score = symbol.confidence.unwrap_or(0.5);
+            symbol.confidence = Some((current_score + path_boost).clamp(0.0, 1.0));
+        }
+
+        debug!("🗂️ Applied path-based intelligence to {} symbols", symbols.len());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TIER 4: Semantic HNSW Business Concept Matching
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Tier 4: Use HNSW semantic search to find conceptually similar business logic
+    async fn semantic_business_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+        let mut semantic_matches: Vec<Symbol> = Vec::new();
+
+        // Ensure embedding engine is ready
+        if let Err(_) = handler.ensure_embedding_engine().await {
+            debug!("🧠 Embedding engine not available, skipping semantic search");
+            return Ok(semantic_matches);
+        }
+
+        // Ensure vector store is ready
+        if let Err(_) = handler.ensure_vector_store().await {
+            debug!("🧠 Vector store not available, skipping semantic search");
+            return Ok(semantic_matches);
+        }
+
+        // Get workspace components
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+
+        let vector_store = match workspace.vector_store.as_ref() {
+            Some(vs) => vs,
+            None => {
+                debug!("🧠 Vector store not initialized");
+                return Ok(semantic_matches);
+            }
+        };
+
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+
+        // Generate embedding for the domain query
+        let query_embedding = {
+            let mut embedding_guard = handler.embedding_engine.write().await;
+            let embedding_engine = match embedding_guard.as_mut() {
+                Some(engine) => engine,
+                None => {
+                    debug!("🧠 Embedding engine not available");
+                    return Ok(semantic_matches);
+                }
+            };
+
+            // Create a temporary symbol from the query
+            let query_symbol = Symbol {
+                id: "query".to_string(),
+                name: self.domain.clone(),
+                kind: SymbolKind::Function,
+                language: "query".to_string(),
+                file_path: "query".to_string(),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: self.domain.len() as u32,
+                start_byte: 0,
+                end_byte: self.domain.len() as u32,
+                signature: None,
+                doc_comment: Some(format!("Business logic for: {}", self.domain)),
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: Some("business".to_string()),
+                confidence: None,
+                code_context: None,
+            };
+
+            let context = crate::embeddings::CodeContext {
+                parent_symbol: None,
+                surrounding_code: None,
+                file_context: Some("".to_string()),
+            };
+
+            embedding_engine.embed_symbol(&query_symbol, &context)?
+        };
+
+        // Search using HNSW for semantic similarity
+        let store_guard = vector_store.read().await;
+        if !store_guard.has_hnsw_index() {
+            debug!("🧠 HNSW index not available");
+            return Ok(semantic_matches);
+        }
+
+        // Search for semantically similar symbols (lower threshold for broader coverage)
+        let search_limit = (self.max_results * 3) as usize; // Get more candidates for filtering
+        let similarity_threshold = 0.2; // Lower threshold for business logic discovery
+
+        let hnsw_results = store_guard.search_similar_hnsw(
+            &query_embedding,
+            search_limit,
+            similarity_threshold,
+        )?;
+        drop(store_guard);
+
+        // Fetch actual symbols from database
+        let db_lock = db.lock().await;
+        for result in hnsw_results {
+            if let Ok(Some(mut symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
+                // Score based on semantic similarity
+                symbol.confidence = Some(result.similarity_score);
+                semantic_matches.push(symbol);
+            }
+        }
+
+        debug!("🧠 Semantic HNSW search found {} conceptually similar symbols", semantic_matches.len());
+        Ok(semantic_matches)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TIER 5: Relationship Graph Centrality Analysis
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Tier 5: Analyze relationship graph to boost important business entities
+    async fn analyze_business_importance(&self, symbols: &mut [Symbol], handler: &JulieServerHandler) -> Result<()> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
+
+        // Build a reference count map for all symbols
+        let mut reference_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        // Count incoming references for each symbol (how many things reference this symbol)
+        for symbol in symbols.iter() {
+            if let Ok(relationships) = db_lock.get_relationships_to_symbol(&symbol.id) {
+                reference_counts.insert(symbol.id.clone(), relationships.len());
+            }
+        }
+
+        // Apply centrality boost based on reference counts
+        for symbol in symbols.iter_mut() {
+            if let Some(&ref_count) = reference_counts.get(&symbol.id) {
+                if ref_count > 0 {
+                    // Logarithmic boost for reference count (popular symbols get higher scores)
+                    let centrality_boost = (ref_count as f32).ln() * 0.05;
+                    let current_score = symbol.confidence.unwrap_or(0.5);
+                    symbol.confidence = Some((current_score + centrality_boost).clamp(0.0, 1.0));
+
+                    debug!("📊 Symbol {} has {} references, boost: {:.2}", symbol.name, ref_count, centrality_boost);
+                }
+            }
+        }
+
+        debug!("📊 Applied relationship graph centrality analysis");
+        Ok(())
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FINAL PROCESSING METHODS
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Deduplicate symbols and rank by business score
+    fn deduplicate_and_rank(&self, mut symbols: Vec<Symbol>) -> Vec<Symbol> {
+        // Sort by ID first for deduplication
+        symbols.sort_by(|a, b| a.id.cmp(&b.id));
+        symbols.dedup_by(|a, b| a.id == b.id);
+
+        // Calculate final business scores with domain keyword matching
+        let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
+        for symbol in symbols.iter_mut() {
+            let keyword_score = self.calculate_domain_keyword_score(symbol, &domain_keywords);
+            let current_score = symbol.confidence.unwrap_or(0.0);
+
+            // Combine existing intelligence scores with keyword matching
+            symbol.confidence = Some((current_score * 0.7 + keyword_score * 0.3).clamp(0.0, 1.0));
+        }
+
+        // Sort by final business score (descending)
+        symbols.sort_by(|a, b| {
             let score_a = a.confidence.unwrap_or(0.0);
             let score_b = b.confidence.unwrap_or(0.0);
             score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        business_symbols.truncate(self.max_results as usize);
-        business_symbols
+        debug!("✨ Deduplicated and ranked {} final candidates", symbols.len());
+        symbols
     }
 
-    /// Calculate business relevance score for a symbol based on domain keywords
-    fn calculate_business_score(&self, symbol: &Symbol, domain_keywords: &[&str]) -> f32 {
+    /// Calculate score based on domain keyword matching
+    fn calculate_domain_keyword_score(&self, symbol: &Symbol, domain_keywords: &[&str]) -> f32 {
         let mut score: f32 = 0.0;
 
-        // Check symbol name for domain relevance (highest weight)
+        // Check symbol name (highest weight)
         let name_lower = symbol.name.to_lowercase();
         for keyword in domain_keywords {
             if name_lower.contains(&keyword.to_lowercase()) {
-                score += 0.4; // Name match is highly valuable
+                score += 0.5;
             }
         }
 
-        // Check file path for business context (medium weight)
+        // Check file path
         let path_lower = symbol.file_path.to_lowercase();
         for keyword in domain_keywords {
             if path_lower.contains(&keyword.to_lowercase()) {
@@ -905,74 +1260,57 @@ impl FindLogicTool {
             }
         }
 
-        // Business logic indicators in file path (medium weight)
-        if path_lower.contains("service") || path_lower.contains("business") ||
-           path_lower.contains("domain") || path_lower.contains("logic") ||
-           path_lower.contains("model") || path_lower.contains("entity") {
-            score += 0.15;
-        }
-
-        // Check documentation for business context (medium weight)
+        // Check documentation
         if let Some(doc) = &symbol.doc_comment {
             let doc_lower = doc.to_lowercase();
             for keyword in domain_keywords {
                 if doc_lower.contains(&keyword.to_lowercase()) {
-                    score += 0.15;
+                    score += 0.2;
                 }
             }
+        }
 
-            // Business logic keywords in documentation
-            if doc_lower.contains("business") || doc_lower.contains("process") ||
-               doc_lower.contains("rule") || doc_lower.contains("workflow") ||
-               doc_lower.contains("domain") {
-                score += 0.1;
+        // Check signature
+        if let Some(sig) = &symbol.signature {
+            let sig_lower = sig.to_lowercase();
+            for keyword in domain_keywords {
+                if sig_lower.contains(&keyword.to_lowercase()) {
+                    score += 0.1;
+                }
             }
         }
 
-        // Check semantic group for business layer classification (low weight)
-        if let Some(group) = &symbol.semantic_group {
-            let group_lower = group.to_lowercase();
-            if group_lower.contains("business") || group_lower.contains("domain") ||
-               group_lower.contains("service") || group_lower.contains("logic") {
-                score += 0.1;
-            }
-        }
-
-        // Symbol kind preferences (business logic is more likely in certain kinds)
-        match symbol.kind {
-            crate::extractors::SymbolKind::Class |
-            crate::extractors::SymbolKind::Function |
-            crate::extractors::SymbolKind::Method => score += 0.05,
-            crate::extractors::SymbolKind::Interface |
-            crate::extractors::SymbolKind::Struct => score += 0.03,
-            _ => {} // Other kinds get no bonus
-        }
-
-        // Boost score for existing confidence if it indicates high quality
-        if let Some(existing_confidence) = symbol.confidence {
-            if existing_confidence > 0.8 {
-                score += 0.05;
-            }
-        }
-
-        // Normalize score to 0.0-1.0 range (current max possible is around 1.0)
         score.min(1.0)
     }
 
-    /// Filter relationships that connect business logic symbols
-    fn filter_business_relationships(&self, relationships: &[Relationship], business_symbols: &[Symbol]) -> Vec<Relationship> {
+    /// Get relationships between business logic symbols using intelligent queries
+    async fn get_business_relationships(&self, business_symbols: &[Symbol], handler: &JulieServerHandler) -> Result<Vec<Relationship>> {
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = db.lock().await;
+
         let business_symbol_ids: std::collections::HashSet<String> =
             business_symbols.iter().map(|s| s.id.clone()).collect();
 
-        relationships
-            .iter()
-            .filter(|rel| {
-                // Include relationships where both ends are business logic symbols
-                business_symbol_ids.contains(&rel.from_symbol_id) &&
-                business_symbol_ids.contains(&rel.to_symbol_id)
-            })
-            .cloned()
-            .collect()
+        let mut relationships: Vec<Relationship> = Vec::new();
+
+        // Use targeted queries instead of loading ALL relationships
+        for symbol in business_symbols {
+            if let Ok(symbol_rels) = db_lock.get_relationships_for_symbol(&symbol.id) {
+                for rel in symbol_rels {
+                    // Only include relationships where both ends are business symbols
+                    if business_symbol_ids.contains(&rel.from_symbol_id) &&
+                       business_symbol_ids.contains(&rel.to_symbol_id) {
+                        relationships.push(rel);
+                    }
+                }
+            }
+        }
+
+        debug!("🔗 Found {} business relationships", relationships.len());
+        Ok(relationships)
     }
 
     /// Format optimized results with token optimization for FindLogicTool
