@@ -1019,16 +1019,17 @@ impl PhpExtractor {
                 .collect();
 
             for base_interface_name in base_interface_names {
+                let to_id = format!("php-interface:{}", base_interface_name);
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
                         interface_symbol.id,
-                        format!("php-interface:{}", base_interface_name),
+                        to_id,
                         RelationshipKind::Extends,
                         node.start_position().row
                     ),
                     from_symbol_id: interface_symbol.id.clone(),
-                    to_symbol_id: format!("php-interface:{}", base_interface_name),
+                    to_symbol_id: to_id,
                     kind: RelationshipKind::Extends,
                     file_path: self.base.file_path.clone(),
                     line_number: node.start_position().row as u32 + 1,

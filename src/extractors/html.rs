@@ -727,16 +727,17 @@ impl HTMLExtractor {
         // Extract href relationships (links)
         if let Some(href) = attributes.get("href") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
+                let to_id = format!("url:{}", href);
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
                         element.id,
-                        format!("url:{}", href),
+                        to_id,
                         RelationshipKind::References,
                         node.start_position().row
                     ),
                     from_symbol_id: element.id.clone(),
-                    to_symbol_id: format!("url:{}", href),
+                    to_symbol_id: to_id,
                     kind: RelationshipKind::References,
                     file_path: self.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,
@@ -753,16 +754,17 @@ impl HTMLExtractor {
         // Extract src relationships (images, scripts, etc.)
         if let Some(src) = attributes.get("src") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
+                let to_id = format!("resource:{}", src);
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
                         element.id,
-                        format!("resource:{}", src),
+                        to_id,
                         RelationshipKind::Uses,
                         node.start_position().row
                     ),
                     from_symbol_id: element.id.clone(),
-                    to_symbol_id: format!("resource:{}", src),
+                    to_symbol_id: to_id,
                     kind: RelationshipKind::Uses,
                     file_path: self.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,
@@ -779,16 +781,17 @@ impl HTMLExtractor {
         // Extract form relationships
         if let Some(action) = attributes.get("action") {
             if let Some(element) = self.find_element_symbol(node, symbols) {
+                let to_id = format!("endpoint:{}", action);
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
                         element.id,
-                        format!("endpoint:{}", action),
+                        to_id,
                         RelationshipKind::Calls,
                         node.start_position().row
                     ),
                     from_symbol_id: element.id.clone(),
-                    to_symbol_id: format!("endpoint:{}", action),
+                    to_symbol_id: to_id,
                     kind: RelationshipKind::Calls,
                     file_path: self.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,
@@ -832,16 +835,17 @@ impl HTMLExtractor {
                     .map(|t| t == "script-element")
                     .unwrap_or(false)
             }) {
+                let to_id = format!("script:{}", src);
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
                         script_symbol.id,
-                        format!("script:{}", src),
+                        to_id,
                         RelationshipKind::Imports,
                         node.start_position().row
                     ),
                     from_symbol_id: script_symbol.id.clone(),
-                    to_symbol_id: format!("script:{}", src),
+                    to_symbol_id: to_id,
                     kind: RelationshipKind::Imports,
                     file_path: self.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,

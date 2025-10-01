@@ -1837,16 +1837,18 @@ impl CExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         let include_path = self.extract_include_path(&self.base.get_node_text(&node));
+        let from_id = format!("file:{}", self.base.file_path);
+        let to_id = format!("header:{}", include_path);
         relationships.push(Relationship {
             id: format!(
                 "{}_{}_{:?}_{}",
-                format!("file:{}", self.base.file_path),
-                format!("header:{}", include_path),
+                from_id,
+                to_id,
                 crate::extractors::base::RelationshipKind::Imports,
                 node.start_position().row
             ),
-            from_symbol_id: format!("file:{}", self.base.file_path),
-            to_symbol_id: format!("header:{}", include_path),
+            from_symbol_id: from_id,
+            to_symbol_id: to_id,
             kind: crate::extractors::base::RelationshipKind::Imports,
             file_path: self.base.file_path.clone(),
             line_number: (node.start_position().row + 1) as u32,
