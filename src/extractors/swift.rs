@@ -595,10 +595,9 @@ impl SwiftExtractor {
             let is_let = node.children(&mut node.walk()).any(|c| c.kind() == "let");
             let is_var = node.children(&mut node.walk()).any(|c| c.kind() == "var");
 
+            // Use "let" if is_let, otherwise default to "var"
             let mut signature = if is_let {
                 format!("let {}", name)
-            } else if is_var {
-                format!("var {}", name)
             } else {
                 format!("var {}", name)
             };
@@ -1117,6 +1116,7 @@ impl SwiftExtractor {
             .find(|c| c.kind() == "modifiers")
         {
             for child in modifiers_list.children(&mut modifiers_list.walk()) {
+                // Collect all modifiers, keywords, and attributes
                 if matches!(
                     child.kind(),
                     "visibility_modifier"
@@ -1125,11 +1125,7 @@ impl SwiftExtractor {
                         | "access_level_modifier"
                         | "property_modifier"
                         | "member_modifier"
-                ) {
-                    modifiers.push(self.base.get_node_text(&child));
-                } else if matches!(
-                    child.kind(),
-                    "public"
+                        | "public"
                         | "private"
                         | "internal"
                         | "fileprivate"
@@ -1144,9 +1140,8 @@ impl SwiftExtractor {
                         | "required"
                         | "convenience"
                         | "dynamic"
+                        | "attribute"
                 ) {
-                    modifiers.push(self.base.get_node_text(&child));
-                } else if child.kind() == "attribute" {
                     modifiers.push(self.base.get_node_text(&child));
                 }
             }

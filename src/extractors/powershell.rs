@@ -964,12 +964,8 @@ impl PowerShellExtractor {
         for attr in attribute_nodes {
             let attr_text = self.base.get_node_text(&attr);
 
-            // Check if it's a Parameter attribute
-            if attr_text.contains("Parameter") {
-                attributes.push(attr_text);
-            }
-            // Check if it's a type (like [string], [switch])
-            else if TYPE_BRACKET_RE.is_match(&attr_text) {
+            // Collect Parameter attributes and type brackets (like [string], [switch])
+            if attr_text.contains("Parameter") || TYPE_BRACKET_RE.is_match(&attr_text) {
                 attributes.push(attr_text);
             }
         }
