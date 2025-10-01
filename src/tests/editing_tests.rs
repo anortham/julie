@@ -348,16 +348,23 @@ fn main() {
         fs::write(&test_file, rust_content)?;
 
         // Test that removing a brace would be caught by validation
-        let _corrupting_edit = FastEditTool {
+        let _corrupting_edit = SafeEditTool {
             file_path: test_file.to_string_lossy().to_string(),
-            find_text: "}".to_string(),
-            replace_text: "".to_string(), // This would create unbalanced braces
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            find_text: Some("}".to_string()),
+            replace_text: Some("".to_string()), // This would create unbalanced braces
+            old_text: None,
+            new_text: None,
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
             validate: true,
             dry_run: false,
+            preserve_indentation: true,
         };
 
         // Simulate validation logic
@@ -402,16 +409,23 @@ fn main() {
         let short_message = "✅ Successfully replaced 3 occurrences of 'getUserData' with 'fetchUserInfo'";
 
         // This test will fail initially until we implement optimize_response
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "test.js".to_string(),
-            find_text: "test".to_string(),
-            replace_text: "demo".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            find_text: Some("test".to_string()),
+            replace_text: Some("demo".to_string()),
+            old_text: None,
+            new_text: None,
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
             validate: true,
             dry_run: false,
+            preserve_indentation: true,
         };
 
         // Test that short responses are not truncated
@@ -436,16 +450,23 @@ fn main() {
             "getUserData -> fetchUserInfo, validateUser -> checkUserCredentials, processData -> handleDataTransformation".repeat(200)
         );
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "test.js".to_string(),
-            find_text: "test".to_string(),
-            replace_text: "demo".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            find_text: Some("test".to_string()),
+            replace_text: Some("demo".to_string()),
+            old_text: None,
+            new_text: None,
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
             validate: true,
             dry_run: false,
+            preserve_indentation: true,
         };
 
         // Test that long responses are truncated
@@ -470,13 +491,21 @@ fn main() {
 
         let short_message = "✅ Successfully inserted 1 line at position 42";
 
-        let tool = crate::tools::LineEditTool {
+        let tool = SafeEditTool {
             file_path: "test.py".to_string(),
-            operation: "insert".to_string(),
+            mode: "line_insert".to_string(),
             line_number: Some(42),
             content: Some("print('Hello World')".to_string()),
+            old_text: None,
+            new_text: None,
+            find_text: None,
+            replace_text: None,
             start_line: None,
             end_line: None,
+            file_pattern: None,
+            language: None,
+            limit: None,
+            validate: true,
             preserve_indentation: true,
             dry_run: false,
         };
@@ -506,16 +535,23 @@ fn main() {
 
         let long_message = format!("{}{}", essential_start, filler_content);
 
-        let tool = FastEditTool {
+        let tool = SafeEditTool {
             file_path: "test.js".to_string(),
-            find_text: "test".to_string(),
-            replace_text: "demo".to_string(),
-            mode: None,
-            language: None,
+            mode: "pattern_replace".to_string(),
+            find_text: Some("test".to_string()),
+            replace_text: Some("demo".to_string()),
+            old_text: None,
+            new_text: None,
+            line_number: None,
+            start_line: None,
+            end_line: None,
+            content: None,
             file_pattern: None,
+            language: None,
             limit: None,
             validate: true,
             dry_run: false,
+            preserve_indentation: true,
         };
 
         let optimized = tool.optimize_response(&long_message);

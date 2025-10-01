@@ -118,7 +118,7 @@ mod concurrency_tests {
 
                 preserve_indentation: true,
 
-            }
+            };
             tool.call_tool(&handler_1).await
         });
 
@@ -159,7 +159,7 @@ mod concurrency_tests {
 
                 preserve_indentation: true,
 
-            }
+            };
             tool.call_tool(&handler_2).await
         });
 
@@ -224,7 +224,7 @@ mod concurrency_tests {
 
                 preserve_indentation: true,
 
-            }
+            };
             tool.call_tool(&handler_1).await
         });
 
@@ -265,7 +265,7 @@ mod concurrency_tests {
 
                 preserve_indentation: true,
 
-            }
+            };
             tool.call_tool(&handler_2).await
         });
 
@@ -351,7 +351,7 @@ mod permission_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -430,7 +430,7 @@ mod permission_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await;
@@ -510,7 +510,7 @@ mod encoding_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -586,7 +586,7 @@ mod encoding_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -664,7 +664,7 @@ mod security_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -677,7 +677,7 @@ mod security_tests {
         if std::path::Path::new("/etc/passwd").exists() {
             let passwd_content = fs::read_to_string("/etc/passwd").unwrap();
             assert!(!passwd_content.contains("hacked"));
-        }
+        };
     }
 
     #[tokio::test]
@@ -745,7 +745,7 @@ mod security_tests {
                 preserve_indentation: true,
 
 
-            }
+            };
 
             let handler = JulieServerHandler::new().await.unwrap();
             let result = tool.call_tool(&handler).await.unwrap();
@@ -756,7 +756,7 @@ mod security_tests {
             // Verify target file was modified, not the symlink
             let target_content = fs::read_to_string(&target_file).unwrap();
             assert!(target_content.contains("modified"));
-        }
+        };
     }
 }
 
@@ -829,7 +829,7 @@ mod performance_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let start_time = std::time::Instant::now();
@@ -906,7 +906,7 @@ mod performance_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();

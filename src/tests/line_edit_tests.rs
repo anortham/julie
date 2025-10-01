@@ -122,7 +122,7 @@ mod count_operation_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = JulieServerHandler::new().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -190,7 +190,7 @@ mod count_operation_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -266,7 +266,7 @@ mod count_operation_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
@@ -341,7 +341,7 @@ mod count_operation_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await;
@@ -362,7 +362,7 @@ mod count_operation_tests {
                     response_text
                 );
             }
-        }
+        };
     }
 }
 
@@ -431,7 +431,7 @@ mod read_operation_tests {
             preserve_indentation: true,
 
 
-        }
+        };
 
         let handler = fixture.create_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
