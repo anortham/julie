@@ -932,12 +932,54 @@ impl FastSearchTool {
             }
         }
 
-        // For reference workspaces, we would need to load their index dynamically
-        // TODO: Implement dynamic loading of reference workspace indexes
-        // For now, return error since we don't support reference workspaces yet
-        Err(anyhow::anyhow!(
-            "Searching reference workspaces not yet implemented. Use workspace='primary' or omit workspace parameter."
-        ))
+        // For reference workspaces, dynamically load their Tantivy index
+        debug!("📂 Loading reference workspace Tantivy index: {}", workspace_id);
+
+        // Get the workspace metadata from registry
+        let _workspace_metadata = registry_service
+            .get_workspace(workspace_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found in registry", workspace_id))?;
+
+        // Build the path to the workspace's Tantivy index
+        // Per-workspace architecture: indexes/{workspace_id}/tantivy/
+        let index_path = workspace.root
+            .join(".julie")
+            .join("indexes")
+            .join(workspace_id)
+            .join("tantivy");
+
+        // Check if the index exists
+        if !index_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Tantivy index not found for workspace '{}' at {:?}. Has it been indexed?",
+                workspace_id, index_path
+            ));
+        }
+
+        // Create a SearchEngine for this workspace's index
+        debug!("🔧 Creating SearchEngine for reference workspace at {:?}", index_path);
+        let search_engine = crate::search::engine::SearchEngine::new(&index_path)?;
+
+        // Perform the search
+        let search_results = search_engine.search(&self.query).await?;
+
+        // Convert SearchResults to Symbols
+        let symbols: Vec<Symbol> = search_results
+            .into_iter()
+            .map(|result| result.symbol)
+            .collect();
+
+        debug!(
+            "✅ Reference workspace '{}' search returned {} results",
+            workspace_id, symbols.len()
+        );
+
+        // TODO: Future optimization - cache SearchEngine instances for frequently accessed workspaces
+        // Could use an LRU cache in the handler or a static cache with size limits
+        // For now, creating fresh each time is fine - Tantivy index opening is relatively fast
+
+        Ok(symbols)
     }
 
     /// 🔄 CASCADE FALLBACK: Database search with workspace filtering
