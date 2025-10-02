@@ -25,6 +25,21 @@ use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 use crate::utils::token_estimation::TokenEstimator;
 
+/// Structured result from trace_call_path operation
+#[derive(Debug, Clone, Serialize)]
+pub struct TraceCallPathResult {
+    pub tool: String,
+    pub symbol: String,
+    pub direction: String,
+    pub max_depth: u32,
+    pub cross_language: bool,
+    pub success: bool,
+    pub paths_found: usize,
+    pub next_actions: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
 fn default_upstream() -> String {
     "upstream".to_string()
 }
@@ -125,6 +140,39 @@ enum MatchType {
 }
 
 impl TraceCallPathTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        success: bool,
+        paths_found: usize,
+        next_actions: Vec<String>,
+        markdown: String,
+        error_message: Option<String>,
+    ) -> Result<CallToolResult> {
+        let result = TraceCallPathResult {
+            tool: "trace_call_path".to_string(),
+            symbol: self.symbol.clone(),
+            direction: self.direction.clone(),
+            max_depth: self.max_depth,
+            cross_language: self.cross_language,
+            success,
+            paths_found,
+            next_actions,
+            error_message,
+        };
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!(
             "🔍 Tracing call path: {} (direction: {}, depth: {}, cross_lang: {})",
@@ -133,19 +181,27 @@ impl TraceCallPathTool {
 
         // Validate parameters
         if self.max_depth > 10 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                "❌ max_depth cannot exceed 10 (performance limit)\n\
-                 💡 Try with max_depth: 5 for a reasonable balance"
-                    .to_string(),
-            )]));
+            let message = "❌ max_depth cannot exceed 10 (performance limit)\n\
+                 💡 Try with max_depth: 5 for a reasonable balance".to_string();
+            return self.create_result(
+                false,
+                0,
+                vec!["Reduce max_depth to 5 or less".to_string()],
+                message.clone(),
+                Some(message),
+            );
         }
 
         if self.similarity_threshold < 0.0 || self.similarity_threshold > 1.0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                "❌ similarity_threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.7 for balanced results"
-                    .to_string(),
-            )]));
+            let message = "❌ similarity_threshold must be between 0.0 and 1.0\n\
+                 💡 Recommended: 0.7 for balanced results".to_string();
+            return self.create_result(
+                false,
+                0,
+                vec!["Set similarity_threshold between 0.0 and 1.0".to_string()],
+                message.clone(),
+                Some(message),
+            );
         }
 
         // Get workspace and database
@@ -173,9 +229,16 @@ impl TraceCallPathTool {
                  • Try using fast_search to find the symbol first",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
+            return self.create_result(
+                false,
+                0,
+                vec![
+                    "Use fast_search to find the symbol".to_string(),
+                    "Check symbol name spelling".to_string(),
+                ],
+                message.clone(),
+                Some(format!("Symbol not found: {}", self.symbol)),
+            );
         }
 
         // If context file provided, filter to symbols in that file
@@ -187,9 +250,13 @@ impl TraceCallPathTool {
                      💡 Try without context_file to search all files",
                     self.symbol, context_file
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                return self.create_result(
+                    false,
+                    0,
+                    vec!["Try without context_file parameter".to_string()],
+                    message.clone(),
+                    Some(format!("Symbol not found in file: {}", context_file)),
+                );
             }
         }
 
@@ -220,13 +287,18 @@ impl TraceCallPathTool {
                     upstream
                 }
                 _ => {
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
-                        format!(
-                            "❌ Invalid direction: '{}'\n\
-                             💡 Valid options: 'upstream', 'downstream', 'both'",
-                            self.direction
-                        ),
-                    )]));
+                    let message = format!(
+                        "❌ Invalid direction: '{}'\n\
+                         💡 Valid options: 'upstream', 'downstream', 'both'",
+                        self.direction
+                    );
+                    return self.create_result(
+                        false,
+                        0,
+                        vec!["Use 'upstream', 'downstream', or 'both'".to_string()],
+                        message.clone(),
+                        Some(format!("Invalid direction: {}", self.direction)),
+                    );
                 }
             };
 
@@ -237,10 +309,18 @@ impl TraceCallPathTool {
 
         // Format output
         let output = self.format_call_trees(&all_trees)?;
+        let optimized_output = self.optimize_response(&output);
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(&output),
-        )]))
+        self.create_result(
+            true,
+            all_trees.len(),
+            vec![
+                "Review call paths to understand execution flow".to_string(),
+                "Use fast_goto to navigate to specific symbols".to_string(),
+            ],
+            optimized_output,
+            None,
+        )
     }
 
     /// Trace upstream (find callers)

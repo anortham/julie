@@ -121,7 +121,7 @@ impl FastSearchTool {
 
         // Create optimized response with confidence scoring
         let confidence = self.calculate_search_confidence(&symbols);
-        let mut optimized = OptimizedResponse::new(symbols, confidence);
+        let mut optimized = OptimizedResponse::new("fast_search", symbols, confidence);
 
         // Add insights based on patterns found
         if let Some(insights) = self.generate_search_insights(&optimized.results) {
@@ -146,11 +146,22 @@ impl FastSearchTool {
             )]));
         }
 
-        // Format optimized results
-        let message = self.format_optimized_results(&optimized);
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
-        )]))
+        // Return structured + human-readable output
+        // Agents parse structured_content, format markdown for humans
+        let markdown = self.format_optimized_results(&optimized);
+
+        // Serialize to JSON for structured_content
+        let structured = serde_json::to_value(&optimized)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
+
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
     }
 
     async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -832,9 +843,16 @@ impl FastSearchTool {
 
         let db_lock = db.lock().await;
 
-        // Use the workspace-aware database search
+        // 🔥 NEW: Apply query preprocessing for better fallback search quality
+        let processed_query = self.preprocess_fallback_query(&self.query);
+        debug!(
+            "📝 Workspace filter query preprocessed: '{}' -> '{}'",
+            self.query, processed_query
+        );
+
+        // Use the workspace-aware database search with processed query
         let mut results =
-            db_lock.find_symbols_by_pattern(&self.query, Some(workspace_ids.clone()))?;
+            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))?;
 
         // Apply language filtering if specified
         if let Some(ref language) = self.language {
@@ -912,10 +930,15 @@ impl FastSearchTool {
             registry_service.get_primary_workspace_id().await?.unwrap_or_else(|| "primary".to_string())
         };
 
-        // Use FTS5 for file content search
+        // 🔥 NEW: Apply basic query intelligence even in fallback mode
+        // This improves search quality during the 5-10s window while Tantivy builds
+        let processed_query = self.preprocess_fallback_query(&self.query);
+        debug!("📝 Fallback query preprocessed: '{}' -> '{}'", self.query, processed_query);
+
+        // Use FTS5 for file content search with processed query
         let db_lock = db.lock().await;
         let file_results = db_lock.search_file_content_fts(
-            &self.query,
+            &processed_query,
             Some(&workspace_id),
             self.limit as usize,
         )?;
@@ -951,6 +974,32 @@ impl FastSearchTool {
 
         debug!("📄 CASCADE: FTS5 returned {} file content matches", symbols.len());
         Ok(symbols)
+    }
+
+    /// Preprocess query for SQLite FTS5 fallback with basic query intelligence
+    /// This provides some QueryProcessor-like benefits even when Tantivy isn't ready
+    pub(crate) fn preprocess_fallback_query(&self, query: &str) -> String {
+        let trimmed = query.trim();
+
+        // If already quoted, keep as-is for exact match
+        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        {
+            return trimmed.to_string();
+        }
+
+        // Multi-word queries: Convert to FTS5 AND syntax for better precision
+        if trimmed.contains(' ') {
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() > 1 {
+                // FTS5 AND syntax: word1 AND word2 AND word3
+                // This is better than raw "word1 word2" which FTS5 treats as phrase
+                return words.join(" AND ");
+            }
+        }
+
+        // Single word or already processed: return as-is
+        trimmed.to_string()
     }
 
     async fn fallback_sqlite_search(
@@ -1038,5 +1087,64 @@ impl FastSearchTool {
         Ok(CallToolResult::text_content(vec![TextContent::from(
             message,
         )]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_preprocess_fallback_query_multi_word() {
+        let tool = FastSearchTool {
+            query: "user authentication".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("user authentication"),
+            "user AND authentication",
+            "Multi-word queries should use FTS5 AND syntax"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_single_word() {
+        let tool = FastSearchTool {
+            query: "getUserData".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("getUserData"),
+            "getUserData",
+            "Single words should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_quoted() {
+        let tool = FastSearchTool {
+            query: "\"exact match\"".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("\"exact match\""),
+            "\"exact match\"",
+            "Quoted queries should remain unchanged"
+        );
     }
 }

@@ -2,8 +2,13 @@ use serde::Serialize;
 
 /// Token-optimized response wrapper with confidence-based limiting
 /// Inspired by codesearch's AIOptimizedResponse pattern
+///
+/// Designed for structured MCP output - agents parse JSON, format for humans
 #[derive(Debug, Clone, Serialize)]
 pub struct OptimizedResponse<T> {
+    /// Tool that generated this response (enables routing and schema detection)
+    /// Examples: "fast_search", "fast_refs", "fast_goto", "fuzzy_replace", "smart_refactor"
+    pub tool: String,
     /// The main results (will be limited based on confidence)
     pub results: Vec<T>,
     /// Confidence score 0.0-1.0 (higher = more confident)
@@ -12,14 +17,15 @@ pub struct OptimizedResponse<T> {
     pub total_found: usize,
     /// Key insights or patterns discovered
     pub insights: Option<String>,
-    /// Suggested next actions for the user
+    /// Suggested next actions for the user (enables tool chaining)
     pub next_actions: Vec<String>,
 }
 
 impl<T> OptimizedResponse<T> {
-    pub fn new(results: Vec<T>, confidence: f32) -> Self {
+    pub fn new(tool: impl Into<String>, results: Vec<T>, confidence: f32) -> Self {
         let total_found = results.len();
         Self {
+            tool: tool.into(),
             results,
             confidence,
             total_found,

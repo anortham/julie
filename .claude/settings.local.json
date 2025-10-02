@@ -73,7 +73,9 @@
       "Read(//private/tmp/**)",
       "mcp__julie__trace_call_path",
       "mcp__julie__fuzzy_replace",
-      "mcp__tusk__plan"
+      "mcp__tusk__plan",
+      "Read(//Users/murphy/.tusk/transcript-backups/**)",
+      "Bash(RUST_BACKTRACE=1 cargo test test_fuzzy_search_replace_exact_match --lib -- --nocapture)"
     ],
     "deny": [],
     "ask": []

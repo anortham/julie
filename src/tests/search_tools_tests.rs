@@ -42,6 +42,7 @@ mod search_tools_tests {
         }];
 
         let optimized = OptimizedResponse {
+            tool: "test".to_string(),
             results: symbols,
             confidence: 0.95,
             total_found: 1,
@@ -100,6 +101,7 @@ mod search_tools_tests {
         }];
 
         let optimized = OptimizedResponse {
+            tool: "test".to_string(),
             results: symbols,
             confidence: 0.95,
             total_found: 1,
@@ -165,6 +167,7 @@ mod search_tools_tests {
         }
 
         let optimized = OptimizedResponse {
+            tool: "test".to_string(),
             results: symbols,
             confidence: 0.9,
             total_found: 70,
@@ -226,6 +229,7 @@ mod search_tools_tests {
         }
 
         let optimized = OptimizedResponse {
+            tool: "test".to_string(),
             results: symbols,
             confidence: 0.9,
             total_found: 80,

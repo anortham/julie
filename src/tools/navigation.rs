@@ -3,7 +3,6 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::debug;
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
@@ -17,6 +16,56 @@ use crate::workspace::registry_service::WorkspaceRegistryService;
 //*********************//
 // Navigation Tools    //
 //*********************//
+
+/// Structured result from fast_goto operation
+#[derive(Debug, Clone, Serialize)]
+pub struct FastGotoResult {
+    pub tool: String,
+    pub symbol: String,
+    pub found: bool,
+    pub definitions: Vec<DefinitionResult>,
+    pub next_actions: Vec<String>,
+}
+
+/// Definition location result
+#[derive(Debug, Clone, Serialize)]
+pub struct DefinitionResult {
+    pub name: String,
+    pub kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+/// Structured result from fast_refs operation
+#[derive(Debug, Clone, Serialize)]
+pub struct FastRefsResult {
+    pub tool: String,
+    pub symbol: String,
+    pub found: bool,
+    pub include_definition: bool,
+    pub definition_count: usize,
+    pub reference_count: usize,
+    pub definitions: Vec<DefinitionResult>,
+    pub references: Vec<ReferenceResult>,
+    pub next_actions: Vec<String>,
+}
+
+/// Reference relationship result
+#[derive(Debug, Clone, Serialize)]
+pub struct ReferenceResult {
+    pub from_symbol_id: String,
+    pub to_symbol_id: String,
+    pub kind: String,
+    pub file_path: String,
+    pub line_number: u32,
+    pub confidence: f32,
+}
 
 #[mcp_tool(
     name = "fast_goto",
@@ -56,6 +105,49 @@ fn default_workspace() -> Option<String> {
 }
 
 impl FastGotoTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        found: bool,
+        definitions: Vec<Symbol>,
+        next_actions: Vec<String>,
+        markdown: String,
+    ) -> Result<CallToolResult> {
+        let definition_results: Vec<DefinitionResult> = definitions
+            .iter()
+            .map(|symbol| DefinitionResult {
+                name: symbol.name.clone(),
+                kind: format!("{:?}", symbol.kind),
+                language: symbol.language.clone(),
+                file_path: symbol.file_path.clone(),
+                start_line: symbol.start_line,
+                start_column: symbol.start_column,
+                end_line: symbol.end_line,
+                end_column: symbol.end_column,
+                signature: symbol.signature.clone(),
+            })
+            .collect();
+
+        let result = FastGotoResult {
+            tool: "fast_goto".to_string(),
+            symbol: self.symbol.clone(),
+            found,
+            definitions: definition_results,
+            next_actions,
+        };
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🎯 Finding definition for: {}", self.symbol);
 
@@ -68,9 +160,15 @@ impl FastGotoTool {
                 💡 Check the symbol name and ensure it exists in the indexed files",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return self.create_result(
+                false,
+                vec![],
+                vec![
+                    "Use fast_search to locate the symbol".to_string(),
+                    "Check symbol name spelling".to_string(),
+                ],
                 message,
-            )]));
+            );
         }
 
         // Format results
@@ -100,9 +198,15 @@ impl FastGotoTool {
             message.push('\n');
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        self.create_result(
+            true,
+            definitions,
+            vec![
+                "Navigate to file location".to_string(),
+                "Use fast_refs to see all usages".to_string(),
+            ],
             message,
-        )]))
+        )
     }
 
     async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -731,6 +835,66 @@ fn default_workspace_refs() -> Option<String> {
 }
 
 impl FastRefsTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        found: bool,
+        definitions: Vec<Symbol>,
+        references: Vec<Relationship>,
+        next_actions: Vec<String>,
+        markdown: String,
+    ) -> Result<CallToolResult> {
+        let definition_results: Vec<DefinitionResult> = definitions
+            .iter()
+            .map(|symbol| DefinitionResult {
+                name: symbol.name.clone(),
+                kind: format!("{:?}", symbol.kind),
+                language: symbol.language.clone(),
+                file_path: symbol.file_path.clone(),
+                start_line: symbol.start_line,
+                start_column: symbol.start_column,
+                end_line: symbol.end_line,
+                end_column: symbol.end_column,
+                signature: symbol.signature.clone(),
+            })
+            .collect();
+
+        let reference_results: Vec<ReferenceResult> = references
+            .iter()
+            .map(|rel| ReferenceResult {
+                from_symbol_id: rel.from_symbol_id.clone(),
+                to_symbol_id: rel.to_symbol_id.clone(),
+                kind: format!("{:?}", rel.kind),
+                file_path: rel.file_path.clone(),
+                line_number: rel.line_number,
+                confidence: rel.confidence,
+            })
+            .collect();
+
+        let result = FastRefsResult {
+            tool: "fast_refs".to_string(),
+            symbol: self.symbol.clone(),
+            found,
+            include_definition: self.include_definition,
+            definition_count: definitions.len(),
+            reference_count: references.len(),
+            definitions: definition_results,
+            references: reference_results,
+            next_actions,
+        };
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔗 Finding references for: {}", self.symbol);
 
@@ -743,51 +907,31 @@ impl FastRefsTool {
                 💡 Check the symbol name and ensure it exists in the indexed files",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return self.create_result(
+                false,
+                vec![],
+                vec![],
+                vec![
+                    "Use fast_search to locate the symbol".to_string(),
+                    "Check symbol name spelling".to_string(),
+                ],
                 message,
-            )]));
+            );
         }
 
         // Use token-optimized formatting
         let message = self.format_optimized_results(&definitions, &references);
 
-        let mut result = CallToolResult::text_content(vec![TextContent::from(message)]);
-
-        let structured_payload = json!({
-            "query": self.symbol,
-            "include_definition": self.include_definition,
-            "limit": self.limit,
-            "definition_count": definitions.len(),
-            "reference_count": references.len(),
-            "definitions": definitions.iter().map(|symbol| json!({
-                "symbol_id": symbol.id,
-                "name": symbol.name,
-                "kind": symbol.kind,
-                "language": symbol.language,
-                "file_path": symbol.file_path,
-                "start_line": symbol.start_line,
-                "start_column": symbol.start_column,
-                "end_line": symbol.end_line,
-                "end_column": symbol.end_column,
-                "signature": symbol.signature,
-                "confidence": symbol.confidence,
-            })).collect::<Vec<_>>(),
-            "references": references.iter().map(|relationship| json!({
-                "relationship_id": relationship.id,
-                "from_symbol_id": relationship.from_symbol_id,
-                "to_symbol_id": relationship.to_symbol_id,
-                "kind": relationship.kind,
-                "file_path": relationship.file_path,
-                "line_number": relationship.line_number,
-                "confidence": relationship.confidence,
-            })).collect::<Vec<_>>(),
-        });
-
-        if let serde_json::Value::Object(map) = structured_payload {
-            result = result.with_structured_content(map);
-        }
-
-        Ok(result)
+        self.create_result(
+            true,
+            definitions,
+            references,
+            vec![
+                "Navigate to reference locations".to_string(),
+                "Use fast_goto to see definitions".to_string(),
+            ],
+            message,
+        )
     }
 
     async fn find_references_and_definitions(

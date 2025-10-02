@@ -24,6 +24,21 @@ use crate::tools::editing::EditingTransaction; // Atomic file operations
 use crate::tools::navigation::FastRefsTool;
 use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
+/// Structured result from smart refactoring operations
+#[derive(Debug, Clone, Serialize)]
+pub struct SmartRefactorResult {
+    pub tool: String,
+    pub operation: String,
+    pub dry_run: bool,
+    pub success: bool,
+    pub files_modified: Vec<String>,
+    pub changes_count: usize,
+    pub next_actions: Vec<String>,
+    /// Operation-specific metadata (flexible JSON for different operation types)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
 /// Available refactoring operations
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +93,43 @@ fn default_empty_json() -> String {
 }
 
 impl SmartRefactorTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        operation: &str,
+        success: bool,
+        files_modified: Vec<String>,
+        changes_count: usize,
+        next_actions: Vec<String>,
+        markdown: String,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<CallToolResult> {
+        let result = SmartRefactorResult {
+            tool: "smart_refactor".to_string(),
+            operation: operation.to_string(),
+            dry_run: self.dry_run,
+            success,
+            files_modified,
+            changes_count,
+            next_actions,
+            metadata,
+        };
+
+        // Apply token optimization to prevent context overflow
+        let optimized_markdown = self.optimize_response(&markdown);
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(optimized_markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🔄 Smart refactor operation: {:?}", self.operation);
 
@@ -96,9 +148,15 @@ impl SmartRefactorTool {
                     Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function",
                     self.operation
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    self.optimize_response(&message),
-                )]))
+                self.create_result(
+                    &self.operation,  // Use the invalid operation name for debugging
+                    false,
+                    vec![],
+                    0,
+                    vec!["Check operation name spelling".to_string()],
+                    message,
+                    None,
+                )
             }
         }
     }
@@ -160,9 +218,18 @@ impl SmartRefactorTool {
                 💡 Check spelling or try fast_search to locate the symbol",
                 old_name
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                self.optimize_response(&message),
-            )]));
+            return self.create_result(
+                "rename_symbol",
+                false,  // Failed to find symbol
+                vec![],
+                0,
+                vec![
+                    "Use fast_search to locate the symbol".to_string(),
+                    "Check spelling of symbol name".to_string(),
+                ],
+                message,
+                None,
+            );
         }
 
         debug!(
@@ -226,9 +293,16 @@ impl SmartRefactorTool {
 
             preview.push_str("\n💡 Set dry_run=false to apply changes");
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                self.optimize_response(&preview),
-            )]));
+            let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
+            return self.create_result(
+                "rename_symbol",
+                true,  // Dry run succeeded
+                files,
+                total_changes,
+                vec!["Set dry_run=false to apply changes".to_string()],
+                preview,
+                None,
+            );
         }
 
         // Final success message
@@ -254,9 +328,20 @@ impl SmartRefactorTool {
 
         message.push_str("\n🎯 Next steps:\n• Run tests to verify changes\n• Use fast_refs to validate rename completion\n💡 Tip: Use git to track changes and revert if needed");
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(&message),
-        )]))
+        let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
+        self.create_result(
+            "rename_symbol",
+            true,
+            files,
+            total_changes,
+            vec![
+                "Run tests to verify changes".to_string(),
+                "Use fast_refs to validate rename completion".to_string(),
+                "Use git diff to review changes".to_string(),
+            ],
+            message,
+            None,
+        )
     }
 
     /// Parse the result from fast_refs to extract file locations
@@ -775,17 +860,32 @@ impl SmartRefactorTool {
         );
 
         let message = format!(
-            "❌ Extract function is not yet implemented for '{}'\n\
-            📍 Requested lines: {}-{}\n\
-            💡 Track progress in TODO.md (extract_function)",
+            "🚧 Extract function is not yet implemented\n\
+            📁 File: {}\n\
+            📍 Lines: {}-{}\n\
+            🎯 Function name: {}\n\n\
+            💡 Coming soon - will extract selected code into a new function\n\
+            📋 Use ReplaceSymbolBody operation for now",
             file_path,
             start_line,
-            end_line
+            end_line,
+            function_name
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(&message),
-        )]))
+        self.create_result(
+            "extract_function",
+            false,  // Not yet implemented
+            vec![],
+            0,
+            vec!["Use replace_symbol_body for manual refactoring".to_string()],
+            message,
+            Some(serde_json::json!({
+                "file": file_path,
+                "start_line": start_line,
+                "end_line": end_line,
+                "function_name": function_name,
+            })),
+        )
     }
 
     /// Detect the base indentation level of code lines
@@ -1481,9 +1581,18 @@ impl SmartRefactorTool {
                 💡 Check spelling or use fast_search to locate the symbol",
                 symbol_name, file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                self.optimize_response(&message),
-            )]));
+            return self.create_result(
+                "replace_symbol_body",
+                false,
+                vec![],
+                0,
+                vec![
+                    "Use fast_search to locate the symbol".to_string(),
+                    "Check spelling of symbol name".to_string(),
+                ],
+                message,
+                None,
+            );
         }
 
         // Step 2: Read the file to find symbol boundaries
@@ -1510,9 +1619,15 @@ impl SmartRefactorTool {
                 symbol_name, file_path, start_line, end_line, new_body
             );
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                self.optimize_response(&preview),
-            )]));
+            return self.create_result(
+                "replace_symbol_body",
+                true,
+                vec![file_path.to_string()],
+                1,  // One symbol replacement
+                vec!["Set dry_run=false to apply changes".to_string()],
+                preview,
+                None,
+            );
         }
 
         // Replace the symbol body
@@ -1534,9 +1649,19 @@ impl SmartRefactorTool {
             symbol_name, file_path, start_line, end_line
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(&message),
-        )]))
+        self.create_result(
+            "replace_symbol_body",
+            true,
+            vec![file_path.to_string()],
+            1,  // One symbol replacement
+            vec![
+                "Run tests to verify changes".to_string(),
+                format!("Use fast_goto to navigate to {}", symbol_name),
+                "Use git diff to review changes".to_string(),
+            ],
+            message,
+            None,
+        )
     }
 
     /// Parse search results to find symbol locations in a specific file
@@ -1955,9 +2080,15 @@ impl SmartRefactorTool {
                       📋 Coming soon - will insert code before/after symbols\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(message),
-        )]))
+        self.create_result(
+            "insert_relative_to_symbol",
+            false,
+            vec![],
+            0,
+            vec!["Use replace_symbol_body for manual insertion".to_string()],
+            message.to_string(),
+            None,
+        )
     }
 
     async fn handle_extract_type(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1965,9 +2096,15 @@ impl SmartRefactorTool {
                       📋 Coming soon - will extract inline types to named types\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(message),
-        )]))
+        self.create_result(
+            "extract_type",
+            false,
+            vec![],
+            0,
+            vec!["Use replace_symbol_body for manual type extraction".to_string()],
+            message.to_string(),
+            None,
+        )
     }
 
     async fn handle_update_imports(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1975,9 +2112,15 @@ impl SmartRefactorTool {
                       📋 Coming soon - will fix broken imports after file moves\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(message),
-        )]))
+        self.create_result(
+            "update_imports",
+            false,
+            vec![],
+            0,
+            vec!["Manually update imports for now".to_string()],
+            message.to_string(),
+            None,
+        )
     }
 
     async fn handle_inline_variable(
@@ -1988,9 +2131,15 @@ impl SmartRefactorTool {
                       📋 Coming soon - will inline variable by replacing uses with value\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(message),
-        )]))
+        self.create_result(
+            "inline_variable",
+            false,
+            vec![],
+            0,
+            vec!["Manually inline variable for now".to_string()],
+            message.to_string(),
+            None,
+        )
     }
 
     async fn handle_inline_function(
@@ -2001,9 +2150,15 @@ impl SmartRefactorTool {
                       📋 Coming soon - will inline function by replacing calls with body\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            self.optimize_response(message),
-        )]))
+        self.create_result(
+            "inline_function",
+            false,
+            vec![],
+            0,
+            vec!["Manually inline function for now".to_string()],
+            message.to_string(),
+            None,
+        )
     }
 
     /// Apply token optimization to SmartRefactorTool responses to prevent context overflow

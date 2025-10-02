@@ -15,6 +15,45 @@ use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::
 // Exploration Tools  //
 //********************//
 
+/// Business logic symbol result (simpler than full Symbol)
+#[derive(Debug, Clone, Serialize)]
+pub struct BusinessLogicSymbol {
+    pub name: String,
+    pub kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub confidence: f32,  // Business relevance score
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+/// Structured result from find_logic operation
+#[derive(Debug, Clone, Serialize)]
+pub struct FindLogicResult {
+    pub tool: String,
+    pub domain: String,
+    pub found_count: usize,
+    pub max_results: usize,
+    pub min_business_score: f32,
+    pub group_by_layer: bool,
+    pub intelligence_layers: Vec<String>,
+    pub business_symbols: Vec<BusinessLogicSymbol>,
+    pub next_actions: Vec<String>,
+}
+
+/// Structured result from fast_explore operation
+#[derive(Debug, Clone, Serialize)]
+pub struct FastExploreResult {
+    pub tool: String,
+    pub mode: String,
+    pub depth: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus: Option<String>,
+    pub success: bool,
+    pub next_actions: Vec<String>,
+}
+
 #[mcp_tool(
     name = "fast_explore",
     description = "UNDERSTAND FIRST - Multi-mode codebase exploration (overview/dependencies/trace/hotspots)",
@@ -43,6 +82,34 @@ fn default_medium() -> String {
 }
 
 impl FastExploreTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        success: bool,
+        next_actions: Vec<String>,
+        markdown: String,
+    ) -> Result<CallToolResult> {
+        let result = FastExploreResult {
+            tool: "fast_explore".to_string(),
+            mode: self.mode.clone(),
+            depth: self.depth.clone(),
+            focus: self.focus.clone(),
+            success,
+            next_actions,
+        };
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!(
             "🧭 🧠 SUPER GENIUS: Exploring codebase mode={}, focus={:?}",
@@ -52,22 +119,22 @@ impl FastExploreTool {
         // 🚀 INTELLIGENT EXPLORATION - No more loading ALL symbols!
         // Each mode uses optimized queries specific to its needs
 
-        let message = match self.mode.as_str() {
+        let (message, success) = match self.mode.as_str() {
             "overview" => {
                 debug!("📊 Intelligent overview mode - using SQL aggregations");
-                self.intelligent_overview(handler).await?
+                (self.intelligent_overview(handler).await?, true)
             }
             "dependencies" => {
                 debug!("🔗 Intelligent dependencies mode - using targeted queries");
-                self.intelligent_dependencies(handler).await?
+                (self.intelligent_dependencies(handler).await?, true)
             }
             "hotspots" => {
                 debug!("🔥 Intelligent hotspots mode - using GROUP BY aggregations");
-                self.intelligent_hotspots(handler).await?
+                (self.intelligent_hotspots(handler).await?, true)
             }
             "trace" => {
                 debug!("🔍 Intelligent trace mode - using focused relationship queries");
-                self.intelligent_trace(handler).await?
+                (self.intelligent_trace(handler).await?, true)
             }
             "all" => {
                 debug!("🌍 Comprehensive analysis mode");
@@ -76,18 +143,28 @@ impl FastExploreTool {
                 combined.push_str(&self.intelligent_overview(handler).await?);
                 combined.push_str("\n\n");
                 combined.push_str(&self.intelligent_hotspots(handler).await?);
-                combined
+                (combined, true)
             }
-            _ => format!(
-                "❌ Unknown exploration mode: '{}'\n\
-                💡 Supported modes: overview, dependencies, hotspots, trace, all",
-                self.mode
+            _ => (
+                format!(
+                    "❌ Unknown exploration mode: '{}'\n\
+                    💡 Supported modes: overview, dependencies, hotspots, trace, all",
+                    self.mode
+                ),
+                false,
             ),
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
-        )]))
+        let next_actions = if success {
+            vec![
+                "Use insights to navigate to important areas".to_string(),
+                "Use fast_goto or fast_refs for deeper exploration".to_string(),
+            ]
+        } else {
+            vec!["Check mode parameter spelling".to_string()]
+        };
+
+        self.create_result(success, next_actions, message)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -801,6 +878,51 @@ pub struct FindLogicTool {
 }
 
 impl FindLogicTool {
+    /// Helper: Create structured result with markdown for dual output
+    fn create_result(
+        &self,
+        business_symbols: Vec<Symbol>,
+        intelligence_layers: Vec<String>,
+        next_actions: Vec<String>,
+        markdown: String,
+    ) -> Result<CallToolResult> {
+        let business_logic_symbols: Vec<BusinessLogicSymbol> = business_symbols
+            .iter()
+            .map(|symbol| BusinessLogicSymbol {
+                name: symbol.name.clone(),
+                kind: format!("{:?}", symbol.kind),
+                language: symbol.language.clone(),
+                file_path: symbol.file_path.clone(),
+                start_line: symbol.start_line,
+                confidence: symbol.confidence.unwrap_or(0.0),
+                signature: symbol.signature.clone(),
+            })
+            .collect();
+
+        let result = FindLogicResult {
+            tool: "find_logic".to_string(),
+            domain: self.domain.clone(),
+            found_count: business_logic_symbols.len(),
+            max_results: self.max_results as usize,
+            min_business_score: self.min_business_score,
+            group_by_layer: self.group_by_layer,
+            intelligence_layers,
+            business_symbols: business_logic_symbols,
+            next_actions,
+        };
+
+        // Serialize to JSON
+        let structured = serde_json::to_value(&result)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow::anyhow!("Expected JSON object"));
+        };
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
+            .with_structured_content(structured_map))
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🏢 🧠 SUPER GENIUS: Finding business logic for domain: {}", self.domain);
 
@@ -892,9 +1014,16 @@ impl FindLogicTool {
         message.push_str(&format!("🔬 Intelligence Layers: {}\n\n", search_insights.join(" | ")));
         message.push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        self.create_result(
+            business_symbols,
+            search_insights,
+            vec![
+                "Review business logic symbols".to_string(),
+                "Use fast_goto to navigate to definitions".to_string(),
+                "Use fast_refs to see usage patterns".to_string(),
+            ],
             message,
-        )]))
+        )
     }
 
     // ═══════════════════════════════════════════════════════════════════
