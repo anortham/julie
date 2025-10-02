@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use tracing::{debug, info};
 
+use crate::tools::editing::EditingTransaction;
 use crate::utils::token_estimation::TokenEstimator;
 
 /// Structured result from fuzzy replace operation
@@ -235,12 +236,11 @@ impl FuzzyReplaceTool {
             .with_structured_content(structured_map));
         }
 
-        // Apply changes atomically using transaction
-        let temp_file = format!("{}.fuzzy_tmp", self.file_path);
-        fs::write(&temp_file, &modified_content)
-            .map_err(|e| anyhow!("Failed to write temp file: {}", e))?;
-
-        fs::rename(&temp_file, &self.file_path)
+        // Apply changes atomically using EditingTransaction
+        let transaction = EditingTransaction::begin(&self.file_path)
+            .map_err(|e| anyhow!("Failed to begin transaction: {}", e))?;
+        transaction
+            .commit(&modified_content)
             .map_err(|e| anyhow!("Failed to apply changes: {}", e))?;
 
         // Create structured result
