@@ -1,4 +1,4 @@
 * (lowest priority) we still need to figure out adding support for qmljs https://github.com/yuja/tree-sitter-qmljs
 * we need better test coverage, I think we proved that tonight!
 * we need multiple performance reviews
-* we have fast_edit and line_edit. to me that's a bit confusing, we should revisit how those 2 tools are designed
+* monitor fuzzy_replace + smart_refactor coverage to ensure all former fast_edit/line_edit scenarios are handled

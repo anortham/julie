@@ -19,6 +19,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
+use crate::embeddings::CodeContext;
 use crate::extractors::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
@@ -104,16 +105,23 @@ struct CallPathNode {
     level: u32,
     match_type: MatchType,
     relationship_kind: Option<RelationshipKind>,
+    similarity: Option<f32>,
     children: Vec<CallPathNode>,
+}
+
+#[derive(Clone)]
+struct SemanticMatch {
+    symbol: Symbol,
+    relationship_kind: RelationshipKind,
+    similarity: f32,
 }
 
 /// Type of match found
 #[derive(Debug, Clone, PartialEq)]
 enum MatchType {
-    Direct,           // Same language, direct relationship
-    NamingVariant,    // Cross-language via naming convention
-    #[allow(dead_code)]
-    Semantic,         // Via embedding similarity (future feature)
+    Direct,        // Same language, direct relationship
+    NamingVariant, // Cross-language via naming convention
+    Semantic,      // Via embedding similarity
 }
 
 impl TraceCallPathTool {
@@ -127,22 +135,23 @@ impl TraceCallPathTool {
         if self.max_depth > 10 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 "❌ max_depth cannot exceed 10 (performance limit)\n\
-                 💡 Try with max_depth: 5 for a reasonable balance".to_string(),
+                 💡 Try with max_depth: 5 for a reasonable balance"
+                    .to_string(),
             )]));
         }
 
         if self.similarity_threshold < 0.0 || self.similarity_threshold > 1.0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 "❌ similarity_threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.7 for balanced results".to_string(),
+                 💡 Recommended: 0.7 for balanced results"
+                    .to_string(),
             )]));
         }
 
         // Get workspace and database
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow!("No workspace initialized. Run 'manage_workspace index' first"))?;
+        let workspace = handler.get_workspace().await?.ok_or_else(|| {
+            anyhow!("No workspace initialized. Run 'manage_workspace index' first")
+        })?;
 
         let db = workspace
             .db
@@ -164,7 +173,9 @@ impl TraceCallPathTool {
                  • Try using fast_search to find the symbol first",
                 self.symbol
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
         // If context file provided, filter to symbols in that file
@@ -176,7 +187,9 @@ impl TraceCallPathTool {
                      💡 Try without context_file to search all files",
                     self.symbol, context_file
                 );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
             }
         }
 
@@ -186,13 +199,23 @@ impl TraceCallPathTool {
 
         for starting_symbol in &starting_symbols {
             let call_tree = match self.direction.as_str() {
-                "upstream" => self.trace_upstream(&db, starting_symbol, 0, &mut visited).await?,
-                "downstream" => self.trace_downstream(&db, starting_symbol, 0, &mut visited).await?,
+                "upstream" => {
+                    self.trace_upstream(handler, &db, starting_symbol, 0, &mut visited)
+                        .await?
+                }
+                "downstream" => {
+                    self.trace_downstream(handler, &db, starting_symbol, 0, &mut visited)
+                        .await?
+                }
                 "both" => {
                     let mut visited_up = HashSet::new();
                     let mut visited_down = HashSet::new();
-                    let mut upstream = self.trace_upstream(&db, starting_symbol, 0, &mut visited_up).await?;
-                    let downstream = self.trace_downstream(&db, starting_symbol, 0, &mut visited_down).await?;
+                    let mut upstream = self
+                        .trace_upstream(handler, &db, starting_symbol, 0, &mut visited_up)
+                        .await?;
+                    let downstream = self
+                        .trace_downstream(handler, &db, starting_symbol, 0, &mut visited_down)
+                        .await?;
                     upstream.extend(downstream);
                     upstream
                 }
@@ -224,13 +247,17 @@ impl TraceCallPathTool {
     #[async_recursion::async_recursion]
     async fn trace_upstream(
         &self,
+        handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
     ) -> Result<Vec<CallPathNode>> {
         if current_depth >= self.max_depth {
-            debug!("Reached max depth {} for symbol {}", current_depth, symbol.name);
+            debug!(
+                "Reached max depth {} for symbol {}",
+                current_depth, symbol.name
+            );
             return Ok(vec![]);
         }
 
@@ -245,7 +272,10 @@ impl TraceCallPathTool {
         let mut nodes = Vec::new();
 
         // Step 1: Find direct callers via relationships (upstream = relationships TO this symbol)
-        debug!("Finding direct callers for: {} (id: {})", symbol.name, symbol.id);
+        debug!(
+            "Finding direct callers for: {} (id: {})",
+            symbol.name, symbol.id
+        );
         let db_lock = db.lock().await;
         let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
@@ -257,7 +287,10 @@ impl TraceCallPathTool {
             }
 
             // Only interested in call relationships for call path tracing
-            if !matches!(rel.kind, RelationshipKind::Calls | RelationshipKind::References) {
+            if !matches!(
+                rel.kind,
+                RelationshipKind::Calls | RelationshipKind::References
+            ) {
                 continue;
             }
 
@@ -275,13 +308,14 @@ impl TraceCallPathTool {
                 level: current_depth,
                 match_type: MatchType::Direct,
                 relationship_kind: Some(rel_kind),
+                similarity: None,
                 children: vec![],
             };
 
             // Recursively trace callers
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_upstream(db, &caller_symbol, current_depth + 1, visited)
+                    .trace_upstream(handler, db, &caller_symbol, current_depth + 1, visited)
                     .await?;
             }
 
@@ -304,13 +338,41 @@ impl TraceCallPathTool {
                     level: current_depth,
                     match_type: MatchType::NamingVariant,
                     relationship_kind: None,
+                    similarity: None,
                     children: vec![],
                 };
 
                 // Recursively trace (but limit depth for cross-language to avoid explosion)
                 if current_depth + 1 < self.max_depth - 1 {
                     node.children = self
-                        .trace_upstream(db, &caller_symbol, current_depth + 1, visited)
+                        .trace_upstream(handler, db, &caller_symbol, current_depth + 1, visited)
+                        .await?;
+                }
+
+                nodes.push(node);
+            }
+
+            let semantic_callers = self
+                .find_semantic_cross_language_callers(handler, db, symbol)
+                .await?;
+
+            for semantic in semantic_callers {
+                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
+                    continue;
+                }
+
+                let mut node = CallPathNode {
+                    symbol: semantic.symbol.clone(),
+                    level: current_depth,
+                    match_type: MatchType::Semantic,
+                    relationship_kind: Some(semantic.relationship_kind.clone()),
+                    similarity: Some(semantic.similarity),
+                    children: vec![],
+                };
+
+                if current_depth + 1 < self.max_depth - 1 {
+                    node.children = self
+                        .trace_upstream(handler, db, &semantic.symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -325,13 +387,17 @@ impl TraceCallPathTool {
     #[async_recursion::async_recursion]
     async fn trace_downstream(
         &self,
+        handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
     ) -> Result<Vec<CallPathNode>> {
         if current_depth >= self.max_depth {
-            debug!("Reached max depth {} for symbol {}", current_depth, symbol.name);
+            debug!(
+                "Reached max depth {} for symbol {}",
+                current_depth, symbol.name
+            );
             return Ok(vec![]);
         }
 
@@ -346,7 +412,10 @@ impl TraceCallPathTool {
         let mut nodes = Vec::new();
 
         // Step 1: Find direct callees via relationships
-        debug!("Finding direct callees for: {} (id: {})", symbol.name, symbol.id);
+        debug!(
+            "Finding direct callees for: {} (id: {})",
+            symbol.name, symbol.id
+        );
         let db_lock = db.lock().await;
         let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
@@ -358,7 +427,10 @@ impl TraceCallPathTool {
             }
 
             // Only interested in call relationships
-            if !matches!(rel.kind, RelationshipKind::Calls | RelationshipKind::References) {
+            if !matches!(
+                rel.kind,
+                RelationshipKind::Calls | RelationshipKind::References
+            ) {
                 continue;
             }
 
@@ -376,13 +448,14 @@ impl TraceCallPathTool {
                 level: current_depth,
                 match_type: MatchType::Direct,
                 relationship_kind: Some(rel_kind),
+                similarity: None,
                 children: vec![],
             };
 
             // Recursively trace callees
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_downstream(db, &callee_symbol, current_depth + 1, visited)
+                    .trace_downstream(handler, db, &callee_symbol, current_depth + 1, visited)
                     .await?;
             }
 
@@ -405,13 +478,41 @@ impl TraceCallPathTool {
                     level: current_depth,
                     match_type: MatchType::NamingVariant,
                     relationship_kind: None,
+                    similarity: None,
                     children: vec![],
                 };
 
                 // Recursively trace
                 if current_depth + 1 < self.max_depth - 1 {
                     node.children = self
-                        .trace_downstream(db, &callee_symbol, current_depth + 1, visited)
+                        .trace_downstream(handler, db, &callee_symbol, current_depth + 1, visited)
+                        .await?;
+                }
+
+                nodes.push(node);
+            }
+
+            let semantic_callees = self
+                .find_semantic_cross_language_callees(handler, db, symbol)
+                .await?;
+
+            for semantic in semantic_callees {
+                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
+                    continue;
+                }
+
+                let mut node = CallPathNode {
+                    symbol: semantic.symbol.clone(),
+                    level: current_depth,
+                    match_type: MatchType::Semantic,
+                    relationship_kind: Some(semantic.relationship_kind.clone()),
+                    similarity: Some(semantic.similarity),
+                    children: vec![],
+                };
+
+                if current_depth + 1 < self.max_depth - 1 {
+                    node.children = self
+                        .trace_downstream(handler, db, &semantic.symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -429,7 +530,11 @@ impl TraceCallPathTool {
         symbol: &Symbol,
     ) -> Result<Vec<Symbol>> {
         let variants = generate_naming_variants(&symbol.name);
-        debug!("Generated {} naming variants for {}", variants.len(), symbol.name);
+        debug!(
+            "Generated {} naming variants for {}",
+            variants.len(),
+            symbol.name
+        );
 
         let mut cross_lang_symbols = Vec::new();
         let db_lock = db.lock().await;
@@ -445,15 +550,19 @@ impl TraceCallPathTool {
                     // Only include if different language
                     if variant_symbol.language != symbol.language {
                         // Check if this variant actually references symbols that could be our target
-                        let relationships = db_lock.get_relationships_for_symbol(&variant_symbol.id)?;
+                        let relationships =
+                            db_lock.get_relationships_for_symbol(&variant_symbol.id)?;
 
-                        // Consider it a caller if it has outgoing calls/references
-                        let has_calls = relationships.iter().any(|r| {
-                            matches!(r.kind, RelationshipKind::Calls | RelationshipKind::References)
-                                && r.from_symbol_id == variant_symbol.id
+                        // Consider it a caller only if it references the target symbol
+                        let calls_target = relationships.iter().any(|r| {
+                            matches!(
+                                r.kind,
+                                RelationshipKind::Calls | RelationshipKind::References
+                            ) && r.from_symbol_id == variant_symbol.id
+                                && r.to_symbol_id == symbol.id
                         });
 
-                        if has_calls {
+                        if calls_target {
                             cross_lang_symbols.push(variant_symbol);
                         }
                     }
@@ -479,7 +588,11 @@ impl TraceCallPathTool {
         symbol: &Symbol,
     ) -> Result<Vec<Symbol>> {
         let variants = generate_naming_variants(&symbol.name);
-        debug!("Generated {} naming variants for {}", variants.len(), symbol.name);
+        debug!(
+            "Generated {} naming variants for {}",
+            variants.len(),
+            symbol.name
+        );
 
         let mut cross_lang_symbols = Vec::new();
         let db_lock = db.lock().await;
@@ -493,7 +606,20 @@ impl TraceCallPathTool {
             if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
                 for variant_symbol in variant_symbols {
                     if variant_symbol.language != symbol.language {
-                        cross_lang_symbols.push(variant_symbol);
+                        // Confirm the original symbol actually calls this variant
+                        let relationships =
+                            db_lock.get_relationships_to_symbol(&variant_symbol.id)?;
+                        let called_by_symbol = relationships.iter().any(|r| {
+                            matches!(
+                                r.kind,
+                                RelationshipKind::Calls | RelationshipKind::References
+                            ) && r.from_symbol_id == symbol.id
+                                && r.to_symbol_id == variant_symbol.id
+                        });
+
+                        if called_by_symbol {
+                            cross_lang_symbols.push(variant_symbol);
+                        }
                     }
                 }
             }
@@ -508,6 +634,173 @@ impl TraceCallPathTool {
         );
 
         Ok(cross_lang_symbols)
+    }
+
+    async fn semantic_neighbors(
+        &self,
+        handler: &JulieServerHandler,
+        symbol: &Symbol,
+        max_results: usize,
+    ) -> Result<Vec<(Symbol, f32)>> {
+        if max_results == 0 {
+            return Ok(vec![]);
+        }
+
+        if let Err(e) = handler.ensure_vector_store().await {
+            debug!(
+                "Semantic tracing disabled - vector store unavailable: {}",
+                e
+            );
+            return Ok(vec![]);
+        }
+
+        if let Err(e) = handler.ensure_embedding_engine().await {
+            debug!(
+                "Semantic tracing disabled - embedding engine unavailable: {}",
+                e
+            );
+            return Ok(vec![]);
+        }
+
+        let workspace = match handler.get_workspace().await? {
+            Some(ws) => ws,
+            None => return Ok(vec![]),
+        };
+
+        let vector_store = match &workspace.vector_store {
+            Some(store) => store.clone(),
+            None => return Ok(vec![]),
+        };
+
+        let db_arc = match &workspace.db {
+            Some(db) => db.clone(),
+            None => return Ok(vec![]),
+        };
+
+        let store_guard = vector_store.read().await;
+        if !store_guard.has_hnsw_index() {
+            return Ok(vec![]);
+        }
+
+        let mut embedding_guard = handler.embedding_engine.write().await;
+        let embedding_engine = match embedding_guard.as_mut() {
+            Some(engine) => engine,
+            None => return Ok(vec![]),
+        };
+
+        let context = CodeContext {
+            parent_symbol: None,
+            surrounding_code: symbol.code_context.clone(),
+            file_context: Some(symbol.file_path.clone()),
+        };
+
+        let embedding = embedding_engine.embed_symbol(symbol, &context)?;
+        drop(embedding_guard);
+
+        let hnsw_results =
+            store_guard.search_similar_hnsw(&embedding, max_results, self.similarity_threshold)?;
+        drop(store_guard);
+
+        let mut matches = Vec::new();
+        let db_lock = db_arc.lock().await;
+        for result in hnsw_results {
+            if let Ok(Some(candidate)) = db_lock.get_symbol_by_id(&result.symbol_id) {
+                if candidate.id != symbol.id {
+                    matches.push((candidate, result.similarity_score));
+                }
+            }
+        }
+        drop(db_lock);
+
+        Ok(matches)
+    }
+
+    async fn find_semantic_cross_language_callers(
+        &self,
+        handler: &JulieServerHandler,
+        db: &Arc<Mutex<SymbolDatabase>>,
+        symbol: &Symbol,
+    ) -> Result<Vec<SemanticMatch>> {
+        const SEMANTIC_LIMIT: usize = 8;
+        let candidates = self
+            .semantic_neighbors(handler, symbol, SEMANTIC_LIMIT)
+            .await?;
+
+        if candidates.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut matches = Vec::new();
+        let db_lock = db.lock().await;
+
+        for (candidate, similarity) in candidates {
+            if candidate.language == symbol.language {
+                continue;
+            }
+
+            let relationships = db_lock.get_relationships_for_symbol(&candidate.id)?;
+            if let Some(rel) = relationships.into_iter().find(|r| {
+                matches!(
+                    r.kind,
+                    RelationshipKind::Calls | RelationshipKind::References
+                ) && r.from_symbol_id == candidate.id
+                    && r.to_symbol_id == symbol.id
+            }) {
+                matches.push(SemanticMatch {
+                    symbol: candidate,
+                    relationship_kind: rel.kind,
+                    similarity,
+                });
+            }
+        }
+
+        drop(db_lock);
+
+        Ok(matches)
+    }
+
+    async fn find_semantic_cross_language_callees(
+        &self,
+        handler: &JulieServerHandler,
+        db: &Arc<Mutex<SymbolDatabase>>,
+        symbol: &Symbol,
+    ) -> Result<Vec<SemanticMatch>> {
+        const SEMANTIC_LIMIT: usize = 8;
+        let candidates = self
+            .semantic_neighbors(handler, symbol, SEMANTIC_LIMIT)
+            .await?;
+
+        if candidates.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut matches = Vec::new();
+        let db_lock = db.lock().await;
+
+        for (candidate, similarity) in candidates {
+            if candidate.language == symbol.language {
+                continue;
+            }
+
+            let relationships = db_lock.get_relationships_to_symbol(&candidate.id)?;
+            if let Some(rel) = relationships.into_iter().find(|r| {
+                matches!(
+                    r.kind,
+                    RelationshipKind::Calls | RelationshipKind::References
+                ) && r.from_symbol_id == symbol.id
+                    && r.to_symbol_id == candidate.id
+            }) {
+                matches.push(SemanticMatch {
+                    symbol: candidate,
+                    relationship_kind: rel.kind,
+                    similarity,
+                });
+            }
+        }
+
+        drop(db_lock);
+
+        Ok(matches)
     }
 
     /// Format multiple call trees for display
@@ -535,13 +828,21 @@ impl TraceCallPathTool {
         // Display each tree
         for (i, (root_symbol, nodes)) in trees.iter().enumerate() {
             if trees.len() > 1 {
-                output.push_str(&format!("\n### Starting from: {}:{}\n\n",
-                    root_symbol.file_path, root_symbol.start_line));
+                output.push_str(&format!(
+                    "\n### Starting from: {}:{}\n\n",
+                    root_symbol.file_path, root_symbol.start_line
+                ));
             }
 
             if nodes.is_empty() {
-                output.push_str(&format!("  No {} found for this symbol.\n",
-                    if self.direction == "upstream" { "callers" } else { "callees" }));
+                output.push_str(&format!(
+                    "  No {} found for this symbol.\n",
+                    if self.direction == "upstream" {
+                        "callers"
+                    } else {
+                        "callees"
+                    }
+                ));
                 continue;
             }
 
@@ -559,13 +860,26 @@ impl TraceCallPathTool {
                     output.push_str(&format!("**Level {}** ", level + 1));
 
                     // Count by match type
-                    let direct_count = level_nodes.iter().filter(|n| n.match_type == MatchType::Direct).count();
-                    let variant_count = level_nodes.iter().filter(|n| n.match_type == MatchType::NamingVariant).count();
+                    let direct_count = level_nodes
+                        .iter()
+                        .filter(|n| n.match_type == MatchType::Direct)
+                        .count();
+                    let variant_count = level_nodes
+                        .iter()
+                        .filter(|n| n.match_type == MatchType::NamingVariant)
+                        .count();
+                    let semantic_count = level_nodes
+                        .iter()
+                        .filter(|n| n.match_type == MatchType::Semantic)
+                        .count();
 
-                    if direct_count > 0 && variant_count == 0 {
+                    if semantic_count > 0 || variant_count > 0 {
+                        output.push_str(&format!(
+                            "({} direct, {} variant, {} semantic):\n",
+                            direct_count, variant_count, semantic_count
+                        ));
+                    } else if direct_count > 0 {
                         output.push_str("(Direct):\n");
-                    } else if variant_count > 0 {
-                        output.push_str(&format!("({} direct, {} variant):\n", direct_count, variant_count));
                     } else {
                         output.push_str(":\n");
                     }
@@ -579,23 +893,32 @@ impl TraceCallPathTool {
                         };
 
                         let relationship_info = if let Some(ref kind) = node.relationship_kind {
-                            format!(" [{}]", match kind {
-                                RelationshipKind::Calls => "calls",
-                                RelationshipKind::References => "refs",
-                                _ => "other",
-                            })
+                            format!(
+                                " [{}]",
+                                match kind {
+                                    RelationshipKind::Calls => "calls",
+                                    RelationshipKind::References => "refs",
+                                    _ => "other",
+                                }
+                            )
                         } else {
                             String::new()
                         };
 
+                        let similarity_info = node
+                            .similarity
+                            .map(|score| format!(" [sim {:.2}]", score))
+                            .unwrap_or_default();
+
                         output.push_str(&format!(
-                            "{}• {}:{} `{}`{}{} ({})\n",
+                            "{}• {}:{} `{}`{}{}{} ({})\n",
                             indent,
                             node.symbol.file_path,
                             node.symbol.start_line,
                             node.symbol.name,
                             match_indicator,
                             relationship_info,
+                            similarity_info,
                             node.symbol.language
                         ));
                     }
@@ -610,13 +933,24 @@ impl TraceCallPathTool {
 
             if i < trees.len() - 1 || trees.len() == 1 {
                 output.push_str("**Summary:**\n");
-                output.push_str(&format!("• Total {}: {}\n",
-                    if self.direction == "upstream" { "callers" } else { "callees" },
-                    total_nodes));
-                output.push_str(&format!("• Languages: {} ({})\n",
+                output.push_str(&format!(
+                    "• Total {}: {}\n",
+                    if self.direction == "upstream" {
+                        "callers"
+                    } else {
+                        "callees"
+                    },
+                    total_nodes
+                ));
+                output.push_str(&format!(
+                    "• Languages: {} ({})\n",
                     languages.len(),
-                    languages.iter().cloned().collect::<Vec<_>>().join(", ")));
-                output.push_str(&format!("• Max depth reached: {}\n", self.find_max_depth(nodes)));
+                    languages.iter().cloned().collect::<Vec<_>>().join(", ")
+                ));
+                output.push_str(&format!(
+                    "• Max depth reached: {}\n",
+                    self.find_max_depth(nodes)
+                ));
             }
         }
 
@@ -630,14 +964,20 @@ impl TraceCallPathTool {
         by_level: &mut HashMap<u32, Vec<&'a CallPathNode>>,
     ) {
         for node in nodes {
-            by_level.entry(node.level).or_insert_with(Vec::new).push(node);
+            by_level
+                .entry(node.level)
+                .or_insert_with(Vec::new)
+                .push(node);
             self.collect_by_level(&node.children, by_level);
         }
     }
 
     /// Count total nodes in tree
     fn count_nodes(&self, nodes: &[CallPathNode]) -> usize {
-        nodes.iter().map(|n| 1 + self.count_nodes(&n.children)).sum()
+        nodes
+            .iter()
+            .map(|n| 1 + self.count_nodes(&n.children))
+            .sum()
     }
 
     /// Collect all languages in tree
@@ -679,7 +1019,131 @@ impl TraceCallPathTool {
             let chars_per_token = response.len() / tokens.max(1);
             let target_chars = chars_per_token * 20000;
             let truncated = &response[..target_chars.min(response.len())];
-            format!("{}\n\n... (truncated for context limits - reduce max_depth to see full results)", truncated)
+            format!(
+                "{}\n\n... (truncated for context limits - reduce max_depth to see full results)",
+                truncated
+            )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::{FileInfo, SymbolDatabase};
+    use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
+    use std::sync::Arc;
+    use tempfile::tempdir;
+    use tokio::sync::Mutex;
+
+    fn make_symbol(id: &str, name: &str, language: &str, file_path: &str) -> Symbol {
+        Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: SymbolKind::Function,
+            language: language.to_string(),
+            file_path: file_path.to_string(),
+            signature: None,
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: 1,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_language_callers_require_relationship_to_target() {
+        let workspace_id = "primary";
+        let temp = tempdir().expect("tempdir");
+        let db_path = temp.path().join("test.db");
+        let db = SymbolDatabase::new(db_path).expect("db");
+        let db = Arc::new(Mutex::new(db));
+
+        let target = make_symbol("target", "process_payment", "python", "app.py");
+        let variant = make_symbol("variant", "ProcessPayment", "csharp", "Payment.cs");
+        let other = make_symbol("other", "helper", "csharp", "Payment.cs");
+
+        {
+            let db_guard = db.lock().await;
+            let file_target = FileInfo {
+                path: target.file_path.clone(),
+                language: target.language.clone(),
+                hash: "hash1".to_string(),
+                size: 0,
+                last_modified: 0,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: Some("".to_string()),
+            };
+
+            let file_variant = FileInfo {
+                path: variant.file_path.clone(),
+                language: variant.language.clone(),
+                hash: "hash2".to_string(),
+                size: 0,
+                last_modified: 0,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: Some("".to_string()),
+            };
+
+            db_guard
+                .store_file_info(&file_target, workspace_id)
+                .expect("store target file");
+            db_guard
+                .store_file_info(&file_variant, workspace_id)
+                .expect("store variant file");
+
+            db_guard
+                .store_symbols(
+                    &[target.clone(), variant.clone(), other.clone()],
+                    workspace_id,
+                )
+                .expect("store symbols");
+
+            let rel = Relationship {
+                id: "rel1".to_string(),
+                from_symbol_id: variant.id.clone(),
+                to_symbol_id: other.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path: variant.file_path.clone(),
+                line_number: 10,
+                confidence: 1.0,
+                metadata: None,
+            };
+
+            db_guard
+                .store_relationships(&[rel], workspace_id)
+                .expect("store relationships");
+        }
+
+        let tool = TraceCallPathTool {
+            symbol: target.name.clone(),
+            direction: "upstream".to_string(),
+            max_depth: 3,
+            cross_language: true,
+            similarity_threshold: 0.7,
+            context_file: None,
+            workspace: Some(workspace_id.to_string()),
+        };
+
+        let callers = tool
+            .find_cross_language_callers(&db, &target)
+            .await
+            .expect("callers");
+
+        assert!(
+            callers.is_empty(),
+            "Expected no unrelated cross-language callers"
+        );
     }
 }

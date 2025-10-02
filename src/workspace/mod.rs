@@ -197,19 +197,20 @@ impl JulieWorkspace {
 
     /// Create the complete .julie folder hierarchy
     ///
-    /// Creates all necessary subdirectories for the three-pillar architecture
+    /// Creates all necessary subdirectories for the per-workspace architecture
     fn create_folder_structure(julie_dir: &Path) -> Result<()> {
         debug!(
             "Creating .julie folder structure at: {}",
             julie_dir.display()
         );
 
+        // NOTE: Per-workspace directories (db/, tantivy/, vectors/) are created on-demand
+        // when each workspace is indexed. Here we only create shared infrastructure.
         let folders = [
-            julie_dir.join("db"),                    // SQLite database
-            julie_dir.join("index").join("tantivy"), // Tantivy search index
-            julie_dir.join("vectors"),               // HNSW vector index
-            julie_dir.join("models"),                // Cached FastEmbed models
-            julie_dir.join("cache"),                 // File hashes and parse cache
+            julie_dir.join("indexes"),               // Per-workspace root (workspaces created on demand)
+            julie_dir.join("models"),                // Cached FastEmbed models (shared)
+            julie_dir.join("cache"),                 // File hashes and parse cache (shared)
+            julie_dir.join("cache").join("embeddings"),
             julie_dir.join("cache").join("parse_cache"),
             julie_dir.join("logs"),   // Julie logs
             julie_dir.join("config"), // Configuration files
@@ -233,7 +234,7 @@ impl JulieWorkspace {
             debug!("Created .gitignore in .julie directory");
         }
 
-        info!("Created complete .julie folder structure");
+        info!("Created per-workspace .julie folder structure");
         Ok(())
     }
 
@@ -291,12 +292,10 @@ impl JulieWorkspace {
 
     /// Validate that workspace structure is intact
     pub fn validate_structure(&self) -> Result<()> {
-        debug!("Validating workspace structure");
+        debug!("Validating per-workspace structure");
 
         let required_dirs = [
-            "db",
-            "index/tantivy",
-            "vectors",
+            "indexes",  // Per-workspace root (individual workspaces created on demand)
             "models",
             "cache",
             "logs",
@@ -319,7 +318,7 @@ impl JulieWorkspace {
             Self::save_config(&self.julie_dir, &self.config)?;
         }
 
-        info!("Workspace structure validation passed");
+        info!("Per-workspace structure validation passed");
         Ok(())
     }
 
@@ -367,17 +366,34 @@ impl JulieWorkspace {
         self.julie_dir.join("db").join("symbols.db")
     }
 
-    /// Get the path to the Tantivy index directory
-    pub fn index_path(&self) -> PathBuf {
-        self.julie_dir.join("index").join("tantivy")
+    /// Get the root indexes directory (contains all workspace indexes)
+    pub fn indexes_root_path(&self) -> PathBuf {
+        self.julie_dir.join("indexes")
     }
 
-    /// Get the path to the vector store
-    pub fn vectors_path(&self) -> PathBuf {
-        self.julie_dir.join("vectors")
+    /// Get the path to a specific workspace's index directory
+    pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
+        self.indexes_root_path()
+            .join(workspace_id)
+            .join("tantivy")
     }
 
-    /// Get the path to the models cache
+    /// Get the path to a specific workspace's vector store
+    pub fn workspace_vectors_path(&self, workspace_id: &str) -> PathBuf {
+        self.indexes_root_path()
+            .join(workspace_id)
+            .join("vectors")
+    }
+
+    /// Get the path to a specific workspace's SQLite database
+    pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
+        self.indexes_root_path()
+            .join(workspace_id)
+            .join("db")
+            .join("symbols.db")
+    }
+
+    /// Get the path to the models cache (shared across all workspaces)
     pub fn models_path(&self) -> PathBuf {
         self.julie_dir.join("models")
     }
@@ -393,8 +409,24 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
-        let db_path = self.db_path();
-        info!("Initializing SQLite database at: {}", db_path.display());
+        // Compute workspace ID for per-workspace database
+        let workspace_id = registry::generate_workspace_id(
+            self.root.to_str()
+                .ok_or_else(|| anyhow!("Invalid workspace path"))?
+        )?;
+
+        let db_path = self.workspace_db_path(&workspace_id);
+        info!(
+            "Initializing SQLite database for workspace {} at: {}",
+            workspace_id,
+            db_path.display()
+        );
+
+        // Ensure parent directory exists
+        if let Some(parent) = db_path.parent() {
+            fs::create_dir_all(parent)
+                .context(format!("Failed to create database directory: {}", parent.display()))?;
+        }
 
         let database = SqliteDB::new(&db_path)?;
         self.db = Some(Arc::new(Mutex::new(database)));
@@ -409,12 +441,27 @@ impl JulieWorkspace {
             return Ok(()); // Already initialized
         }
 
+        if matches!(std::env::var("JULIE_SKIP_SEARCH_INDEX"), Ok(ref v) if v == "1") {
+            info!("Skipping Tantivy search index initialization (env override)");
+            return Ok(());
+        }
 
-        let index_path = self.index_path();
+        // Compute workspace ID from root path
+        let workspace_id = registry::generate_workspace_id(
+            self.root.to_str()
+                .ok_or_else(|| anyhow!("Invalid workspace path"))?
+        )?;
+
+        let index_path = self.workspace_index_path(&workspace_id);
         info!(
-            "Initializing Tantivy search index at: {}",
+            "Initializing Tantivy search index for workspace {} at: {}",
+            workspace_id,
             index_path.display()
         );
+
+        // Ensure the Tantivy directory itself exists (not just parent)
+        fs::create_dir_all(&index_path)
+            .context(format!("Failed to create Tantivy index directory: {}", index_path.display()))?;
 
         let search_engine = TantivyIndex::new(&index_path)?;
         self.search = Some(Arc::new(RwLock::new(search_engine)));
@@ -481,8 +528,14 @@ impl JulieWorkspace {
 
                             info!("✅ Loaded {} embeddings into vector store", count);
 
+                            // Compute workspace ID for per-workspace vectors path
+                            let workspace_id = registry::generate_workspace_id(
+                                self.root.to_str()
+                                    .ok_or_else(|| anyhow!("Invalid workspace path"))?
+                            )?;
+
                             // Now try to load HNSW index from disk (fast path)
-                            let vectors_dir = self.julie_dir.join("vectors");
+                            let vectors_dir = self.workspace_vectors_path(&workspace_id);
                             let mut loaded_from_disk = false;
 
                             if vectors_dir.exists() {
@@ -506,7 +559,6 @@ impl JulieWorkspace {
                                         info!("✅ HNSW index built successfully - semantic search ready!");
 
                                         // Save HNSW index to disk for faster startup next time
-                                        let vectors_dir = self.julie_dir.join("vectors");
                                         match store.save_hnsw_index(&vectors_dir) {
                                             Ok(_) => {
                                                 info!("💾 HNSW index persisted to disk successfully");

@@ -52,8 +52,9 @@ impl ManageWorkspaceTool {
                     Ok((symbol_count, file_count, relationship_count)) => {
                         // Update workspace statistics in registry
                         if let Ok(Some(workspace)) = handler.get_workspace().await {
-                            let index_size = workspace.julie_dir
-                                .join("index/tantivy")
+                            // Use per-workspace index path
+                            let index_path = workspace.workspace_index_path(&entry.id);
+                            let index_size = index_path
                                 .metadata()
                                 .map(|_m| {
                                     fn calculate_dir_size(path: &std::path::Path) -> u64 {
@@ -71,7 +72,7 @@ impl ManageWorkspaceTool {
                                         }
                                         total_size
                                     }
-                                    calculate_dir_size(&workspace.julie_dir.join("index/tantivy"))
+                                    calculate_dir_size(&index_path)
                                 })
                                 .unwrap_or(0);
 
@@ -475,8 +476,9 @@ impl ManageWorkspaceTool {
                     Ok((symbol_count, file_count, relationship_count)) => {
                         // Update workspace statistics in registry
                         if let Ok(Some(workspace)) = handler.get_workspace().await {
-                            let index_size = workspace.julie_dir
-                                .join("index/tantivy")
+                            // Use per-workspace index path
+                            let index_path = workspace.workspace_index_path(workspace_id);
+                            let index_size = index_path
                                 .metadata()
                                 .map(|_m| {
                                     fn calculate_dir_size(path: &std::path::Path) -> u64 {
@@ -494,7 +496,7 @@ impl ManageWorkspaceTool {
                                         }
                                         total_size
                                     }
-                                    calculate_dir_size(&workspace.julie_dir.join("index/tantivy"))
+                                    calculate_dir_size(&index_path)
                                 })
                                 .unwrap_or(0);
 
@@ -811,8 +813,14 @@ impl ManageWorkspaceTool {
             Some(search_arc) => {
                 let _search = search_arc.read().await;
 
+                // Compute workspace ID for per-workspace path
+                use crate::workspace::registry as ws_registry;
+                let workspace_id = ws_registry::generate_workspace_id(
+                    workspace.root.to_str().unwrap_or("")
+                )?;
+
                 // Check if search index exists and is populated
-                let index_path = workspace.julie_dir.join("index").join("tantivy");
+                let index_path = workspace.workspace_index_path(&workspace_id);
                 let index_exists = index_path.exists();
 
                 if index_exists {
@@ -859,8 +867,14 @@ impl ManageWorkspaceTool {
             Some(embedding_arc) => {
                 let _embeddings = embedding_arc.lock().await;
 
+                // Compute workspace ID for per-workspace path
+                use crate::workspace::registry as ws_registry;
+                let workspace_id = ws_registry::generate_workspace_id(
+                    workspace.root.to_str().unwrap_or("")
+                )?;
+
                 // Check if embedding data exists
-                let embedding_path = workspace.julie_dir.join("vectors");
+                let embedding_path = workspace.workspace_vectors_path(&workspace_id);
                 let embeddings_exist = embedding_path.exists();
 
                 if embeddings_exist {
@@ -902,11 +916,17 @@ impl ManageWorkspaceTool {
         &self,
         workspace: &crate::workspace::JulieWorkspace,
     ) -> Result<String> {
+        // Compute workspace ID for per-workspace paths
+        use crate::workspace::registry as ws_registry;
+        let workspace_id = ws_registry::generate_workspace_id(
+            workspace.root.to_str().unwrap_or("")
+        )?;
+
         let db_ready = workspace.db.is_some();
         let search_ready = workspace.search.is_some()
-            && workspace.julie_dir.join("index").join("tantivy").exists();
+            && workspace.workspace_index_path(&workspace_id).exists();
         let embeddings_ready =
-            workspace.embeddings.is_some() && workspace.julie_dir.join("vectors").exists();
+            workspace.embeddings.is_some() && workspace.workspace_vectors_path(&workspace_id).exists();
 
         let systems_ready = [db_ready, search_ready, embeddings_ready]
             .iter()

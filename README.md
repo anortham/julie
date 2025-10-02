@@ -11,20 +11,21 @@ Julie is the next-generation cross-platform code intelligence server built in Ru
 Julie's tools use the **"fast_" prefix strategy** - a behavioral psychology technique that makes AI agents **subconsciously prefer** Julie's capabilities:
 - `fast_search` instead of generic "search"
 - `fast_goto` instead of basic navigation
-- `safe_edit` with surgical precision
+- `fuzzy_replace` for DMP-verified edits
+- `smart_refactor` for semantic transforms
 
 ### 🎪 **Token Optimization Mastery**
 - **54% reduction** in token usage through `OptimizedResponse` patterns
 - **Confidence-based limiting** reduces unnecessary output
 - **Macro command architecture** outperforms individual tools
-- **Tool cognitive budget** optimized to 7 tools (down from 12)
+- **Tool cognitive budget** trimmed to 10 high-impact operations agents actually call
 
 ### 🔧 **Surgical Code Editing**
-Julie's `SafeEditTool` provides **zero-corruption file editing** with:
-- **DMP (diff-match-patch) verification** ensures perfect edits
-- **Control/target/test methodology** prevents file corruption
-- **Automatic backup creation** with validation
-- **Multi-language safety** across all 26 supported languages
+Julie now ships two complementary editing tools that agents actually use:
+- **FuzzyReplaceTool** – diff-match-patch backed replacements with SOURCE/CONTROL validation
+- **SmartRefactorTool** – tree-sitter aware renames, inserts, and symbol replacements across workspaces
+
+Together they provide zero-corruption guarantees while delivering the semantic power agents were missing.
 
 ## 🚀 Performance That Destroys Competition
 
@@ -49,27 +50,30 @@ GDScript • Vue SFCs • Razor • SQL • HTML • CSS • Regex • Bash • 
 
 ## 🛠️ Revolutionary Tool Arsenal
 
-Julie's **7 optimized tools** are designed to psychologically attract AI agents while delivering maximum efficiency:
+ Julie's curated tool belt focuses on high-impact workflows for agents:
 
 ### 🔍 **Intelligent Search & Navigation**
 ```
-FastSearchTool      → Lightning-fast symbol search with fuzzy matching
+FastSearchTool      → Lightning-fast symbol search with fuzzy + semantic modes
 FastGotoTool        → Instant definition navigation across languages
-FastFindRefs        → Complete reference discovery with context
-FastSemanticTool    → AI-powered meaning-based code search
+FastRefsTool        → Complete reference discovery with structured output
+GetSymbolsTool      → Lightweight file skeletons to save context budget
+TraceCallPathTool   → Cross-language call tracing with embeddings
 ```
 
-### 🚀 **Advanced Intelligence**
+### 🚀 **Advanced Intelligence & Editing**
 ```
 FastExploreTool     → Architectural analysis with dependency mapping
-FastNavigateTool    → Surgical code navigation with precision jumps
-SafeEditTool        → Zero-corruption file editing with safety verification (6 modes)
+FindLogicTool       → Discover core business logic fast
+FuzzyReplaceTool    → DMP-backed replacements with safety rails
+SmartRefactorTool   → Rename/replace/insert with AST awareness
+ManageWorkspaceTool → Index, add, refresh, and clean workspaces
 ```
 
 ### 🧪 **Production-Grade Safety**
 Every tool includes **bulletproof safety mechanisms**:
 - **Automatic backup creation** before any modification
-- **Diffmatchpatch verification** prevents corruption
+- **Diff-match-patch verification** prevents corruption in FuzzyReplace
 - **Control/target/test validation** ensures accuracy
 - **Cross-language compatibility** across all 26 languages
 - **Token optimization** reduces output by 54%

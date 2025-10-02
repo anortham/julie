@@ -207,9 +207,9 @@ impl JulieServerHandler {
 
                 // CRITICAL: Only clear derived data, NEVER the database!
                 // Database is source of truth and should be preserved for incremental updates
+                // With per-workspace structure, clear the entire indexes/ directory (all workspaces)
                 let paths_to_clear = [
-                    julie_dir.join("index"),   // Tantivy search index (can be rebuilt)
-                    julie_dir.join("vectors"), // Embedding vectors (can be rebuilt)
+                    julie_dir.join("indexes"), // All per-workspace indexes (can be rebuilt)
                     julie_dir.join("cache"),   // Parse cache (can be rebuilt)
                 ];
 

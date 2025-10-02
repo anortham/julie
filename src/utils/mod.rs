@@ -69,6 +69,9 @@ pub mod path_relevance;
 /// Exact match boost utilities
 pub mod exact_match_boost;
 
+/// Query expansion utilities for multi-word search
+pub mod query_expansion;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;

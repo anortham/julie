@@ -2,7 +2,7 @@
 // This test proves Julie uses tree-sitter AST, not regex!
 
 class AccountService {
-    // AccountService implementation
+    // UserService implementation
     private data: string;
 
     constructor() {

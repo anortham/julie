@@ -144,6 +144,7 @@ impl ManageWorkspaceTool {
             let indexing_status_clone = handler.indexing_status.clone();
 
             tokio::spawn(async move {
+                info!("🐛 Background embedding task started");
                 let task_start = std::time::Instant::now();
                 match generate_embeddings_from_sqlite(
                     embedding_engine,
@@ -162,6 +163,7 @@ impl ManageWorkspaceTool {
                         error!("❌ Background embedding generation failed: {}", e);
                     }
                 }
+                info!("🐛 Background embedding task completed");
             });
         } else if !is_primary_workspace {
             info!(
@@ -1198,19 +1200,24 @@ async fn generate_embeddings_from_sqlite(
 ) -> Result<()> {
     use anyhow::Context;
 
+    info!("🐛 generate_embeddings_from_sqlite() called for workspace: {}", workspace_id);
     let start_time = std::time::Instant::now();
     debug!("Starting embedding generation from SQLite");
 
-    // Update registry status to "Generating"
-    if let Some(ref root) = workspace_root {
-        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
-        if let Err(e) = registry_service
-            .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Generating)
-            .await
-        {
-            warn!("Failed to update embedding status to Generating: {}", e);
-        }
-    }
+    // 🐛 SKIP REGISTRY UPDATE: Causes deadlock as main thread holds registry lock during statistics update
+    // The registry status update is non-critical for background task operation
+    // if let Some(ref root) = workspace_root {
+    //     info!("🐛 About to update registry embedding status...");
+    //     let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
+    //     if let Err(e) = registry_service
+    //         .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Generating)
+    //         .await
+    //     {
+    //         warn!("Failed to update embedding status to Generating: {}", e);
+    //     }
+    //     info!("🐛 Registry embedding status updated");
+    // }
+    info!("🐛 Skipping registry update to avoid deadlock");
 
     // Get database connection
     let db = match workspace_db {
@@ -1222,12 +1229,15 @@ async fn generate_embeddings_from_sqlite(
     };
 
     // Read symbols from SQLite
+    info!("🐛 About to acquire database lock for reading symbols...");
     let symbols = {
         let db_lock = db.lock().await;
+        info!("🐛 Database lock acquired successfully!");
         db_lock
             .get_symbols_for_workspace(&workspace_id)
             .context("Failed to read symbols from database")?
     };
+    info!("🐛 Read {} symbols from database", symbols.len());
 
     if symbols.is_empty() {
         debug!("No symbols to embed");
@@ -1277,6 +1287,8 @@ async fn generate_embeddings_from_sqlite(
     {
         let mut embedding_guard = embedding_engine.write().await;
         if let Some(ref mut engine) = embedding_guard.as_mut() {
+            // BATCH_SIZE: Tested 256 (76s), 64 (60s), 100 (60s) - no significant difference
+            // CPU-based ONNX inference is bottlenecked by model computation, not batch overhead
             const BATCH_SIZE: usize = 100;
             let total_batches = symbols.len().div_ceil(BATCH_SIZE);
 
@@ -1290,39 +1302,27 @@ async fn generate_embeddings_from_sqlite(
 
                 match engine.embed_symbols_batch(chunk) {
                     Ok(batch_embeddings) => {
-                        // Persist embeddings to database
+                        // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
                         {
-                            let db_guard = db.lock().await;
+                            let mut db_guard = db.lock().await;
                             let model_name = engine.model_name();
                             let dimensions = engine.dimensions();
 
-                            for (symbol_id, embedding) in batch_embeddings {
-                                // Store the vector data
-                                if let Err(e) = db_guard.store_embedding_vector(
-                                    &symbol_id,
-                                    &embedding,
-                                    dimensions,
-                                    model_name,
-                                ) {
-                                    warn!("Failed to persist vector for {}: {}", symbol_id, e);
-                                }
-
-                                // Store the metadata linking symbol to vector
-                                if let Err(e) = db_guard.store_embedding_metadata(
-                                    &symbol_id,
-                                    &symbol_id,  // Using symbol_id as vector_id
-                                    model_name,
-                                    None,  // embedding_hash not computed
-                                ) {
-                                    warn!("Failed to persist embedding metadata for {}: {}", symbol_id, e);
-                                }
+                            // Use bulk insert instead of individual inserts
+                            if let Err(e) = db_guard.bulk_store_embeddings(
+                                &batch_embeddings,
+                                dimensions,
+                                model_name,
+                            ) {
+                                warn!("Failed to bulk store embeddings for batch {}: {}", batch_idx + 1, e);
                             }
                         }
 
                         debug!(
-                            "✅ Generated and stored embeddings for batch {}/{}",
+                            "✅ Generated and stored embeddings for batch {}/{} ({} embeddings)",
                             batch_idx + 1,
-                            total_batches
+                            total_batches,
+                            batch_embeddings.len()
                         );
                     }
                     Err(e) => {
@@ -1371,11 +1371,23 @@ async fn generate_embeddings_from_sqlite(
                         info!("✅ HNSW index built in {:.2}s", hnsw_start.elapsed().as_secs_f64());
 
                         // Save to disk for lazy loading on next startup
-                        let vectors_path = std::path::PathBuf::from("./.julie/vectors");
+                        // Use per-workspace vectors path
+                        let vectors_path = if let Some(ref root) = workspace_root {
+                            root.join(".julie")
+                                .join("indexes")
+                                .join(&workspace_id)
+                                .join("vectors")
+                        } else {
+                            // Fallback to current directory if workspace root not available
+                            std::path::PathBuf::from("./.julie/indexes")
+                                .join(&workspace_id)
+                                .join("vectors")
+                        };
+
                         if let Err(e) = vector_store.save_hnsw_index(&vectors_path) {
                             warn!("Failed to save HNSW index to disk: {}", e);
                         } else {
-                            info!("💾 HNSW index saved to vectors/ for fast loading");
+                            info!("💾 HNSW index saved to {}", vectors_path.display());
                         }
                     }
                     Err(e) => {
@@ -1395,18 +1407,20 @@ async fn generate_embeddings_from_sqlite(
     indexing_status.semantic_ready.store(true, std::sync::atomic::Ordering::Release);
     debug!("🧠 CASCADE: Semantic search now available");
 
-    // Update registry status to "Ready"
-    if let Some(ref root) = workspace_root {
-        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
-        if let Err(e) = registry_service
-            .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Ready)
-            .await
-        {
-            warn!("Failed to update embedding status to Ready: {}", e);
-        } else {
-            debug!("📝 Updated registry: embedding_status = Ready");
-        }
-    }
+    // 🐛 SKIP REGISTRY UPDATE: Causes deadlock - main thread holds registry lock
+    // The in-memory indexing_status.semantic_ready flag is sufficient for runtime status
+    // if let Some(ref root) = workspace_root {
+    //     let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(root.clone());
+    //     if let Err(e) = registry_service
+    //         .update_embedding_status(&workspace_id, crate::workspace::registry::EmbeddingStatus::Ready)
+    //         .await
+    //     {
+    //         warn!("Failed to update embedding status to Ready: {}", e);
+    //     } else {
+    //         debug!("📝 Updated registry: embedding_status = Ready");
+    //     }
+    // }
+    info!("🐛 Embeddings complete - registry update skipped to avoid deadlock");
 
     Ok(())
 }

@@ -3,14 +3,14 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::debug;
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::utils::{
     cross_language_intelligence::generate_naming_variants,
-    progressive_reduction::ProgressiveReducer,
-    token_estimation::TokenEstimator,
+    progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator,
 };
 use crate::workspace::registry_service::WorkspaceRegistryService;
 
@@ -126,30 +126,35 @@ impl FastGotoTool {
             Ok(search_engine) => {
                 let search_engine = search_engine.read().await;
                 match search_engine.search(&self.symbol).await {
-            Ok(search_results) => {
-                // Use SearchResult's symbol directly - no O(n) linear lookup needed!
-                for search_result in search_results {
-                    // Only include exact name matches for definitions
-                    if search_result.symbol.name == self.symbol {
-                        exact_matches.push(search_result.symbol);
+                    Ok(search_results) => {
+                        // Use SearchResult's symbol directly - no O(n) linear lookup needed!
+                        for search_result in search_results {
+                            // Only include exact name matches for definitions
+                            if search_result.symbol.name == self.symbol {
+                                exact_matches.push(search_result.symbol);
+                            }
+                        }
+                        debug!(
+                            "⚡ Indexed search found {} exact matches",
+                            exact_matches.len()
+                        );
                     }
-                }
-                debug!(
-                    "⚡ Indexed search found {} exact matches",
-                    exact_matches.len()
-                );
-            }
-                Err(e) => {
-                    debug!("Search engine failed, falling back to SQLite database: {}", e);
-                    // Fallback to database search for exact name lookup (indexed, fast)
-                    if let Ok(Some(workspace)) = handler.get_workspace().await {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                    Err(e) => {
+                        debug!(
+                            "Search engine failed, falling back to SQLite database: {}",
+                            e
+                        );
+                        // Fallback to database search for exact name lookup (indexed, fast)
+                        if let Ok(Some(workspace)) = handler.get_workspace().await {
+                            if let Some(db) = workspace.db.as_ref() {
+                                let db_lock = db.lock().await;
+                                exact_matches = db_lock
+                                    .get_symbols_by_name(&self.symbol)
+                                    .unwrap_or_default();
+                            }
                         }
                     }
                 }
-            }
             }
             Err(e) => {
                 debug!("Search engine unavailable, using SQLite database: {}", e);
@@ -157,7 +162,9 @@ impl FastGotoTool {
                 if let Ok(Some(workspace)) = handler.get_workspace().await {
                     if let Some(db) = workspace.db.as_ref() {
                         let db_lock = db.lock().await;
-                        exact_matches = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                        exact_matches = db_lock
+                            .get_symbols_by_name(&self.symbol)
+                            .unwrap_or_default();
                     }
                 }
             }
@@ -169,7 +176,9 @@ impl FastGotoTool {
             if let Some(db) = workspace.db.as_ref() {
                 let db_lock = db.lock().await;
                 // Use exact name match to find symbols
-                db_lock.find_symbols_by_name(&self.symbol).unwrap_or_default()
+                db_lock
+                    .find_symbols_by_name(&self.symbol)
+                    .unwrap_or_default()
             } else {
                 Vec::new()
             }
@@ -187,13 +196,14 @@ impl FastGotoTool {
 
                     // Query relationships for each matching symbol using indexed query
                     for symbol in &matching_symbols {
-                        if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id) {
+                        if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
+                        {
                             for relationship in relationships {
                                 // Check if this relationship represents a definition or import
                                 match &relationship.kind {
-                                    crate::extractors::base::RelationshipKind::Imports |
-                                    crate::extractors::base::RelationshipKind::Defines |
-                                    crate::extractors::base::RelationshipKind::Extends => {
+                                    crate::extractors::base::RelationshipKind::Imports
+                                    | crate::extractors::base::RelationshipKind::Defines
+                                    | crate::extractors::base::RelationshipKind::Extends => {
                                         // The symbol itself is the definition we want
                                         exact_matches.push(symbol.clone());
                                     }
@@ -237,7 +247,10 @@ impl FastGotoTool {
                                 Ok(search_results) => {
                                     for search_result in search_results {
                                         if search_result.symbol.name == variant {
-                                            debug!("🎯 Found cross-language match: {} -> {}", self.symbol, variant);
+                                            debug!(
+                                                "🎯 Found cross-language match: {} -> {}",
+                                                self.symbol, variant
+                                            );
                                             exact_matches.push(search_result.symbol);
                                         }
                                     }
@@ -251,7 +264,10 @@ impl FastGotoTool {
                     }
                 }
                 Err(e) => {
-                    debug!("Search engine not available for cross-language resolution: {}", e);
+                    debug!(
+                        "Search engine not available for cross-language resolution: {}",
+                        e
+                    );
                     // Fall through to semantic search (Strategy 4)
                 }
             }
@@ -268,58 +284,72 @@ impl FastGotoTool {
             // Get embedding engine and vector store from workspace
             if let Ok(()) = handler.ensure_embedding_engine().await {
                 if let Ok(Some(workspace)) = handler.get_workspace().await {
-                        // Get embedding for query
-                        let mut embedding_guard = handler.embedding_engine.write().await;
-                        if let Some(embedding_engine) = embedding_guard.as_mut() {
-                            if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
-                                // Access vector store
-                                if let Some(vector_store_arc) = &workspace.vector_store {
-                                    let vector_store = vector_store_arc.read().await;
+                    // Get embedding for query
+                    let mut embedding_guard = handler.embedding_engine.write().await;
+                    if let Some(embedding_engine) = embedding_guard.as_mut() {
+                        if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+                            // Access vector store
+                            if let Some(vector_store_arc) = &workspace.vector_store {
+                                let vector_store = vector_store_arc.read().await;
 
-                                    // CASCADE fallback: HNSW (fast) → Brute-force (slower but works)
-                                    let similar_symbols = if vector_store.has_hnsw_index() {
-                                        // Fast path: Use HNSW for O(log n) approximate search
-                                        debug!("🚀 Using HNSW index for fast semantic search");
-                                        match vector_store.search_similar_hnsw(&query_embedding, 10, 0.7) {
-                                            Ok(results) => {
-                                                debug!("Found {} semantically similar symbols via HNSW", results.len());
-                                                results
-                                            }
-                                            Err(e) => {
-                                                debug!("HNSW search failed: {}, falling back to brute-force", e);
-                                                // Fallback to brute-force if HNSW fails
-                                                vector_store.search_similar(&query_embedding, 10, 0.7)
-                                                    .unwrap_or_else(|e| {
-                                                        debug!("Brute-force search also failed: {}", e);
-                                                        Vec::new()
-                                                    })
-                                            }
+                                // CASCADE fallback: HNSW (fast) → Brute-force (slower but works)
+                                let similar_symbols = if vector_store.has_hnsw_index() {
+                                    // Fast path: Use HNSW for O(log n) approximate search
+                                    debug!("🚀 Using HNSW index for fast semantic search");
+                                    match vector_store.search_similar_hnsw(
+                                        &query_embedding,
+                                        10,
+                                        0.7,
+                                    ) {
+                                        Ok(results) => {
+                                            debug!(
+                                                "Found {} semantically similar symbols via HNSW",
+                                                results.len()
+                                            );
+                                            results
                                         }
-                                    } else {
-                                        // Fallback path: Use brute-force O(n) search when HNSW not available
-                                        debug!("⚠️ HNSW index not available - using brute-force semantic search");
-                                        vector_store.search_similar(&query_embedding, 10, 0.7)
-                                            .unwrap_or_else(|e| {
-                                                debug!("Brute-force semantic search failed: {}", e);
-                                                Vec::new()
-                                            })
-                                    };
+                                        Err(e) => {
+                                            debug!("HNSW search failed: {}, falling back to brute-force", e);
+                                            // Fallback to brute-force if HNSW fails
+                                            vector_store
+                                                .search_similar(&query_embedding, 10, 0.7)
+                                                .unwrap_or_else(|e| {
+                                                    debug!("Brute-force search also failed: {}", e);
+                                                    Vec::new()
+                                                })
+                                        }
+                                    }
+                                } else {
+                                    // Fallback path: Use brute-force O(n) search when HNSW not available
+                                    debug!("⚠️ HNSW index not available - using brute-force semantic search");
+                                    vector_store
+                                        .search_similar(&query_embedding, 10, 0.7)
+                                        .unwrap_or_else(|e| {
+                                            debug!("Brute-force semantic search failed: {}", e);
+                                            Vec::new()
+                                        })
+                                };
 
-                                    // Get actual symbol data from database for all results
-                                    if !similar_symbols.is_empty() {
-                                        debug!("📊 Processing {} similar symbols from semantic search", similar_symbols.len());
-                                        if let Some(db_arc) = &workspace.db {
-                                            let db = db_arc.lock().await;
-                                            for result in similar_symbols {
-                                                if let Ok(Some(symbol)) = db.get_symbol_by_id(&result.symbol_id) {
-                                                    exact_matches.push(symbol);
-                                                }
+                                // Get actual symbol data from database for all results
+                                if !similar_symbols.is_empty() {
+                                    debug!(
+                                        "📊 Processing {} similar symbols from semantic search",
+                                        similar_symbols.len()
+                                    );
+                                    if let Some(db_arc) = &workspace.db {
+                                        let db = db_arc.lock().await;
+                                        for result in similar_symbols {
+                                            if let Ok(Some(symbol)) =
+                                                db.get_symbol_by_id(&result.symbol_id)
+                                            {
+                                                exact_matches.push(symbol);
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
                 }
             }
         }
@@ -565,8 +595,12 @@ impl FastGotoTool {
                         variant_matches.retain(|symbol| symbol.name == variant);
 
                         if !variant_matches.is_empty() {
-                            debug!("🎯 Found cross-language match: {} -> {} ({} results)",
-                                self.symbol, variant, variant_matches.len());
+                            debug!(
+                                "🎯 Found cross-language match: {} -> {} ({} results)",
+                                self.symbol,
+                                variant,
+                                variant_matches.len()
+                            );
                             exact_matches.extend(variant_matches);
                         }
                     }
@@ -716,9 +750,44 @@ impl FastRefsTool {
 
         // Use token-optimized formatting
         let message = self.format_optimized_results(&definitions, &references);
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
-        )]))
+
+        let mut result = CallToolResult::text_content(vec![TextContent::from(message)]);
+
+        let structured_payload = json!({
+            "query": self.symbol,
+            "include_definition": self.include_definition,
+            "limit": self.limit,
+            "definition_count": definitions.len(),
+            "reference_count": references.len(),
+            "definitions": definitions.iter().map(|symbol| json!({
+                "symbol_id": symbol.id,
+                "name": symbol.name,
+                "kind": symbol.kind,
+                "language": symbol.language,
+                "file_path": symbol.file_path,
+                "start_line": symbol.start_line,
+                "start_column": symbol.start_column,
+                "end_line": symbol.end_line,
+                "end_column": symbol.end_column,
+                "signature": symbol.signature,
+                "confidence": symbol.confidence,
+            })).collect::<Vec<_>>(),
+            "references": references.iter().map(|relationship| json!({
+                "relationship_id": relationship.id,
+                "from_symbol_id": relationship.from_symbol_id,
+                "to_symbol_id": relationship.to_symbol_id,
+                "kind": relationship.kind,
+                "file_path": relationship.file_path,
+                "line_number": relationship.line_number,
+                "confidence": relationship.confidence,
+            })).collect::<Vec<_>>(),
+        });
+
+        if let serde_json::Value::Object(map) = structured_payload {
+            result = result.with_structured_content(map);
+        }
+
+        Ok(result)
     }
 
     async fn find_references_and_definitions(
@@ -741,30 +810,35 @@ impl FastRefsTool {
             Ok(search_engine) => {
                 let search_engine = search_engine.read().await;
                 match search_engine.search(&self.symbol).await {
-            Ok(search_results) => {
-                // Use SearchResult's symbol directly - no O(n) linear lookup needed!
-                for search_result in search_results {
-                    // Only include exact name matches for definitions
-                    if search_result.symbol.name == self.symbol {
-                        definitions.push(search_result.symbol);
+                    Ok(search_results) => {
+                        // Use SearchResult's symbol directly - no O(n) linear lookup needed!
+                        for search_result in search_results {
+                            // Only include exact name matches for definitions
+                            if search_result.symbol.name == self.symbol {
+                                definitions.push(search_result.symbol);
+                            }
+                        }
+                        debug!(
+                            "⚡ Indexed search found {} exact matches",
+                            definitions.len()
+                        );
                     }
-                }
-                debug!(
-                    "⚡ Indexed search found {} exact matches",
-                    definitions.len()
-                );
-            }
-                Err(e) => {
-                    debug!("Search engine failed, falling back to SQLite database: {}", e);
-                    // Fallback to database search for exact name lookup (indexed, fast)
-                    if let Ok(Some(workspace)) = handler.get_workspace().await {
-                        if let Some(db) = workspace.db.as_ref() {
-                            let db_lock = db.lock().await;
-                            definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                    Err(e) => {
+                        debug!(
+                            "Search engine failed, falling back to SQLite database: {}",
+                            e
+                        );
+                        // Fallback to database search for exact name lookup (indexed, fast)
+                        if let Ok(Some(workspace)) = handler.get_workspace().await {
+                            if let Some(db) = workspace.db.as_ref() {
+                                let db_lock = db.lock().await;
+                                definitions = db_lock
+                                    .get_symbols_by_name(&self.symbol)
+                                    .unwrap_or_default();
+                            }
                         }
                     }
                 }
-            }
             }
             Err(e) => {
                 debug!("Search engine unavailable, using SQLite database: {}", e);
@@ -772,7 +846,9 @@ impl FastRefsTool {
                 if let Ok(Some(workspace)) = handler.get_workspace().await {
                     if let Some(db) = workspace.db.as_ref() {
                         let db_lock = db.lock().await;
-                        definitions = db_lock.get_symbols_by_name(&self.symbol).unwrap_or_default();
+                        definitions = db_lock
+                            .get_symbols_by_name(&self.symbol)
+                            .unwrap_or_default();
                     }
                 }
             }
@@ -794,7 +870,10 @@ impl FastRefsTool {
                             for search_result in search_results {
                                 // Exact match on variant name
                                 if search_result.symbol.name == variant {
-                                    debug!("✨ Found cross-language match: {} (variant: {})", search_result.symbol.name, variant);
+                                    debug!(
+                                        "✨ Found cross-language match: {} (variant: {})",
+                                        search_result.symbol.name, variant
+                                    );
                                     definitions.push(search_result.symbol);
                                 }
                             }
@@ -823,7 +902,9 @@ impl FastRefsTool {
 
                 // For each definition, query relationships TO that symbol using indexed query
                 for definition in &definitions {
-                    if let Ok(symbol_references) = db_lock.get_relationships_to_symbol(&definition.id) {
+                    if let Ok(symbol_references) =
+                        db_lock.get_relationships_to_symbol(&definition.id)
+                    {
                         // INFLATION FIX: get_relationships_to_symbol already filters for to_symbol_id
                         references.extend(symbol_references);
                     }
@@ -899,23 +980,33 @@ impl FastRefsTool {
                                         let existing_def_ids: std::collections::HashSet<_> =
                                             definitions.iter().map(|d| d.id.clone()).collect();
                                         let existing_ref_ids: std::collections::HashSet<_> =
-                                            references.iter().map(|r| r.to_symbol_id.clone()).collect();
+                                            references
+                                                .iter()
+                                                .map(|r| r.to_symbol_id.clone())
+                                                .collect();
 
                                         for result in hnsw_results {
-                                            if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
+                                            if let Ok(Some(symbol)) =
+                                                db_lock.get_symbol_by_id(&result.symbol_id)
+                                            {
                                                 // Skip if already in definitions or references (O(1) HashSet lookup!)
-                                                if !existing_def_ids.contains(&symbol.id) &&
-                                                   !existing_ref_ids.contains(&symbol.id) {
+                                                if !existing_def_ids.contains(&symbol.id)
+                                                    && !existing_ref_ids.contains(&symbol.id)
+                                                {
                                                     // Create metadata HashMap with similarity score
-                                                    let mut metadata = std::collections::HashMap::new();
+                                                    let mut metadata =
+                                                        std::collections::HashMap::new();
                                                     metadata.insert(
                                                         "similarity".to_string(),
-                                                        serde_json::json!(result.similarity_score)
+                                                        serde_json::json!(result.similarity_score),
                                                     );
 
                                                     // Convert to Relationship for consistency
                                                     let semantic_ref = Relationship {
-                                                        id: format!("semantic_{}", result.symbol_id),
+                                                        id: format!(
+                                                            "semantic_{}",
+                                                            result.symbol_id
+                                                        ),
                                                         from_symbol_id: self.symbol.clone(),
                                                         to_symbol_id: symbol.id.clone(),
                                                         kind: RelationshipKind::References,
@@ -925,8 +1016,10 @@ impl FastRefsTool {
                                                         metadata: Some(metadata),
                                                     };
 
-                                                    debug!("✨ Semantic match: {} (similarity: {:.2})",
-                                                        symbol.name, result.similarity_score);
+                                                    debug!(
+                                                        "✨ Semantic match: {} (similarity: {:.2})",
+                                                        symbol.name, result.similarity_score
+                                                    );
                                                     references.push(semantic_ref);
                                                 }
                                             }

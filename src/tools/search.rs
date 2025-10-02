@@ -157,18 +157,21 @@ impl FastSearchTool {
         // Resolve workspace filtering
         let workspace_filter = self.resolve_workspace_filter(handler).await?;
 
-        // If workspace filtering is specified, use database search for precise workspace isolation
+        // 🔥 NEW: Load the specific workspace's Tantivy index instead of falling back to SQLite
+        // Each workspace now has its own Tantivy index with multi-word AND/OR logic
         if let Some(workspace_ids) = workspace_filter {
+            // For now, use the first workspace ID (single workspace search)
+            let workspace_id = &workspace_ids[0];
             debug!(
-                "🎯 Using workspace-filtered database search for workspace IDs: {:?}",
-                workspace_ids
+                "🚀 Loading Tantivy index for workspace: {}",
+                workspace_id
             );
-            return self
-                .database_search_with_workspace_filter(handler, workspace_ids)
-                .await;
+
+            // Load the workspace-specific SearchEngine
+            return self.search_workspace_tantivy(handler, workspace_id).await;
         }
 
-        // For "all" workspaces, use the existing Tantivy search engine approach
+        // For "all" workspaces (None), use the primary workspace's Tantivy search engine
         // Try to use persistent search engine from workspace first
         let search_results = if let Some(workspace) = handler.get_workspace().await? {
             if let Some(persistent_search) = &workspace.search {
@@ -753,7 +756,65 @@ impl FastSearchTool {
         }
     }
 
-    /// Perform database search with workspace filtering for precise workspace isolation
+    /// Search a specific workspace's Tantivy index (NEW: per-workspace indexes)
+    /// This enables multi-word AND/OR logic for workspace-filtered searches
+    async fn search_workspace_tantivy(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_id: &str,
+    ) -> Result<Vec<Symbol>> {
+        debug!(
+            "🔍 Searching workspace-specific Tantivy index for workspace: {}",
+            workspace_id
+        );
+
+        // Get the primary workspace to access the per-workspace index
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        // Check if this is the primary workspace - if so, use the already-loaded search engine
+        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+        let primary_workspace_id = registry_service
+            .get_primary_workspace_id()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No primary workspace ID found"))?;
+
+        if workspace_id == primary_workspace_id {
+            // Use the already-loaded primary workspace search engine
+            debug!("✅ Using already-loaded primary workspace Tantivy index");
+            if let Some(search_engine) = &workspace.search {
+                let search_engine_lock = search_engine.read().await;
+                let search_results = search_engine_lock.search(&self.query).await?;
+
+                // Convert SearchResults to Symbols
+                let symbols: Vec<Symbol> = search_results
+                    .into_iter()
+                    .map(|result| result.symbol)
+                    .collect();
+
+                debug!("🚀 Workspace Tantivy search returned {} results", symbols.len());
+                return Ok(symbols);
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Primary workspace Tantivy index not initialized"
+                ));
+            }
+        }
+
+        // For reference workspaces, we would need to load their index dynamically
+        // TODO: Implement dynamic loading of reference workspace indexes
+        // For now, return error since we don't support reference workspaces yet
+        Err(anyhow::anyhow!(
+            "Searching reference workspaces not yet implemented. Use workspace='primary' or omit workspace parameter."
+        ))
+    }
+
+    /// 🔄 CASCADE FALLBACK: Database search with workspace filtering
+    /// Used during the 5-10s window while Tantivy builds in background after indexing
+    /// Workspace-aware and provides graceful degradation, but lacks multi-word AND/OR logic
+    /// INTENTIONALLY KEPT: Part of CASCADE architecture for instant search availability
     async fn database_search_with_workspace_filter(
         &self,
         handler: &JulieServerHandler,

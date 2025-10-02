@@ -96,7 +96,9 @@ impl SmartRefactorTool {
                     Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function",
                     self.operation
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    self.optimize_response(&message),
+                )]))
             }
         }
     }
@@ -179,7 +181,14 @@ impl SmartRefactorTool {
 
         for file_path in file_locations.keys() {
             match self
-                .rename_in_file(handler, file_path, old_name, new_name, &dmp)
+                .rename_in_file(
+                    handler,
+                    file_path,
+                    old_name,
+                    new_name,
+                    update_comments,
+                    &dmp,
+                )
                 .await
             {
                 Ok(changes_applied) => {
@@ -271,15 +280,74 @@ impl SmartRefactorTool {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Parse the references (expected format: "file_path:line_number")
-        for line in content.lines() {
-            if let Some(colon_pos) = line.rfind(':') {
-                let file_part = &line[..colon_pos];
-                let line_part = &line[colon_pos + 1..];
+        // Prefer structured payloads when available
+        if let Some(structured) = &refs_result.structured_content {
+            if let Some(references) = structured.get("references").and_then(|v| v.as_array()) {
+                for reference in references {
+                    if let (Some(file_path), Some(line_number)) = (
+                        reference.get("file_path").and_then(|v| v.as_str()),
+                        reference.get("line_number").and_then(|v| v.as_u64()),
+                    ) {
+                        file_locations
+                            .entry(file_path.to_string())
+                            .or_default()
+                            .push(line_number as u32);
+                    }
+                }
+            }
 
-                if let Ok(line_num) = line_part.parse::<u32>() {
+            if let Some(definitions) = structured.get("definitions").and_then(|v| v.as_array()) {
+                for definition in definitions {
+                    if let (Some(file_path), Some(line_number)) = (
+                        definition.get("file_path").and_then(|v| v.as_str()),
+                        definition.get("start_line").and_then(|v| v.as_u64()),
+                    ) {
+                        file_locations
+                            .entry(file_path.to_string())
+                            .or_default()
+                            .push(line_number as u32);
+                    }
+                }
+            }
+
+            if !file_locations.is_empty() {
+                return Ok(file_locations);
+            }
+        }
+
+        // Parse textual fallback (expected format: "file_path:line_number")
+        for line in content.lines() {
+            let after_dash = line
+                .split_once(" - ")
+                .map(|(_, rest)| rest)
+                .unwrap_or_else(|| line.trim());
+
+            let mut selected: Option<(&str, &str)> = None;
+            for (idx, _) in after_dash.match_indices(':') {
+                if let Some(remainder) = after_dash.get(idx + 1..) {
+                    let trimmed = remainder.trim_start();
+                    if trimmed
+                        .chars()
+                        .next()
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
+                    {
+                        selected = Some((&after_dash[..idx], trimmed));
+                        break;
+                    }
+                }
+            }
+
+            if let Some((file_part, line_part)) = selected {
+                let digits: String = line_part
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+
+                if let Ok(line_num) = digits.parse::<u32>() {
+                    let file_path = file_part.trim();
                     file_locations
-                        .entry(file_part.to_string())
+                        .entry(file_path.to_string())
                         .or_default()
                         .push(line_num);
                 }
@@ -297,6 +365,7 @@ impl SmartRefactorTool {
         file_path: &str,
         old_name: &str,
         new_name: &str,
+        update_comments: bool,
         dmp: &DiffMatchPatch,
     ) -> Result<usize> {
         // Read the file
@@ -304,11 +373,24 @@ impl SmartRefactorTool {
             .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
 
         // AST-aware replacement using SearchEngine to find exact symbol matches
-        let new_content = match self.ast_aware_replace(&original_content, file_path, old_name, new_name, handler).await {
+        let new_content = match self
+            .ast_aware_replace(
+                &original_content,
+                file_path,
+                old_name,
+                new_name,
+                update_comments,
+                handler,
+            )
+            .await
+        {
             Ok(content) => content,
             Err(e) => {
                 // Fallback to simple replacement if AST search fails
-                debug!("⚠️ AST search failed, falling back to simple replacement: {}", e);
+                debug!(
+                    "⚠️ AST search failed, falling back to simple replacement: {}",
+                    e
+                );
                 original_content.replace(old_name, new_name)
             }
         };
@@ -353,34 +435,57 @@ impl SmartRefactorTool {
         file_path: &str,
         old_name: &str,
         new_name: &str,
-        _handler: &JulieServerHandler,
+        update_comments: bool,
+        handler: &JulieServerHandler,
     ) -> Result<String> {
         debug!("🌳 Starting AST-aware replacement using tree-sitter parsing");
 
         // Try search engine first, but fall back to tree-sitter parsing if not available
-        let symbol_positions = match self.find_symbols_via_search(file_path, old_name, _handler).await {
+        let symbol_positions = match self
+            .find_symbols_via_search(file_path, old_name, handler)
+            .await
+        {
             Ok(positions) => {
                 debug!("✅ Found {} symbols via search engine", positions.len());
                 positions
             }
             Err(search_error) => {
-                debug!("⚠️ Search engine failed: {}, falling back to tree-sitter parsing", search_error);
-                self.find_symbols_via_treesitter(content, file_path, old_name).await?
+                debug!(
+                    "⚠️ Search engine failed: {}, falling back to tree-sitter parsing",
+                    search_error
+                );
+                self.find_symbols_via_treesitter(content, file_path, old_name)
+                    .await?
             }
         };
 
         // Hybrid approach: Use AST for validation + careful text replacement for completeness
         if !symbol_positions.is_empty() {
-            debug!("✅ AST validation passed: found {} symbol definitions", symbol_positions.len());
+            debug!(
+                "✅ AST validation passed: found {} symbol definitions",
+                symbol_positions.len()
+            );
         } else {
             debug!("⚠️ No AST symbol definitions found - symbol may not exist");
             return Err(anyhow::anyhow!("Symbol not found in AST"));
         }
 
         // Use AST-aware text replacement to catch ALL occurrences (including usages)
-        debug!("📝 About to call AST-aware smart_text_replace with old_name='{}', new_name='{}'", old_name, new_name);
-        let result = self.smart_text_replace(content, old_name, new_name, file_path)?;
-        debug!("🎯 AST-aware smart_text_replace completed, result length: {}", result.len());
+        debug!(
+            "📝 About to call AST-aware smart_text_replace with old_name='{}', new_name='{}'",
+            old_name, new_name
+        );
+        let result = self.smart_text_replace(
+            content,
+            old_name,
+            new_name,
+            file_path,
+            update_comments,
+        )?;
+        debug!(
+            "🎯 AST-aware smart_text_replace completed, result length: {}",
+            result.len()
+        );
 
         Ok(result)
     }
@@ -419,7 +524,9 @@ impl SmartRefactorTool {
 
         // Create an extractor manager and extract all symbols
         let extractor_manager = ExtractorManager::new();
-        let symbols = extractor_manager.extract_symbols(file_path, content).await?;
+        let symbols = extractor_manager
+            .extract_symbols(file_path, content)
+            .await?;
 
         // Find symbols that match our target name exactly
         let matching_positions: Vec<(u32, u32)> = symbols
@@ -440,11 +547,21 @@ impl SmartRefactorTool {
     /// AST-AWARE text replacement using tree-sitter
     /// This is Julie's core value proposition - language-aware refactoring!
     /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.
-    pub fn smart_text_replace(&self, content: &str, old_name: &str, new_name: &str, file_path: &str) -> Result<String> {
+    pub fn smart_text_replace(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        update_comments: bool,
+    ) -> Result<String> {
         use crate::tools::ast_symbol_finder::{ASTSymbolFinder, SymbolContext};
         use tree_sitter::Parser;
 
-        debug!("🌳 AST-aware replacement: '{}' -> '{}' using tree-sitter", old_name, new_name);
+        debug!(
+            "🌳 AST-aware replacement: '{}' -> '{}' using tree-sitter",
+            old_name, new_name
+        );
 
         // Determine language from file extension
         let language = self.detect_language(file_path);
@@ -454,7 +571,10 @@ impl SmartRefactorTool {
         let tree_sitter_language = match self.get_tree_sitter_language(&language) {
             Ok(lang) => lang,
             Err(e) => {
-                debug!("⚠️ Couldn't get tree-sitter language for {}: {}. Fallback to text-based.", language, e);
+                debug!(
+                    "⚠️ Couldn't get tree-sitter language for {}: {}. Fallback to text-based.",
+                    language, e
+                );
                 // Fallback to simple word boundary replacement if tree-sitter fails
                 let pattern = format!(r"\b{}\b", regex::escape(old_name));
                 let re = regex::Regex::new(&pattern)?;
@@ -462,10 +582,12 @@ impl SmartRefactorTool {
             }
         };
 
-        parser.set_language(&tree_sitter_language)
+        parser
+            .set_language(&tree_sitter_language)
             .map_err(|e| anyhow::anyhow!("Failed to set parser language: {}", e))?;
 
-        let tree = parser.parse(content, None)
+        let tree = parser
+            .parse(content, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse file"))?;
 
         // Use ASTSymbolFinder to find all symbol occurrences
@@ -473,18 +595,21 @@ impl SmartRefactorTool {
         let occurrences = finder.find_symbol_occurrences(old_name);
 
         let total_occurrences = occurrences.len();
-        debug!("🔍 Found {} total occurrences of '{}'", total_occurrences, old_name);
+        debug!(
+            "🔍 Found {} total occurrences of '{}'",
+            total_occurrences, old_name
+        );
 
         // Filter out occurrences in strings and comments
         let code_occurrences: Vec<_> = occurrences
             .into_iter()
             .filter(|occ| {
-                occ.context != SymbolContext::StringLiteral &&
-                occ.context != SymbolContext::Comment
+                occ.context != SymbolContext::StringLiteral && occ.context != SymbolContext::Comment
             })
             .collect();
 
-        debug!("✅ {} code occurrences (filtered out {} string/comment occurrences)",
+        debug!(
+            "✅ {} code occurrences (filtered out {} string/comment occurrences)",
             code_occurrences.len(),
             total_occurrences - code_occurrences.len()
         );
@@ -505,11 +630,100 @@ impl SmartRefactorTool {
         let mut result = content.to_string();
         for occ in sorted_occurrences {
             result.replace_range(occ.start_byte..occ.end_byte, new_name);
-            debug!("✅ Replaced '{}' -> '{}' at byte {}:{} (line {}, context: {:?})",
-                old_name, new_name, occ.start_byte, occ.end_byte, occ.line, occ.context);
+            debug!(
+                "✅ Replaced '{}' -> '{}' at byte {}:{} (line {}, context: {:?})",
+                old_name, new_name, occ.start_byte, occ.end_byte, occ.line, occ.context
+            );
         }
 
-        debug!("🎯 AST-aware replacement complete: {} occurrences replaced", replacement_count);
+        // Optionally rename documentation comments inside the symbol's definition scope
+        if update_comments {
+            if let Some(definition) = finder.find_symbol_definition(old_name) {
+                let comment_search_start = definition
+                    .name_range
+                    .0
+                    .saturating_sub(DOC_COMMENT_LOOKBACK_BYTES);
+                let mut comment_occurrences = finder.find_comment_occurrences(
+                    old_name,
+                    Some((comment_search_start, definition.body_range.1)),
+                );
+
+                if !comment_occurrences.is_empty() {
+                    let identifier_char_checker = |ch: char| ch.is_alphanumeric() || ch == '_' || ch == '$';
+                    let quoted_old = format!("\"{}\"", old_name);
+                    let single_quoted_old = format!("'{}'", old_name);
+                    let backticked_old = format!("`{}`", old_name);
+
+                    debug!(
+                        "📝 Considering {} comment occurrences for renaming",
+                        comment_occurrences.len()
+                    );
+
+                    comment_occurrences.sort_by(|a, b| b.start_byte.cmp(&a.start_byte));
+
+                    for occ in comment_occurrences {
+                        let start = occ.start_byte;
+                        let end = occ.end_byte;
+                        if start >= end || end > result.len() {
+                            continue;
+                        }
+
+                        let original_segment = &result[start..end];
+                        let is_doc_comment = looks_like_doc_comment(original_segment);
+                        let near_scope_top = occ.line >= definition.line
+                            && occ.line
+                                <= definition.line + TOP_OF_SCOPE_COMMENT_LINE_WINDOW;
+
+                        if !is_doc_comment && !near_scope_top {
+                            debug!(
+                                "ℹ️ Skipping deep comment occurrence at line {}",
+                                occ.line
+                            );
+                            continue;
+                        }
+
+                        if original_segment.contains(&quoted_old)
+                            || original_segment.contains(&single_quoted_old)
+                            || original_segment.contains(&backticked_old)
+                        {
+                            debug!(
+                                "ℹ️ Skipping comment occurrence at line {} due to quoted symbol",
+                                occ.line
+                            );
+                            continue;
+                        }
+
+                        let (updated_segment, changed) = replace_identifier_with_boundaries(
+                            original_segment,
+                            old_name,
+                            new_name,
+                            &identifier_char_checker,
+                        );
+
+                        if changed {
+                            result.replace_range(start..end, &updated_segment);
+                            debug!(
+                                "📝 Updated comment at line {} (context: {:?}, doc: {}, near_scope_top: {})",
+                                occ.line,
+                                occ.context,
+                                is_doc_comment,
+                                near_scope_top
+                            );
+                        } else {
+                            debug!(
+                                "ℹ️ No safe replacements found in comment at line {}",
+                                occ.line
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!(
+            "🎯 AST-aware replacement complete: {} occurrences replaced",
+            replacement_count
+        );
         Ok(result)
     }
 
@@ -525,7 +739,7 @@ impl SmartRefactorTool {
     ) -> Result<CallToolResult> {
         debug!("🔄 Processing extract function operation");
 
-        // Parse JSON parameters
+        // Parse JSON parameters (validate required fields even though feature is pending)
         let params: JsonValue = serde_json::from_str(&self.params)
             .map_err(|e| anyhow::anyhow!("Invalid JSON in params: {}", e))?;
 
@@ -537,21 +751,19 @@ impl SmartRefactorTool {
         let start_line = params
             .get("start_line")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: start_line"))? as u32;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: start_line"))?
+            as u32;
 
         let end_line = params
             .get("end_line")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: end_line"))? as u32;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: end_line"))?
+            as u32;
 
         let function_name = params
             .get("function_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: function_name"))?;
-
-        let return_type = params
-            .get("return_type")
-            .and_then(|v| v.as_str());
 
         if start_line > end_line {
             return Err(anyhow::anyhow!("start_line must be <= end_line"));
@@ -562,90 +774,22 @@ impl SmartRefactorTool {
             function_name, file_path, start_line, end_line
         );
 
-        // Step 1: Read the file and extract the target code block
-        let file_content = fs::read_to_string(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?;
-
-        let lines: Vec<&str> = file_content.lines().collect();
-        if start_line == 0 || end_line as usize > lines.len() {
-            return Err(anyhow::anyhow!(
-                "Line range {}:{} is invalid for file with {} lines",
-                start_line, end_line, lines.len()
-            ));
-        }
-
-        // Extract the code block (convert to 0-based indexing)
-        let extracted_lines = &lines[(start_line as usize - 1)..(end_line as usize)];
-
-        // Detect the base indentation level of the extracted code
-        let base_indent = self.detect_base_indentation(extracted_lines);
-        let dedented_code = self.dedent_code(extracted_lines, base_indent);
-
-        debug!("📋 Extracted {} lines of code", extracted_lines.len());
-
-        // Step 2: Analyze dependencies (simplified for now)
-        let dependencies = self.analyze_dependencies(&dedented_code, file_path).await?;
-
-        // Step 3: Generate function signature based on language
-        let language = self.detect_language(file_path);
-        let (function_def, function_call) = self.generate_function_code(
-            &language,
-            function_name,
-            &dedented_code,
-            &dependencies,
-            return_type,
-            base_indent,
-        )?;
-
-        // Step 4: Apply the refactoring
-        if self.dry_run {
-            let preview = format!(
-                "🔍 DRY RUN: Extract function '{}'\n\
-                📁 File: {}\n\
-                📍 Lines: {}-{}\n\
-                🔧 Language: {}\n\n\
-                🎯 New function:\n{}\n\n\
-                🔄 Replacement call:\n{}\n\n\
-                📊 Dependencies detected: {:?}\n\n\
-                💡 Set dry_run=false to apply changes",
-                function_name, file_path, start_line, end_line, language, function_def, function_call, dependencies
-            );
-
-            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&preview))]));
-        }
-
-        // Apply the actual refactoring
-        let (insertion_line, new_content) = self.apply_extract_function(
-            &file_content,
-            start_line,
-            end_line,
-            &function_def,
-            &function_call,
-            file_path,
-        )?;
-
-        // Write the modified file atomically using EditingTransaction
-        let transaction = EditingTransaction::begin(file_path)?;
-        transaction.commit(&new_content)?;
-
         let message = format!(
-            "✅ Extract function successful: '{}'\n\
-            📁 File: {}\n\
-            📍 Extracted lines: {}-{}\n\
-            📝 New function inserted at line: {}\n\
-            🔄 Original code replaced with function call\n\n\
-            🎯 Next steps:\n\
-            • Review the generated function parameters\n\
-            • Run tests to verify functionality\n\
-            • Consider adding type annotations if needed\n\
-            💡 Tip: Use fast_goto to navigate to the new function",
-            function_name, file_path, start_line, end_line, insertion_line
+            "❌ Extract function is not yet implemented for '{}'\n\
+            📍 Requested lines: {}-{}\n\
+            💡 Track progress in TODO.md (extract_function)",
+            file_path,
+            start_line,
+            end_line
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(&message),
+        )]))
     }
 
     /// Detect the base indentation level of code lines
+    #[allow(dead_code)]
     fn detect_base_indentation(&self, lines: &[&str]) -> usize {
         lines
             .iter()
@@ -656,6 +800,7 @@ impl SmartRefactorTool {
     }
 
     /// Remove base indentation from code lines
+    #[allow(dead_code)]
     fn dedent_code(&self, lines: &[&str], base_indent: usize) -> String {
         lines
             .iter()
@@ -682,6 +827,7 @@ impl SmartRefactorTool {
     /// let result = user.name.to_uppercase();  // "user" is a dependency
     /// println!("{}", result);                 // "result" is defined locally, not a dependency
     /// ```
+    #[allow(dead_code)]
     async fn analyze_dependencies(&self, code: &str, file_path: &str) -> Result<Vec<String>> {
         use std::collections::HashSet;
         use tree_sitter::Parser;
@@ -696,7 +842,10 @@ impl SmartRefactorTool {
         let tree_sitter_language = match self.get_tree_sitter_language(&language) {
             Ok(lang) => lang,
             Err(e) => {
-                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                debug!(
+                    "⚠️ Tree-sitter not available for {}: {}. Using fallback.",
+                    language, e
+                );
                 return self.analyze_dependencies_fallback(code);
             }
         };
@@ -739,13 +888,18 @@ impl SmartRefactorTool {
         dependencies.sort(); // Consistent ordering
         dependencies.dedup(); // Remove duplicates
 
-        debug!("🎯 AST analysis found {} dependencies: {:?}", dependencies.len(), dependencies);
+        debug!(
+            "🎯 AST analysis found {} dependencies: {:?}",
+            dependencies.len(),
+            dependencies
+        );
 
         Ok(dependencies)
     }
 
     /// Recursively collect all identifier references and definitions
     #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
+    #[allow(dead_code)]
     fn collect_identifiers(
         &self,
         node: tree_sitter::Node,
@@ -782,7 +936,9 @@ impl SmartRefactorTool {
                         if let Some(parent) = node.parent() {
                             match parent.kind() {
                                 "variable_declarator" | "formal_parameters" | "arrow_function" => {
-                                    if parent.child_by_field_name("name").map(|n| n.id()) == Some(node.id()) {
+                                    if parent.child_by_field_name("name").map(|n| n.id())
+                                        == Some(node.id())
+                                    {
                                         definitions.insert(name.to_string());
                                     } else {
                                         all_references.insert(name.to_string());
@@ -835,30 +991,75 @@ impl SmartRefactorTool {
     }
 
     /// Check if an identifier is a built-in language construct
+    #[allow(dead_code)]
     fn is_builtin_identifier(&self, name: &str, language: &str) -> bool {
         match language {
             "rust" => matches!(
                 name,
-                "true" | "false" | "None" | "Some" | "Ok" | "Err" |
-                "println" | "print" | "eprintln" | "eprint" | "dbg" | "panic" |
-                "Vec" | "String" | "Option" | "Result" | "Box" | "Rc" | "Arc"
+                "true"
+                    | "false"
+                    | "None"
+                    | "Some"
+                    | "Ok"
+                    | "Err"
+                    | "println"
+                    | "print"
+                    | "eprintln"
+                    | "eprint"
+                    | "dbg"
+                    | "panic"
+                    | "Vec"
+                    | "String"
+                    | "Option"
+                    | "Result"
+                    | "Box"
+                    | "Rc"
+                    | "Arc"
             ),
             "typescript" | "javascript" => matches!(
                 name,
-                "console" | "window" | "document" | "undefined" | "null" |
-                "true" | "false" | "this" | "super" | "Promise" | "Array" | "Object" |
-                "String" | "Number" | "Boolean" | "Math" | "JSON" | "Date"
+                "console"
+                    | "window"
+                    | "document"
+                    | "undefined"
+                    | "null"
+                    | "true"
+                    | "false"
+                    | "this"
+                    | "super"
+                    | "Promise"
+                    | "Array"
+                    | "Object"
+                    | "String"
+                    | "Number"
+                    | "Boolean"
+                    | "Math"
+                    | "JSON"
+                    | "Date"
             ),
             "python" => matches!(
                 name,
-                "True" | "False" | "None" | "print" | "len" | "range" | "str" |
-                "int" | "float" | "list" | "dict" | "tuple" | "set" | "bool"
+                "True"
+                    | "False"
+                    | "None"
+                    | "print"
+                    | "len"
+                    | "range"
+                    | "str"
+                    | "int"
+                    | "float"
+                    | "list"
+                    | "dict"
+                    | "tuple"
+                    | "set"
+                    | "bool"
             ),
             _ => false,
         }
     }
 
     /// Fallback dependency analysis when tree-sitter is not available
+    #[allow(dead_code)]
     fn analyze_dependencies_fallback(&self, code: &str) -> Result<Vec<String>> {
         debug!("⚠️ Using fallback string-based dependency analysis");
 
@@ -869,8 +1070,11 @@ impl SmartRefactorTool {
             let trimmed = line.trim();
 
             // Skip comments and empty lines
-            if trimmed.starts_with("//") || trimmed.starts_with("/*") ||
-               trimmed.starts_with("#") || trimmed.is_empty() {
+            if trimmed.starts_with("//")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with("#")
+                || trimmed.is_empty()
+            {
                 continue;
             }
 
@@ -899,6 +1103,7 @@ impl SmartRefactorTool {
     }
 
     /// Generate function definition and call based on language
+    #[allow(dead_code)]
     fn generate_function_code(
         &self,
         language: &str,
@@ -915,21 +1120,25 @@ impl SmartRefactorTool {
                 let params = if dependencies.is_empty() {
                     String::new()
                 } else {
-                    dependencies.iter()
+                    dependencies
+                        .iter()
                         .map(|dep| format!("{}: &str", dep)) // Simplified - would infer proper types
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
 
-                let return_annotation = return_type.map_or_else(
-                    || "".to_string(),
-                    |rt| format!(" -> {}", rt)
-                );
+                let return_annotation =
+                    return_type.map_or_else(|| "".to_string(), |rt| format!(" -> {}", rt));
 
                 let function_def = format!(
                     "fn {}({}){} {{\n{}\n}}",
-                    function_name, params, return_annotation,
-                    code.lines().map(|line| format!("    {}", line)).collect::<Vec<_>>().join("\n")
+                    function_name,
+                    params,
+                    return_annotation,
+                    code.lines()
+                        .map(|line| format!("    {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
 
                 let call_args = dependencies.join(", ");
@@ -939,15 +1148,18 @@ impl SmartRefactorTool {
             }
             "typescript" | "javascript" => {
                 let params = dependencies.join(", ");
-                let return_annotation = return_type.map_or_else(
-                    || "".to_string(),
-                    |rt| format!(": {}", rt)
-                );
+                let return_annotation =
+                    return_type.map_or_else(|| "".to_string(), |rt| format!(": {}", rt));
 
                 let function_def = format!(
                     "function {}({}){} {{\n{}\n}}",
-                    function_name, params, return_annotation,
-                    code.lines().map(|line| format!("    {}", line)).collect::<Vec<_>>().join("\n")
+                    function_name,
+                    params,
+                    return_annotation,
+                    code.lines()
+                        .map(|line| format!("    {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
 
                 let function_call = format!("{}{}({});", indent_str, function_name, params);
@@ -956,15 +1168,18 @@ impl SmartRefactorTool {
             }
             "python" => {
                 let params = dependencies.join(", ");
-                let return_annotation = return_type.map_or_else(
-                    || "".to_string(),
-                    |rt| format!(" -> {}", rt)
-                );
+                let return_annotation =
+                    return_type.map_or_else(|| "".to_string(), |rt| format!(" -> {}", rt));
 
                 let function_def = format!(
                     "def {}({}){}:\n{}",
-                    function_name, params, return_annotation,
-                    code.lines().map(|line| format!("    {}", line)).collect::<Vec<_>>().join("\n")
+                    function_name,
+                    params,
+                    return_annotation,
+                    code.lines()
+                        .map(|line| format!("    {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
 
                 let function_call = format!("{}{}({})", indent_str, function_name, params);
@@ -976,8 +1191,12 @@ impl SmartRefactorTool {
                 let params = dependencies.join(", ");
                 let function_def = format!(
                     "function {}({}) {{\n{}\n}}",
-                    function_name, params,
-                    code.lines().map(|line| format!("    {}", line)).collect::<Vec<_>>().join("\n")
+                    function_name,
+                    params,
+                    code.lines()
+                        .map(|line| format!("    {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 );
 
                 let function_call = format!("{}{}({});", indent_str, function_name, params);
@@ -988,6 +1207,7 @@ impl SmartRefactorTool {
     }
 
     /// Apply the extract function refactoring to the file content
+    #[allow(dead_code)]
     fn apply_extract_function(
         &self,
         file_content: &str,
@@ -1034,10 +1254,19 @@ impl SmartRefactorTool {
     /// 2. Or the end of imports section (insert after imports at module level)
     ///
     /// This is smarter than string matching because it understands code structure.
-    fn find_function_insertion_point(&self, lines: &[&str], current_line: u32, file_path: &str) -> Result<u32> {
+    #[allow(dead_code)]
+    fn find_function_insertion_point(
+        &self,
+        lines: &[&str],
+        current_line: u32,
+        file_path: &str,
+    ) -> Result<u32> {
         use tree_sitter::Parser;
 
-        debug!("🌳 AST-based insertion point search for line {}", current_line);
+        debug!(
+            "🌳 AST-based insertion point search for line {}",
+            current_line
+        );
 
         let content = lines.join("\n");
         let language = self.detect_language(file_path);
@@ -1047,7 +1276,10 @@ impl SmartRefactorTool {
         let tree_sitter_language = match self.get_tree_sitter_language(&language) {
             Ok(lang) => lang,
             Err(e) => {
-                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                debug!(
+                    "⚠️ Tree-sitter not available for {}: {}. Using fallback.",
+                    language, e
+                );
                 return self.find_insertion_point_fallback(lines, current_line);
             }
         };
@@ -1068,15 +1300,23 @@ impl SmartRefactorTool {
         let root = tree.root_node();
 
         // Find the function containing current_line
-        if let Some(containing_function) = self.find_containing_function(root, current_line, &language) {
+        if let Some(containing_function) =
+            self.find_containing_function(root, current_line, &language)
+        {
             let function_start_line = containing_function.start_position().row + 1; // 1-based
-            debug!("🎯 Found containing function at line {}, inserting before it", function_start_line);
+            debug!(
+                "🎯 Found containing function at line {}, inserting before it",
+                function_start_line
+            );
             return Ok(function_start_line as u32);
         }
 
         // If no containing function, find end of imports
         if let Some(after_imports_line) = self.find_end_of_imports(root, &language) {
-            debug!("🎯 No containing function, inserting after imports at line {}", after_imports_line);
+            debug!(
+                "🎯 No containing function, inserting after imports at line {}",
+                after_imports_line
+            );
             return Ok(after_imports_line);
         }
 
@@ -1087,6 +1327,7 @@ impl SmartRefactorTool {
 
     /// Find the function node containing the specified line
     #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
+    #[allow(dead_code)]
     fn find_containing_function<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -1119,6 +1360,7 @@ impl SmartRefactorTool {
     }
 
     /// Find the line number after imports/use statements
+    #[allow(dead_code)]
     fn find_end_of_imports(&self, root: tree_sitter::Node, language: &str) -> Option<u32> {
         // Use shared language configuration for AST node types
         let import_kinds = crate::language::get_import_node_kinds(language);
@@ -1138,6 +1380,7 @@ impl SmartRefactorTool {
 
     /// Helper to recursively find the last import line
     #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
+    #[allow(dead_code)]
     fn find_last_import_line<'a>(
         &self,
         node: tree_sitter::Node<'a>,
@@ -1157,13 +1400,15 @@ impl SmartRefactorTool {
     }
 
     /// Fallback insertion point finder when tree-sitter is not available
+    #[allow(dead_code)]
     fn find_insertion_point_fallback(&self, lines: &[&str], current_line: u32) -> Result<u32> {
         debug!("⚠️ Using fallback string-based insertion point detection");
 
         // Look backwards from current line to find function start
         for i in (0..(current_line as usize - 1)).rev() {
             let line = lines[i].trim();
-            if line.starts_with("fn ") || line.starts_with("function ") || line.starts_with("def ") {
+            if line.starts_with("fn ") || line.starts_with("function ") || line.starts_with("def ")
+            {
                 return Ok(i as u32 + 1);
             }
         }
@@ -1176,7 +1421,8 @@ impl SmartRefactorTool {
                 && !trimmed.starts_with("import ")
                 && !trimmed.starts_with("use ")
                 && !trimmed.starts_with("from ")
-                && !trimmed.starts_with("#") {
+                && !trimmed.starts_with("#")
+            {
                 return Ok(i as u32 + 1);
             }
         }
@@ -1185,7 +1431,10 @@ impl SmartRefactorTool {
     }
 
     /// Handle replace symbol body operation (Serena-inspired)
-    async fn handle_replace_symbol_body(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn handle_replace_symbol_body(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         debug!("🔄 Processing replace symbol body operation");
 
         // Parse JSON parameters
@@ -1223,7 +1472,8 @@ impl SmartRefactorTool {
         };
 
         let search_result = search_tool.call_tool(handler).await?;
-        let symbol_locations = self.parse_search_result_for_symbols(&search_result, symbol_name, file_path)?;
+        let symbol_locations =
+            self.parse_search_result_for_symbols(&search_result, symbol_name, file_path)?;
 
         if symbol_locations.is_empty() {
             let message = format!(
@@ -1231,7 +1481,9 @@ impl SmartRefactorTool {
                 💡 Check spelling or use fast_search to locate the symbol",
                 symbol_name, file_path
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                self.optimize_response(&message),
+            )]));
         }
 
         // Step 2: Read the file to find symbol boundaries
@@ -1239,9 +1491,13 @@ impl SmartRefactorTool {
             .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?;
 
         // Step 3: Find symbol boundaries using tree-sitter
-        let (start_line, end_line) = self.find_symbol_boundaries(&file_content, symbol_name, file_path)?;
+        let (start_line, end_line) =
+            self.find_symbol_boundaries(&file_content, symbol_name, file_path)?;
 
-        debug!("📍 Found symbol '{}' at lines {}-{}", symbol_name, start_line, end_line);
+        debug!(
+            "📍 Found symbol '{}' at lines {}-{}",
+            symbol_name, start_line, end_line
+        );
 
         // Step 4: Apply the replacement
         if self.dry_run {
@@ -1254,16 +1510,14 @@ impl SmartRefactorTool {
                 symbol_name, file_path, start_line, end_line, new_body
             );
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&preview))]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                self.optimize_response(&preview),
+            )]));
         }
 
         // Replace the symbol body
-        let new_content = self.replace_symbol_in_file(
-            &file_content,
-            start_line,
-            end_line,
-            new_body,
-        )?;
+        let new_content =
+            self.replace_symbol_in_file(&file_content, start_line, end_line, new_body)?;
 
         // Write the modified file atomically using EditingTransaction
         let transaction = EditingTransaction::begin(file_path)?;
@@ -1280,11 +1534,18 @@ impl SmartRefactorTool {
             symbol_name, file_path, start_line, end_line
         );
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(&message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(&message),
+        )]))
     }
 
     /// Parse search results to find symbol locations in a specific file
-    fn parse_search_result_for_symbols(&self, search_result: &CallToolResult, symbol_name: &str, target_file: &str) -> Result<Vec<(String, u32)>> {
+    fn parse_search_result_for_symbols(
+        &self,
+        search_result: &CallToolResult,
+        symbol_name: &str,
+        target_file: &str,
+    ) -> Result<Vec<(String, u32)>> {
         let mut locations = Vec::new();
 
         // Extract text content from the result
@@ -1316,22 +1577,30 @@ impl SmartRefactorTool {
                     let (extracted_file_path, line_num) = &file_line;
 
                     // Check if this file path matches our target file (handle both absolute and relative paths)
-                    let path_matches = extracted_file_path == target_file ||
-                                     extracted_file_path.ends_with(target_file) ||
-                                     target_file.ends_with(extracted_file_path);
+                    let path_matches = extracted_file_path == target_file
+                        || extracted_file_path.ends_with(target_file)
+                        || target_file.ends_with(extracted_file_path);
 
-                    debug!("🔍 Comparing file paths: extracted='{}', target='{}', matches={}",
-                           extracted_file_path, target_file, path_matches);
+                    debug!(
+                        "🔍 Comparing file paths: extracted='{}', target='{}', matches={}",
+                        extracted_file_path, target_file, path_matches
+                    );
 
                     if path_matches {
                         // Check if the next line contains our symbol (this is search result format, not source code)
                         if i + 1 < lines.len() {
                             let next_line = lines[i + 1];
                             if next_line.contains(symbol_name) {
-                                println!("✅ Found matching symbol '{}' in target file at line {}", symbol_name, line_num);
+                                println!(
+                                    "✅ Found matching symbol '{}' in target file at line {}",
+                                    symbol_name, line_num
+                                );
                                 locations.push(file_line);
                             } else {
-                                println!("🔍 Next line doesn't contain symbol '{}': '{}'", symbol_name, next_line);
+                                println!(
+                                    "🔍 Next line doesn't contain symbol '{}': '{}'",
+                                    symbol_name, next_line
+                                );
                             }
                         }
                     }
@@ -1370,7 +1639,10 @@ impl SmartRefactorTool {
                 line_range_part.parse::<u32>().ok()?
             };
 
-            println!("🔍 extract_file_location result: file='{}' line={}", file_part, start_line);
+            println!(
+                "🔍 extract_file_location result: file='{}' line={}",
+                file_part, start_line
+            );
             return Some((file_part.to_string(), start_line));
         }
         None
@@ -1382,10 +1654,18 @@ impl SmartRefactorTool {
     /// This is far more accurate than string matching and brace counting.
     ///
     /// Returns: (start_line, end_line) in 1-based indexing
-    fn find_symbol_boundaries(&self, file_content: &str, symbol_name: &str, file_path: &str) -> Result<(u32, u32)> {
+    fn find_symbol_boundaries(
+        &self,
+        file_content: &str,
+        symbol_name: &str,
+        file_path: &str,
+    ) -> Result<(u32, u32)> {
         use tree_sitter::Parser;
 
-        debug!("🌳 AST-based symbol boundary detection for '{}'", symbol_name);
+        debug!(
+            "🌳 AST-based symbol boundary detection for '{}'",
+            symbol_name
+        );
 
         let language = self.detect_language(file_path);
 
@@ -1394,7 +1674,10 @@ impl SmartRefactorTool {
         let tree_sitter_language = match self.get_tree_sitter_language(&language) {
             Ok(lang) => lang,
             Err(e) => {
-                debug!("⚠️ Tree-sitter not available for {}: {}. Using fallback.", language, e);
+                debug!(
+                    "⚠️ Tree-sitter not available for {}: {}. Using fallback.",
+                    language, e
+                );
                 return self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path);
             }
         };
@@ -1415,17 +1698,25 @@ impl SmartRefactorTool {
         let root = tree.root_node();
 
         // Find the symbol node in the AST
-        if let Some(symbol_node) = self.find_symbol_node(root, symbol_name, file_content.as_bytes(), &language) {
+        if let Some(symbol_node) =
+            self.find_symbol_node(root, symbol_name, file_content.as_bytes(), &language)
+        {
             let start_line = (symbol_node.start_position().row + 1) as u32; // 1-based
             let end_line = (symbol_node.end_position().row + 1) as u32; // 1-based
 
-            debug!("🎯 AST found symbol '{}' at lines {}-{}", symbol_name, start_line, end_line);
+            debug!(
+                "🎯 AST found symbol '{}' at lines {}-{}",
+                symbol_name, start_line, end_line
+            );
 
             return Ok((start_line, end_line));
         }
 
         // If AST search failed, try fallback
-        debug!("⚠️ Symbol '{}' not found in AST, trying fallback", symbol_name);
+        debug!(
+            "⚠️ Symbol '{}' not found in AST, trying fallback",
+            symbol_name
+        );
         self.find_symbol_boundaries_fallback(file_content, symbol_name, file_path)
     }
 
@@ -1466,7 +1757,11 @@ impl SmartRefactorTool {
     }
 
     /// Get the name node of a symbol definition (language-specific)
-    fn get_symbol_name_node<'a>(&self, node: tree_sitter::Node<'a>, language: &str) -> Option<tree_sitter::Node<'a>> {
+    fn get_symbol_name_node<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+        language: &str,
+    ) -> Option<tree_sitter::Node<'a>> {
         // Use shared language configuration for field name
         let field_name = crate::language::get_symbol_name_field(language);
 
@@ -1482,7 +1777,12 @@ impl SmartRefactorTool {
     }
 
     /// Fallback boundary detection using primitive string matching
-    fn find_symbol_boundaries_fallback(&self, file_content: &str, symbol_name: &str, file_path: &str) -> Result<(u32, u32)> {
+    fn find_symbol_boundaries_fallback(
+        &self,
+        file_content: &str,
+        symbol_name: &str,
+        file_path: &str,
+    ) -> Result<(u32, u32)> {
         debug!("⚠️ Using fallback string-based boundary detection");
 
         let lines: Vec<&str> = file_content.lines().collect();
@@ -1508,7 +1808,10 @@ impl SmartRefactorTool {
         // Find the end of the symbol (simple brace matching)
         let end_line = self.find_symbol_end(&lines, start_line as usize - 1, &language)?;
 
-        debug!("🎯 Fallback found symbol '{}' at lines {}-{}", symbol_name, start_line, end_line);
+        debug!(
+            "🎯 Fallback found symbol '{}' at lines {}-{}",
+            symbol_name, start_line, end_line
+        );
 
         Ok((start_line, end_line))
     }
@@ -1517,14 +1820,18 @@ impl SmartRefactorTool {
     fn is_symbol_definition(&self, line: &str, symbol_name: &str, language: &str) -> bool {
         match language {
             "rust" => {
-                (line.starts_with("fn ") || line.starts_with("pub fn ") ||
-                 line.starts_with("struct ") || line.starts_with("pub struct ") ||
-                 line.starts_with("impl ") || line.starts_with("enum ") ||
-                 line.starts_with("pub enum ")) && line.contains(symbol_name)
+                (line.starts_with("fn ")
+                    || line.starts_with("pub fn ")
+                    || line.starts_with("struct ")
+                    || line.starts_with("pub struct ")
+                    || line.starts_with("impl ")
+                    || line.starts_with("enum ")
+                    || line.starts_with("pub enum "))
+                    && line.contains(symbol_name)
             }
             "typescript" | "javascript" => {
-                line.contains(symbol_name) && (
-                    line.starts_with("function ") || line.starts_with("export function ") ||
+                line.contains(symbol_name)
+                    && (line.starts_with("function ") || line.starts_with("export function ") ||
                     line.starts_with("class ") || line.starts_with("export class ") ||
                     line.starts_with("async ") || // async functions/methods
                     line.contains("function ") ||
@@ -1534,18 +1841,19 @@ impl SmartRefactorTool {
                       line.trim_start().starts_with(&format!("async {}", symbol_name)) ||
                       line.trim_start().starts_with(&format!("public {}", symbol_name)) ||
                       line.trim_start().starts_with(&format!("private {}", symbol_name)) ||
-                      line.trim_start().starts_with(&format!("protected {}", symbol_name))))
-                )
+                      line.trim_start().starts_with(&format!("protected {}", symbol_name)))))
             }
             "python" => {
-                (line.starts_with("def ") || line.starts_with("class ")) && line.contains(symbol_name)
+                (line.starts_with("def ") || line.starts_with("class "))
+                    && line.contains(symbol_name)
             }
             _ => {
                 // Generic approach
-                line.contains(symbol_name) && (
-                    line.contains("function") || line.contains("class") ||
-                    line.contains("def ") || line.contains("fn ")
-                )
+                line.contains(symbol_name)
+                    && (line.contains("function")
+                        || line.contains("class")
+                        || line.contains("def ")
+                        || line.contains("fn "))
             }
         }
     }
@@ -1599,7 +1907,9 @@ impl SmartRefactorTool {
                     }
                 }
 
-                Err(anyhow::anyhow!("Could not find end of symbol - unmatched braces"))
+                Err(anyhow::anyhow!(
+                    "Could not find end of symbol - unmatched braces"
+                ))
             }
         }
     }
@@ -1637,12 +1947,17 @@ impl SmartRefactorTool {
     }
 
     /// Placeholder implementations for other operations
-    async fn handle_insert_relative_to_symbol(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn handle_insert_relative_to_symbol(
+        &self,
+        _handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         let message = "🚧 InsertRelativeToSymbol operation is not yet implemented\n\
                       📋 Coming soon - will insert code before/after symbols\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(message),
+        )]))
     }
 
     async fn handle_extract_type(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1650,7 +1965,9 @@ impl SmartRefactorTool {
                       📋 Coming soon - will extract inline types to named types\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(message),
+        )]))
     }
 
     async fn handle_update_imports(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -1658,23 +1975,35 @@ impl SmartRefactorTool {
                       📋 Coming soon - will fix broken imports after file moves\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(message),
+        )]))
     }
 
-    async fn handle_inline_variable(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn handle_inline_variable(
+        &self,
+        _handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         let message = "🚧 InlineVariable operation is not yet implemented\n\
                       📋 Coming soon - will inline variable by replacing uses with value\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(message),
+        )]))
     }
 
-    async fn handle_inline_function(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn handle_inline_function(
+        &self,
+        _handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         let message = "🚧 InlineFunction operation is not yet implemented\n\
                       📋 Coming soon - will inline function by replacing calls with body\n\
                       💡 Use ReplaceSymbolBody operation for now";
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(self.optimize_response(message))]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            self.optimize_response(message),
+        )]))
     }
 
     /// Apply token optimization to SmartRefactorTool responses to prevent context overflow
@@ -1697,14 +2026,23 @@ impl SmartRefactorTool {
         let line_refs: Vec<&String> = lines.iter().collect();
 
         let estimate_lines_tokens = |line_refs: &[&String]| -> usize {
-            let content = line_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
+            let content = line_refs
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
             token_estimator.estimate_string(&content)
         };
 
-        let reduced_lines = progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
+        let reduced_lines =
+            progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
 
         let reduced_count = reduced_lines.len();
-        let mut optimized_message = reduced_lines.into_iter().cloned().collect::<Vec<_>>().join("\n");
+        let mut optimized_message = reduced_lines
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
 
         if reduced_count < lines.len() {
             optimized_message.push_str("\n\n⚠️  Response truncated to stay within token limits");
@@ -1712,5 +2050,132 @@ impl SmartRefactorTool {
         }
 
         optimized_message
+    }
+}
+
+fn looks_like_doc_comment(comment: &str) -> bool {
+    let trimmed = comment.trim_start();
+
+    trimmed.starts_with("///")
+        || trimmed.starts_with("//!")
+        || trimmed.starts_with("///<")
+        || trimmed.starts_with("//!<")
+        || trimmed.starts_with("/**")
+        || trimmed.starts_with("/*!")
+}
+
+fn replace_identifier_with_boundaries<F>(
+    text: &str,
+    old: &str,
+    new: &str,
+    is_identifier_char: &F,
+) -> (String, bool)
+where
+    F: Fn(char) -> bool,
+{
+    if old.is_empty() {
+        return (text.to_string(), false);
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let mut last_index = 0;
+    let mut changed = false;
+
+    for (idx, _) in text.match_indices(old) {
+        let mut valid = true;
+
+        if let Some(prev_char) = text[..idx].chars().rev().next() {
+            if is_identifier_char(prev_char) {
+                valid = false;
+            }
+        }
+
+        let end = idx + old.len();
+        if valid {
+            if let Some(next_char) = text[end..].chars().next() {
+                if is_identifier_char(next_char) {
+                    valid = false;
+                }
+            }
+        }
+
+        if !valid {
+            continue;
+        }
+
+        result.push_str(&text[last_index..idx]);
+        result.push_str(new);
+        last_index = end;
+        changed = true;
+    }
+
+    result.push_str(&text[last_index..]);
+    if changed {
+        (result, true)
+    } else {
+        (text.to_string(), false)
+    }
+}
+
+const DOC_COMMENT_LOOKBACK_BYTES: usize = 256;
+const TOP_OF_SCOPE_COMMENT_LINE_WINDOW: usize = 2;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_refs_result_handles_confidence_suffix() {
+        let tool = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: "{}".to_string(),
+            dry_run: true,
+        };
+
+        let content = "🔗 Reference: OldSymbol - src/lib.rs:42 (confidence: 0.95)";
+        let result = CallToolResult::text_content(vec![TextContent::from(content)]);
+
+        let parsed = tool
+            .parse_refs_result(&result)
+            .expect("parse should succeed");
+        let lines = parsed.get("src/lib.rs").expect("file should be captured");
+        assert_eq!(lines, &vec![42]);
+    }
+
+    #[test]
+    fn parse_refs_result_prefers_structured_content() {
+        let tool = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: "{}".to_string(),
+            dry_run: true,
+        };
+
+        let structured = json!({
+            "references": [
+                {
+                    "file_path": "src/main.rs",
+                    "line_number": 128
+                }
+            ],
+            "definitions": [
+                {
+                    "file_path": "src/lib.rs",
+                    "start_line": 12
+                }
+            ]
+        });
+
+        let result = if let serde_json::Value::Object(map) = structured {
+            CallToolResult::text_content(vec![]).with_structured_content(map)
+        } else {
+            panic!("expected structured object");
+        };
+
+        let parsed = tool
+            .parse_refs_result(&result)
+            .expect("parse should succeed");
+        assert_eq!(parsed.get("src/main.rs"), Some(&vec![128]));
+        assert_eq!(parsed.get("src/lib.rs"), Some(&vec![12]));
     }
 }

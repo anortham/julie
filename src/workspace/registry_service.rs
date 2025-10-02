@@ -126,7 +126,7 @@ impl WorkspaceRegistryService {
         let json = serde_json::to_string_pretty(&registry)
             .map_err(|e| anyhow!("Failed to serialize registry: {}", e))?;
 
-        fs::write(&temp_path, json)
+        fs::write(&temp_path, &json)
             .await
             .map_err(|e| anyhow!("Failed to write temp registry file: {}", e))?;
 
@@ -134,6 +134,21 @@ impl WorkspaceRegistryService {
         fs::rename(&temp_path, &registry_path)
             .await
             .map_err(|e| anyhow!("Failed to rename temp registry file: {}", e))?;
+
+        // 🐛 VALIDATION: Verify the written file is valid JSON (catches corruption bugs)
+        let written_content = fs::read_to_string(&registry_path).await
+            .map_err(|e| anyhow!("Failed to read back registry file: {}", e))?;
+
+        if let Err(e) = serde_json::from_str::<WorkspaceRegistry>(&written_content) {
+            error!("🚨 BUG DETECTED: Registry file corrupted after write!");
+            error!("Written JSON length: {} bytes", written_content.len());
+            error!("Expected JSON length: {} bytes", json.len());
+            error!("Parse error: {}", e);
+
+            // Try to restore from the valid JSON we just generated
+            warn!("Attempting to repair corrupted registry...");
+            fs::write(&registry_path, &json).await?;
+        }
 
         // Create backup
         let backup_path = self.backup_registry_path();
@@ -333,7 +348,11 @@ impl WorkspaceRegistryService {
     }
 
     /// Update workspace last accessed time
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_last_accessed(&self, workspace_id: &str) -> Result<()> {
+        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
+        let _lock = self.registry_lock.lock().await;
+
         let mut registry = self.load_registry().await?;
         let mut updated = false;
 
@@ -352,13 +371,15 @@ impl WorkspaceRegistryService {
         }
 
         if updated {
-            self.save_registry(registry).await?;
+            // Use internal save to avoid double-locking (we already hold the lock)
+            self.save_registry_internal(registry).await?;
         }
 
         Ok(())
     }
 
     /// Update workspace statistics
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_workspace_statistics(
         &self,
         workspace_id: &str,
@@ -366,6 +387,9 @@ impl WorkspaceRegistryService {
         file_count: usize,
         index_size_bytes: u64,
     ) -> Result<()> {
+        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
+        let _lock = self.registry_lock.lock().await;
+
         let mut registry = self.load_registry().await?;
         let mut updated = false;
 
@@ -388,18 +412,23 @@ impl WorkspaceRegistryService {
         }
 
         if updated {
-            self.save_registry(registry).await?;
+            // Use internal save to avoid double-locking (we already hold the lock)
+            self.save_registry_internal(registry).await?;
         }
 
         Ok(())
     }
 
     /// Update embedding status for a workspace
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_embedding_status(
         &self,
         workspace_id: &str,
         status: crate::workspace::registry::EmbeddingStatus,
     ) -> Result<()> {
+        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
+        let _lock = self.registry_lock.lock().await;
+
         let mut registry = self.load_registry().await?;
         let mut updated = false;
 
@@ -418,7 +447,8 @@ impl WorkspaceRegistryService {
         }
 
         if updated {
-            self.save_registry(registry).await?;
+            // Use internal save to avoid double-locking (we already hold the lock)
+            self.save_registry_internal(registry).await?;
         }
 
         Ok(())

@@ -72,7 +72,8 @@
       "Bash(RUST_BACKTRACE=full cargo run --bin julie-server)",
       "Read(//private/tmp/**)",
       "mcp__julie__trace_call_path",
-      "mcp__julie__fuzzy_replace"
+      "mcp__julie__fuzzy_replace",
+      "mcp__tusk__plan"
     ],
     "deny": [],
     "ask": []

@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::Term;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 
 use super::super::schema::QueryIntent;
 
@@ -304,37 +304,106 @@ impl SearchEngine {
         );
 
         let parsed_query: Box<dyn Query> = if use_or_expansion {
-            let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+            debug!(
+                "🎯 Using AND-first logic for multi-word query '{}' with {} terms",
+                query,
+                raw_terms.len()
+            );
 
-            if let Ok(phrase_query) = query_parser.parse_query(query) {
-                clauses.push((Occur::Should, phrase_query));
-            }
+            // AGENT-FIRST: Use AND logic for multi-word queries
+            // Query: "user auth controller post" should find symbols containing ALL 4 terms
+            // This fixes the #1 agent pain point: multi-word queries returning too many irrelevant results
 
-            let mut seen_terms = HashSet::new();
+            // Step 1: Try AND query first (highest precision)
+            // Build: (user* OR User*) AND (auth* OR Auth*) AND (controller* OR Controller*) AND (post* OR Post*)
+            let mut and_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
             for term in &raw_terms {
-                let normalized = term.to_lowercase();
-                if !seen_terms.insert(normalized) {
-                    continue;
-                }
+                // For each term, create OR clauses for its variants
+                let mut term_variants: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-                let camelcase_variants = self.expand_camelcase_query(term);
-                debug!(
-                    "🐪 Expanding OR term '{}' to variants: {:?}",
-                    term, camelcase_variants
-                );
-
+                // Original term
                 if let Ok(original_query) = query_parser.parse_query(term) {
-                    clauses.push((Occur::Should, original_query));
+                    term_variants.push((Occur::Should, original_query));
                 }
 
+                // CamelCase variants
+                let camelcase_variants = self.expand_camelcase_query(term);
                 for variant in camelcase_variants {
                     if let Ok(parsed_variant) = query_parser.parse_query(&variant) {
-                        clauses.push((Occur::Should, parsed_variant));
+                        term_variants.push((Occur::Should, parsed_variant));
                     }
+                }
+
+                // If we have variants for this term, wrap them in OR and add to AND clauses
+                if !term_variants.is_empty() {
+                    let term_or_query = Box::new(BooleanQuery::new(term_variants));
+                    and_clauses.push((Occur::Must, term_or_query));
                 }
             }
 
-            Box::new(BooleanQuery::new(clauses))
+            // Create final AND query
+            let and_query = Box::new(BooleanQuery::new(and_clauses));
+
+            // Step 2: If AND query returns zero results, fall back to OR query
+            let and_docs = searcher.search(&*and_query, &TopDocs::with_limit(30))?;
+
+            if !and_docs.is_empty() {
+                debug!(
+                    "✅ AND query found {} results for '{}'",
+                    and_docs.len(),
+                    query
+                );
+                and_query
+            } else {
+                debug!(
+                    "⚠️  AND query returned zero results, falling back to OR query for '{}'",
+                    query
+                );
+
+                // Fallback: OR query (more permissive, ensures we return SOMETHING)
+                let mut or_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+                if let Ok(phrase_query) = query_parser.parse_query(query) {
+                    or_clauses.push((Occur::Should, phrase_query));
+                }
+
+                let mut seen_terms = HashSet::new();
+                for term in &raw_terms {
+                    let normalized = term.to_lowercase();
+                    if !seen_terms.insert(normalized) {
+                        continue;
+                    }
+
+                    if let Ok(original_query) = query_parser.parse_query(term) {
+                        or_clauses.push((Occur::Should, original_query));
+                    }
+
+                    let camelcase_variants = self.expand_camelcase_query(term);
+                    for variant in camelcase_variants {
+                        if let Ok(parsed_variant) = query_parser.parse_query(&variant) {
+                            or_clauses.push((Occur::Should, parsed_variant));
+                        }
+                    }
+                }
+
+                // Safety check: If OR clauses is empty, we have a problem
+                if or_clauses.is_empty() {
+                    warn!(
+                        "⚠️  OR fallback produced zero clauses for query '{}' - query parser may have failed",
+                        query
+                    );
+                    // Last resort: just search for the raw query
+                    query_parser.parse_query(query)?
+                } else {
+                    debug!(
+                        "🔄 OR fallback created {} clauses for query '{}'",
+                        or_clauses.len(),
+                        query
+                    );
+                    Box::new(BooleanQuery::new(or_clauses))
+                }
+            }
         } else {
             query_parser.parse_query(query)?
         };

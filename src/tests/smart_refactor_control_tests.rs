@@ -323,7 +323,17 @@ mod smart_refactor_control_tests {
 
                 // Call the real AST-aware rename_in_file method
                 let dmp = diff_match_patch_rs::DiffMatchPatch::new();
-                match smart_refactor_tool.rename_in_file(&handler, &test_file_path.to_string_lossy(), old_name, new_name, &dmp).await {
+                match smart_refactor_tool
+                    .rename_in_file(
+                        &handler,
+                        &test_file_path.to_string_lossy(),
+                        old_name,
+                        new_name,
+                        false,
+                        &dmp,
+                    )
+                    .await
+                {
                     Ok(_changes) => {
                         // Read the result back
                         std::fs::read_to_string(&test_file_path)?
@@ -347,16 +357,16 @@ mod smart_refactor_control_tests {
                     Ok(symbols) => {
                         println!("📊 Extracted {} symbols from test file", symbols.len());
 
-                        // Step 1: Clean up any existing Tantivy index to avoid lock contention
+                        // Step 1: Clean up any existing indexes to avoid lock contention
                         let current_dir = std::env::current_dir()?;
                         let julie_dir = current_dir.join(".julie");
-                        let tantivy_dir = julie_dir.join("index").join("tantivy");
+                        let indexes_dir = julie_dir.join("indexes");
 
-                        if tantivy_dir.exists() {
-                            if let Err(e) = std::fs::remove_dir_all(&tantivy_dir) {
-                                println!("⚠️ Warning: Failed to clean Tantivy index: {}", e);
+                        if indexes_dir.exists() {
+                            if let Err(e) = std::fs::remove_dir_all(&indexes_dir) {
+                                println!("⚠️ Warning: Failed to clean indexes: {}", e);
                             } else {
-                                println!("🧹 Cleaned existing Tantivy index to avoid lock contention");
+                                println!("🧹 Cleaned existing indexes to avoid lock contention");
                             }
                         }
 
@@ -585,7 +595,8 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
             &source_content,
             "UserService",
             "AccountService",
-            temp_path.to_str().unwrap()
+            temp_path.to_str().unwrap(),
+            false,
         )?;
 
         // Verify using DMP (convert errors to anyhow)
@@ -627,4 +638,74 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
     }
     
     inner_test().await.unwrap();
+}
+
+#[test]
+fn test_doc_comment_updates_respect_flag() {
+    let source_content = r#"
+/**
+ * Provides lifecycle management for the UserService class.
+ */
+export class UserService {
+    // Inline note referencing UserService - aligns with class name
+    run(): void {
+        // Deep implementation comment mentioning UserService should stay as-is
+        console.log('noop');
+    }
+}
+"#;
+
+    let tool_without_comment_updates = SmartRefactorTool {
+        operation: "rename_symbol".to_string(),
+        params: r#"{"old_name": "UserService", "new_name": "AccountService"}"#.to_string(),
+        dry_run: false,
+    };
+
+    let result_without_comment_updates = tool_without_comment_updates
+        .smart_text_replace(
+            source_content,
+            "UserService",
+            "AccountService",
+            "doc_comment_example.ts",
+            false,
+        )
+        .expect("rename without comment updates should succeed");
+
+    assert!(result_without_comment_updates
+        .contains("Provides lifecycle management for the UserService class."),
+        "Doc comment should remain unchanged when update_comments is false");
+    assert!(result_without_comment_updates
+        .contains("// Inline note referencing UserService - aligns with class name"),
+        "Top-of-scope comment should remain unchanged when update_comments is false");
+    assert!(result_without_comment_updates
+        .contains("// Deep implementation comment mentioning UserService should stay as-is"),
+        "Deep implementation comment should remain unchanged when update_comments is false");
+
+    let tool_with_comment_updates = SmartRefactorTool {
+        operation: "rename_symbol".to_string(),
+        params: r#"{"old_name": "UserService", "new_name": "AccountService", "update_comments": true}"#.to_string(),
+        dry_run: false,
+    };
+
+    let result_with_comment_updates = tool_with_comment_updates
+        .smart_text_replace(
+            source_content,
+            "UserService",
+            "AccountService",
+            "doc_comment_example.ts",
+            true,
+        )
+        .expect("rename with comment updates should succeed");
+
+    assert!(result_with_comment_updates
+        .contains("Provides lifecycle management for the AccountService class."),
+        "Doc comment should reflect the new symbol name when update_comments is true");
+
+    assert!(result_with_comment_updates
+        .contains("// Inline note referencing AccountService - aligns with class name"),
+        "Top-of-scope comments should update when comment renaming is enabled");
+
+    assert!(result_with_comment_updates
+        .contains("// Deep implementation comment mentioning UserService should stay as-is"),
+        "Nested implementation comments should remain unchanged even when comment renaming is enabled");
 }

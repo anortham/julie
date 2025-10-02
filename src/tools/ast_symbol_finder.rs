@@ -117,6 +117,22 @@ impl ASTSymbolFinder {
         occurrences
     }
 
+    /// Find comment occurrences that contain the symbol name
+    pub fn find_comment_occurrences(
+        &self,
+        symbol_name: &str,
+        byte_range: Option<(usize, usize)>,
+    ) -> Vec<SymbolOccurrence> {
+        let mut occurrences = Vec::new();
+        self.walk_node_for_comment(
+            self.tree.root_node(),
+            symbol_name,
+            byte_range,
+            &mut occurrences,
+        );
+        occurrences
+    }
+
     /// Recursively walk AST looking for symbol occurrences
     fn walk_node_for_symbol(
         &self,
@@ -146,6 +162,42 @@ impl ASTSymbolFinder {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.walk_node_for_symbol(child, symbol_name, occurrences);
+        }
+    }
+
+    fn walk_node_for_comment(
+        &self,
+        node: Node,
+        symbol_name: &str,
+        byte_range: Option<(usize, usize)>,
+        occurrences: &mut Vec<SymbolOccurrence>,
+    ) {
+        let kind = node.kind();
+        let mut in_range = true;
+        if let Some((start, end)) = byte_range {
+            in_range = node.start_byte() as usize >= start && node.end_byte() as usize <= end;
+        }
+
+        if in_range
+            && matches!(kind, "comment" | "line_comment" | "block_comment")
+            && self
+                .node_text(node)
+                .map(|text| text.contains(symbol_name))
+                .unwrap_or(false)
+        {
+            occurrences.push(SymbolOccurrence {
+                start_byte: node.start_byte() as usize,
+                end_byte: node.end_byte() as usize,
+                node_kind: kind.to_string(),
+                context: SymbolContext::Comment,
+                line: node.start_position().row + 1,
+                column: node.start_position().column,
+            });
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_node_for_comment(child, symbol_name, byte_range, occurrences);
         }
     }
 

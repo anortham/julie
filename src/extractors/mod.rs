@@ -85,6 +85,7 @@ impl ExtractorManager {
         let language = match extension {
             "rs" => "rust",
             "ts" => "typescript",
+            "tsx" => "tsx",
             "js" => "javascript",
             "py" => "python",
             "go" => "go",

@@ -14,10 +14,9 @@ fn test_workspace_initialization() {
     // Check that .julie directory was created
     assert!(workspace.julie_dir.exists());
 
-    // Check that all required subdirectories exist
-    assert!(workspace.julie_dir.join("db").exists());
-    assert!(workspace.julie_dir.join("index/tantivy").exists());
-    assert!(workspace.julie_dir.join("vectors").exists());
+    // Check that all required root subdirectories exist
+    // Note: Per-workspace directories (indexes/{workspace_id}/) are created on-demand during indexing
+    assert!(workspace.julie_dir.join("indexes").exists(), "indexes/ root directory should exist");
     assert!(workspace.julie_dir.join("models").exists());
     assert!(workspace.julie_dir.join("cache").exists());
     assert!(workspace.julie_dir.join("logs").exists());
@@ -37,12 +36,11 @@ fn test_workspace_detection() {
     let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf()).unwrap();
     drop(workspace);
 
-    let lock_dir = temp_dir.path().join(".julie").join("index").join("tantivy");
-    for lock_name in ["write.lock", "meta.lock"] {
-        let lock_path = lock_dir.join(lock_name);
-        if lock_path.exists() {
-            fs::remove_file(&lock_path).unwrap();
-        }
+    // Clean up any per-workspace directories if they exist
+    let indexes_dir = temp_dir.path().join(".julie").join("indexes");
+    if indexes_dir.exists() {
+        let _ = fs::remove_dir_all(&indexes_dir);
+        fs::create_dir_all(&indexes_dir).unwrap();
     }
 
     // Test detection from same directory

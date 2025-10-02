@@ -796,18 +796,19 @@ async fn test_multi_word_text_search_returns_results() {
     let results = engine.search("extract symbols").await.unwrap();
     assert!(
         !results.is_empty(),
-        "Multi-word text query should match symbols containing either term"
+        "Multi-word text query should match symbols containing ALL terms (AND logic)"
     );
 
     let names: Vec<&str> = results.iter().map(|r| r.symbol.name.as_str()).collect();
     assert!(
         names.contains(&"extract_symbols"),
-        "Should surface symbol that contains both terms"
+        "Should surface symbol that contains both terms with AND logic"
     );
-    assert!(
-        names.contains(&"only_extract_fn") || names.contains(&"store_symbols"),
-        "Should include symbols containing at least one query term via OR semantics"
-    );
+
+    // NEW BEHAVIOR: AND logic takes precedence
+    // Query "extract symbols" uses AND, so only symbols with BOTH terms match
+    // This is agent-first behavior: "user auth controller post" finds symbols with ALL 4 terms
+    // OR fallback only happens if AND returns zero results
 
     let fn_results = engine.search("fn extract").await.unwrap();
     assert!(

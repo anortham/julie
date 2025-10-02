@@ -1344,6 +1344,9 @@ impl SymbolDatabase {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
 
+        let mut inserted_count = 0;
+        let mut skipped_count = 0;
+
         for rel in relationships {
             let metadata_json = rel
                 .metadata
@@ -1351,7 +1354,8 @@ impl SymbolDatabase {
                 .map(serde_json::to_string)
                 .transpose()?;
 
-            stmt.execute(params![
+            // Try to insert, skip if foreign key constraint fails (external/missing symbols)
+            match stmt.execute(params![
                 rel.id,
                 rel.from_symbol_id,
                 rel.to_symbol_id,
@@ -1361,7 +1365,19 @@ impl SymbolDatabase {
                 rel.confidence,
                 metadata_json,
                 workspace_id
-            ])?;
+            ]) {
+                Ok(_) => inserted_count += 1,
+                Err(rusqlite::Error::SqliteFailure(err, _))
+                    if err.code == rusqlite::ErrorCode::ConstraintViolation => {
+                    // Skip relationships with missing symbol references
+                    skipped_count += 1;
+                    debug!(
+                        "Skipping relationship {} -> {} (missing symbol reference)",
+                        rel.from_symbol_id, rel.to_symbol_id
+                    );
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
 
         // Drop statement before committing transaction
@@ -1372,11 +1388,20 @@ impl SymbolDatabase {
         self.create_relationship_indexes()?;
 
         let duration = start_time.elapsed();
-        info!(
-            "✅ Bulk relationship insert complete! {} relationships in {:.2}ms",
-            relationships.len(),
-            duration.as_millis()
-        );
+        if skipped_count > 0 {
+            info!(
+                "✅ Bulk relationship insert complete! {} inserted, {} skipped (external symbols) in {:.2}ms",
+                inserted_count,
+                skipped_count,
+                duration.as_millis()
+            );
+        } else {
+            info!(
+                "✅ Bulk relationship insert complete! {} relationships in {:.2}ms",
+                inserted_count,
+                duration.as_millis()
+            );
+        }
 
         Ok(())
     }
@@ -1983,6 +2008,82 @@ impl SymbolDatabase {
             "Stored embedding metadata: symbol={}, vector={}, model={}",
             symbol_id, vector_id, model_name
         );
+        Ok(())
+    }
+
+    /// 🚀 BLAZING-FAST bulk embedding storage for batch processing
+    /// Inserts both vectors and metadata in a single transaction
+    pub fn bulk_store_embeddings(
+        &mut self,
+        embeddings: &[(String, Vec<f32>)], // (symbol_id, vector)
+        dimensions: usize,
+        model_name: &str,
+    ) -> Result<()> {
+        if embeddings.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Use transaction for atomic bulk insert
+        let tx = self.conn.transaction()?;
+
+        // Prepare statements for batch insert
+        let mut vector_stmt = tx.prepare(
+            "INSERT OR REPLACE INTO embedding_vectors
+             (vector_id, dimensions, vector_data, model_name, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+
+        let mut metadata_stmt = tx.prepare(
+            "INSERT OR REPLACE INTO embeddings
+             (symbol_id, vector_id, model_name, embedding_hash, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+
+        for (symbol_id, vector_data) in embeddings {
+            // Serialize vector to bytes
+            let bytes: Vec<u8> = vector_data
+                .iter()
+                .flat_map(|f| f.to_le_bytes())
+                .collect();
+
+            // Insert vector data (using symbol_id as vector_id for simplicity)
+            vector_stmt.execute(params![
+                symbol_id,
+                dimensions as i64,
+                bytes,
+                model_name,
+                now
+            ])?;
+
+            // Insert metadata linking symbol to vector
+            metadata_stmt.execute(params![
+                symbol_id,
+                symbol_id, // vector_id = symbol_id
+                model_name,
+                None::<String>, // embedding_hash
+                now
+            ])?;
+        }
+
+        // Drop statements before committing
+        drop(vector_stmt);
+        drop(metadata_stmt);
+        tx.commit()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Bulk embedding storage complete! {} embeddings in {:.2}ms ({:.0} embeddings/sec)",
+            embeddings.len(),
+            duration.as_millis(),
+            embeddings.len() as f64 / duration.as_secs_f64()
+        );
+
         Ok(())
     }
 

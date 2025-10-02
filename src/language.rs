@@ -28,7 +28,8 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "zig" => Ok(tree_sitter_zig::LANGUAGE.into()),
 
         // Web languages
-        "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        "tsx" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
         "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
         "html" => Ok(tree_sitter_html::LANGUAGE.into()),
         "css" => Ok(tree_sitter_css::LANGUAGE.into()),
@@ -68,7 +69,8 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
 pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
     match extension {
         "rs" => Some("rust"),
-        "ts" | "tsx" => Some("typescript"),
+        "ts" => Some("typescript"),
+        "tsx" => Some("tsx"),
         "js" | "jsx" => Some("javascript"),
         "py" => Some("python"),
         "go" => Some("go"),
@@ -103,7 +105,9 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
 pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
     match language {
         "rust" => vec!["function_item", "impl_item"],
-        "typescript" | "javascript" => vec!["function_declaration", "method_definition", "arrow_function"],
+        "typescript" | "tsx" | "javascript" => {
+            vec!["function_declaration", "method_definition", "arrow_function"]
+        }
         "python" => vec!["function_definition"],
         "java" => vec!["method_declaration"],
         "cpp" | "c" => vec!["function_definition"],
@@ -127,7 +131,7 @@ pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
 pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
     match language {
         "rust" => vec!["use_declaration"],
-        "typescript" | "javascript" => vec!["import_statement"],
+        "typescript" | "tsx" | "javascript" => vec!["import_statement"],
         "python" => vec!["import_statement", "import_from_statement"],
         "java" => vec!["import_declaration"],
         "go" => vec!["import_declaration"],
@@ -149,7 +153,13 @@ pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
 pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
     match language {
         "rust" => vec!["function_item", "struct_item", "enum_item", "impl_item", "trait_item", "type_item"],
-        "typescript" | "javascript" => vec!["function_declaration", "class_declaration", "method_definition", "interface_declaration", "type_alias_declaration"],
+        "typescript" | "tsx" | "javascript" => vec![
+            "function_declaration",
+            "class_declaration",
+            "method_definition",
+            "interface_declaration",
+            "type_alias_declaration",
+        ],
         "python" => vec!["function_definition", "class_definition"],
         "java" => vec!["method_declaration", "class_declaration", "interface_declaration", "enum_declaration"],
         "cpp" | "c" => vec!["function_definition", "class_specifier", "struct_specifier", "enum_specifier"],
@@ -171,7 +181,7 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
 /// Most use "name", but some (like C/C++) use more complex nested structures.
 pub fn get_symbol_name_field(language: &str) -> &'static str {
     match language {
-        "rust" | "typescript" | "javascript" | "python" | "java" | "go" | "csharp" |
+        "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp" |
         "php" | "ruby" | "swift" | "kotlin" | "dart" | "lua" | "bash" | "powershell" => "name",
         "cpp" | "c" => "declarator", // C/C++ use nested declarator nodes
         _ => "name", // Generic fallback
@@ -186,7 +196,7 @@ mod tests {
     fn test_all_26_languages_supported() {
         let languages = vec![
             "rust", "c", "cpp", "go", "zig",
-            "typescript", "javascript", "html", "css", "vue",
+            "typescript", "tsx", "javascript", "html", "css", "vue",
             "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "dart",
             "lua", "bash", "powershell",
             "gdscript", "razor", "sql", "regex",

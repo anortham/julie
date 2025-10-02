@@ -51,10 +51,13 @@ impl EditingTransaction {
     /// Commit new content to the file atomically
     pub fn commit(mut self, content: &str) -> Result<()> {
         // Generate unique temp file name
-        let temp_name = format!("{}.tmp.{}",
-            self.file_path.display(),
-            Uuid::new_v4().simple());
-        let temp_path = self.file_path.with_file_name(temp_name);
+        let base_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("julie_edit");
+        let temp_name = format!("{}.tmp.{}", base_name, Uuid::new_v4().simple());
+        let temp_path = self.file_path.with_file_name(&temp_name);
 
         // Write to temp file first
         fs::write(&temp_path, content)?;
@@ -78,7 +81,10 @@ impl EditingTransaction {
                 // File didn't exist originally, remove it
                 if self.file_path.exists() {
                     fs::remove_file(&self.file_path)?;
-                    debug!("Transaction rolled back - removed file: {}", self.file_path.display());
+                    debug!(
+                        "Transaction rolled back - removed file: {}",
+                        self.file_path.display()
+                    );
                 }
             }
         }
@@ -122,6 +128,47 @@ impl Drop for EditingTransaction {
                 let _ = fs::remove_file(temp_path);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::fs;
+
+    struct DirGuard {
+        original: std::path::PathBuf,
+    }
+
+    impl DirGuard {
+        fn change_to(path: &std::path::Path) -> Self {
+            let original = env::current_dir().expect("cwd");
+            env::set_current_dir(path).expect("set cwd");
+            Self { original }
+        }
+    }
+
+    impl Drop for DirGuard {
+        fn drop(&mut self) {
+            let _ = env::set_current_dir(&self.original);
+        }
+    }
+
+    #[test]
+    fn commit_creates_temp_file_in_same_directory_for_relative_paths() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let _guard = DirGuard::change_to(temp_dir.path());
+
+        fs::create_dir_all("src").expect("create dir");
+
+        let transaction = EditingTransaction::begin("src/lib.rs").expect("begin");
+        transaction
+            .commit("pub fn demo() {}")
+            .expect("commit should succeed");
+
+        let written = fs::read_to_string("src/lib.rs").expect("read file");
+        assert_eq!(written, "pub fn demo() {}");
     }
 }
 
@@ -171,7 +218,10 @@ impl MultiFileTransaction {
         let path = PathBuf::from(file_path);
 
         if !self.files.contains_key(&path) {
-            return Err(anyhow::anyhow!("File not added to transaction: {}", file_path));
+            return Err(anyhow::anyhow!(
+                "File not added to transaction: {}",
+                file_path
+            ));
         }
 
         self.pending_content.insert(path, content.to_string());
@@ -187,16 +237,17 @@ impl MultiFileTransaction {
                 let metadata = fs::metadata(file_path)?;
                 let permissions = metadata.permissions();
                 if permissions.readonly() {
-                    return Err(anyhow::anyhow!("Cannot write to readonly file: {}", file_path.display()));
+                    return Err(anyhow::anyhow!(
+                        "Cannot write to readonly file: {}",
+                        file_path.display()
+                    ));
                 }
             }
         }
 
         // Phase 1: Write all content to temp files
         for (file_path, content) in &self.pending_content {
-            let temp_name = format!("{}.tmp.{}",
-                file_path.display(),
-                self.session_id);
+            let temp_name = format!("{}.tmp.{}", file_path.display(), self.session_id);
             let temp_path = file_path.with_file_name(temp_name);
 
             fs::write(&temp_path, content)?;
@@ -214,7 +265,10 @@ impl MultiFileTransaction {
             }
         }
 
-        debug!("Multi-file transaction committed: {} files", self.pending_content.len());
+        debug!(
+            "Multi-file transaction committed: {} files",
+            self.pending_content.len()
+        );
         Ok(())
     }
 
@@ -225,7 +279,10 @@ impl MultiFileTransaction {
             if i < committed_count {
                 let original_content = &self.files[file_path];
                 if let Err(e) = fs::write(file_path, original_content) {
-                    warn!("Failed to restore file during rollback: {:?}: {}", file_path, e);
+                    warn!(
+                        "Failed to restore file during rollback: {:?}: {}",
+                        file_path, e
+                    );
                 }
             }
         }

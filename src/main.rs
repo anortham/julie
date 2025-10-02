@@ -389,8 +389,8 @@ async fn update_workspace_statistics(
         (0, 0)
     };
 
-    // Calculate Tantivy index size
-    let tantivy_path = workspace.julie_dir.join("index/tantivy");
+    // Calculate Tantivy index size using per-workspace path
+    let tantivy_path = workspace.workspace_index_path(&workspace_id);
     let index_size = if tantivy_path.exists() {
         calculate_dir_size(&tantivy_path)
     } else {

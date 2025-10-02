@@ -63,13 +63,20 @@ impl HealthChecker {
             return Ok(SystemReadiness::NotReady);
         }
 
+        // Compute workspace ID for per-workspace paths
+        use crate::workspace::registry;
+        let workspace_id = registry::generate_workspace_id(
+            workspace.root.to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid workspace path"))?
+        )?;
+
         // Step 4: Check Tantivy search engine status
         let tantivy_ready = workspace.search.is_some()
-            && workspace.julie_dir.join("index").join("tantivy").exists();
+            && workspace.workspace_index_path(&workspace_id).exists();
 
         // Step 5: Check embedding system status
         let embeddings_ready = workspace.embeddings.is_some()
-            && Self::has_embedding_files(&workspace.julie_dir.join("vectors"));
+            && Self::has_embedding_files(&workspace.workspace_vectors_path(&workspace_id));
 
         // Step 6: Determine overall readiness level
         match (tantivy_ready, embeddings_ready) {
@@ -169,20 +176,34 @@ impl HealthChecker {
             report.push_str("❌ No database connection\n");
         }
 
+        // Compute workspace ID for per-workspace paths
+        use crate::workspace::registry;
+        let workspace_id_result = registry::generate_workspace_id(
+            workspace.root.to_str().unwrap_or("")
+        );
+
         // Tantivy status
-        let tantivy_path = workspace.julie_dir.join("index").join("tantivy");
-        if tantivy_path.exists() {
-            report.push_str("✅ Tantivy search index ready\n");
+        if let Ok(workspace_id) = &workspace_id_result {
+            let tantivy_path = workspace.workspace_index_path(workspace_id);
+            if tantivy_path.exists() {
+                report.push_str("✅ Tantivy search index ready\n");
+            } else {
+                report.push_str("🔄 Tantivy search index building\n");
+            }
         } else {
-            report.push_str("🔄 Tantivy search index building\n");
+            report.push_str("❌ Could not determine workspace ID\n");
         }
 
         // Embeddings status
-        let embeddings_path = workspace.julie_dir.join("vectors");
-        if Self::has_embedding_files(&embeddings_path) {
-            report.push_str("✅ Embedding vectors ready\n");
+        if let Ok(workspace_id) = &workspace_id_result {
+            let embeddings_path = workspace.workspace_vectors_path(workspace_id);
+            if Self::has_embedding_files(&embeddings_path) {
+                report.push_str("✅ Embedding vectors ready\n");
+            } else {
+                report.push_str("🔄 Embedding vectors building\n");
+            }
         } else {
-            report.push_str("🔄 Embedding vectors building\n");
+            report.push_str("❌ Could not determine workspace ID\n");
         }
 
         Ok(report)

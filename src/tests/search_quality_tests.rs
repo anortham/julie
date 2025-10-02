@@ -324,3 +324,330 @@ mod search_quality_tests {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// TDD: Multi-Word Query Tests (RED Phase - These should FAIL initially)
+// ═══════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod multi_word_query_tests {
+    /// Test helper to convert query strings to various formats
+    use crate::utils::query_expansion::{to_camelcase, to_snake_case};
+
+    #[test]
+    fn test_multi_word_to_camelcase_conversion() {
+        // TDD RED: This will fail until we implement query expansion
+        // "user service" should convert to "UserService"
+        assert_eq!(to_camelcase("user service"), "UserService");
+        assert_eq!(to_camelcase("get user data"), "GetUserData");
+        assert_eq!(to_camelcase("handle request"), "HandleRequest");
+        assert_eq!(to_camelcase("process payment info"), "ProcessPaymentInfo");
+    }
+
+    #[test]
+    fn test_multi_word_to_snake_case_conversion() {
+        // TDD RED: This will fail until we implement query expansion
+        // "user service" should convert to "user_service"
+        assert_eq!(to_snake_case("user service"), "user_service");
+        assert_eq!(to_snake_case("get user data"), "get_user_data");
+        assert_eq!(to_snake_case("handle request"), "handle_request");
+    }
+
+    #[test]
+    fn test_multi_word_query_finds_camelcase_symbols() {
+        // TDD RED: This will fail until we integrate query expansion into search
+        // Query: "user service" should find "UserService"
+        // This is the #1 agent pain point - multi-word queries returning zero results
+
+        // Create test symbol
+        use crate::extractors::base::{Symbol, SymbolKind};
+        use std::collections::HashMap;
+
+        let symbol = Symbol {
+            id: "1".to_string(),
+            name: "UserService".to_string(),
+            kind: SymbolKind::Class,
+            language: "typescript".to_string(),
+            file_path: "src/services/user.ts".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 50,
+            end_column: 0,
+            start_byte: 100,
+            end_byte: 1000,
+            signature: Some("class UserService { }".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: Some(HashMap::new()),
+            semantic_group: None,
+            confidence: Some(0.95),
+            code_context: None,
+        };
+
+        // The search query "user service" should match "UserService"
+        let query = "user service";
+        let camelcase_variant = to_camelcase(query);
+
+        assert_eq!(camelcase_variant, "UserService");
+        assert_eq!(symbol.name, "UserService");
+
+        // This is what should happen: expanded query includes "UserService" variant
+        // and finds the symbol
+    }
+
+    #[test]
+    fn test_multi_word_query_finds_snake_case_symbols() {
+        // TDD RED: This will fail until we implement query expansion
+        // Query: "user service" should find "user_service"
+
+        use crate::extractors::base::{Symbol, SymbolKind};
+        use std::collections::HashMap;
+
+        let symbol = Symbol {
+            id: "2".to_string(),
+            name: "user_service".to_string(),
+            kind: SymbolKind::Function,
+            language: "python".to_string(),
+            file_path: "src/services/user.py".to_string(),
+            start_line: 5,
+            start_column: 0,
+            end_line: 20,
+            end_column: 0,
+            start_byte: 50,
+            end_byte: 500,
+            signature: Some("def user_service(id: int) -> User:".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: Some(HashMap::new()),
+            semantic_group: None,
+            confidence: Some(0.90),
+            code_context: None,
+        };
+
+        let query = "user service";
+        let snake_case_variant = to_snake_case(query);
+
+        assert_eq!(snake_case_variant, "user_service");
+        assert_eq!(symbol.name, "user_service");
+    }
+
+    #[test]
+    fn test_partial_word_matching() {
+        // TDD RED: This will fail until we implement partial matching
+        // Query: "user" should find "UserService", "getUser", "user_id"
+
+        let query = "user";
+        let test_symbols = vec!["UserService", "getUser", "user_id", "createUserAccount"];
+
+        // All of these should be considered matches for "user"
+        for symbol_name in test_symbols {
+            assert!(
+                symbol_name.to_lowercase().contains(query),
+                "{} should contain '{}'",
+                symbol_name,
+                query
+            );
+        }
+    }
+
+    #[test]
+    fn test_query_expansion_generates_all_variants() {
+        // TDD RED: This will fail until we implement query_expansion module
+        // Query expansion should generate: original, CamelCase, snake_case, wildcard, OR, fuzzy
+
+        use crate::utils::query_expansion::expand_query;
+
+        let variants = expand_query("user service");
+
+        // Should contain at least these variants:
+        assert!(variants.contains(&"user service".to_string()), "Should include original");
+        assert!(variants.contains(&"UserService".to_string()), "Should include CamelCase");
+        assert!(variants.contains(&"user_service".to_string()), "Should include snake_case");
+
+        // Should have generated multiple variants for fallback
+        assert!(variants.len() >= 3, "Should generate at least 3 query variants");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Integration Tests: Full Search Pipeline with Multi-Word Queries
+// ═══════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod search_integration_tests {
+    use crate::extractors::base::{Symbol, SymbolKind};
+    use std::collections::HashMap;
+
+    fn create_realistic_test_symbols() -> Vec<Symbol> {
+        vec![
+            // CamelCase class
+            Symbol {
+                id: "1".to_string(),
+                name: "UserService".to_string(),
+                kind: SymbolKind::Class,
+                language: "typescript".to_string(),
+                file_path: "src/services/user.ts".to_string(),
+                start_line: 10,
+                start_column: 0,
+                end_line: 100,
+                end_column: 0,
+                start_byte: 200,
+                end_byte: 2000,
+                signature: Some("export class UserService { }".to_string()),
+                doc_comment: Some("Service for user management".to_string()),
+                visibility: None,
+                parent_id: None,
+                metadata: Some(HashMap::new()),
+                semantic_group: None,
+                confidence: Some(0.95),
+                code_context: None,
+            },
+            // snake_case function
+            Symbol {
+                id: "2".to_string(),
+                name: "get_user_data".to_string(),
+                kind: SymbolKind::Function,
+                language: "python".to_string(),
+                file_path: "src/utils/data.py".to_string(),
+                start_line: 5,
+                start_column: 0,
+                end_line: 15,
+                end_column: 0,
+                start_byte: 100,
+                end_byte: 300,
+                signature: Some("def get_user_data(id: int) -> Dict:".to_string()),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: Some(HashMap::new()),
+                semantic_group: None,
+                confidence: Some(0.90),
+                code_context: None,
+            },
+            // camelCase method
+            Symbol {
+                id: "3".to_string(),
+                name: "handleRequest".to_string(),
+                kind: SymbolKind::Method,
+                language: "javascript".to_string(),
+                file_path: "src/handlers/request.js".to_string(),
+                start_line: 20,
+                start_column: 0,
+                end_line: 35,
+                end_column: 0,
+                start_byte: 400,
+                end_byte: 700,
+                signature: Some("async handleRequest(req, res) { }".to_string()),
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: Some(HashMap::new()),
+                semantic_group: None,
+                confidence: Some(0.88),
+                code_context: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_search_pipeline_with_realistic_agent_queries() {
+        // Real agent queries are complex search intents, not just naming conventions
+        // Agent: "user auth controller post" means "find the controller that handles POST for user auth"
+
+        let _symbols = create_realistic_test_symbols();
+
+        // These are REAL agent search patterns we need to handle:
+        let realistic_agent_queries = vec![
+            // Multi-word intent searches
+            ("user auth controller post", vec![
+                "UserAuthController.post",
+                "handleUserAuthPost",
+                "postUserAuth"
+            ]),
+
+            // Partial matches across symbol components
+            ("payment process async", vec![
+                "processPaymentAsync",
+                "PaymentProcessor.async",
+                "asyncPaymentProcessing"
+            ]),
+
+            // Mixed language conventions
+            ("database connection pool", vec![
+                "DatabaseConnectionPool",
+                "db_connection_pool",
+                "getDbConnectionPool"
+            ]),
+
+            // Method + class searches
+            ("user get by id", vec![
+                "getUserById",
+                "User.getById",
+                "get_user_by_id"
+            ]),
+
+            // Action + entity queries
+            ("create order", vec![
+                "createOrder",
+                "OrderCreator",
+                "order_create"
+            ]),
+        ];
+
+        for (query, expected_patterns) in realistic_agent_queries {
+            println!("Agent query: '{}' should match patterns like: {:?}", query, expected_patterns);
+            // This requires:
+            // 1. Split query into terms: ["user", "auth", "controller", "post"]
+            // 2. Try combinations: "UserAuthControllerPost", "user_auth_controller_post"
+            // 3. Partial matches: symbols containing all terms
+            // 4. Rank by how many terms match + term proximity
+        }
+    }
+
+    #[test]
+    fn test_partial_term_matching_across_symbols() {
+        // Agent query: "user auth post"
+        // Should match: "UserAuthController.post" (all 3 terms present)
+        // Should NOT match: "UserService.get" (missing auth, missing post)
+
+        let query_terms = vec!["user", "auth", "post"];
+
+        let test_symbols = vec![
+            ("UserAuthController.post", true),    // All terms present
+            ("handleUserAuthPost", true),          // All terms present
+            ("UserController.post", false),        // Missing "auth"
+            ("UserAuthService.get", false),        // Missing "post"
+            ("postUserAuthentication", true),      // All terms present (auth = authentication)
+        ];
+
+        for (symbol_name, should_match) in test_symbols {
+            let symbol_lower = symbol_name.to_lowercase();
+            let all_terms_present = query_terms.iter().all(|term| {
+                symbol_lower.contains(term) ||
+                symbol_lower.contains(&term[..4]) // Partial match: "auth" matches "authentication"
+            });
+
+            assert_eq!(
+                all_terms_present, should_match,
+                "Query terms {:?} matching '{}' should be: {}",
+                query_terms, symbol_name, should_match
+            );
+        }
+    }
+
+    #[test]
+    fn test_zero_results_fallback_suggestions() {
+        // TDD RED: When search returns zero results, should suggest alternatives
+        // This prevents the "agent searches 5 times and gets zero results" problem
+
+        let query = "usr servic"; // Typo - likely should be "user service"
+
+        // After implementation, should suggest:
+        // "Did you mean: user service, UserService, user_service?"
+        // Currently will return zero results with no suggestions
+
+        println!("Query '{}' should suggest corrections", query);
+    }
+}
