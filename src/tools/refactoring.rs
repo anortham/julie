@@ -18,6 +18,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::fs;
 use tracing::{debug, info};
+use tree_sitter::Parser;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction; // Atomic file operations
@@ -37,6 +38,56 @@ pub struct SmartRefactorResult {
     /// Operation-specific metadata (flexible JSON for different operation types)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
+}
+
+/// Syntax error detected by tree-sitter
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SyntaxError {
+    /// Line number where error occurs (1-based)
+    pub line: u32,
+    /// Column number where error occurs (0-based)
+    pub column: u32,
+    /// Error description
+    pub message: String,
+    /// Severity: "error" or "warning"
+    pub severity: String,
+    /// Suggested fix if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggested_fix: Option<String>,
+    /// Code snippet showing the error context
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+}
+
+/// Result of auto-fix operation
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AutoFixResult {
+    /// Whether any fixes were applied
+    pub fixes_applied: bool,
+    /// Number of fixes applied
+    pub fix_count: u32,
+    /// List of fixes that were applied
+    pub fixes: Vec<String>,
+    /// Errors remaining after fixes
+    pub remaining_errors: Vec<SyntaxError>,
+    /// Fixed file content (if fixes were applied)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed_content: Option<String>,
+}
+
+/// Delimiter error detected by tree-sitter (internal use)
+#[derive(Debug, Clone)]
+struct DelimiterError {
+    /// Line number where error occurs
+    line: usize,
+    /// Column number where error occurs (for future use)
+    #[allow(dead_code)]
+    _column: usize,
+    /// Missing delimiter character(s)
+    missing_delimiter: String,
+    /// Type of error (unmatched_brace, unclosed_string, etc.) (for future use)
+    #[allow(dead_code)]
+    _error_type: String,
 }
 
 /// Available refactoring operations
@@ -59,12 +110,24 @@ pub enum RefactorOperation {
     InlineVariable,
     /// Inline a function by replacing calls with function body
     InlineFunction,
+    /// Validate syntax using tree-sitter error detection (Week 3 - AST Syntax Fix)
+    ValidateSyntax,
+    /// Auto-fix common syntax errors (Week 3 - AST Syntax Fix)
+    AutoFixSyntax,
 }
 
 /// Smart refactoring tool for semantic code transformations
 #[mcp_tool(
     name = "smart_refactor",
-    description = "REFACTOR WITH PRECISION - Rename symbols, extract functions, and transform code structure safely",
+    description = concat!(
+        "SAFE SEMANTIC REFACTORING - Use this for symbol-aware code transformations. ",
+        "This tool understands code structure and performs changes safely across the entire workspace.\n\n",
+        "You are EXCELLENT at using this for renaming symbols, extracting functions, and replacing code. ",
+        "Always use fast_refs BEFORE refactoring to understand impact.\n\n",
+        "Unlike simple text editing, this tool preserves code structure and updates all references. ",
+        "For simple text replacements, use the built-in Edit tool. For semantic operations, use this.\n\n",
+        "Julie provides the intelligence (what to change), this tool provides the mechanics (how to change it)."
+    ),
     title = "Smart Semantic Refactoring Tool"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -142,10 +205,12 @@ impl SmartRefactorTool {
             "update_imports" => self.handle_update_imports(handler).await,
             "inline_variable" => self.handle_inline_variable(handler).await,
             "inline_function" => self.handle_inline_function(handler).await,
+            "validate_syntax" => self.handle_validate_syntax(handler).await,
+            "auto_fix_syntax" => self.handle_auto_fix_syntax(handler).await,
             _ => {
                 let message = format!(
                     "❌ Unknown refactoring operation: '{}'\n\
-                    Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function",
+                    Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function, validate_syntax, auto_fix_syntax",
                     self.operation
                 );
                 self.create_result(
@@ -2160,6 +2225,559 @@ impl SmartRefactorTool {
             None,
         )
     }
+
+    /// Handle validate_syntax operation - Week 3: AST Syntax Fix
+    /// Uses tree-sitter error nodes to detect syntax errors across all 26 languages
+    async fn handle_validate_syntax(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
+        // Parse params to get file_path
+        let params: serde_json::Value = serde_json::from_str(&self.params)?;
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: file_path"))?;
+
+        // Get workspace and normalize path
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            workspace.root.join(file_path).to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = tokio::fs::read_to_string(&absolute_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", absolute_path, e))?;
+
+        // Detect language
+        let language = self.detect_language(file_path);
+
+        // Get tree-sitter parser
+        let tree_sitter_lang = self.get_tree_sitter_language(&language)?;
+        let mut parser = Parser::new();
+        parser.set_language(&tree_sitter_lang)?;
+
+        // Parse the code
+        let tree = parser
+            .parse(&content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file"))?;
+
+        // Collect syntax errors from tree-sitter error nodes
+        let mut errors = Vec::new();
+        let mut cursor = tree.walk();
+
+        fn collect_errors(
+            cursor: &mut tree_sitter::TreeCursor,
+            content: &str,
+            errors: &mut Vec<SyntaxError>,
+        ) {
+            loop {
+                let node = cursor.node();
+
+                // Check if this node is an error or missing node
+                if node.is_error() || node.is_missing() {
+                    let start_pos = node.start_position();
+                    let error_type = if node.is_missing() { "missing" } else { "error" };
+
+                    // Extract context (3 lines before and after)
+                    let lines: Vec<&str> = content.lines().collect();
+                    let error_line = start_pos.row;
+                    let context_start = error_line.saturating_sub(1);
+                    let context_end = (error_line + 2).min(lines.len());
+
+                    let context_lines: Vec<String> = lines[context_start..context_end]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, line)| {
+                            let line_num = context_start + i + 1;
+                            if line_num == error_line + 1 {
+                                format!("  ➤ {}: {}", line_num, line)
+                            } else {
+                                format!("    {}: {}", line_num, line)
+                            }
+                        })
+                        .collect();
+
+                    errors.push(SyntaxError {
+                        line: start_pos.row as u32 + 1, // 1-based
+                        column: start_pos.column as u32,
+                        message: format!("Syntax {}: {}", error_type, node.kind()),
+                        severity: "error".to_string(),
+                        suggested_fix: None, // TODO: Add heuristics for common fixes
+                        context: Some(context_lines.join("\n")),
+                    });
+                }
+
+                // Recurse into children
+                if cursor.goto_first_child() {
+                    collect_errors(cursor, content, errors);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        collect_errors(&mut cursor, &content, &mut errors);
+
+        // Build response
+        let errors_count = errors.len();
+        let metadata = serde_json::json!({
+            "errors": errors,
+            "file_path": file_path,
+            "language": language,
+        });
+
+        let message = if errors_count == 0 {
+            format!("✅ **Syntax validation passed**\n\n📄 File: `{}`\n🎉 No syntax errors found!", file_path)
+        } else {
+            let mut msg = format!("❌ **Syntax validation failed**\n\n📄 File: `{}`\n🐛 Found {} syntax error(s):\n\n", file_path, errors_count);
+            for (i, error) in errors.iter().enumerate() {
+                msg.push_str(&format!("{}. Line {}:{} - {}\n", i + 1, error.line, error.column, error.message));
+                if let Some(ref context) = error.context {
+                    msg.push_str(&format!("```\n{}\n```\n\n", context));
+                }
+            }
+            msg
+        };
+
+        let next_actions = if errors_count > 0 {
+            vec![format!("Run smart_refactor operation=auto_fix_syntax to fix {} error(s) automatically", errors_count)]
+        } else {
+            vec!["Code is valid - ready for deployment".to_string()]
+        };
+
+        self.create_result(
+            "validate_syntax",
+            true,
+            vec![],
+            errors_count,
+            next_actions,
+            message,
+            Some(metadata),
+        )
+    }
+
+    /// Handle auto_fix_syntax operation - Week 3: AST Syntax Fix
+    /// Automatically fixes common syntax errors (semicolons, braces, etc.)
+    async fn handle_auto_fix_syntax(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
+        // Parse params to get file_path
+        let params: serde_json::Value = serde_json::from_str(&self.params)?;
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: file_path"))?;
+
+        // Normalize path (handle both absolute and relative)
+        let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            // Try to get workspace for relative paths
+            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                workspace.root.join(file_path).to_string_lossy().to_string()
+            } else {
+                // No workspace but path is relative - use as-is and hope it works
+                file_path.to_string()
+            }
+        };
+
+        // Read file content
+        let original_content = tokio::fs::read_to_string(&absolute_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", absolute_path, e))?;
+
+        // Detect language
+        let language = self.detect_language(file_path);
+
+        // Get tree-sitter parser
+        let tree_sitter_lang = self.get_tree_sitter_language(&language)?;
+        let mut parser = Parser::new();
+        parser.set_language(&tree_sitter_lang)?;
+
+        // Parse to find errors
+        let tree = parser
+            .parse(&original_content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file"))?;
+
+        // Apply fixes based on language and error types
+        let fixed_content = self.apply_syntax_fixes(&original_content, &tree, &language)?;
+
+        let fixes_count = if fixed_content != original_content {
+            // Count the number of fixes (rough estimate)
+            let original_lines = original_content.lines().count();
+            let fixed_lines = fixed_content.lines().count();
+            original_lines.abs_diff(fixed_lines).max(1)
+        } else {
+            0
+        };
+
+        // Write fixed content if not dry_run
+        if !self.dry_run && fixes_count > 0 {
+            tokio::fs::write(&absolute_path, &fixed_content)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to write fixed file: {}", e))?;
+        }
+
+        // Build response
+        let message = if fixes_count == 0 {
+            format!("✅ **No syntax errors to fix**\n\n📄 File: `{}`\n🎉 Code is already valid!", file_path)
+        } else if self.dry_run {
+            format!("🔍 **Dry run - {} fix(es) would be applied**\n\n📄 File: `{}`\n💡 Run without dry_run to apply fixes", fixes_count, file_path)
+        } else {
+            format!("✅ **Auto-fixed {} syntax error(s)**\n\n📄 File: `{}`\n🔧 Fixes applied successfully!", fixes_count, file_path)
+        };
+
+        let next_actions = if fixes_count > 0 && !self.dry_run {
+            vec!["Run validate_syntax to confirm all errors are fixed".to_string()]
+        } else if fixes_count > 0 && self.dry_run {
+            vec!["Remove dry_run flag to apply fixes".to_string()]
+        } else {
+            vec!["No further action needed".to_string()]
+        };
+
+        let files_modified = if !self.dry_run && fixes_count > 0 {
+            vec![file_path.to_string()]
+        } else {
+            vec![]
+        };
+
+        self.create_result(
+            "auto_fix_syntax",
+            true,
+            files_modified,
+            fixes_count,
+            next_actions,
+            message,
+            None,
+        )
+    }
+
+    /// Check if content parses without errors using tree-sitter
+    fn parses_without_errors(&self, content: &str, lang: &tree_sitter::Language) -> bool {
+        let mut parser = Parser::new();
+        if parser.set_language(lang).is_err() {
+            return false;
+        }
+
+        if let Some(tree) = parser.parse(content, None) {
+            !self.tree_has_errors(&tree.root_node())
+        } else {
+            false
+        }
+    }
+
+    /// Recursively check if a node or any of its children have errors
+    fn tree_has_errors(&self, node: &tree_sitter::Node) -> bool {
+        if node.is_error() || node.is_missing() {
+            return true;
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if self.tree_has_errors(&child) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Apply syntax fixes to code based on tree-sitter errors
+    /// Focus: REAL parse-breaking errors (unmatched braces, unclosed strings, missing delimiters)
+    /// Uses VALIDATION-DRIVEN approach: tries multiple positions and validates with tree-sitter
+    fn apply_syntax_fixes(&self, content: &str, tree: &tree_sitter::Tree, language: &str) -> Result<String> {
+        // Find the FIRST delimiter error (fix one at a time to avoid cascades)
+        let delimiter_errors = self.find_delimiter_errors(tree, content)?;
+
+        if delimiter_errors.is_empty() {
+            return Ok(content.to_string());
+        }
+
+        // Get tree-sitter language for validation
+        let tree_sitter_lang = self.get_tree_sitter_language(language)?;
+
+        debug!("🔍 Found {} delimiter errors, attempting to fix the first one", delimiter_errors.len());
+
+        // Fix the FIRST error using validation-driven approach
+        if let Some(error) = delimiter_errors.first() {
+            let delimiter = &error.missing_delimiter;
+            debug!("🎯 Trying to fix missing: {}", delimiter);
+
+            // Try multiple insertion strategies, validate each one
+            if let Some(fixed) = self.try_inline_insertion_strategies(content, delimiter, &tree_sitter_lang) {
+                debug!("✅ INLINE insertion validated successfully!");
+                return Ok(fixed);
+            }
+
+            if let Some(fixed) = self.try_newline_insertion_strategies(content, delimiter, &tree_sitter_lang) {
+                debug!("✅ NEWLINE insertion validated successfully!");
+                return Ok(fixed);
+            }
+
+            // If no strategy worked, fall back to original content
+            debug!("⚠️ No valid insertion position found - returning original content");
+        }
+
+        Ok(content.to_string())
+    }
+
+    /// Try INLINE insertion strategies (e.g., `)` before `{` on same line)
+    /// Returns the first valid fix or None
+    fn try_inline_insertion_strategies(&self, content: &str, delimiter: &str, lang: &tree_sitter::Language) -> Option<String> {
+        let lines: Vec<String> = content.lines().map(String::from).collect();
+
+        // Strategy 1: Insert before `{` on the same line (for cases like `taxRate: number {` → `taxRate: number) {`)
+        for (line_idx, line) in lines.iter().enumerate() {
+            // Look for opening braces, brackets that might need the delimiter before them
+            for pattern in &[" {", " [", " }"] {
+                if let Some(pos) = line.find(pattern) {
+                    // Create modified version of this line
+                    let mut modified_line = line.clone();
+                    modified_line.insert_str(pos, delimiter);
+
+                    // Build test content with the modified line
+                    let mut test_lines = lines.clone();
+                    test_lines[line_idx] = modified_line.clone();
+                    let test_content = test_lines.join("\n");
+
+                    debug!("  🔍 Trying INLINE before '{}' at line {}: {:?}", pattern.trim(), line_idx + 1, modified_line.trim());
+
+                    if self.parses_without_errors(&test_content, lang) {
+                        debug!("  ✅ Valid! INLINE before '{}'", pattern.trim());
+                        return Some(test_content);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Try NEWLINE insertion strategies (delimiter on new line with reduced indentation)
+    /// Returns the first valid fix or None
+    fn try_newline_insertion_strategies(&self, content: &str, delimiter: &str, lang: &tree_sitter::Language) -> Option<String> {
+        let lines: Vec<String> = content.lines().map(String::from).collect();
+
+        // Strategy 1: Try inserting on new line after each line (from end backwards)
+        for line_idx in (0..lines.len()).rev() {
+            let line = &lines[line_idx];
+
+            // Skip empty lines and comments
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("#") {
+                continue;
+            }
+
+            // Calculate indentation (reduce by 4 spaces for closing delimiters)
+            let current_indent = line.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+            let closing_indent = if current_indent.len() >= 4 {
+                &current_indent[..current_indent.len() - 4]
+            } else {
+                ""
+            };
+
+            // Build test content with delimiter on new line
+            let mut test_lines = lines.clone();
+            let delimiter_line = format!("{}{}", closing_indent, delimiter);
+            test_lines.insert(line_idx + 1, delimiter_line.clone());
+            let test_content = test_lines.join("\n");
+
+            debug!("  🔍 Trying NEWLINE after line {}: inserting '{}'", line_idx + 1, delimiter_line.trim());
+
+            if self.parses_without_errors(&test_content, lang) {
+                debug!("  ✅ Valid! NEWLINE after line {}", line_idx + 1);
+                return Some(test_content);
+            }
+        }
+
+        None
+    }
+
+    /// Find delimiter errors (unmatched braces, brackets, parentheses, unclosed strings)
+    /// Returns only the FIRST error overall to avoid cascade effects
+    ///
+    /// Strategy: Fix one error at a time. After fixing, code should be re-parsed
+    /// to find the next error. This prevents cascade effects where one missing
+    /// delimiter causes tree-sitter to report spurious additional errors.
+    fn find_delimiter_errors(&self, tree: &tree_sitter::Tree, content: &str) -> Result<Vec<DelimiterError>> {
+        let mut all_errors = Vec::new();
+        let root = tree.root_node();
+
+        // Walk the tree to find ERROR and MISSING nodes
+        let mut cursor = root.walk();
+        self.walk_for_delimiter_errors(&mut cursor, content, &mut all_errors);
+
+        // Return only the FIRST error to avoid cascades
+        // After fixing this one error, code should be re-parsed for next error
+        if let Some(first_error) = all_errors.into_iter().next() {
+            Ok(vec![first_error])
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Recursively walk the tree to find delimiter errors
+    fn walk_for_delimiter_errors(
+        &self,
+        cursor: &mut tree_sitter::TreeCursor,
+        content: &str,
+        errors: &mut Vec<DelimiterError>
+    ) {
+        loop {
+            let node = cursor.node();
+
+            // Check if this is an error node
+            if node.is_error() || node.is_missing() {
+                // Determine what delimiter is missing
+                if let Some(error) = self.analyze_delimiter_error(&node, content) {
+                    errors.push(error);
+                }
+            }
+
+            // Recurse into children
+            if cursor.goto_first_child() {
+                self.walk_for_delimiter_errors(cursor, content, errors);
+                cursor.goto_parent();
+            }
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+
+    /// Analyze an error node to determine what delimiter is missing
+    /// Returns the line where content ends (skipping comments/empty lines)
+    fn analyze_delimiter_error(&self, node: &tree_sitter::Node, content: &str) -> Option<DelimiterError> {
+        // Use the error node's END position instead of START position
+        // The error span often extends closer to where the fix should go
+        let end_byte = node.end_byte();
+        let error_line = node.end_position().row;
+
+        // DEBUG: Print error node info
+        debug!("🔍 ERROR NODE: start={}, end={}, end_line={}, kind={}",
+               node.start_position().row, node.end_position().row, error_line, node.kind());
+
+        // Get the text before the error END to determine context
+        let context_start = 0;
+        let context = &content[context_start..end_byte.min(content.len())];
+
+        // Count unmatched delimiters AND track line of last opening delimiter
+        let mut brace_count = 0;
+        let mut bracket_count = 0;
+        let mut paren_count = 0;
+        let mut last_opening_brace_line = 0;
+        let mut last_opening_bracket_line = 0;
+        let mut last_opening_paren_line = 0;
+        let mut in_string = false;
+        let mut string_char = '"';
+        let mut current_line = 0;
+
+        for ch in context.chars() {
+            if ch == '\n' {
+                current_line += 1;
+            }
+            match ch {
+                '{' if !in_string => {
+                    brace_count += 1;
+                    last_opening_brace_line = current_line;
+                }
+                '}' if !in_string => brace_count -= 1,
+                '[' if !in_string => {
+                    bracket_count += 1;
+                    last_opening_bracket_line = current_line;
+                }
+                ']' if !in_string => bracket_count -= 1,
+                '(' if !in_string => {
+                    paren_count += 1;
+                    last_opening_paren_line = current_line;
+                }
+                ')' if !in_string => paren_count -= 1,
+                '"' | '\'' => {
+                    if in_string && ch == string_char {
+                        in_string = false;
+                    } else if !in_string {
+                        in_string = true;
+                        string_char = ch;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Use current_line (last line of context) as the base insertion line
+        // This is the line just before the error, which is where we want to insert
+        let lines: Vec<&str> = content.lines().collect();
+        let mut insertion_line = current_line;
+
+        // Skip backwards over empty lines and comments
+        while insertion_line > 0 {
+            if let Some(line) = lines.get(insertion_line) {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
+                    break; // Found last content line
+                }
+            }
+            insertion_line -= 1;
+        }
+
+        // DEBUG: Print delimiter counts
+        debug!("  📊 Counts: braces={}, brackets={}, parens={}, in_string={}", brace_count, bracket_count, paren_count, in_string);
+        debug!("  📍 Insertion line calculated: {}", insertion_line);
+
+        // Determine what's missing and return insertion position
+        if brace_count > 0 {
+            debug!("  ✅ Returning missing '}}' for line {}", insertion_line);
+            return Some(DelimiterError {
+                line: insertion_line,
+                _column: 0,
+                missing_delimiter: "}".to_string(),
+                _error_type: "unmatched_brace".to_string(),
+            });
+        }
+
+        if bracket_count > 0 {
+            debug!("  ✅ Returning missing ']' for line {}", insertion_line);
+            return Some(DelimiterError {
+                line: insertion_line,
+                _column: 0,
+                missing_delimiter: "]".to_string(),
+                _error_type: "unmatched_bracket".to_string(),
+            });
+        }
+
+        if paren_count > 0 {
+            debug!("  ✅ Returning missing ')' for line {}", insertion_line);
+            return Some(DelimiterError {
+                line: insertion_line,
+                _column: 0,
+                missing_delimiter: ")".to_string(),
+                _error_type: "unmatched_paren".to_string(),
+            });
+        }
+
+        if in_string {
+            return Some(DelimiterError {
+                line: insertion_line,
+                _column: 0,
+                missing_delimiter: format!("{}", string_char),
+                _error_type: "unclosed_string".to_string(),
+            });
+        }
+
+        None
+    }
+
 
     /// Apply token optimization to SmartRefactorTool responses to prevent context overflow
     fn optimize_response(&self, message: &str) -> String {
