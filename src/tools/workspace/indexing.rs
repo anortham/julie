@@ -68,16 +68,18 @@ impl ManageWorkspaceTool {
                     workspace.root.clone(),
                 );
 
-            // Look up the workspace ID by path (works for both primary and reference workspaces)
-            let workspace_path_str = workspace_path.to_string_lossy().to_string();
-            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&workspace_path_str).await? {
-                debug!("Using existing workspace ID: {} for path: {}", workspace_entry.id, workspace_path_str);
+            // CRITICAL FIX: Always use workspace.root (canonical path) for consistent workspace_id generation
+            // Using workspace_path parameter could be relative/symlink and generate different IDs
+            let canonical_path = workspace.root.to_string_lossy().to_string();
+
+            // Look up the workspace ID by canonical path (works for both primary and reference workspaces)
+            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&canonical_path).await? {
+                debug!("Using existing workspace ID: {} for path: {}", workspace_entry.id, canonical_path);
                 workspace_entry.id
             } else {
                 // Register workspace if not registered yet
-                let workspace_path_str = workspace.root.to_string_lossy().to_string();
                 let entry = registry_service
-                    .register_workspace(workspace_path_str, crate::workspace::registry::WorkspaceType::Primary)
+                    .register_workspace(canonical_path.clone(), crate::workspace::registry::WorkspaceType::Primary)
                     .await?;
                 info!("🏷️ Registered primary workspace with ID: {}", entry.id);
                 entry.id
@@ -903,7 +905,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         all_files: Vec<PathBuf>,
-        workspace_path: &Path,
+        _workspace_path: &Path,
     ) -> Result<Vec<PathBuf>> {
         // Get workspace ID for database queries
         let workspace_id = if let Some(workspace) = handler.get_workspace().await? {
@@ -912,9 +914,11 @@ impl ManageWorkspaceTool {
                     workspace.root.clone(),
                 );
 
-            // Look up the workspace ID by path (works for both primary and reference workspaces)
-            let workspace_path_str = workspace_path.to_string_lossy().to_string();
-            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&workspace_path_str).await? {
+            // CRITICAL FIX: Always use workspace.root (canonical path) for consistent workspace_id generation
+            let canonical_path = workspace.root.to_string_lossy().to_string();
+
+            // Look up the workspace ID by canonical path (works for both primary and reference workspaces)
+            if let Some(workspace_entry) = registry_service.get_workspace_by_path(&canonical_path).await? {
                 workspace_entry.id
             } else {
                 // No workspace registered yet - all files are new
