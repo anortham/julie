@@ -106,7 +106,10 @@ pub struct FuzzyReplaceTool {
 }
 
 impl FuzzyReplaceTool {
-    pub async fn call_tool(&self, _handler: &crate::handler::JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn call_tool(
+        &self,
+        _handler: &crate::handler::JulieServerHandler,
+    ) -> Result<CallToolResult> {
         info!(
             "🔍 Fuzzy replace in: {} (threshold: {}, distance: {})",
             self.file_path, self.threshold, self.distance
@@ -116,14 +119,16 @@ impl FuzzyReplaceTool {
         if self.threshold < 0.0 || self.threshold > 1.0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 "❌ threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.8 for most cases".to_string(),
+                 💡 Recommended: 0.8 for most cases"
+                    .to_string(),
             )]));
         }
 
         if self.distance < 0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 "❌ distance must be positive\n\
-                 💡 Recommended: 1000 for most files".to_string(),
+                 💡 Recommended: 1000 for most files"
+                    .to_string(),
             )]));
         }
 
@@ -205,19 +210,34 @@ impl FuzzyReplaceTool {
 
             // Format human-readable markdown
             let mut markdown = String::new();
-            markdown.push_str(&format!("📋 **Fuzzy Replace Preview: {}**\n\n", result.file_path));
+            markdown.push_str(&format!(
+                "📋 **Fuzzy Replace Preview: {}**\n\n",
+                result.file_path
+            ));
             markdown.push_str(&format!("**Matches found:** {}\n", result.matches_found));
             markdown.push_str(&format!("**Pattern:** `{}`\n", result.pattern));
             markdown.push_str(&format!("**Replacement:** `{}`\n", result.replacement));
-            markdown.push_str(&format!("**Threshold:** {} (fuzzy matching)\n", result.threshold));
+            markdown.push_str(&format!(
+                "**Threshold:** {} (fuzzy matching)\n",
+                result.threshold
+            ));
             markdown.push_str(&format!("**Distance:** {} characters\n\n", self.distance));
 
             // Show diff preview (simplified - just show summary)
             markdown.push_str("**Changes Preview:**\n");
-            let lines_changed = modified_content.lines().count().abs_diff(original_content.lines().count());
+            let lines_changed = modified_content
+                .lines()
+                .count()
+                .abs_diff(original_content.lines().count());
             markdown.push_str(&format!("• Lines changed: ~{}\n", lines_changed));
-            markdown.push_str(&format!("• Original length: {} chars\n", original_content.len()));
-            markdown.push_str(&format!("• Modified length: {} chars\n\n", modified_content.len()));
+            markdown.push_str(&format!(
+                "• Original length: {} chars\n",
+                original_content.len()
+            ));
+            markdown.push_str(&format!(
+                "• Modified length: {} chars\n\n",
+                modified_content.len()
+            ));
             markdown.push_str("💡 Set dry_run: false to apply changes\n");
 
             // Serialize to JSON
@@ -267,8 +287,11 @@ impl FuzzyReplaceTool {
              **Replacement:** `{}`\n\
              **Threshold:** {} (fuzzy matching)\n\n\
              Changes applied successfully!",
-            result.file_path, result.matches_found, result.pattern,
-            result.replacement, result.threshold
+            result.file_path,
+            result.matches_found,
+            result.pattern,
+            result.replacement,
+            result.threshold
         );
 
         // Serialize to JSON for structured_content
@@ -281,8 +304,10 @@ impl FuzzyReplaceTool {
             return Err(anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     /// Perform fuzzy search and replace using hybrid DMP + Levenshtein approach
@@ -327,9 +352,7 @@ impl FuzzyReplaceTool {
             match dmp.match_main::<Efficient>(&search_content, &self.pattern, 0) {
                 Some(byte_offset) => {
                     // DMP returns byte offset, convert to char offset in search_content
-                    let char_offset_in_slice = search_content[..byte_offset]
-                        .chars()
-                        .count();
+                    let char_offset_in_slice = search_content[..byte_offset].chars().count();
 
                     // Convert to absolute char position in original content
                     let absolute_char_pos = search_from_char + char_offset_in_slice;
@@ -337,7 +360,8 @@ impl FuzzyReplaceTool {
                     // Validate match is within bounds
                     if absolute_char_pos + pattern_len <= content_chars.len() {
                         // Extract the actual matched text
-                        let matched_text: String = content_chars[absolute_char_pos..absolute_char_pos + pattern_len]
+                        let matched_text: String = content_chars
+                            [absolute_char_pos..absolute_char_pos + pattern_len]
                             .iter()
                             .collect();
 
@@ -382,7 +406,10 @@ impl FuzzyReplaceTool {
         for &match_pos in matches.iter().rev() {
             // Double-check bounds before splicing
             if match_pos + pattern_len <= result_chars.len() {
-                result_chars.splice(match_pos..match_pos + pattern_len, replacement_chars.clone());
+                result_chars.splice(
+                    match_pos..match_pos + pattern_len,
+                    replacement_chars.clone(),
+                );
             }
         }
 
@@ -426,13 +453,17 @@ impl FuzzyReplaceTool {
         // Fill matrix
         for i in 1..=a_len {
             for j in 1..=b_len {
-                let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+                let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
                 matrix[i][j] = std::cmp::min(
                     std::cmp::min(
-                        matrix[i - 1][j] + 1,      // deletion
-                        matrix[i][j - 1] + 1       // insertion
+                        matrix[i - 1][j] + 1, // deletion
+                        matrix[i][j - 1] + 1, // insertion
                     ),
-                    matrix[i - 1][j - 1] + cost    // substitution
+                    matrix[i - 1][j - 1] + cost, // substitution
                 );
             }
         }

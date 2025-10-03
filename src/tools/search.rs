@@ -86,8 +86,22 @@ impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("🔍 Fast search: {} (mode: {})", self.query, self.mode);
 
-        // 🚀 NEW: Check system readiness with graceful degradation
-        let readiness = crate::health::HealthChecker::check_system_readiness(handler).await?;
+        // 🔥 CRITICAL FIX: Determine target workspace for health check
+        // If workspace parameter specified, check that workspace; otherwise check primary
+        let target_workspace_id = if self.workspace.is_some() {
+            // Resolve workspace filter to get actual workspace ID
+            let workspace_filter = self.resolve_workspace_filter(handler).await?;
+            workspace_filter.and_then(|ids| ids.first().cloned())
+        } else {
+            None
+        };
+
+        // 🚀 NEW: Check system readiness with graceful degradation (workspace-aware!)
+        let readiness = crate::health::HealthChecker::check_system_readiness(
+            handler,
+            target_workspace_id.as_deref(),
+        )
+        .await?;
 
         match readiness {
             SystemReadiness::NotReady => {
@@ -168,8 +182,10 @@ impl FastSearchTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -181,10 +197,7 @@ impl FastSearchTool {
         if let Some(workspace_ids) = workspace_filter {
             // For now, use the first workspace ID (single workspace search)
             let workspace_id = &workspace_ids[0];
-            debug!(
-                "🚀 Loading Tantivy index for workspace: {}",
-                workspace_id
-            );
+            debug!("🚀 Loading Tantivy index for workspace: {}", workspace_id);
 
             // Load the workspace-specific SearchEngine
             return self.search_workspace_tantivy(handler, workspace_id).await;
@@ -447,10 +460,8 @@ impl FastSearchTool {
         debug!("🔄 Hybrid search mode (text + semantic fusion)");
 
         // Run both searches in parallel for optimal performance
-        let (text_results, semantic_results) = tokio::join!(
-            self.text_search(handler),
-            self.semantic_search(handler)
-        );
+        let (text_results, semantic_results) =
+            tokio::join!(self.text_search(handler), self.semantic_search(handler));
 
         // Handle errors gracefully - if one fails, use the other
         let text_symbols = match text_results {
@@ -476,7 +487,8 @@ impl FastSearchTool {
 
         // Create a scoring map for fusion
         // Key: symbol ID, Value: (symbol, text_rank, semantic_rank, combined_score)
-        let mut fusion_map: HashMap<String, (Symbol, Option<f32>, Option<f32>, f32)> = HashMap::new();
+        let mut fusion_map: HashMap<String, (Symbol, Option<f32>, Option<f32>, f32)> =
+            HashMap::new();
 
         // Add text search results with normalized scores
         for (rank, symbol) in text_symbols.iter().enumerate() {
@@ -500,12 +512,12 @@ impl FastSearchTool {
                     *sem_score = Some(semantic_score);
 
                     // Calculate weighted fusion score with overlap bonus
-                    let text_weight = text_score.unwrap_or(0.0) * 0.6;  // 60% weight for text
-                    let sem_weight = semantic_score * 0.4;  // 40% weight for semantic
-                    let overlap_bonus = 0.2;  // Bonus for appearing in both
+                    let text_weight = text_score.unwrap_or(0.0) * 0.6; // 60% weight for text
+                    let sem_weight = semantic_score * 0.4; // 40% weight for semantic
+                    let overlap_bonus = 0.2; // Bonus for appearing in both
 
                     *combined = text_weight + sem_weight + overlap_bonus;
-                    *combined = combined.min(1.0);  // Cap at 1.0
+                    *combined = combined.min(1.0); // Cap at 1.0
 
                     debug!(
                         "Symbol '{}' found in both searches - boosted score to {:.2}",
@@ -516,7 +528,7 @@ impl FastSearchTool {
                     symbol.clone(),
                     None,
                     Some(semantic_score),
-                    semantic_score * 0.4,  // 40% weight for semantic-only
+                    semantic_score * 0.4, // 40% weight for semantic-only
                 ));
         }
 
@@ -526,9 +538,7 @@ impl FastSearchTool {
             .map(|(symbol, _text, _sem, score)| (symbol, score))
             .collect();
 
-        ranked_results.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        ranked_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Apply exact match boost and path relevance scoring (same as text search)
         let path_scorer = PathRelevanceScorer::new(&self.query);
@@ -545,7 +555,8 @@ impl FastSearchTool {
                 * exact_match_booster.calculate_boost(&b.0.name)
                 * path_scorer.calculate_score(&b.0.file_path);
 
-            final_score_b.partial_cmp(&final_score_a)
+            final_score_b
+                .partial_cmp(&final_score_a)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -619,7 +630,8 @@ impl FastSearchTool {
 
         if lang_counts.len() > 1 {
             // Safe: We checked lang_counts.len() > 1, so max_by_key will find a value
-            let main_lang = lang_counts.iter()
+            let main_lang = lang_counts
+                .iter()
                 .max_by_key(|(_, count)| *count)
                 .expect("lang_counts must have entries since len > 1");
             insights.push(format!(
@@ -851,7 +863,10 @@ impl FastSearchTool {
                 // Resolve primary workspace ID for precise workspace filtering
                 let workspace = handler.get_workspace().await?;
                 if let Some(workspace) = workspace {
-                    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+                    let registry_service =
+                        crate::workspace::registry_service::WorkspaceRegistryService::new(
+                            workspace.root.clone(),
+                        );
                     match registry_service.get_primary_workspace_id().await? {
                         Some(workspace_id) => {
                             debug!("🔍 Resolved primary workspace to ID: {}", workspace_id);
@@ -904,19 +919,28 @@ impl FastSearchTool {
             "🔍 Searching workspace-specific Tantivy index for workspace: {}",
             workspace_id
         );
+        debug!("🔍 [TRACE 1] Starting search_workspace_tantivy");
 
         // Get the primary workspace to access the per-workspace index
+        debug!("🔍 [TRACE 2] About to call get_workspace()");
         let workspace = handler
             .get_workspace()
             .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+        debug!("🔍 [TRACE 3] Got workspace successfully");
 
         // Check if this is the primary workspace - if so, use the already-loaded search engine
-        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-        let primary_workspace_id = registry_service
-            .get_primary_workspace_id()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No primary workspace ID found"))?;
+        debug!("🔍 [TRACE 4] Deriving primary workspace ID from root");
+        let primary_workspace_id = crate::workspace::registry::generate_workspace_id(
+            workspace
+                .root
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid workspace path"))?,
+        )?;
+        debug!(
+            "🔍 [TRACE 5] Computed primary workspace ID: {}",
+            primary_workspace_id
+        );
 
         if workspace_id == primary_workspace_id {
             // Use the already-loaded primary workspace search engine
@@ -931,7 +955,10 @@ impl FastSearchTool {
                     .map(|result| result.symbol)
                     .collect();
 
-                debug!("🚀 Workspace Tantivy search returned {} results", symbols.len());
+                debug!(
+                    "🚀 Workspace Tantivy search returned {} results",
+                    symbols.len()
+                );
                 return Ok(symbols);
             } else {
                 return Err(anyhow::anyhow!(
@@ -941,36 +968,55 @@ impl FastSearchTool {
         }
 
         // For reference workspaces, dynamically load their Tantivy index
-        debug!("📂 Loading reference workspace Tantivy index: {}", workspace_id);
+        debug!(
+            "📂 Loading reference workspace Tantivy index: {}",
+            workspace_id
+        );
+        debug!("🔍 [TRACE 7] About to call get_workspace() for reference workspace");
 
         // Get the workspace metadata from registry
+        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
         let _workspace_metadata = registry_service
             .get_workspace(workspace_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found in registry", workspace_id))?;
+        debug!("🔍 [TRACE 8] Got workspace metadata for reference workspace");
 
         // Build the path to the workspace's Tantivy index
         // Per-workspace architecture: indexes/{workspace_id}/tantivy/
-        let index_path = workspace.root
+        let index_path = workspace
+            .root
             .join(".julie")
             .join("indexes")
             .join(workspace_id)
             .join("tantivy");
 
         // Check if the index exists
+        debug!("🔍 [TRACE 9] Checking if index exists at {:?}", index_path);
         if !index_path.exists() {
             return Err(anyhow::anyhow!(
                 "Tantivy index not found for workspace '{}' at {:?}. Has it been indexed?",
-                workspace_id, index_path
+                workspace_id,
+                index_path
             ));
         }
+        debug!("🔍 [TRACE 10] Index exists, creating SearchEngine");
 
         // Create a SearchEngine for this workspace's index
-        debug!("🔧 Creating SearchEngine for reference workspace at {:?}", index_path);
+        debug!(
+            "🔧 Creating SearchEngine for reference workspace at {:?}",
+            index_path
+        );
         let search_engine = crate::search::engine::SearchEngine::new(&index_path)?;
+        debug!("🔍 [TRACE 11] SearchEngine created successfully");
 
         // Perform the search
+        debug!("🔍 [TRACE 12] About to call search_engine.search()");
         let search_results = search_engine.search(&self.query).await?;
+        debug!(
+            "🔍 [TRACE 13] Search completed with {} results",
+            search_results.len()
+        );
 
         // Convert SearchResults to Symbols
         let symbols: Vec<Symbol> = search_results
@@ -980,7 +1026,8 @@ impl FastSearchTool {
 
         debug!(
             "✅ Reference workspace '{}' search returned {} results",
-            workspace_id, symbols.len()
+            workspace_id,
+            symbols.len()
         );
 
         // TODO: Future optimization - cache SearchEngine instances for frequently accessed workspaces
@@ -1094,14 +1141,23 @@ impl FastSearchTool {
 
         // Get workspace ID for filtering
         let workspace_id = {
-            let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
-            registry_service.get_primary_workspace_id().await?.unwrap_or_else(|| "primary".to_string())
+            let registry_service =
+                crate::workspace::registry_service::WorkspaceRegistryService::new(
+                    workspace.root.clone(),
+                );
+            registry_service
+                .get_primary_workspace_id()
+                .await?
+                .unwrap_or_else(|| "primary".to_string())
         };
 
         // 🔥 NEW: Apply basic query intelligence even in fallback mode
         // This improves search quality during the 5-10s window while Tantivy builds
         let processed_query = self.preprocess_fallback_query(&self.query);
-        debug!("📝 Fallback query preprocessed: '{}' -> '{}'", self.query, processed_query);
+        debug!(
+            "📝 Fallback query preprocessed: '{}' -> '{}'",
+            self.query, processed_query
+        );
 
         // Use FTS5 for file content search with processed query
         let db_lock = db.lock().await;
@@ -1118,7 +1174,13 @@ impl FastSearchTool {
             // Create a FILE_CONTENT symbol from the FTS result
             let symbol = crate::extractors::Symbol {
                 id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
-                name: format!("FILE_CONTENT: {}", std::path::Path::new(&result.path).file_name().unwrap_or_default().to_string_lossy()),
+                name: format!(
+                    "FILE_CONTENT: {}",
+                    std::path::Path::new(&result.path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                ),
                 kind: crate::extractors::SymbolKind::Module,
                 language: "text".to_string(),
                 file_path: result.path.clone(),
@@ -1140,7 +1202,10 @@ impl FastSearchTool {
             symbols.push(symbol);
         }
 
-        debug!("📄 CASCADE: FTS5 returned {} file content matches", symbols.len());
+        debug!(
+            "📄 CASCADE: FTS5 returned {} file content matches",
+            symbols.len()
+        );
         Ok(symbols)
     }
 
@@ -1183,7 +1248,10 @@ impl FastSearchTool {
         // Get actual primary workspace ID instead of hardcoded "primary"
         let workspace = handler.get_workspace().await?;
         let workspace_ids = if let Some(workspace) = workspace {
-            let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+            let registry_service =
+                crate::workspace::registry_service::WorkspaceRegistryService::new(
+                    workspace.root.clone(),
+                );
             match registry_service.get_primary_workspace_id().await? {
                 Some(workspace_id) => {
                     debug!("🔍 Using actual primary workspace ID: {}", workspace_id);

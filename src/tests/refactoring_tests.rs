@@ -187,7 +187,9 @@ mod extract_function_tests {
     async fn test_extract_function_not_implemented() {
         let tool = SmartRefactorTool {
             operation: "extract_function".to_string(),
-            params: r#"{"file": "test.js", "start_line": 1, "end_line": 5, "function_name": "test_fn"}"#.to_string(),
+            params:
+                r#"{"file": "test.js", "start_line": 1, "end_line": 5, "function_name": "test_fn"}"#
+                    .to_string(),
             dry_run: true,
         };
 

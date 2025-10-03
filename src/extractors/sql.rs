@@ -9,28 +9,26 @@ use tree_sitter::Tree;
 
 // Static regexes compiled once for performance
 static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(INT|INTEGER|VARCHAR|TEXT|DECIMAL|FLOAT|BOOLEAN|DATE|TIMESTAMP|CHAR|BIGINT|SMALLINT)\b").unwrap()
+    Regex::new(
+        r"\b(INT|INTEGER|VARCHAR|TEXT|DECIMAL|FLOAT|BOOLEAN|DATE|TIMESTAMP|CHAR|BIGINT|SMALLINT)\b",
+    )
+    .unwrap()
 });
-static CREATE_VIEW_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap()
-});
+static CREATE_VIEW_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap());
 #[allow(dead_code)]
-static ON_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap()
-});
+static ON_CLAUSE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap());
 #[allow(dead_code)]
-static USING_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"USING\s+([A-Z]+)").unwrap()
-});
+static USING_CLAUSE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"USING\s+([A-Z]+)").unwrap());
 static INDEX_COLUMN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))").unwrap()
 });
-static INCLUDE_CLAUSE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"INCLUDE\s*(\([^)]+\))").unwrap()
-});
-static VAR_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap()
-});
+static INCLUDE_CLAUSE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"INCLUDE\s*(\([^)]+\))").unwrap());
+static VAR_DECL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z0-9(),\s]+)").unwrap());
 static DECLARE_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"DECLARE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(DECIMAL\([^)]+\)|INT|BIGINT|VARCHAR\([^)]+\)|TEXT|BOOLEAN)").unwrap()
 });
@@ -1737,7 +1735,9 @@ impl SqlExtractor {
         // Find the FROM clause to limit our search to the SELECT list only
         // Use regex to find the table FROM clause, not FROM inside expressions
         let from_regex = regex::Regex::new(r"\bFROM\s+[a-zA-Z_][a-zA-Z0-9_]*\s+[a-zA-Z_]").unwrap();
-        let from_index = from_regex.find(&error_text[select_index..]).map(|from_match| select_index + from_match.start());
+        let from_index = from_regex
+            .find(&error_text[select_index..])
+            .map(|from_match| select_index + from_match.start());
 
         let select_section = if let Some(from_idx) = from_index {
             if from_idx > select_index {
@@ -1967,10 +1967,10 @@ impl SqlExtractor {
             let variable_type = captures.get(2).unwrap().as_str();
 
             // Only add if not already added from tree traversal
-            if !symbols.iter().any(|s| {
-                s.name == variable_name
-                    && s.parent_id.as_deref() == Some(parent_id)
-            }) {
+            if !symbols
+                .iter()
+                .any(|s| s.name == variable_name && s.parent_id.as_deref() == Some(parent_id))
+            {
                 let mut metadata = HashMap::new();
                 metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
                 metadata.insert(

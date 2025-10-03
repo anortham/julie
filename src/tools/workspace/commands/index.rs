@@ -52,18 +52,23 @@ impl ManageWorkspaceTool {
         // This prevents Tantivy lock failures from duplicate initialization
         let workspace_already_loaded = handler.get_workspace().await?.is_some();
 
+        println!("🐛 [HANDLE_INDEX TRACE 1] workspace_already_loaded={}, force_reindex={}", workspace_already_loaded, force_reindex);
+
         if !workspace_already_loaded || force_reindex {
+            println!("🐛 [HANDLE_INDEX TRACE 2] About to call initialize_workspace_with_force");
             handler
                 .initialize_workspace_with_force(
                     Some(workspace_path.to_string_lossy().to_string()),
                     force_reindex,
                 )
                 .await?;
+            println!("🐛 [HANDLE_INDEX TRACE 3] initialize_workspace_with_force completed");
         } else {
-            debug!("Workspace already loaded, skipping re-initialization");
+            println!("🐛 [HANDLE_INDEX TRACE 3] Workspace already loaded, skipping re-initialization");
         }
 
         // Check if already indexed and not forcing reindex
+        println!("🐛 [HANDLE_INDEX TRACE 4] About to check if already indexed");
         if !force_reindex {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
@@ -71,12 +76,15 @@ impl ManageWorkspaceTool {
                 let symbol_count = if let Ok(Some(workspace)) = handler.get_workspace().await {
                     if let Some(db) = workspace.db.as_ref() {
                         // Use registry service to get primary workspace ID
-                        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+                        let registry_service =
+                            WorkspaceRegistryService::new(workspace.root.clone());
                         match registry_service.get_primary_workspace_id().await {
                             Ok(Some(workspace_id)) => {
                                 let db_lock = db.lock().await;
                                 // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
-                                db_lock.count_symbols_for_workspace(&workspace_id).unwrap_or(0)
+                                db_lock
+                                    .count_symbols_for_workspace(&workspace_id)
+                                    .unwrap_or(0)
                             }
                             _ => {
                                 // Fallback: if no workspace ID, count all symbols
@@ -102,6 +110,8 @@ impl ManageWorkspaceTool {
             }
         }
 
+        println!("🐛 [HANDLE_INDEX TRACE 5] About to call index_workspace_files");
+
         // Perform indexing
         match self
             .index_workspace_files(handler, &workspace_path, force_reindex)
@@ -114,28 +124,38 @@ impl ManageWorkspaceTool {
                 // Register as primary workspace and update statistics
                 if let Some(workspace) = handler.get_workspace().await? {
                     let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-                    let workspace_path_str = workspace.root.to_string_lossy().to_string();
 
-                    // Try to register (may fail if already registered - that's OK)
-                    let workspace_id = match registry_service
-                        .register_workspace(workspace_path_str, WorkspaceType::Primary)
-                        .await
+                    // Determine canonical path for lookup/registration
+                    let canonical_path = workspace_path
+                        .canonicalize()
+                        .unwrap_or_else(|_| workspace_path.clone());
+                    let canonical_path_str = canonical_path.to_string_lossy().to_string();
+
+                    // Prefer existing registry entry to avoid redundant registration
+                    let workspace_id = if let Some(entry) = registry_service
+                        .get_workspace_by_path(&canonical_path_str)
+                        .await?
                     {
-                        Ok(entry) => {
-                            info!("✅ Registered primary workspace: {}", entry.id);
-                            entry.id
-                        }
-                        Err(_) => {
-                            // Already registered - get the existing ID
-                            match registry_service.get_primary_workspace_id().await? {
+                        entry.id
+                    } else {
+                        // Register only if missing (handles reference workspaces)
+                        match registry_service
+                            .register_workspace(canonical_path_str.clone(), WorkspaceType::Primary)
+                            .await
+                        {
+                            Ok(entry) => {
+                                info!("✅ Registered primary workspace: {}", entry.id);
+                                entry.id
+                            }
+                            Err(_) => match registry_service.get_primary_workspace_id().await? {
                                 Some(id) => id,
                                 None => {
                                     warn!("Failed to get primary workspace ID after registration");
                                     return Ok(CallToolResult::text_content(vec![TextContent::from(
-                                        "⚠️ Indexing completed but could not update workspace statistics",
-                                    )]));
+                                            "⚠️ Indexing completed but could not update workspace statistics",
+                                        )]));
                                 }
-                            }
+                            },
                         }
                     };
 
@@ -147,15 +167,26 @@ impl ManageWorkspaceTool {
                         .map(|_m| calculate_dir_size(&index_path))
                         .unwrap_or(0);
 
-                    if let Err(e) = registry_service
-                        .update_workspace_statistics(&workspace_id, symbol_count, file_count, index_size)
-                        .await
-                    {
-                        warn!("Failed to update workspace statistics: {}", e);
-                    } else {
-                        info!("✅ Updated workspace statistics: {} files, {} symbols, {} bytes index",
-                              file_count, symbol_count, index_size);
-                    }
+                    let registry_service_clone = registry_service.clone();
+                    let workspace_id_for_stats = workspace_id.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = registry_service_clone
+                            .update_workspace_statistics(
+                                &workspace_id_for_stats,
+                                symbol_count,
+                                file_count,
+                                index_size,
+                            )
+                            .await
+                        {
+                            warn!("Failed to update workspace statistics: {}", e);
+                        } else {
+                            info!(
+                                "✅ Updated workspace statistics: {} files, {} symbols, {} bytes index",
+                                file_count, symbol_count, index_size
+                            );
+                        }
+                    });
                 }
 
                 let message = format!(

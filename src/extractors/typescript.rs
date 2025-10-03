@@ -330,7 +330,10 @@ impl TypeScriptExtractor {
         // For imports, extract the source (what's being imported from)
         // Example: import { foo } from './bar' -> name should be './bar' or 'foo'
         let name = if let Some(source_node) = node.child_by_field_name("source") {
-            self.base.get_node_text(&source_node).trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+            self.base
+                .get_node_text(&source_node)
+                .trim_matches(|c| c == '"' || c == '\'' || c == '`')
+                .to_string()
         } else {
             // Try to get import clause for named imports
             node.children(&mut node.walk())
@@ -351,12 +354,16 @@ impl TypeScriptExtractor {
         // Example: export { bar } from './baz' -> name should be 'bar'
         let name = if let Some(declaration_node) = node.child_by_field_name("declaration") {
             // export class/function/const/etc
-            declaration_node.child_by_field_name("name")
+            declaration_node
+                .child_by_field_name("name")
                 .map(|n| self.base.get_node_text(&n))
                 .unwrap_or_else(|| "export".to_string())
         } else if let Some(source_node) = node.child_by_field_name("source") {
             // export { ... } from '...'
-            self.base.get_node_text(&source_node).trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+            self.base
+                .get_node_text(&source_node)
+                .trim_matches(|c| c == '"' || c == '\'' || c == '`')
+                .to_string()
         } else {
             // export { ... }
             node.children(&mut node.walk())
@@ -387,7 +394,8 @@ impl TypeScriptExtractor {
 
     fn extract_property(&mut self, node: tree_sitter::Node) -> Symbol {
         // Properties can have their name in different field names depending on context
-        let name_node = node.child_by_field_name("name")
+        let name_node = node
+            .child_by_field_name("name")
             .or_else(|| node.child_by_field_name("key"));
         let name = if let Some(name_node) = name_node {
             self.base.get_node_text(&name_node)

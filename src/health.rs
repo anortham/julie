@@ -31,7 +31,10 @@ impl HealthChecker {
     /// Get comprehensive system readiness status
     ///
     /// This is the SINGLE SOURCE OF TRUTH for system health across all tools
-    pub async fn check_system_readiness(handler: &JulieServerHandler) -> Result<SystemReadiness> {
+    pub async fn check_system_readiness(
+        handler: &JulieServerHandler,
+        workspace_id: Option<&str>,
+    ) -> Result<SystemReadiness> {
         // Step 1: Check if workspace and database exist
         let workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
@@ -43,24 +46,29 @@ impl HealthChecker {
             None => return Ok(SystemReadiness::NotReady),
         };
 
-        // Step 2: Get the actual primary workspace ID from registry
-        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
-            workspace.root.clone(),
-        );
-        let primary_workspace_id = match registry_service.get_primary_workspace_id().await? {
-            Some(id) => id,
-            None => return Ok(SystemReadiness::NotReady),
+        // Step 2: Determine which workspace to check
+        // If workspace_id provided, use it; otherwise get primary workspace ID
+        let target_workspace_id = if let Some(id) = workspace_id {
+            id.to_string()
+        } else {
+            // Get the actual primary workspace ID from registry
+            let registry_service =
+                crate::workspace::registry_service::WorkspaceRegistryService::new(
+                    workspace.root.clone(),
+                );
+            match registry_service.get_primary_workspace_id().await? {
+                Some(id) => id,
+                None => return Ok(SystemReadiness::NotReady),
+            }
         };
 
-        // Step 3: Get symbol count from database using actual workspace ID
+        // Step 3: Get symbol count from database using target workspace ID
         let symbol_count = match db.try_lock() {
             Ok(db_lock) => db_lock
-                .get_symbol_count_for_workspace(&primary_workspace_id)
+                .get_symbol_count_for_workspace(&target_workspace_id)
                 .unwrap_or(0),
             Err(_busy) => {
-                debug!(
-                    "Symbol database busy during readiness check; assuming symbols available"
-                );
+                debug!("Symbol database busy during readiness check; assuming symbols available");
                 1
             }
         };
@@ -69,20 +77,20 @@ impl HealthChecker {
             return Ok(SystemReadiness::NotReady);
         }
 
-        // Compute workspace ID for per-workspace paths
-        use crate::workspace::registry;
-        let workspace_id = registry::generate_workspace_id(
-            workspace.root.to_str()
-                .ok_or_else(|| anyhow::anyhow!("Invalid workspace path"))?
-        )?;
+        // Use the target workspace ID for per-workspace paths
+        let workspace_id_for_paths = target_workspace_id.clone();
 
         // Step 4: Check Tantivy search engine status
         let tantivy_ready = workspace.search.is_some()
-            && workspace.workspace_index_path(&workspace_id).exists();
+            && workspace
+                .workspace_index_path(&workspace_id_for_paths)
+                .exists();
 
         // Step 5: Check embedding system status
         let embeddings_ready = workspace.embeddings.is_some()
-            && Self::has_embedding_files(&workspace.workspace_vectors_path(&workspace_id));
+            && Self::has_embedding_files(
+                &workspace.workspace_vectors_path(&workspace_id_for_paths),
+            );
 
         // Step 6: Determine overall readiness level
         match (tantivy_ready, embeddings_ready) {
@@ -98,7 +106,7 @@ impl HealthChecker {
 
     /// Quick check: Is the system ready for basic operations?
     pub async fn is_ready_for_search(handler: &JulieServerHandler) -> Result<bool> {
-        match Self::check_system_readiness(handler).await? {
+        match Self::check_system_readiness(handler, None).await? {
             SystemReadiness::NotReady => Ok(false),
             _ => Ok(true), // SQLite or better is sufficient for search
         }
@@ -106,7 +114,7 @@ impl HealthChecker {
 
     /// Quick check: Is Tantivy search available for optimal performance?
     pub async fn is_tantivy_ready(handler: &JulieServerHandler) -> Result<bool> {
-        match Self::check_system_readiness(handler).await? {
+        match Self::check_system_readiness(handler, None).await? {
             SystemReadiness::PartiallyReady { tantivy_ready, .. } => Ok(tantivy_ready),
             SystemReadiness::FullyReady { .. } => Ok(true),
             _ => Ok(false),
@@ -115,7 +123,7 @@ impl HealthChecker {
 
     /// Quick check: Are embeddings available for semantic search?
     pub async fn are_embeddings_ready(handler: &JulieServerHandler) -> Result<bool> {
-        match Self::check_system_readiness(handler).await? {
+        match Self::check_system_readiness(handler, None).await? {
             SystemReadiness::PartiallyReady {
                 embeddings_ready, ..
             } => Ok(embeddings_ready),
@@ -126,7 +134,7 @@ impl HealthChecker {
 
     /// Get a user-friendly status message
     pub async fn get_status_message(handler: &JulieServerHandler) -> Result<String> {
-        let readiness = Self::check_system_readiness(handler).await?;
+        let readiness = Self::check_system_readiness(handler, None).await?;
 
         match readiness {
             SystemReadiness::NotReady => {
@@ -184,9 +192,8 @@ impl HealthChecker {
 
         // Compute workspace ID for per-workspace paths
         use crate::workspace::registry;
-        let workspace_id_result = registry::generate_workspace_id(
-            workspace.root.to_str().unwrap_or("")
-        );
+        let workspace_id_result =
+            registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""));
 
         // Tantivy status
         if let Ok(workspace_id) = &workspace_id_result {

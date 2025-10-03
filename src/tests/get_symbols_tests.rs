@@ -80,7 +80,10 @@ pub const MAX_USERS: usize = 100;
         detailed: None,
     };
     let index_result = index_tool.call_tool(&handler).await?;
-    println!("DEBUG: Indexing result: {:?}", extract_text_from_result(&index_result));
+    println!(
+        "DEBUG: Indexing result: {:?}",
+        extract_text_from_result(&index_result)
+    );
 
     // Wait a moment for indexing to complete
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -89,7 +92,10 @@ pub const MAX_USERS: usize = 100;
     println!("DEBUG: Test file created at: {}", test_file.display());
     println!("DEBUG: Test file exists: {}", test_file.exists());
 
-    let workspace = handler.get_workspace().await?.expect("Workspace should exist");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace should exist");
     let db = workspace.db.as_ref().expect("DB should exist");
     let db_lock = db.lock().await;
     let all_symbols = db_lock.get_all_symbols().expect("Should get symbols");
@@ -237,9 +243,9 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
 
     // Test various path formats - all should work
     let path_variants = vec![
-        "src/utils.rs",           // Simple relative
-        "./src/utils.rs",         // Relative with ./
-        "src/../src/utils.rs",    // Relative with .. (should normalize)
+        "src/utils.rs",        // Simple relative
+        "./src/utils.rs",      // Relative with ./
+        "src/../src/utils.rs", // Relative with .. (should normalize)
     ];
 
     for path_variant in path_variants {

@@ -7,8 +7,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::symbols::GetSymbolsTool;
     use crate::handler::JulieServerHandler;
+    use crate::tools::symbols::GetSymbolsTool;
     use anyhow::Result;
 
     #[tokio::test]

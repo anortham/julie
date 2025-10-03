@@ -177,8 +177,10 @@ impl TraceCallPathTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -190,7 +192,8 @@ impl TraceCallPathTool {
         // Validate parameters
         if self.max_depth > 10 {
             let message = "❌ max_depth cannot exceed 10 (performance limit)\n\
-                 💡 Try with max_depth: 5 for a reasonable balance".to_string();
+                 💡 Try with max_depth: 5 for a reasonable balance"
+                .to_string();
             return self.create_result(
                 false,
                 0,
@@ -202,7 +205,8 @@ impl TraceCallPathTool {
 
         if self.similarity_threshold < 0.0 || self.similarity_threshold > 1.0 {
             let message = "❌ similarity_threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.7 for balanced results".to_string();
+                 💡 Recommended: 0.7 for balanced results"
+                .to_string();
             return self.create_result(
                 false,
                 0,

@@ -334,17 +334,23 @@ impl BaseExtractor {
         let canonical_path = std::path::Path::new(&file_path)
             .canonicalize()
             .unwrap_or_else(|e| {
-                warn!("⚠️  Failed to canonicalize path '{}': {} - using original", file_path, e);
+                warn!(
+                    "⚠️  Failed to canonicalize path '{}': {} - using original",
+                    file_path, e
+                );
                 std::path::PathBuf::from(&file_path)
             })
             .to_string_lossy()
             .to_string();
 
-        debug!("BaseExtractor path: '{}' -> '{}'", file_path, canonical_path);
+        debug!(
+            "BaseExtractor path: '{}' -> '{}'",
+            file_path, canonical_path
+        );
 
         Self {
             language,
-            file_path: canonical_path,  // Use canonical path, not original
+            file_path: canonical_path, // Use canonical path, not original
             content,
             symbol_map: HashMap::new(),
             relationships: Vec::new(),

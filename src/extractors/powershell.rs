@@ -15,7 +15,8 @@ static INTEGER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+$").unwra
 static FLOAT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+\.\d+$").unwrap());
 static BOOL_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\$(true|false)$").unwrap());
 static TYPE_BRACKET_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[.*\]$").unwrap());
-static FUNCTION_NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap());
+static FUNCTION_NAME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap());
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps:
 /// - Functions (simple and advanced with [CmdletBinding()])
@@ -788,8 +789,7 @@ impl PowerShellExtractor {
                 let mut type_name = "object".to_string();
 
                 // Extract type from PowerShell type annotations
-                if let Some(captures) = TYPE_ANNOTATION_RE.captures(signature)
-                {
+                if let Some(captures) = TYPE_ANNOTATION_RE.captures(signature) {
                     type_name = captures.get(1).unwrap().as_str().to_lowercase();
                 } else if signature.contains("=") {
                     // Infer from value
@@ -1080,21 +1080,24 @@ impl PowerShellExtractor {
         let node_text = self.base.get_node_text(&node);
         regex::Regex::new(r":\s*(\w+)")
             .unwrap()
-            .captures(&node_text).map(|captures| captures.get(1).unwrap().as_str().to_string())
+            .captures(&node_text)
+            .map(|captures| captures.get(1).unwrap().as_str().to_string())
     }
 
     fn extract_return_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
         regex::Regex::new(r"\[(\w+)\]")
             .unwrap()
-            .captures(&node_text).map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
+            .captures(&node_text)
+            .map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
     }
 
     fn extract_property_type(&self, node: Node) -> Option<String> {
         let node_text = self.base.get_node_text(&node);
         regex::Regex::new(r"\[(\w+)\]")
             .unwrap()
-            .captures(&node_text).map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
+            .captures(&node_text)
+            .map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
     }
 
     // Variable classification methods
@@ -1227,9 +1230,7 @@ impl PowerShellExtractor {
                 if child.kind() == "ERROR" {
                     let text = self.base.get_node_text(&child);
                     // Extract function name from text like "\nfunction Set-CustomProperty {"
-                    if let Some(captures) =
-                        FUNCTION_NAME_RE.captures(&text)
-                    {
+                    if let Some(captures) = FUNCTION_NAME_RE.captures(&text) {
                         return Some(captures.get(1).unwrap().as_str().to_string());
                     }
                 }
@@ -1241,8 +1242,7 @@ impl PowerShellExtractor {
         while let Some(n) = current {
             if n.kind() == "ERROR" {
                 let text = self.base.get_node_text(&n);
-                if let Some(captures) = FUNCTION_NAME_RE.captures(&text)
-                {
+                if let Some(captures) = FUNCTION_NAME_RE.captures(&text) {
                     return Some(captures.get(1).unwrap().as_str().to_string());
                 }
             }

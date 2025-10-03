@@ -182,13 +182,10 @@ impl ManageWorkspaceTool {
 
     /// Check if a file is minified (generated code we should skip)
     pub(crate) fn is_minified_file(&self, file_path: &Path) -> bool {
-        let file_name = file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-        file_name.contains(".min.") ||
-        file_name.ends_with(".min.js") ||
-        file_name.ends_with(".min.css")
+        file_name.contains(".min.")
+            || file_name.ends_with(".min.js")
+            || file_name.ends_with(".min.css")
     }
 }

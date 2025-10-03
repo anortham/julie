@@ -16,6 +16,9 @@ pub mod utils;
 pub mod watcher;
 pub mod workspace;
 
+// CLI utilities (only used by julie-extract and julie-semantic binaries)
+pub mod cli;
+
 #[cfg(test)]
 pub mod tests;
 

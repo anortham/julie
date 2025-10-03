@@ -868,7 +868,8 @@ mod real_world_tests {
         assert!(
             total_symbols_extracted > 0,
             "Should extract symbols from real-world files (found {} files but {} symbols)",
-            total_files_processed, total_symbols_extracted
+            total_files_processed,
+            total_symbols_extracted
         );
     }
 }

@@ -24,13 +24,15 @@ const AUTO_FIX_TEST_CASES: &[AutoFixTestCase] = &[
         name: "multi_property_object_missing_brace",
         source_file: "broken/multi_property_object.js",
         control_file: "auto-fix/multi_property_object.js",
-        description: "Multi-property object with missing closing brace - should fix after last property",
+        description:
+            "Multi-property object with missing closing brace - should fix after last property",
     },
     AutoFixTestCase {
         name: "multi_element_array_missing_bracket",
         source_file: "broken/multi_element_array.js",
         control_file: "auto-fix/multi_element_array.js",
-        description: "Multi-element array with missing closing bracket - should fix after last element",
+        description:
+            "Multi-element array with missing closing bracket - should fix after last element",
     },
     AutoFixTestCase {
         name: "nested_structures_missing_braces",
@@ -76,7 +78,11 @@ fn setup_auto_fix_test_environment() -> Result<PathBuf> {
 }
 
 /// Copy source file to test location (SOURCE files are never edited)
-fn setup_auto_fix_test_file(source_file: &str, test_case_name: &str, temp_dir: &Path) -> Result<PathBuf> {
+fn setup_auto_fix_test_file(
+    source_file: &str,
+    test_case_name: &str,
+    temp_dir: &Path,
+) -> Result<PathBuf> {
     let source_path = Path::new("tests/editing/sources").join(source_file);
 
     // Extract extension from source file

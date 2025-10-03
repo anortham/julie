@@ -82,13 +82,15 @@ pub struct GetSymbolsTool {
 
 impl GetSymbolsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        info!("📋 Getting symbols for file: {} (depth: {})", self.file_path, self.max_depth);
+        info!(
+            "📋 Getting symbols for file: {} (depth: {})",
+            self.file_path, self.max_depth
+        );
 
         // Get the workspace and database
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run 'manage_workspace index' first"))?;
+        let workspace = handler.get_workspace().await?.ok_or_else(|| {
+            anyhow::anyhow!("No workspace initialized. Run 'manage_workspace index' first")
+        })?;
 
         let db = workspace
             .db
@@ -115,7 +117,10 @@ impl GetSymbolsTool {
                 .to_string()
         };
 
-        debug!("🔍 Path normalization: '{}' -> '{}'", self.file_path, absolute_path);
+        debug!(
+            "🔍 Path normalization: '{}' -> '{}'",
+            self.file_path, absolute_path
+        );
         debug!("🔍 Workspace root: '{}'", workspace.root.display());
 
         // Query symbols for this file using normalized path
@@ -181,8 +186,10 @@ impl GetSymbolsTool {
 
         // Determine effective reading mode
         let effective_mode = self.mode.as_deref().unwrap_or("structure");
-        debug!("🎯 Smart Read mode: {} (include_body: {}, target: {:?})",
-               effective_mode, self.include_body, self.target);
+        debug!(
+            "🎯 Smart Read mode: {} (include_body: {}, target: {:?})",
+            effective_mode, self.include_body, self.target
+        );
 
         // Build hierarchical symbol tree respecting max_depth
         let mut output = String::new();
@@ -223,9 +230,18 @@ impl GetSymbolsTool {
         };
 
         let symbol_count_text = if let Some(ref t) = self.target {
-            format!("📄 **{}** ({} symbols matching '{}')\n\n", self.file_path, top_level_symbols.len(), t)
+            format!(
+                "📄 **{}** ({} symbols matching '{}')\n\n",
+                self.file_path,
+                top_level_symbols.len(),
+                t
+            )
         } else {
-            format!("📄 **{}** ({} symbols)\n\n", self.file_path, all_symbols.len())
+            format!(
+                "📄 **{}** ({} symbols)\n\n",
+                self.file_path,
+                all_symbols.len()
+            )
         };
         output.push_str(&symbol_count_text);
 
@@ -292,10 +308,7 @@ impl GetSymbolsTool {
         };
 
         // Format symbol line
-        output.push_str(&format!(
-            "{}{} **{}**",
-            indent, icon, symbol.name
-        ));
+        output.push_str(&format!("{}{} **{}**", indent, icon, symbol.name));
 
         // Add signature if available
         if let Some(ref sig) = symbol.signature {
@@ -367,22 +380,34 @@ impl GetSymbolsTool {
                 .filter(|s| s.parent_id.as_ref() == Some(&symbol.id))
                 .count();
             if child_count > 0 {
-                output.push_str(&format!("{}  └─ ... {} more nested symbols (increase max_depth to see)\n", indent, child_count));
+                output.push_str(&format!(
+                    "{}  └─ ... {} more nested symbols (increase max_depth to see)\n",
+                    indent, child_count
+                ));
             }
         }
     }
 
     /// Extract complete symbol body from file content (Smart Read core logic)
     /// Uses tree-sitter-validated line boundaries for clean extraction
-    fn extract_symbol_body(&self, content: &str, symbol: &crate::extractors::Symbol) -> Option<String> {
+    fn extract_symbol_body(
+        &self,
+        content: &str,
+        symbol: &crate::extractors::Symbol,
+    ) -> Option<String> {
         let lines: Vec<&str> = content.lines().collect();
 
         // Use 1-based line numbers from symbol (tree-sitter convention)
         let start_line = symbol.start_line.saturating_sub(1) as usize; // Convert to 0-based
-        let end_line = (symbol.end_line.saturating_sub(1) as usize).min(lines.len().saturating_sub(1));
+        let end_line =
+            (symbol.end_line.saturating_sub(1) as usize).min(lines.len().saturating_sub(1));
 
         if start_line >= lines.len() {
-            warn!("⚠️  Symbol start line {} exceeds file length {}", symbol.start_line, lines.len());
+            warn!(
+                "⚠️  Symbol start line {} exceeds file length {}",
+                symbol.start_line,
+                lines.len()
+            );
             return None;
         }
 

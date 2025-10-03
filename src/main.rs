@@ -50,7 +50,8 @@ fn load_agent_instructions() -> String {
 - **fast_search**: Instant semantic + text search
 - **fast_explore**: Understand architecture
 
-Use Julie for INTELLIGENCE, built-in tools for MECHANICS."#.to_string()
+Use Julie for INTELLIGENCE, built-in tools for MECHANICS."#
+                .to_string()
         }
     }
 }
@@ -124,11 +125,9 @@ async fn main() -> SdkResult<()> {
     debug!("✓ STDIO transport initialized");
 
     // STEP 3: Instantiate our custom handler
-    let handler = JulieServerHandler::new().await.map_err(|e| {
-        rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    let handler = JulieServerHandler::new()
+        .await
+        .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(e.to_string())))?;
     debug!("✓ Julie server handler initialized");
 
     // STEP 3.5: 🚀 AUTO-INDEXING - Initialize workspace and check if indexing is needed
@@ -299,7 +298,10 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
                 match handler.active_search_engine().await {
                     Ok(search_engine_arc) => {
                         let search_engine = search_engine_arc.read().await;
-                        let tantivy_doc_count = search_engine.get_indexed_document_count().await.unwrap_or(0);
+                        let tantivy_doc_count = search_engine
+                            .get_indexed_document_count()
+                            .await
+                            .unwrap_or(0);
 
                         if tantivy_doc_count == 0 {
                             info!("🔍 Database has symbols but Tantivy search index is empty - indexing needed for consistency!");
@@ -309,7 +311,10 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
                         }
                     }
                     Err(e) => {
-                        debug!("Failed to check Tantivy consistency: {} - assuming indexing needed", e);
+                        debug!(
+                            "Failed to check Tantivy consistency: {} - assuming indexing needed",
+                            e
+                        );
                         return Ok(true);
                     }
                 }
@@ -382,7 +387,9 @@ async fn update_workspace_statistics(
     // Count symbols and files in database
     let (symbol_count, file_count) = if let Some(db_arc) = &workspace.db {
         let db = db_arc.lock().await;
-        let symbols = db.get_symbol_count_for_workspace(&workspace_id).unwrap_or(0) as usize;
+        let symbols = db
+            .get_symbol_count_for_workspace(&workspace_id)
+            .unwrap_or(0) as usize;
         let files = db.get_file_count_for_workspace(&workspace_id).unwrap_or(0) as usize;
         (symbols, files)
     } else {
@@ -419,7 +426,10 @@ async fn update_workspace_statistics(
         {
             warn!("Failed to reconcile embedding status: {}", e);
         } else {
-            debug!("📝 Reconciled embedding status: {} embeddings found, registry updated to Ready", embedding_count);
+            debug!(
+                "📝 Reconciled embedding status: {} embeddings found, registry updated to Ready",
+                embedding_count
+            );
         }
     }
 

@@ -5,8 +5,8 @@
 
 use super::SimilarityResult;
 use anyhow::Result;
-use hnsw_rs::prelude::*;  // Includes Hnsw, DistCosine, and other distance metrics
-// use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
+use hnsw_rs::prelude::*; // Includes Hnsw, DistCosine, and other distance metrics
+                         // use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -135,15 +135,17 @@ impl VectorStore {
     /// Build HNSW index from stored vectors
     pub fn build_hnsw_index(&mut self) -> Result<()> {
         if self.vectors.is_empty() {
-            return Err(anyhow::anyhow!("Cannot build HNSW index: no vectors stored"));
+            return Err(anyhow::anyhow!(
+                "Cannot build HNSW index: no vectors stored"
+            ));
         }
 
         // HNSW construction parameters (based on hnsw_rs best practices)
-        let max_nb_connection = 32;  // Typical: 16-64, good balance for code search
+        let max_nb_connection = 32; // Typical: 16-64, good balance for code search
         let nb_elem = self.vectors.len();
         // hnsw_rs persistence requires using the full layer budget (NB_LAYER_MAX)
         let nb_layer = HNSW_MAX_LAYERS;
-        let ef_construction = 400;  // Higher = better quality, slower build (typical: 200-800)
+        let ef_construction = 400; // Higher = better quality, slower build (typical: 200-800)
 
         tracing::debug!(
             "Building HNSW index: {} vectors, {} layers, max_conn={}, ef_c={}",
@@ -170,7 +172,7 @@ impl VectorStore {
         self.id_mapping.reserve(nb_elem);
 
         let mut sorted_vectors: Vec<_> = self.vectors.iter().collect();
-        sorted_vectors.sort_by(|a, b| a.0.cmp(b.0));  // Sort by symbol ID
+        sorted_vectors.sort_by(|a, b| a.0.cmp(b.0)); // Sort by symbol ID
 
         let mut data_for_insertion = Vec::with_capacity(nb_elem);
 
@@ -188,7 +190,10 @@ impl VectorStore {
         // Store the built index
         self.hnsw_index = Some(hnsw);
 
-        tracing::info!("✅ HNSW index built successfully: {} vectors indexed", nb_elem);
+        tracing::info!(
+            "✅ HNSW index built successfully: {} vectors indexed",
+            nb_elem
+        );
         Ok(())
     }
 
@@ -218,7 +223,7 @@ impl VectorStore {
 
         // Perform k-NN search
         // ef_search controls search quality (higher = better but slower)
-        let ef_search = (limit * 2).max(50);  // Search wider than limit for better quality
+        let ef_search = (limit * 2).max(50); // Search wider than limit for better quality
 
         let neighbors = hnsw.search(query_vector, limit, ef_search);
 
@@ -278,7 +283,11 @@ impl VectorStore {
         let filename = "hnsw_index";
 
         tracing::info!("💾 Saving HNSW index to {}", path.display());
-        tracing::debug!("Index has {} vectors, dimensions: {}", self.vectors.len(), self.dimensions);
+        tracing::debug!(
+            "Index has {} vectors, dimensions: {}",
+            self.vectors.len(),
+            self.dimensions
+        );
 
         // CRITICAL: Disable search mode before dumping to allow write operations
         // The searching flag prevents internal write operations
@@ -343,9 +352,8 @@ impl VectorStore {
         // SAFETY: With datamap: false, all data is copied into Hnsw.
         // The lifetime 'a -> 'b constraint is overly conservative.
         // We can safely transmute to 'static because Hnsw owns its data.
-        let static_hnsw: Hnsw<'static, f32, DistCosine> = unsafe {
-            std::mem::transmute(loaded_hnsw)
-        };
+        let static_hnsw: Hnsw<'static, f32, DistCosine> =
+            unsafe { std::mem::transmute(loaded_hnsw) };
 
         // Load the ID mapping from vectors HashMap keys (sorted for determinism)
         self.id_mapping.clear();
@@ -353,7 +361,10 @@ impl VectorStore {
         sorted_ids.sort();
         self.id_mapping = sorted_ids;
 
-        tracing::info!("✅ HNSW index loaded from disk with {} vectors", self.vectors.len());
+        tracing::info!(
+            "✅ HNSW index loaded from disk with {} vectors",
+            self.vectors.len()
+        );
 
         // Store the loaded index
         self.hnsw_index = Some(static_hnsw);
@@ -366,13 +377,17 @@ impl VectorStore {
     /// Add a vector to existing HNSW index (incremental update)
     /// Note: Requires index rebuild or insert API - TO BE IMPLEMENTED
     pub fn add_vector_to_hnsw(&mut self, _symbol_id: String, _vector: Vec<f32>) -> Result<()> {
-        Err(anyhow::anyhow!("HNSW incremental addition not implemented - requires index rebuild"))
+        Err(anyhow::anyhow!(
+            "HNSW incremental addition not implemented - requires index rebuild"
+        ))
     }
 
     /// Remove a vector from HNSW index
     /// Note: HNSW doesn't support deletion - requires index rebuild
     pub fn remove_vector_from_hnsw(&mut self, _symbol_id: &str) -> Result<()> {
-        Err(anyhow::anyhow!("HNSW vector removal not supported - HNSW is immutable after building"))
+        Err(anyhow::anyhow!(
+            "HNSW vector removal not supported - HNSW is immutable after building"
+        ))
     }
 }
 
@@ -491,5 +506,4 @@ mod tests {
         assert!(graph_len > 0, "graph file should contain data");
         assert!(data_len > 0, "data file should contain vectors");
     }
-
 }

@@ -32,7 +32,9 @@ impl LanguageParserPool {
             debug!("🔧 Created new parser for language: {}", language);
         }
         // Safe: We just ensured the key exists above
-        Ok(self.parsers.get_mut(language)
+        Ok(self
+            .parsers
+            .get_mut(language)
             .expect("Parser must exist after insert"))
     }
 

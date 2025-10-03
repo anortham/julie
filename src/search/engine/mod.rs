@@ -11,10 +11,10 @@ pub use writer::SearchIndexWriter;
 
 use anyhow::Result;
 use std::path::Path;
-use tokio::sync::Mutex;  // CRITICAL: Use tokio::sync::Mutex for async contexts (not std::sync::Mutex!)
 use tantivy::directory::MmapDirectory;
 use tantivy::tokenizer::{LowerCaser, TextAnalyzer};
 use tantivy::{Index, IndexReader};
+use tokio::sync::Mutex; // CRITICAL: Use tokio::sync::Mutex for async contexts (not std::sync::Mutex!)
 
 use super::schema::{CodeSearchSchema, LanguageBoosting, QueryProcessor};
 use super::tokenizers::CodeTokenizer;
@@ -40,7 +40,7 @@ fn register_code_tokenizers(index: &Index) -> Result<()> {
 pub struct SearchEngine {
     index: Index,
     schema: CodeSearchSchema,
-    reader: Mutex<IndexReader>,  // Mutex for interior mutability - allows reload without blocking searches
+    reader: Mutex<IndexReader>, // Mutex for interior mutability - allows reload without blocking searches
     query_processor: QueryProcessor,
     _language_boosting: LanguageBoosting,
 }
@@ -67,7 +67,7 @@ impl SearchEngine {
         Ok(Self {
             index,
             schema,
-            reader: Mutex::new(reader),  // Wrap in Mutex for interior mutability
+            reader: Mutex::new(reader), // Wrap in Mutex for interior mutability
             query_processor,
             _language_boosting: language_boosting,
         })
@@ -89,7 +89,7 @@ impl SearchEngine {
         Ok(Self {
             index,
             schema,
-            reader: Mutex::new(reader),  // Wrap in Mutex for interior mutability
+            reader: Mutex::new(reader), // Wrap in Mutex for interior mutability
             query_processor,
             _language_boosting: language_boosting,
         })

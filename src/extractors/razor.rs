@@ -235,7 +235,8 @@ impl RazorExtractor {
 
         // For certain directives, use the value as the symbol name
         let symbol_name = match directive_name.as_str() {
-            "using" => directive_value.clone()
+            "using" => directive_value
+                .clone()
                 .unwrap_or_else(|| format!("@{}", directive_name)),
             "inject" => {
                 // Extract property name from "@inject IService PropertyName"
@@ -331,15 +332,22 @@ impl RazorExtractor {
                 let text = self.base.get_node_text(&node);
                 regex::Regex::new(r"@addTagHelper\s+(.+)")
                     .unwrap()
-                    .captures(&text).map(|captures| captures[1].trim().to_string())
+                    .captures(&text)
+                    .map(|captures| captures[1].trim().to_string())
             }
             _ => {
                 let text = self.base.get_node_text(&node);
                 if text.contains("@addTagHelper") {
                     regex::Regex::new(r"@addTagHelper\s+(.+)")
                         .unwrap()
-                        .captures(&text).map(|captures| captures[1].trim().to_string())
-                } else { regex::Regex::new(r"@\w+\s+(.*)").unwrap().captures(&text).map(|captures| captures[1].trim().to_string()) }
+                        .captures(&text)
+                        .map(|captures| captures[1].trim().to_string())
+                } else {
+                    regex::Regex::new(r"@\w+\s+(.*)")
+                        .unwrap()
+                        .captures(&text)
+                        .map(|captures| captures[1].trim().to_string())
+                }
             }
         }
     }
@@ -364,7 +372,8 @@ impl RazorExtractor {
             let text = self.base.get_node_text(&parent);
             regex::Regex::new(&format!(r"@{}\s+(\S+)", directive_type))
                 .unwrap()
-                .captures(&text).map(|captures| captures[1].to_string())
+                .captures(&text)
+                .map(|captures| captures[1].to_string())
         } else {
             None
         };
@@ -519,7 +528,10 @@ impl RazorExtractor {
     }
 
     fn extract_variable_from_expression(&self, expression: &str) -> Option<String> {
-        regex::Regex::new(r"(\w+)").unwrap().captures(expression).map(|captures| captures[1].to_string())
+        regex::Regex::new(r"(\w+)")
+            .unwrap()
+            .captures(expression)
+            .map(|captures| captures[1].to_string())
     }
 
     fn create_external_component_symbols_if_needed(
@@ -716,7 +728,10 @@ impl RazorExtractor {
 
         // Fallback: extract from node text
         let node_text = self.base.get_node_text(&node);
-        regex::Regex::new(r"^<(\w+)").unwrap().captures(&node_text).map(|captures| captures[1].to_string())
+        regex::Regex::new(r"^<(\w+)")
+            .unwrap()
+            .captures(&node_text)
+            .map(|captures| captures[1].to_string())
     }
 
     fn extract_html_attributes(&self, node: Node) -> Vec<String> {
@@ -1008,8 +1023,7 @@ impl RazorExtractor {
             "{}{}{}",
             interface_qualification,
             name,
-            parameters.clone()
-                .unwrap_or_else(|| "()".to_string())
+            parameters.clone().unwrap_or_else(|| "()".to_string())
         ));
 
         Some(self.base.create_symbol(

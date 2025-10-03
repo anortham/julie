@@ -21,7 +21,10 @@ fn test_parameter_validation_max_depth() {
         workspace: Some("primary".to_string()),
     };
 
-    assert!(tool.max_depth > 10, "Should detect max_depth exceeding limit");
+    assert!(
+        tool.max_depth > 10,
+        "Should detect max_depth exceeding limit"
+    );
 }
 
 #[test]
@@ -37,7 +40,10 @@ fn test_parameter_validation_threshold() {
         workspace: Some("primary".to_string()),
     };
 
-    assert!(tool.similarity_threshold > 1.0, "Should detect invalid threshold");
+    assert!(
+        tool.similarity_threshold > 1.0,
+        "Should detect invalid threshold"
+    );
 }
 
 #[test]
@@ -53,7 +59,10 @@ fn test_parameter_validation_negative_threshold() {
         workspace: Some("primary".to_string()),
     };
 
-    assert!(tool.similarity_threshold < 0.0, "Should detect negative threshold");
+    assert!(
+        tool.similarity_threshold < 0.0,
+        "Should detect negative threshold"
+    );
 }
 
 #[test]
@@ -118,7 +127,10 @@ fn test_cross_language_flag() {
     };
 
     assert!(enabled.cross_language, "cross_language should be enabled");
-    assert!(!disabled.cross_language, "cross_language should be disabled");
+    assert!(
+        !disabled.cross_language,
+        "cross_language should be disabled"
+    );
 }
 
 #[test]
@@ -194,9 +206,9 @@ fn test_default_parameters() {
     let tool = TraceCallPathTool {
         symbol: "test".to_string(),
         direction: "upstream".to_string(), // default in tool
-        max_depth: 3, // default in tool
-        cross_language: true, // default in tool
-        similarity_threshold: 0.7, // default in tool
+        max_depth: 3,                      // default in tool
+        cross_language: true,              // default in tool
+        similarity_threshold: 0.7,         // default in tool
         context_file: None,
         workspace: Some("primary".to_string()), // default in tool
     };

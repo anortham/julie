@@ -17,8 +17,8 @@
 //! - Language-aware: TypeScript ≠ Python ≅ Rust ✅
 //! - Scope-aware: Can limit to specific contexts ✅
 
-use tree_sitter::{Node, Tree};
 use tracing::debug;
+use tree_sitter::{Node, Tree};
 
 use crate::extractors::base::SymbolKind;
 
@@ -218,7 +218,9 @@ impl ASTSymbolFinder {
 
     /// Get text content of a node
     fn node_text(&self, node: Node) -> Option<String> {
-        node.utf8_text(self.content.as_bytes()).ok().map(|s| s.to_string())
+        node.utf8_text(self.content.as_bytes())
+            .ok()
+            .map(|s| s.to_string())
     }
 
     /// Determine the context in which a symbol appears
@@ -396,9 +398,6 @@ const service = new UserService();
             .filter(|occ| occ.context == SymbolContext::Definition)
             .collect();
 
-        assert!(
-            !definitions.is_empty(),
-            "Should find the class definition"
-        );
+        assert!(!definitions.is_empty(), "Should find the class definition");
     }
 }

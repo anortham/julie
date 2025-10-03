@@ -189,9 +189,7 @@ impl CSSExtractor {
             "ruleName".to_string(),
             serde_json::Value::String(rule_name.clone()),
         );
-        let at_rule_type = rule_name
-            .strip_prefix('@')
-            .unwrap_or(&rule_name);
+        let at_rule_type = rule_name.strip_prefix('@').unwrap_or(&rule_name);
         metadata.insert(
             "atRuleType".to_string(),
             serde_json::Value::String(at_rule_type.to_string()),

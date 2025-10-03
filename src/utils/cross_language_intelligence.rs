@@ -162,7 +162,8 @@ pub fn to_snake_case(s: &str) -> String {
             // Add underscore before uppercase letter if:
             // 1. Not at the start AND
             // 2. (Previous char was lowercase OR next char is lowercase)
-            let prev_is_lower = i > 0 && chars.get(i - 1).map(|c| c.is_lowercase()).unwrap_or(false);
+            let prev_is_lower =
+                i > 0 && chars.get(i - 1).map(|c| c.is_lowercase()).unwrap_or(false);
             let next_is_lower = chars.get(i + 1).map(|c| c.is_lowercase()).unwrap_or(false);
 
             if i > 0 && (prev_is_lower || next_is_lower) && !result.ends_with('_') {
@@ -281,11 +282,7 @@ impl SymbolKindEquivalence {
         let mut equivalence_groups = HashMap::new();
 
         // Group 1: Class-like types (data containers with methods)
-        let class_group = vec![
-            SymbolKind::Class,
-            SymbolKind::Struct,
-            SymbolKind::Interface,
-        ];
+        let class_group = vec![SymbolKind::Class, SymbolKind::Struct, SymbolKind::Interface];
         for kind in &class_group {
             equivalence_groups.insert(kind.clone(), class_group.clone());
         }
@@ -308,9 +305,7 @@ impl SymbolKindEquivalence {
             equivalence_groups.insert(kind.clone(), type_group.clone());
         }
 
-        Self {
-            equivalence_groups,
-        }
+        Self { equivalence_groups }
     }
 
     /// Check if two symbol kinds are equivalent across languages
@@ -473,10 +468,7 @@ mod tests {
 
     #[test]
     fn test_screaming_snake_case_conversion() {
-        assert_eq!(
-            to_screaming_snake_case("getUserData"),
-            "GET_USER_DATA"
-        );
+        assert_eq!(to_screaming_snake_case("getUserData"), "GET_USER_DATA");
         assert_eq!(to_screaming_snake_case("maxConnections"), "MAX_CONNECTIONS");
     }
 

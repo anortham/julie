@@ -94,7 +94,21 @@
       "Bash(node:*)",
       "Bash(git add:*)",
       "Bash(rustc:*)",
-      "Bash(gemini:*)"
+      "Bash(gemini:*)",
+      "Bash(RUST_LOG=debug cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 10 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(RUST_LOG=debug timeout 15 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 15 cargo test test_reference_workspace_search)",
+      "Bash(RUST_LOG=debug timeout 20 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 30 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 20 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 120 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 15 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(RUST_LOG=debug timeout 30 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(env RUST_LOG=debug timeout 20 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(env RUST_LOG=debug timeout 30 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 60 cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(env RUST_LOG=debug cargo test test_reference_workspace_search -- --nocapture)"
     ],
     "deny": [],
     "ask": []

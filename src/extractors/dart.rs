@@ -857,9 +857,10 @@ impl DartExtractor {
         if node.kind() == "function_signature" {
             if let Some(function_body) = node.next_sibling() {
                 if function_body.kind() == "function_body"
-                    && self.find_child_by_type(&function_body, "async").is_some() {
-                        return true;
-                    }
+                    && self.find_child_by_type(&function_body, "async").is_some()
+                {
+                    return true;
+                }
             }
         }
 

@@ -14,8 +14,8 @@ impl SearchEngine {
     /// Tantivy/Lucene special characters that need escaping for literal text search
     /// Reference: coa-codesearch-mcp QueryPreprocessor.cs
     const TANTIVY_SPECIAL_CHARS: &'static [char] = &[
-        '+', '-', '=', '&', '|', '!', '(', ')', '{', '}', '[', ']',
-        '^', '"', '~', '*', '?', ':', '\\', '/', '<', '>'
+        '+', '-', '=', '&', '|', '!', '(', ')', '{', '}', '[', ']', '^', '"', '~', '*', '?', ':',
+        '\\', '/', '<', '>',
     ];
 
     /// Escape special characters in user input for literal text search
@@ -141,7 +141,8 @@ impl SearchEngine {
             let camelcase_variants = self.expand_camelcase_query(clean_query);
             debug!("🐪 Generated camelCase variants: {:?}", camelcase_variants);
 
-            let query_parser = QueryParser::for_index(&self.index, vec![fields.symbol_name, fields.code_context]);
+            let query_parser =
+                QueryParser::for_index(&self.index, vec![fields.symbol_name, fields.code_context]);
 
             for variant in camelcase_variants {
                 let escaped_variant = Self::escape_query_text_for_wildcard(&variant);
@@ -193,7 +194,7 @@ impl SearchEngine {
                 fields.signature_exact,
                 fields.symbol_name,
                 fields.all_text,
-                fields.code_context,  // Support FILE_CONTENT in generic type search
+                fields.code_context, // Support FILE_CONTENT in generic type search
             ],
         );
 
@@ -260,7 +261,12 @@ impl SearchEngine {
 
         let query_parser = QueryParser::for_index(
             &self.index,
-            vec![fields.signature, fields.signature_exact, fields.all_text, fields.code_context],
+            vec![
+                fields.signature,
+                fields.signature_exact,
+                fields.all_text,
+                fields.code_context,
+            ],
         );
 
         // Escape special chars and wrap in quotes for exact phrase match
@@ -322,7 +328,7 @@ impl SearchEngine {
                 fields.symbol_name,
                 fields.signature,
                 fields.doc_comment,
-                fields.code_context,  // Query directly for FILE_CONTENT with standard tokenizer
+                fields.code_context, // Query directly for FILE_CONTENT with standard tokenizer
             ],
         );
 
@@ -387,7 +393,11 @@ impl SearchEngine {
             }
 
             // Create final AND query
-            debug!("🔍 Executing AND query with {} clauses for '{}'", and_clauses.len(), query);
+            debug!(
+                "🔍 Executing AND query with {} clauses for '{}'",
+                and_clauses.len(),
+                query
+            );
             let and_query = Box::new(BooleanQuery::new(and_clauses));
 
             // Step 2: If AND query returns zero results, fall back to OR query
@@ -400,15 +410,20 @@ impl SearchEngine {
                     let query_clone = and_query.box_clone();
                     let searcher_clone = searcher.clone();
                     move || searcher_clone.search(&*query_clone, &TopDocs::with_limit(30))
-                })
-            ).await {
+                }),
+            )
+            .await
+            {
                 Ok(Ok(result)) => result?,
                 Ok(Err(e)) => {
                     warn!("⚠️  AND query search failed: {}", e);
                     vec![] // Treat as no results, will fall back to OR
                 }
                 Err(_) => {
-                    warn!("⚠️  AND query timeout after 5s for '{}' - query too complex!", query);
+                    warn!(
+                        "⚠️  AND query timeout after 5s for '{}' - query too complex!",
+                        query
+                    );
                     vec![] // Treat as no results, will fall back to OR
                 }
             };
@@ -486,11 +501,18 @@ impl SearchEngine {
                 let query_clone = parsed_query.box_clone();
                 let searcher_clone = searcher.clone();
                 move || searcher_clone.search(&*query_clone, &TopDocs::with_limit(30))
-            })
-        ).await {
+            }),
+        )
+        .await
+        {
             Ok(Ok(result)) => result?,
             Ok(Err(e)) => return Err(anyhow::anyhow!("Search execution failed: {}", e)),
-            Err(_) => return Err(anyhow::anyhow!("Search timeout after 5s - query '{}' is too complex", query)),
+            Err(_) => {
+                return Err(anyhow::anyhow!(
+                    "Search timeout after 5s - query '{}' is too complex",
+                    query
+                ))
+            }
         };
 
         let mut results = Vec::new();

@@ -136,10 +136,7 @@ impl EmbeddingEngine {
         match self.model.embed(batch_texts, None) {
             Ok(batch_embeddings) => {
                 // Map results back to (id, embedding) pairs
-                let results = symbol_ids
-                    .into_iter()
-                    .zip(batch_embeddings)
-                    .collect();
+                let results = symbol_ids.into_iter().zip(batch_embeddings).collect();
                 Ok(results)
             }
             Err(e) => {
@@ -168,7 +165,11 @@ impl EmbeddingEngine {
     }
 
     /// Update embeddings for all symbols in a file (database-only, no in-memory cache)
-    pub async fn upsert_file_embeddings(&mut self, file_path: &str, symbols: &[Symbol]) -> Result<()> {
+    pub async fn upsert_file_embeddings(
+        &mut self,
+        file_path: &str,
+        symbols: &[Symbol],
+    ) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
@@ -210,9 +211,13 @@ impl EmbeddingEngine {
                         &symbol.id,
                         vector_id,
                         &self.model_name,
-                        None,  // embedding_hash not computed yet
+                        None, // embedding_hash not computed yet
                     ) {
-                        tracing::warn!("Failed to persist embedding metadata for {}: {}", symbol.id, e);
+                        tracing::warn!(
+                            "Failed to persist embedding metadata for {}: {}",
+                            symbol.id,
+                            e
+                        );
                     }
                 }
             }
@@ -244,9 +249,13 @@ impl EmbeddingEngine {
                                 &symbol.id,
                                 vector_id,
                                 &self.model_name,
-                                None,  // embedding_hash not computed yet
+                                None, // embedding_hash not computed yet
                             ) {
-                                tracing::warn!("Failed to persist embedding metadata for {}: {}", symbol.id, e);
+                                tracing::warn!(
+                                    "Failed to persist embedding metadata for {}: {}",
+                                    symbol.id,
+                                    e
+                                );
                             }
                         }
                         Err(e) => {
@@ -349,10 +358,10 @@ pub struct SimilarityResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractors::base::*;
     use crate::database::SymbolDatabase;
-    use tempfile::TempDir;
+    use crate::extractors::base::*;
     use std::sync::Arc;
+    use tempfile::TempDir;
     use tokio::sync::Mutex;
 
     // Helper: Create a test database for embedding tests

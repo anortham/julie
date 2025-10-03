@@ -4,7 +4,7 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 impl ManageWorkspaceTool {
     /// Handle add command - add reference workspace
@@ -14,6 +14,7 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
+        println!("🐛 handle_add_command ENTRY: path={}", path);
         info!("➕ Adding reference workspace: {}", path);
 
         // Get primary workspace for registry service
@@ -30,11 +31,19 @@ impl ManageWorkspaceTool {
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
         // Register the reference workspace
+        debug!(
+            "🐛 TRACE: About to call register_workspace for path: {}",
+            path
+        );
         match registry_service
             .register_workspace(path.to_string(), WorkspaceType::Reference)
             .await
         {
             Ok(entry) => {
+                debug!(
+                    "🐛 TRACE: register_workspace completed successfully for {}",
+                    entry.id
+                );
                 let display_name = name.unwrap_or_else(|| entry.display_name.clone());
 
                 // Index the reference workspace immediately
@@ -45,95 +54,40 @@ impl ManageWorkspaceTool {
                     display_name
                 );
 
+                // 🔥 TEST: Let's see if awaiting actually deadlocks or if something else is the issue
+                debug!("🐛 About to call index_workspace_files for reference workspace");
                 match self
                     .index_workspace_files(handler, &workspace_path, false)
                     .await
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {
-                        // Update workspace statistics in registry
-                        if let Ok(Some(workspace)) = handler.get_workspace().await {
-                            // Use per-workspace index path
-                            let index_path = workspace.workspace_index_path(&entry.id);
-                            let index_size = index_path
-                                .metadata()
-                                .map(|_m| {
-                                    fn calculate_dir_size(path: &std::path::Path) -> u64 {
-                                        let mut total_size = 0u64;
-                                        if let Ok(entries) = std::fs::read_dir(path) {
-                                            for entry in entries.flatten() {
-                                                if let Ok(metadata) = entry.metadata() {
-                                                    if metadata.is_file() {
-                                                        total_size += metadata.len();
-                                                    } else if metadata.is_dir() {
-                                                        total_size += calculate_dir_size(&entry.path());
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        total_size
-                                    }
-                                    calculate_dir_size(&index_path)
-                                })
-                                .unwrap_or(0);
-
-                            if let Err(e) = registry_service
-                                .update_workspace_statistics(&entry.id, symbol_count, file_count, index_size)
-                                .await
-                            {
-                                warn!("Failed to update workspace statistics: {}", e);
-                            } else {
-                                info!("✅ Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
-                                      entry.id, file_count, symbol_count, index_size);
-                            }
-                        }
-
+                        debug!("🐛 index_workspace_files completed successfully");
                         let message = format!(
-                            "✅ **Reference Workspace Added and Indexed!**\n\
-                            📝 ID: {}\n\
-                            📁 Path: {}\n\
-                            🏷️ Name: {}\n\
-                            📊 Indexing Results:\n\
-                            • {} files indexed\n\
-                            • {} symbols extracted\n\
-                            • {} relationships found\n\
-                            ⏰ Expires: {} days\n\
-                            🔍 Use workspace parameter in search tools to query this workspace:\n\
-                            • workspace: \"all\" - search all workspaces\n\
-                            • workspace: \"{}\" - search only this workspace",
+                            "✅ Reference workspace added and indexed!\n\
+                             📁 Workspace ID: {}\n\
+                             📝 Display Name: {}\n\
+                             📂 Path: {}\n\
+                             📊 {} files, {} symbols, {} relationships",
                             entry.id,
-                            entry.original_path,
                             display_name,
+                            entry.original_path,
                             file_count,
                             symbol_count,
-                            relationship_count,
-                            entry
-                                .expires_at
-                                .map(|exp| {
-                                    let days = (exp - entry.created_at) / (24 * 60 * 60);
-                                    format!("{}", days)
-                                })
-                                .unwrap_or("never".to_string()),
-                            entry.id
+                            relationship_count
                         );
                         Ok(CallToolResult::text_content(vec![TextContent::from(
                             message,
                         )]))
                     }
                     Err(e) => {
-                        // Workspace was registered but indexing failed - that's OK
-                        // User can manually refresh later
+                        warn!("Failed to index reference workspace: {}", e);
                         let message = format!(
-                            "⚠️ **Reference Workspace Registered (Indexing Failed)**\n\
-                            📝 ID: {}\n\
-                            📁 Path: {}\n\
-                            🏷️ Name: {}\n\
-                            💥 Indexing Error: {}\n\
-                            💡 Workspace is registered but not indexed. Use 'refresh {}' to retry indexing.",
-                            entry.id,
-                            entry.original_path,
-                            display_name,
-                            e,
-                            entry.id
+                            "⚠️ Reference workspace added but indexing failed!\n\
+                             📁 Workspace ID: {}\n\
+                             📝 Display Name: {}\n\
+                             📂 Path: {}\n\
+                             ❌ Error: {}",
+                            entry.id, display_name, entry.original_path, e
                         );
                         Ok(CallToolResult::text_content(vec![TextContent::from(
                             message,
@@ -142,7 +96,8 @@ impl ManageWorkspaceTool {
                 }
             }
             Err(e) => {
-                let message = format!("❌ Failed to add workspace: {}", e);
+                // Registration failed
+                let message = format!("❌ Failed to add reference workspace: {}", e);
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]))
@@ -489,7 +444,8 @@ impl ManageWorkspaceTool {
                                                     if metadata.is_file() {
                                                         total_size += metadata.len();
                                                     } else if metadata.is_dir() {
-                                                        total_size += calculate_dir_size(&entry.path());
+                                                        total_size +=
+                                                            calculate_dir_size(&entry.path());
                                                     }
                                                 }
                                             }
@@ -501,7 +457,12 @@ impl ManageWorkspaceTool {
                                 .unwrap_or(0);
 
                             if let Err(e) = registry_service
-                                .update_workspace_statistics(workspace_id, symbol_count, file_count, index_size)
+                                .update_workspace_statistics(
+                                    workspace_id,
+                                    symbol_count,
+                                    file_count,
+                                    index_size,
+                                )
                                 .await
                             {
                                 warn!("Failed to update workspace statistics: {}", e);
@@ -815,9 +776,8 @@ impl ManageWorkspaceTool {
 
                 // Compute workspace ID for per-workspace path
                 use crate::workspace::registry as ws_registry;
-                let workspace_id = ws_registry::generate_workspace_id(
-                    workspace.root.to_str().unwrap_or("")
-                )?;
+                let workspace_id =
+                    ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
                 // Check if search index exists and is populated
                 let index_path = workspace.workspace_index_path(&workspace_id);
@@ -869,9 +829,8 @@ impl ManageWorkspaceTool {
 
                 // Compute workspace ID for per-workspace path
                 use crate::workspace::registry as ws_registry;
-                let workspace_id = ws_registry::generate_workspace_id(
-                    workspace.root.to_str().unwrap_or("")
-                )?;
+                let workspace_id =
+                    ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
                 // Check if embedding data exists
                 let embedding_path = workspace.workspace_vectors_path(&workspace_id);
@@ -918,15 +877,14 @@ impl ManageWorkspaceTool {
     ) -> Result<String> {
         // Compute workspace ID for per-workspace paths
         use crate::workspace::registry as ws_registry;
-        let workspace_id = ws_registry::generate_workspace_id(
-            workspace.root.to_str().unwrap_or("")
-        )?;
+        let workspace_id =
+            ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
         let db_ready = workspace.db.is_some();
-        let search_ready = workspace.search.is_some()
-            && workspace.workspace_index_path(&workspace_id).exists();
-        let embeddings_ready =
-            workspace.embeddings.is_some() && workspace.workspace_vectors_path(&workspace_id).exists();
+        let search_ready =
+            workspace.search.is_some() && workspace.workspace_index_path(&workspace_id).exists();
+        let embeddings_ready = workspace.embeddings.is_some()
+            && workspace.workspace_vectors_path(&workspace_id).exists();
 
         let systems_ready = [db_ready, search_ready, embeddings_ready]
             .iter()

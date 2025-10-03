@@ -462,12 +462,24 @@ mod multi_word_query_tests {
         let variants = expand_query("user service");
 
         // Should contain at least these variants:
-        assert!(variants.contains(&"user service".to_string()), "Should include original");
-        assert!(variants.contains(&"UserService".to_string()), "Should include CamelCase");
-        assert!(variants.contains(&"user_service".to_string()), "Should include snake_case");
+        assert!(
+            variants.contains(&"user service".to_string()),
+            "Should include original"
+        );
+        assert!(
+            variants.contains(&"UserService".to_string()),
+            "Should include CamelCase"
+        );
+        assert!(
+            variants.contains(&"user_service".to_string()),
+            "Should include snake_case"
+        );
 
         // Should have generated multiple variants for fallback
-        assert!(variants.len() >= 3, "Should generate at least 3 query variants");
+        assert!(
+            variants.len() >= 3,
+            "Should generate at least 3 query variants"
+        );
     }
 }
 
@@ -561,43 +573,49 @@ mod search_integration_tests {
         // These are REAL agent search patterns we need to handle:
         let realistic_agent_queries = vec![
             // Multi-word intent searches
-            ("user auth controller post", vec![
-                "UserAuthController.post",
-                "handleUserAuthPost",
-                "postUserAuth"
-            ]),
-
+            (
+                "user auth controller post",
+                vec![
+                    "UserAuthController.post",
+                    "handleUserAuthPost",
+                    "postUserAuth",
+                ],
+            ),
             // Partial matches across symbol components
-            ("payment process async", vec![
-                "processPaymentAsync",
-                "PaymentProcessor.async",
-                "asyncPaymentProcessing"
-            ]),
-
+            (
+                "payment process async",
+                vec![
+                    "processPaymentAsync",
+                    "PaymentProcessor.async",
+                    "asyncPaymentProcessing",
+                ],
+            ),
             // Mixed language conventions
-            ("database connection pool", vec![
-                "DatabaseConnectionPool",
-                "db_connection_pool",
-                "getDbConnectionPool"
-            ]),
-
+            (
+                "database connection pool",
+                vec![
+                    "DatabaseConnectionPool",
+                    "db_connection_pool",
+                    "getDbConnectionPool",
+                ],
+            ),
             // Method + class searches
-            ("user get by id", vec![
-                "getUserById",
-                "User.getById",
-                "get_user_by_id"
-            ]),
-
+            (
+                "user get by id",
+                vec!["getUserById", "User.getById", "get_user_by_id"],
+            ),
             // Action + entity queries
-            ("create order", vec![
-                "createOrder",
-                "OrderCreator",
-                "order_create"
-            ]),
+            (
+                "create order",
+                vec!["createOrder", "OrderCreator", "order_create"],
+            ),
         ];
 
         for (query, expected_patterns) in realistic_agent_queries {
-            println!("Agent query: '{}' should match patterns like: {:?}", query, expected_patterns);
+            println!(
+                "Agent query: '{}' should match patterns like: {:?}",
+                query, expected_patterns
+            );
             // This requires:
             // 1. Split query into terms: ["user", "auth", "controller", "post"]
             // 2. Try combinations: "UserAuthControllerPost", "user_auth_controller_post"
@@ -615,18 +633,18 @@ mod search_integration_tests {
         let query_terms = vec!["user", "auth", "post"];
 
         let test_symbols = vec![
-            ("UserAuthController.post", true),    // All terms present
-            ("handleUserAuthPost", true),          // All terms present
-            ("UserController.post", false),        // Missing "auth"
-            ("UserAuthService.get", false),        // Missing "post"
-            ("postUserAuthentication", true),      // All terms present (auth = authentication)
+            ("UserAuthController.post", true), // All terms present
+            ("handleUserAuthPost", true),      // All terms present
+            ("UserController.post", false),    // Missing "auth"
+            ("UserAuthService.get", false),    // Missing "post"
+            ("postUserAuthentication", true),  // All terms present (auth = authentication)
         ];
 
         for (symbol_name, should_match) in test_symbols {
             let symbol_lower = symbol_name.to_lowercase();
             let all_terms_present = query_terms.iter().all(|term| {
-                symbol_lower.contains(term) ||
-                symbol_lower.contains(&term[..4]) // Partial match: "auth" matches "authentication"
+                symbol_lower.contains(term) || symbol_lower.contains(&term[..4])
+                // Partial match: "auth" matches "authentication"
             });
 
             assert_eq!(

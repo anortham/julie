@@ -127,7 +127,7 @@ fn main() {
         let test_cases = vec![
             ("rust", "fn main() { let x = 42 }", 1), // missing semicolon + brace
             ("typescript", "function f() { const x = ", 1), // incomplete expression
-            ("python", "def f():\nreturn 42", 1), // missing indentation
+            ("python", "def f():\nreturn 42", 1),    // missing indentation
             ("java", "public class Test { void f() { int x = }", 1), // incomplete
         ];
 

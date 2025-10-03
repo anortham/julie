@@ -50,21 +50,32 @@ async fn test_file_content_search() {
     };
 
     // Index the FILE_CONTENT symbol
-    index_test_symbols(&mut engine, &mut writer, vec![file_content_symbol.clone()]).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, vec![file_content_symbol.clone()])
+        .await
+        .unwrap();
 
     // Test 1: Multi-word semantic search (triggers SemanticConcept intent)
     let results = engine.search("Project Julie").await.unwrap();
-    assert!(!results.is_empty(), "Should find FILE_CONTENT with semantic search");
+    assert!(
+        !results.is_empty(),
+        "Should find FILE_CONTENT with semantic search"
+    );
     assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
 
     // Test 2: Single word search
     let results = engine.search("Guidelines").await.unwrap();
-    assert!(!results.is_empty(), "Should find FILE_CONTENT with single word");
+    assert!(
+        !results.is_empty(),
+        "Should find FILE_CONTENT with single word"
+    );
     assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
 
     // Test 3: Case insensitive search
     let results = engine.search("rust").await.unwrap();
-    assert!(!results.is_empty(), "Should find FILE_CONTENT case-insensitively");
+    assert!(
+        !results.is_empty(),
+        "Should find FILE_CONTENT case-insensitively"
+    );
     assert_eq!(results[0].symbol.file_path, "CLAUDE.md");
 }
 
@@ -97,7 +108,9 @@ async fn test_basic_search_functionality() {
     };
 
     // Index the symbol
-    index_test_symbols(&mut engine, &mut writer,vec![symbol]).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, vec![symbol])
+        .await
+        .unwrap();
 
     // Search for the symbol by name
     let results = engine.search("getUserById").await.unwrap();
@@ -202,7 +215,9 @@ async fn test_parallel_searches_do_not_deadlock() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer, symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     let engine = Arc::new(engine);
 
@@ -215,7 +230,10 @@ async fn test_parallel_searches_do_not_deadlock() {
         async move { engine.search("embedding vector semantic").await }
     };
 
-    let result = timeout(Duration::from_secs(2), async { tokio::join!(search_a, search_b) }).await;
+    let result = timeout(Duration::from_secs(2), async {
+        tokio::join!(search_a, search_b)
+    })
+    .await;
 
     assert!(
         result.is_ok(),
@@ -282,7 +300,9 @@ async fn test_exact_symbol_search() {
     ];
 
     // Index the symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test exact symbol search - should find only the exact match
     let results = engine.search("getUserById").await.unwrap();
@@ -369,7 +389,9 @@ async fn test_generic_type_search() {
     ];
 
     // Index the symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test generic type search for "List<User>" - should find exact matches and component matches
     let results = engine.search("List<User>").await.unwrap();
@@ -474,7 +496,9 @@ async fn test_operator_search() {
     ];
 
     // Index the symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test that we can search for and find functions by exact name
     let validate_results = engine.search("validateUser").await.unwrap();
@@ -610,7 +634,9 @@ async fn test_file_path_search() {
     ];
 
     // Index the symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test file path search - should find symbols in user.ts file
     let user_file_results = engine.search("src/user").await.unwrap();
@@ -750,7 +776,9 @@ async fn test_semantic_search() {
     ];
 
     // Index the symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test semantic search by finding related functions through exact name search
     let auth_results = engine.search("authenticateUser").await.unwrap();
@@ -874,7 +902,9 @@ async fn test_multi_word_text_search_returns_results() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     let intent = engine.query_processor.detect_intent("fn extract");
     match intent {
@@ -992,7 +1022,9 @@ async fn test_multi_word_search_critical_bug_reproduction() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test 1: Multi-word query that should find UserService and DataService
     // BUG: This currently returns NO results due to tokenization issues
@@ -1103,7 +1135,9 @@ async fn test_multi_word_identifier_search_without_auxiliary_text() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     let user_service_results = engine.search("user service").await.unwrap();
     let user_service_names: Vec<&str> = user_service_results
@@ -1179,7 +1213,9 @@ async fn test_tokenization_issues_with_exact_vs_semantic_search() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test intent detection for multi-word queries
     let intent1 = engine.query_processor.detect_intent("fast search");
@@ -1333,7 +1369,9 @@ async fn test_custom_tokenizer_camelcase_splitting() {
         },
     ];
 
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test 1: "user service" should find UserService through camelCase splitting
     let user_service_results = engine.search("user service").await.unwrap();
@@ -1444,7 +1482,9 @@ async fn test_search_performance() {
     }
 
     // Index all symbols
-    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, symbols)
+        .await
+        .unwrap();
 
     // Test search performance with various queries
     let test_queries = vec![
@@ -1548,7 +1588,9 @@ async fn test_incremental_updates() {
     ];
 
     // Index initial symbols
-    index_test_symbols(&mut engine, &mut writer,initial_symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, initial_symbols)
+        .await
+        .unwrap();
 
     // Verify initial state
     let old_results = engine.search("oldFunction").await.unwrap();
@@ -1585,7 +1627,9 @@ async fn test_incremental_updates() {
         code_context: None,
     }];
 
-    index_test_symbols(&mut engine, &mut writer,updated_symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, updated_symbols)
+        .await
+        .unwrap();
 
     // Verify incremental update worked correctly
     let old_results_after = engine.search("oldFunction").await.unwrap();

@@ -13,7 +13,10 @@ use anyhow::Result;
 fn test_calculate_similarity_identical() {
     let tool = create_tool("test", "test");
     let similarity = tool.calculate_similarity("hello", "hello");
-    assert_eq!(similarity, 1.0, "Identical strings should have 1.0 similarity");
+    assert_eq!(
+        similarity, 1.0,
+        "Identical strings should have 1.0 similarity"
+    );
 }
 
 #[test]
@@ -22,7 +25,10 @@ fn test_calculate_similarity_one_char_diff() {
 
     // "hello" vs "hallo" - 1 substitution out of 5 chars
     let similarity = tool.calculate_similarity("hello", "hallo");
-    assert!((similarity - 0.8).abs() < 0.01, "One char diff in 5 should be ~0.8 similarity");
+    assert!(
+        (similarity - 0.8).abs() < 0.01,
+        "One char diff in 5 should be ~0.8 similarity"
+    );
 }
 
 #[test]
@@ -31,7 +37,11 @@ fn test_calculate_similarity_insertion() {
 
     // "getUserData" vs "getUserDat" - 1 char deletion
     let similarity = tool.calculate_similarity("getUserData", "getUserDat");
-    assert!(similarity > 0.9, "One char deletion should be >0.9 similarity, got {}", similarity);
+    assert!(
+        similarity > 0.9,
+        "One char deletion should be >0.9 similarity, got {}",
+        similarity
+    );
 }
 
 #[test]
@@ -40,16 +50,31 @@ fn test_calculate_similarity_different_lengths() {
 
     // "hi" vs "hello" - very different
     let similarity = tool.calculate_similarity("hi", "hello");
-    assert!(similarity < 0.5, "Very different strings should have low similarity");
+    assert!(
+        similarity < 0.5,
+        "Very different strings should have low similarity"
+    );
 }
 
 #[test]
 fn test_calculate_similarity_empty_strings() {
     let tool = create_tool("test", "test");
 
-    assert_eq!(tool.calculate_similarity("", ""), 1.0, "Empty strings are identical");
-    assert_eq!(tool.calculate_similarity("hello", ""), 0.0, "Empty vs non-empty is 0.0");
-    assert_eq!(tool.calculate_similarity("", "world"), 0.0, "Empty vs non-empty is 0.0");
+    assert_eq!(
+        tool.calculate_similarity("", ""),
+        1.0,
+        "Empty strings are identical"
+    );
+    assert_eq!(
+        tool.calculate_similarity("hello", ""),
+        0.0,
+        "Empty vs non-empty is 0.0"
+    );
+    assert_eq!(
+        tool.calculate_similarity("", "world"),
+        0.0,
+        "Empty vs non-empty is 0.0"
+    );
 }
 
 #[test]
@@ -60,7 +85,10 @@ fn test_fuzzy_search_replace_exact_match() -> Result<()> {
     let (result, matches) = tool.fuzzy_search_replace(content)?;
 
     assert_eq!(matches, 1, "Should find 1 exact match");
-    assert!(result.contains("fetchUserData"), "Should replace with new name");
+    assert!(
+        result.contains("fetchUserData"),
+        "Should replace with new name"
+    );
     assert!(!result.contains("getUserData"), "Should remove old name");
 
     Ok(())
@@ -88,7 +116,10 @@ fn test_fuzzy_search_replace_with_typo() -> Result<()> {
     let (result, matches) = tool.fuzzy_search_replace(content)?;
 
     assert_eq!(matches, 1, "Should find fuzzy match despite typo");
-    assert!(result.contains("fetchUserData"), "Should replace fuzzy match");
+    assert!(
+        result.contains("fetchUserData"),
+        "Should replace fuzzy match"
+    );
 
     Ok(())
 }

@@ -1001,12 +1001,7 @@ impl PythonExtractor {
     /// Handles triple quotes (""" or '''), double quotes ("), and single quotes (')
     fn strip_string_delimiters(s: &str) -> String {
         // Try delimiters in order: triple quotes first (3 chars), then single quotes (1 char)
-        let delimiters = [
-            ("\"\"\"", 3),
-            ("'''", 3),
-            ("\"", 1),
-            ("'", 1),
-        ];
+        let delimiters = [("\"\"\"", 3), ("'''", 3), ("\"", 1), ("'", 1)];
 
         for (delimiter, strip_count) in &delimiters {
             if s.starts_with(delimiter) && s.ends_with(delimiter) && s.len() >= strip_count * 2 {

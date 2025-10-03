@@ -657,8 +657,7 @@ impl LuaExtractor {
 
                 // If this is a table, extract its fields with this symbol as parent
                 if let Some(expression) = expressions.get(i) {
-                    if expression.kind() == "table_constructor" || expression.kind() == "table"
-                    {
+                    if expression.kind() == "table_constructor" || expression.kind() == "table" {
                         let parent_id = self.symbols.last().unwrap().id.clone();
                         self.extract_table_fields(*expression, Some(&parent_id));
                     }
@@ -857,8 +856,7 @@ impl LuaExtractor {
 
             // Extract inheritance information from setmetatable pattern
             if is_setmetatable {
-                if let Some(captures) =
-                    signature.as_ref().and_then(|s| SETMETATABLE_RE.captures(s))
+                if let Some(captures) = signature.as_ref().and_then(|s| SETMETATABLE_RE.captures(s))
                 {
                     if let Some(parent_class_name) = captures.get(1) {
                         let parent_class_name = parent_class_name.as_str();

@@ -5,10 +5,10 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
-pub mod fuzzy_replace; // DMP fuzzy matching tool
 pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
+pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
 pub mod exploration;
+pub mod fuzzy_replace; // DMP fuzzy matching tool
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
@@ -18,8 +18,8 @@ pub mod workspace;
 
 // Re-export all tools for external use
 pub use editing::EditingTransaction; // Shared transaction infrastructure
-pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use exploration::{FastExploreTool, FindLogicTool};
+pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use refactoring::SmartRefactorTool;
 pub use search::FastSearchTool;

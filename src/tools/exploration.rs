@@ -23,7 +23,7 @@ pub struct BusinessLogicSymbol {
     pub language: String,
     pub file_path: String,
     pub start_line: u32,
-    pub confidence: f32,  // Business relevance score
+    pub confidence: f32, // Business relevance score
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
 }
@@ -106,8 +106,10 @@ impl FastExploreTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -193,7 +195,9 @@ impl FastExploreTool {
                     let mut file_counts = HashMap::new();
 
                     for result in all_results.iter() {
-                        *kind_counts.entry(format!("{:?}", result.symbol.kind)).or_insert(0) += 1;
+                        *kind_counts
+                            .entry(format!("{:?}", result.symbol.kind))
+                            .or_insert(0) += 1;
                         *language_counts.entry(&result.symbol.language).or_insert(0) += 1;
                         *file_counts.entry(&result.symbol.file_path).or_insert(0) += 1;
                     }
@@ -239,16 +243,19 @@ impl FastExploreTool {
         }
 
         // Fallback to database if search engine unavailable - use SQL GROUP BY for O(log n) performance
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
         // Get the current workspace ID to filter results
-        let workspace_id = crate::workspace::registry::generate_workspace_id(
-            &workspace.root.to_string_lossy()
-        )?;
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
 
         // Use SQL GROUP BY aggregations filtered by current workspace
         let workspace_ids = vec![workspace_id];
@@ -299,9 +306,13 @@ impl FastExploreTool {
     // ═══════════════════════════════════════════════════════════════════
 
     async fn intelligent_dependencies(&self, handler: &JulieServerHandler) -> Result<String> {
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
@@ -339,11 +350,21 @@ impl FastExploreTool {
                         let symbol_id = &target.symbol.id;
 
                         // Get targeted relationship queries for this symbol
-                        let incoming_rels = db_lock.get_relationships_to_symbol(symbol_id).unwrap_or_default();
-                        let outgoing_rels = db_lock.get_relationships_for_symbol(symbol_id).unwrap_or_default();
+                        let incoming_rels = db_lock
+                            .get_relationships_to_symbol(symbol_id)
+                            .unwrap_or_default();
+                        let outgoing_rels = db_lock
+                            .get_relationships_for_symbol(symbol_id)
+                            .unwrap_or_default();
 
-                        message.push_str(&format!("  ← Incoming: {} references\n", incoming_rels.len()));
-                        message.push_str(&format!("  → Outgoing: {} dependencies\n", outgoing_rels.len()));
+                        message.push_str(&format!(
+                            "  ← Incoming: {} references\n",
+                            incoming_rels.len()
+                        ));
+                        message.push_str(&format!(
+                            "  → Outgoing: {} dependencies\n",
+                            outgoing_rels.len()
+                        ));
                     } else {
                         message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
                     }
@@ -353,7 +374,9 @@ impl FastExploreTool {
             // Count references for each symbol to find most referenced
             let mut reference_counts: HashMap<String, usize> = HashMap::new();
             for rel in all_relationships.iter() {
-                *reference_counts.entry(rel.to_symbol_id.clone()).or_insert(0) += 1;
+                *reference_counts
+                    .entry(rel.to_symbol_id.clone())
+                    .or_insert(0) += 1;
             }
 
             let mut top_refs: Vec<_> = reference_counts.into_iter().collect();
@@ -362,7 +385,8 @@ impl FastExploreTool {
             message.push_str("\n🔥 Most Referenced Symbols:\n");
             for (symbol_id, ref_count) in top_refs.iter().take(10) {
                 if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(symbol_id) {
-                    message.push_str(&format!("  {} [{}]: {} references\n",
+                    message.push_str(&format!(
+                        "  {} [{}]: {} references\n",
                         symbol.name,
                         format!("{:?}", symbol.kind).to_lowercase(),
                         ref_count
@@ -381,9 +405,13 @@ impl FastExploreTool {
     // ═══════════════════════════════════════════════════════════════════
 
     async fn intelligent_hotspots(&self, handler: &JulieServerHandler) -> Result<String> {
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
@@ -392,9 +420,8 @@ impl FastExploreTool {
         message.push_str("===================================\n");
 
         // Get the current workspace ID to filter results
-        let workspace_id = crate::workspace::registry::generate_workspace_id(
-            &workspace.root.to_string_lossy()
-        )?;
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
 
         // Use SQL GROUP BY aggregations filtered by current workspace
         let workspace_ids = vec![workspace_id];
@@ -402,13 +429,15 @@ impl FastExploreTool {
         let file_rel_counts = db_lock.get_file_relationship_statistics(&workspace_ids)?;
 
         // Top files by symbol count
-        let mut files_by_symbol_count: Vec<_> = file_symbol_counts.iter()
+        let mut files_by_symbol_count: Vec<_> = file_symbol_counts
+            .iter()
             .map(|(k, v)| (k.clone(), *v as i64))
             .collect();
         files_by_symbol_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
 
         // Top files by relationship count
-        let mut files_by_relationship_count: Vec<_> = file_rel_counts.iter()
+        let mut files_by_relationship_count: Vec<_> = file_rel_counts
+            .iter()
             .map(|(k, v)| (k.clone(), *v as i64))
             .collect();
         files_by_relationship_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
@@ -436,7 +465,8 @@ impl FastExploreTool {
         let mut complexity_scores: Vec<(String, i64)> = Vec::new();
 
         for (file, symbol_count) in files_by_symbol_count.iter() {
-            let rel_count = files_by_relationship_count.iter()
+            let rel_count = files_by_relationship_count
+                .iter()
                 .find(|(f, _)| f == file)
                 .map(|(_, c)| *c)
                 .unwrap_or(0);
@@ -473,36 +503,63 @@ impl FastExploreTool {
                 let search_engine = search_engine.read().await;
                 if let Ok(results) = search_engine.search(focus).await {
                     if let Some(target) = results.iter().find(|r| r.symbol.name == *focus) {
-                        let workspace = handler.get_workspace().await?
+                        let workspace = handler
+                            .get_workspace()
+                            .await?
                             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-                        let db = workspace.db.as_ref()
+                        let db = workspace
+                            .db
+                            .as_ref()
                             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
                         let db_lock = db.lock().await;
 
                         let symbol_id = &target.symbol.id;
 
                         // Targeted queries for this specific symbol
-                        let incoming = db_lock.get_relationships_to_symbol(symbol_id).unwrap_or_default();
-                        let outgoing = db_lock.get_relationships_for_symbol(symbol_id).unwrap_or_default();
+                        let incoming = db_lock
+                            .get_relationships_to_symbol(symbol_id)
+                            .unwrap_or_default();
+                        let outgoing = db_lock
+                            .get_relationships_for_symbol(symbol_id)
+                            .unwrap_or_default();
 
-                        message.push_str(&format!("Tracing: '{}' [{}]\n\n", focus, format!("{:?}", target.symbol.kind).to_lowercase()));
+                        message.push_str(&format!(
+                            "Tracing: '{}' [{}]\n\n",
+                            focus,
+                            format!("{:?}", target.symbol.kind).to_lowercase()
+                        ));
 
-                        message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
+                        message
+                            .push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
                         for (i, rel) in incoming.iter().take(10).enumerate() {
-                            if let Ok(Some(from_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id) {
-                                message.push_str(&format!("  {}. {} {} this symbol\n",
-                                    i + 1, from_symbol.name, rel.kind));
+                            if let Ok(Some(from_symbol)) =
+                                db_lock.get_symbol_by_id(&rel.from_symbol_id)
+                            {
+                                message.push_str(&format!(
+                                    "  {}. {} {} this symbol\n",
+                                    i + 1,
+                                    from_symbol.name,
+                                    rel.kind
+                                ));
                             }
                         }
                         if incoming.len() > 10 {
                             message.push_str(&format!("  ... and {} more\n", incoming.len() - 10));
                         }
 
-                        message.push_str(&format!("\n→ Outgoing ({} relationships):\n", outgoing.len()));
+                        message.push_str(&format!(
+                            "\n→ Outgoing ({} relationships):\n",
+                            outgoing.len()
+                        ));
                         for (i, rel) in outgoing.iter().take(10).enumerate() {
-                            if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
-                                message.push_str(&format!("  {}. This symbol {} {}\n",
-                                    i + 1, rel.kind, to_symbol.name));
+                            if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id)
+                            {
+                                message.push_str(&format!(
+                                    "  {}. This symbol {} {}\n",
+                                    i + 1,
+                                    rel.kind,
+                                    to_symbol.name
+                                ));
                             }
                         }
                         if outgoing.len() > 10 {
@@ -919,12 +976,17 @@ impl FindLogicTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🏢 🧠 SUPER GENIUS: Finding business logic for domain: {}", self.domain);
+        debug!(
+            "🏢 🧠 SUPER GENIUS: Finding business logic for domain: {}",
+            self.domain
+        );
 
         // 🚀 MULTI-TIER INTELLIGENT SEARCH ARCHITECTURE
         // This replaces primitive O(n) filtering with intelligent indexed queries
@@ -974,7 +1036,10 @@ impl FindLogicTool {
         debug!("🧠 Tier 4: Semantic HNSW concept matching");
         match self.semantic_business_search(handler).await {
             Ok(semantic_matches) => {
-                search_insights.push(format!("Semantic search: {} matches", semantic_matches.len()));
+                search_insights.push(format!(
+                    "Semantic search: {} matches",
+                    semantic_matches.len()
+                ));
                 candidates.extend(semantic_matches);
             }
             Err(e) => {
@@ -987,7 +1052,10 @@ impl FindLogicTool {
         // TIER 5: Relationship Graph Centrality Analysis
         // ═══════════════════════════════════════════════════════════════════
         debug!("📊 Tier 5: Analyzing relationship graph for business importance");
-        if let Err(e) = self.analyze_business_importance(&mut candidates, handler).await {
+        if let Err(e) = self
+            .analyze_business_importance(&mut candidates, handler)
+            .await
+        {
             debug!("⚠️ Tier 5 failed: {}", e);
             search_insights.push("Graph analysis: unavailable".to_string());
         } else {
@@ -1007,12 +1075,18 @@ impl FindLogicTool {
             .collect();
 
         // Get relationships between business logic symbols
-        let business_relationships = self.get_business_relationships(&business_symbols, handler).await?;
+        let business_relationships = self
+            .get_business_relationships(&business_symbols, handler)
+            .await?;
 
         // Format with intelligence insights
         let mut message = "🧠 SUPER GENIUS Business Logic Discovery\n".to_string();
-        message.push_str(&format!("🔬 Intelligence Layers: {}\n\n", search_insights.join(" | ")));
-        message.push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
+        message.push_str(&format!(
+            "🔬 Intelligence Layers: {}\n\n",
+            search_insights.join(" | ")
+        ));
+        message
+            .push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
 
         self.create_result(
             business_symbols,
@@ -1051,7 +1125,10 @@ impl FindLogicTool {
                 }
             }
 
-            debug!("🔍 Tantivy keyword search found {} candidates", keyword_results.len());
+            debug!(
+                "🔍 Tantivy keyword search found {} candidates",
+                keyword_results.len()
+            );
             return Ok(keyword_results);
         }
 
@@ -1073,7 +1150,10 @@ impl FindLogicTool {
             }
         }
 
-        debug!("🔍 SQLite FTS5 keyword search found {} candidates", keyword_results.len());
+        debug!(
+            "🔍 SQLite FTS5 keyword search found {} candidates",
+            keyword_results.len()
+        );
         Ok(keyword_results)
     }
 
@@ -1082,21 +1162,36 @@ impl FindLogicTool {
     // ═══════════════════════════════════════════════════════════════════
 
     /// Tier 2: Find architectural patterns using tree-sitter AST analysis
-    async fn find_architectural_patterns(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+    async fn find_architectural_patterns(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Vec<Symbol>> {
         let mut pattern_matches: Vec<Symbol> = Vec::new();
         let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
 
         // Get database for querying
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
         // Pattern 1: Find Service/Controller/Handler classes
         let architectural_patterns = vec![
-            "Service", "Controller", "Handler", "Manager", "Processor",
-            "Repository", "Provider", "Factory", "Builder", "Validator"
+            "Service",
+            "Controller",
+            "Handler",
+            "Manager",
+            "Processor",
+            "Repository",
+            "Provider",
+            "Factory",
+            "Builder",
+            "Validator",
         ];
 
         for pattern in &architectural_patterns {
@@ -1118,8 +1213,17 @@ impl FindLogicTool {
 
         // Pattern 2: Find business logic method names
         let business_method_prefixes = vec![
-            "process", "validate", "calculate", "execute", "handle",
-            "create", "update", "delete", "get", "find", "fetch"
+            "process",
+            "validate",
+            "calculate",
+            "execute",
+            "handle",
+            "create",
+            "update",
+            "delete",
+            "get",
+            "find",
+            "fetch",
         ];
 
         for prefix in &business_method_prefixes {
@@ -1137,7 +1241,10 @@ impl FindLogicTool {
             }
         }
 
-        debug!("🌳 AST pattern recognition found {} architectural matches", pattern_matches.len());
+        debug!(
+            "🌳 AST pattern recognition found {} architectural matches",
+            pattern_matches.len()
+        );
         Ok(pattern_matches)
     }
 
@@ -1155,10 +1262,16 @@ impl FindLogicTool {
             if path_lower.contains("/services/") || path_lower.contains("/service/") {
                 path_boost += 0.25;
                 symbol.semantic_group = Some("service".to_string());
-            } else if path_lower.contains("/domain/") || path_lower.contains("/models/") || path_lower.contains("/entities/") {
+            } else if path_lower.contains("/domain/")
+                || path_lower.contains("/models/")
+                || path_lower.contains("/entities/")
+            {
                 path_boost += 0.2;
                 symbol.semantic_group = Some("domain".to_string());
-            } else if path_lower.contains("/controllers/") || path_lower.contains("/handlers/") || path_lower.contains("/api/") {
+            } else if path_lower.contains("/controllers/")
+                || path_lower.contains("/handlers/")
+                || path_lower.contains("/api/")
+            {
                 path_boost += 0.15;
                 symbol.semantic_group = Some("controller".to_string());
             } else if path_lower.contains("/repositories/") || path_lower.contains("/dao/") {
@@ -1167,15 +1280,21 @@ impl FindLogicTool {
             }
 
             // Infrastructure/utilities (PENALTY - not business logic)
-            if path_lower.contains("/utils/") || path_lower.contains("/helpers/") ||
-               path_lower.contains("/lib/") || path_lower.contains("/vendor/") {
+            if path_lower.contains("/utils/")
+                || path_lower.contains("/helpers/")
+                || path_lower.contains("/lib/")
+                || path_lower.contains("/vendor/")
+            {
                 path_boost -= 0.3;
                 symbol.semantic_group = Some("utility".to_string());
             }
 
             // Tests (PENALTY - not production business logic)
-            if path_lower.contains("/test") || path_lower.contains("_test") ||
-               path_lower.contains(".test.") || path_lower.contains(".spec.") {
+            if path_lower.contains("/test")
+                || path_lower.contains("_test")
+                || path_lower.contains(".test.")
+                || path_lower.contains(".spec.")
+            {
                 path_boost -= 0.5;
                 symbol.semantic_group = Some("test".to_string());
             }
@@ -1185,7 +1304,10 @@ impl FindLogicTool {
             symbol.confidence = Some((current_score + path_boost).clamp(0.0, 1.0));
         }
 
-        debug!("🗂️ Applied path-based intelligence to {} symbols", symbols.len());
+        debug!(
+            "🗂️ Applied path-based intelligence to {} symbols",
+            symbols.len()
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1209,7 +1331,9 @@ impl FindLogicTool {
         }
 
         // Get workspace components
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
 
         let vector_store = match workspace.vector_store.as_ref() {
@@ -1220,7 +1344,9 @@ impl FindLogicTool {
             }
         };
 
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
         // Generate embedding for the domain query
@@ -1294,7 +1420,10 @@ impl FindLogicTool {
             }
         }
 
-        debug!("🧠 Semantic HNSW search found {} conceptually similar symbols", semantic_matches.len());
+        debug!(
+            "🧠 Semantic HNSW search found {} conceptually similar symbols",
+            semantic_matches.len()
+        );
         Ok(semantic_matches)
     }
 
@@ -1303,15 +1432,24 @@ impl FindLogicTool {
     // ═══════════════════════════════════════════════════════════════════
 
     /// Tier 5: Analyze relationship graph to boost important business entities
-    async fn analyze_business_importance(&self, symbols: &mut [Symbol], handler: &JulieServerHandler) -> Result<()> {
-        let workspace = handler.get_workspace().await?
+    async fn analyze_business_importance(
+        &self,
+        symbols: &mut [Symbol],
+        handler: &JulieServerHandler,
+    ) -> Result<()> {
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
         // Build a reference count map for all symbols
-        let mut reference_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut reference_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
 
         // Count incoming references for each symbol (how many things reference this symbol)
         for symbol in symbols.iter() {
@@ -1329,7 +1467,10 @@ impl FindLogicTool {
                     let current_score = symbol.confidence.unwrap_or(0.5);
                     symbol.confidence = Some((current_score + centrality_boost).clamp(0.0, 1.0));
 
-                    debug!("📊 Symbol {} has {} references, boost: {:.2}", symbol.name, ref_count, centrality_boost);
+                    debug!(
+                        "📊 Symbol {} has {} references, boost: {:.2}",
+                        symbol.name, ref_count, centrality_boost
+                    );
                 }
             }
         }
@@ -1362,10 +1503,15 @@ impl FindLogicTool {
         symbols.sort_by(|a, b| {
             let score_a = a.confidence.unwrap_or(0.0);
             let score_b = b.confidence.unwrap_or(0.0);
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        debug!("✨ Deduplicated and ranked {} final candidates", symbols.len());
+        debug!(
+            "✨ Deduplicated and ranked {} final candidates",
+            symbols.len()
+        );
         symbols
     }
 
@@ -1413,10 +1559,18 @@ impl FindLogicTool {
     }
 
     /// Get relationships between business logic symbols using intelligent queries
-    async fn get_business_relationships(&self, business_symbols: &[Symbol], handler: &JulieServerHandler) -> Result<Vec<Relationship>> {
-        let workspace = handler.get_workspace().await?
+    async fn get_business_relationships(
+        &self,
+        business_symbols: &[Symbol],
+        handler: &JulieServerHandler,
+    ) -> Result<Vec<Relationship>> {
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().await;
 
@@ -1430,8 +1584,9 @@ impl FindLogicTool {
             if let Ok(symbol_rels) = db_lock.get_relationships_for_symbol(&symbol.id) {
                 for rel in symbol_rels {
                     // Only include relationships where both ends are business symbols
-                    if business_symbol_ids.contains(&rel.from_symbol_id) &&
-                       business_symbol_ids.contains(&rel.to_symbol_id) {
+                    if business_symbol_ids.contains(&rel.from_symbol_id)
+                        && business_symbol_ids.contains(&rel.to_symbol_id)
+                    {
                         relationships.push(rel);
                     }
                 }
@@ -1491,10 +1646,7 @@ impl FindLogicTool {
                     .as_ref()
                     .unwrap_or(&"unknown".to_string())
                     .clone();
-                grouped_symbols
-                    .entry(layer)
-                    .or_default()
-                    .push(symbol);
+                grouped_symbols.entry(layer).or_default().push(symbol);
             }
 
             // Format grouped results

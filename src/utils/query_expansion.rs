@@ -29,10 +29,7 @@ pub fn to_camelcase(query: &str) -> String {
 /// "user service" → "user_service"
 /// "get user data" → "get_user_data"
 pub fn to_snake_case(query: &str) -> String {
-    query
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("_")
+    query.split_whitespace().collect::<Vec<&str>>().join("_")
 }
 
 /// Convert to lowercase camelCase (first word lowercase)
@@ -69,10 +66,7 @@ pub fn to_wildcard_query(query: &str) -> String {
 pub fn to_or_query(query: &str) -> String {
     format!(
         "({})",
-        query
-            .split_whitespace()
-            .collect::<Vec<&str>>()
-            .join(" OR ")
+        query.split_whitespace().collect::<Vec<&str>>().join(" OR ")
     )
 }
 
@@ -208,7 +202,10 @@ mod tests {
     #[test]
     fn test_to_wildcard_query() {
         assert_eq!(to_wildcard_query("user service"), "user* AND service*");
-        assert_eq!(to_wildcard_query("get user data"), "get* AND user* AND data*");
+        assert_eq!(
+            to_wildcard_query("get user data"),
+            "get* AND user* AND data*"
+        );
     }
 
     #[test]

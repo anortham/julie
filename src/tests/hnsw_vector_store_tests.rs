@@ -66,7 +66,10 @@ mod hnsw_tests {
         assert!(result.is_ok(), "HNSW index building should succeed");
 
         // AND: Index should be marked as built
-        assert!(store.has_hnsw_index(), "VectorStore should report having HNSW index");
+        assert!(
+            store.has_hnsw_index(),
+            "VectorStore should report having HNSW index"
+        );
 
         Ok(())
     }
@@ -107,7 +110,7 @@ mod hnsw_tests {
         // AND: Results should be sorted by similarity (highest first)
         for i in 1..results.len() {
             assert!(
-                results[i-1].similarity_score >= results[i].similarity_score,
+                results[i - 1].similarity_score >= results[i].similarity_score,
                 "Results must be sorted by similarity score descending"
             );
         }
@@ -135,12 +138,24 @@ mod hnsw_tests {
 
         // Brute force baseline (current implementation)
         let brute_force_results = store.search_similar(&query, 5, 0.0)?;
-        println!("Brute force results: {:?}", brute_force_results.iter().map(|r| &r.symbol_id).collect::<Vec<_>>());
+        println!(
+            "Brute force results: {:?}",
+            brute_force_results
+                .iter()
+                .map(|r| &r.symbol_id)
+                .collect::<Vec<_>>()
+        );
 
         // HNSW search
         store.build_hnsw_index()?;
         let hnsw_results = store.search_similar_hnsw(&query, 5, 0.0)?;
-        println!("HNSW results: {:?}", hnsw_results.iter().map(|r| &r.symbol_id).collect::<Vec<_>>());
+        println!(
+            "HNSW results: {:?}",
+            hnsw_results
+                .iter()
+                .map(|r| &r.symbol_id)
+                .collect::<Vec<_>>()
+        );
 
         // THEN: HNSW should find similar results as brute force
         // (HNSW is approximate, so exact ordering may differ slightly)
@@ -151,14 +166,10 @@ mod hnsw_tests {
         );
 
         // Check that there's significant overlap in results (at least 80%)
-        let brute_force_ids: std::collections::HashSet<_> = brute_force_results
-            .iter()
-            .map(|r| &r.symbol_id)
-            .collect();
-        let hnsw_ids: std::collections::HashSet<_> = hnsw_results
-            .iter()
-            .map(|r| &r.symbol_id)
-            .collect();
+        let brute_force_ids: std::collections::HashSet<_> =
+            brute_force_results.iter().map(|r| &r.symbol_id).collect();
+        let hnsw_ids: std::collections::HashSet<_> =
+            hnsw_results.iter().map(|r| &r.symbol_id).collect();
 
         let overlap = brute_force_ids.intersection(&hnsw_ids).count();
         let overlap_ratio = overlap as f32 / brute_force_results.len() as f32;
@@ -170,8 +181,8 @@ mod hnsw_tests {
         );
 
         // Top result similarity scores should be very close
-        let score_diff = (brute_force_results[0].similarity_score -
-                         hnsw_results[0].similarity_score).abs();
+        let score_diff =
+            (brute_force_results[0].similarity_score - hnsw_results[0].similarity_score).abs();
         assert!(
             score_diff < 0.05,
             "Top similarity scores should be close (diff: {:.3})",
@@ -208,17 +219,11 @@ mod hnsw_tests {
         assert!(result.is_ok(), "Saving HNSW index should succeed");
 
         // AND: Index file should exist
-        assert!(
-            index_path.exists(),
-            "HNSW index file should be created"
-        );
+        assert!(index_path.exists(), "HNSW index file should be created");
 
         // AND: Index file should not be empty
         let metadata = std::fs::metadata(&index_path)?;
-        assert!(
-            metadata.len() > 0,
-            "HNSW index file should not be empty"
-        );
+        assert!(metadata.len() > 0, "HNSW index file should not be empty");
 
         Ok(())
     }
@@ -275,8 +280,7 @@ mod hnsw_tests {
         );
 
         assert_eq!(
-            original_results[0].symbol_id,
-            loaded_results[0].symbol_id,
+            original_results[0].symbol_id, loaded_results[0].symbol_id,
             "Loaded index should return same top result"
         );
 
@@ -344,7 +348,10 @@ mod hnsw_tests {
         let result = store.remove_vector_from_hnsw(&removed_id);
 
         // THEN: Removal should succeed
-        assert!(result.is_ok(), "Removing vector from HNSW index should succeed");
+        assert!(
+            result.is_ok(),
+            "Removing vector from HNSW index should succeed"
+        );
 
         // AND: Removed vector should not appear in search results
         let search_results = store.search_similar_hnsw(&removed_vector, 10, 0.0)?;
@@ -377,7 +384,10 @@ mod hnsw_tests {
                 // If it succeeds, searches should return empty results
                 let query = generate_test_vector(384, 0);
                 let search_results = store.search_similar_hnsw(&query, 10, 0.0)?;
-                assert!(search_results.is_empty(), "Empty index should return no results");
+                assert!(
+                    search_results.is_empty(),
+                    "Empty index should return no results"
+                );
             }
             Err(e) => {
                 // If it errors, that's also acceptable behavior

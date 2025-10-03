@@ -800,8 +800,7 @@ impl RubyExtractor {
         // Ruby singleton method structure: def target.method_name
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "identifier"
-                && child.prev_sibling().is_some_and(|s| s.kind() == ".")
+            if child.kind() == "identifier" && child.prev_sibling().is_some_and(|s| s.kind() == ".")
             {
                 return self.base.get_node_text(&child);
             }
@@ -814,9 +813,10 @@ impl RubyExtractor {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if (child.kind() == "identifier" || child.kind() == "self")
-                && child.next_sibling().is_some_and(|s| s.kind() == ".") {
-                    return self.base.get_node_text(&child);
-                }
+                && child.next_sibling().is_some_and(|s| s.kind() == ".")
+            {
+                return self.base.get_node_text(&child);
+            }
         }
         "self".to_string()
     }

@@ -80,7 +80,7 @@ pub enum WorkspaceCommand {
     read_only_hint = false,
     meta = r#"{"priority": "high", "category": "workspace"}"#
 )]
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
     /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health", "set_ttl", "set_limit"
     ///

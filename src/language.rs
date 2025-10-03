@@ -106,7 +106,11 @@ pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
     match language {
         "rust" => vec!["function_item", "impl_item"],
         "typescript" | "tsx" | "javascript" => {
-            vec!["function_declaration", "method_definition", "arrow_function"]
+            vec![
+                "function_declaration",
+                "method_definition",
+                "arrow_function",
+            ]
         }
         "python" => vec!["function_definition"],
         "java" => vec!["method_declaration"],
@@ -152,7 +156,14 @@ pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
 /// like rename symbol, find symbol boundaries, etc.
 pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
     match language {
-        "rust" => vec!["function_item", "struct_item", "enum_item", "impl_item", "trait_item", "type_item"],
+        "rust" => vec![
+            "function_item",
+            "struct_item",
+            "enum_item",
+            "impl_item",
+            "trait_item",
+            "type_item",
+        ],
         "typescript" | "tsx" | "javascript" => vec![
             "function_declaration",
             "class_declaration",
@@ -161,14 +172,51 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
             "type_alias_declaration",
         ],
         "python" => vec!["function_definition", "class_definition"],
-        "java" => vec!["method_declaration", "class_declaration", "interface_declaration", "enum_declaration"],
-        "cpp" | "c" => vec!["function_definition", "class_specifier", "struct_specifier", "enum_specifier"],
-        "go" => vec!["function_declaration", "method_declaration", "type_declaration"],
-        "csharp" => vec!["method_declaration", "class_declaration", "interface_declaration", "struct_declaration", "enum_declaration"],
-        "php" => vec!["function_definition", "method_declaration", "class_declaration", "interface_declaration", "trait_declaration"],
+        "java" => vec![
+            "method_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+        ],
+        "cpp" | "c" => vec![
+            "function_definition",
+            "class_specifier",
+            "struct_specifier",
+            "enum_specifier",
+        ],
+        "go" => vec![
+            "function_declaration",
+            "method_declaration",
+            "type_declaration",
+        ],
+        "csharp" => vec![
+            "method_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "struct_declaration",
+            "enum_declaration",
+        ],
+        "php" => vec![
+            "function_definition",
+            "method_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "trait_declaration",
+        ],
         "ruby" => vec!["method", "singleton_method", "class", "module"],
-        "swift" => vec!["function_declaration", "class_declaration", "struct_declaration", "protocol_declaration", "enum_declaration"],
-        "kotlin" => vec!["function_declaration", "class_declaration", "object_declaration", "interface_declaration"],
+        "swift" => vec![
+            "function_declaration",
+            "class_declaration",
+            "struct_declaration",
+            "protocol_declaration",
+            "enum_declaration",
+        ],
+        "kotlin" => vec![
+            "function_declaration",
+            "class_declaration",
+            "object_declaration",
+            "interface_declaration",
+        ],
         "dart" => vec!["function_signature", "method_signature", "class_definition"],
         "lua" => vec!["function_declaration", "local_function"],
         _ => vec!["function", "class", "method"], // Generic fallback
@@ -181,10 +229,10 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
 /// Most use "name", but some (like C/C++) use more complex nested structures.
 pub fn get_symbol_name_field(language: &str) -> &'static str {
     match language {
-        "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp" |
-        "php" | "ruby" | "swift" | "kotlin" | "dart" | "lua" | "bash" | "powershell" => "name",
+        "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp"
+        | "php" | "ruby" | "swift" | "kotlin" | "dart" | "lua" | "bash" | "powershell" => "name",
         "cpp" | "c" => "declarator", // C/C++ use nested declarator nodes
-        _ => "name", // Generic fallback
+        _ => "name",                 // Generic fallback
     }
 }
 
@@ -195,11 +243,32 @@ mod tests {
     #[test]
     fn test_all_26_languages_supported() {
         let languages = vec![
-            "rust", "c", "cpp", "go", "zig",
-            "typescript", "tsx", "javascript", "html", "css", "vue",
-            "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "dart",
-            "lua", "bash", "powershell",
-            "gdscript", "razor", "sql", "regex",
+            "rust",
+            "c",
+            "cpp",
+            "go",
+            "zig",
+            "typescript",
+            "tsx",
+            "javascript",
+            "html",
+            "css",
+            "vue",
+            "python",
+            "java",
+            "csharp",
+            "php",
+            "ruby",
+            "swift",
+            "kotlin",
+            "dart",
+            "lua",
+            "bash",
+            "powershell",
+            "gdscript",
+            "razor",
+            "sql",
+            "regex",
         ];
 
         for lang in &languages {

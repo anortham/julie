@@ -540,10 +540,7 @@ impl PhpExtractor {
         let name_node = self.find_child(&const_element, "name")?;
 
         // Extract all text values immediately
-        let name = {
-            
-            self.base.get_node_text(&name_node)
-        };
+        let name = { self.base.get_node_text(&name_node) };
 
         // Extract value text immediately
         let value = {

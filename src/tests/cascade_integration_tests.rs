@@ -87,11 +87,17 @@ async fn test_cascade_flow_fresh_index() {
 
     // Verify status: Nothing ready before indexing
     assert!(
-        !handler.indexing_status.sqlite_fts_ready.load(Ordering::Relaxed),
+        !handler
+            .indexing_status
+            .sqlite_fts_ready
+            .load(Ordering::Relaxed),
         "SQLite FTS should not be ready before indexing"
     );
     assert!(
-        !handler.indexing_status.tantivy_ready.load(Ordering::Relaxed),
+        !handler
+            .indexing_status
+            .tantivy_ready
+            .load(Ordering::Relaxed),
         "Tantivy should not be ready before indexing"
     );
 
@@ -118,7 +124,10 @@ async fn test_cascade_flow_fresh_index() {
 
     // ASSERTION 1: SQLite FTS should be ready immediately (non-blocking)
     assert!(
-        handler.indexing_status.sqlite_fts_ready.load(Ordering::Relaxed),
+        handler
+            .indexing_status
+            .sqlite_fts_ready
+            .load(Ordering::Relaxed),
         "SQLite FTS should be ready immediately after indexing"
     );
     assert!(
@@ -129,8 +138,13 @@ async fn test_cascade_flow_fresh_index() {
 
     // ASSERTION 2: SQLite FTS search should work immediately
     let workspace = handler.get_workspace().await.unwrap().unwrap();
-    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
-    let workspace_id_opt = registry_service.get_primary_workspace_id().await.ok().flatten();
+    let registry_service =
+        crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+    let workspace_id_opt = registry_service
+        .get_primary_workspace_id()
+        .await
+        .ok()
+        .flatten();
 
     let db = workspace.db.as_ref().unwrap();
     let db_lock = db.lock().await;
@@ -140,14 +154,21 @@ async fn test_cascade_flow_fresh_index() {
         .expect("SQLite FTS search failed");
 
     assert!(!fts_results.is_empty(), "SQLite FTS should find results");
-    println!("✅ SQLite FTS found {} results immediately", fts_results.len());
+    println!(
+        "✅ SQLite FTS found {} results immediately",
+        fts_results.len()
+    );
     drop(db_lock);
 
     // ASSERTION 3: Wait for Tantivy to build in background (should be quick)
     let mut tantivy_ready = false;
     for i in 0..20 {
         // Wait up to 10 seconds (20 * 500ms)
-        if handler.indexing_status.tantivy_ready.load(Ordering::Relaxed) {
+        if handler
+            .indexing_status
+            .tantivy_ready
+            .load(Ordering::Relaxed)
+        {
             tantivy_ready = true;
             println!("✅ Tantivy ready after ~{}ms", i * 500);
             break;
@@ -211,7 +232,11 @@ async fn test_search_fallback_chain() {
     // Wait for SQLite FTS to be ready
     let mut fts_ready = false;
     for _ in 0..10 {
-        if handler.indexing_status.sqlite_fts_ready.load(Ordering::Relaxed) {
+        if handler
+            .indexing_status
+            .sqlite_fts_ready
+            .load(Ordering::Relaxed)
+        {
             fts_ready = true;
             break;
         }
@@ -234,10 +259,7 @@ async fn test_search_fallback_chain() {
     let search_duration = start.elapsed();
 
     assert!(results.is_ok(), "Search should succeed with fallback");
-    println!(
-        "✅ Fallback search completed in {:?}",
-        search_duration
-    );
+    println!("✅ Fallback search completed in {:?}", search_duration);
 
     // ASSERTION 2: Results should be meaningful (from SQLite FTS)
     // Note: The results will be in CallToolResult format, we just verify success
@@ -292,8 +314,14 @@ async fn test_tantivy_rebuild_from_sqlite() {
 
     // Wait for both indexes to be ready
     for _ in 0..40 {
-        if handler.indexing_status.sqlite_fts_ready.load(Ordering::Relaxed)
-            && handler.indexing_status.tantivy_ready.load(Ordering::Relaxed)
+        if handler
+            .indexing_status
+            .sqlite_fts_ready
+            .load(Ordering::Relaxed)
+            && handler
+                .indexing_status
+                .tantivy_ready
+                .load(Ordering::Relaxed)
         {
             break;
         }
@@ -302,8 +330,13 @@ async fn test_tantivy_rebuild_from_sqlite() {
 
     // ASSERTION 1: Verify SQLite contains file contents
     let workspace = handler.get_workspace().await.unwrap().unwrap();
-    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
-    let workspace_id = registry_service.get_primary_workspace_id().await.unwrap().unwrap();
+    let registry_service =
+        crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+    let workspace_id = registry_service
+        .get_primary_workspace_id()
+        .await
+        .unwrap()
+        .unwrap();
 
     let db = workspace.db.as_ref().unwrap();
     let db_lock = db.lock().await;
@@ -312,8 +345,14 @@ async fn test_tantivy_rebuild_from_sqlite() {
         .get_all_file_contents(&workspace_id)
         .expect("Failed to get file contents");
 
-    assert!(!file_contents.is_empty(), "SQLite should contain file contents");
-    assert!(file_contents.len() >= 2, "Should have at least 2 files indexed");
+    assert!(
+        !file_contents.is_empty(),
+        "SQLite should contain file contents"
+    );
+    assert!(
+        file_contents.len() >= 2,
+        "Should have at least 2 files indexed"
+    );
     println!("✅ SQLite contains {} files", file_contents.len());
 
     drop(db_lock);
@@ -330,15 +369,25 @@ async fn test_tantivy_rebuild_from_sqlite() {
     drop(db_lock);
 
     // ASSERTION 3: Verify Tantivy search works (rebuilt from SQLite)
-    if handler.indexing_status.tantivy_ready.load(Ordering::Relaxed) {
+    if handler
+        .indexing_status
+        .tantivy_ready
+        .load(Ordering::Relaxed)
+    {
         let search_engine = handler.active_search_engine().await.unwrap();
         let search_lock = search_engine.read().await;
         let results = search_lock.search("calculate").await;
 
         assert!(results.is_ok(), "Tantivy search should work after rebuild");
         let symbols = results.unwrap();
-        assert!(!symbols.is_empty(), "Tantivy should find symbols after rebuild");
-        println!("✅ Tantivy successfully rebuilt from SQLite - found {} results", symbols.len());
+        assert!(
+            !symbols.is_empty(),
+            "Tantivy should find symbols after rebuild"
+        );
+        println!(
+            "✅ Tantivy successfully rebuilt from SQLite - found {} results",
+            symbols.len()
+        );
     }
 
     println!("\n🎉 Tantivy rebuild test PASSED - SQLite is true source of truth!");
@@ -382,7 +431,11 @@ async fn test_sqlite_fts_query_performance() {
 
     // Wait for SQLite FTS to be ready
     for _ in 0..10 {
-        if handler.indexing_status.sqlite_fts_ready.load(Ordering::Relaxed) {
+        if handler
+            .indexing_status
+            .sqlite_fts_ready
+            .load(Ordering::Relaxed)
+        {
             break;
         }
         sleep(Duration::from_millis(100)).await;
@@ -423,5 +476,8 @@ async fn test_sqlite_fts_query_performance() {
         avg_duration
     );
 
-    println!("✅ SQLite FTS performance target MET - queries averaging {:?}", avg_duration);
+    println!(
+        "✅ SQLite FTS performance target MET - queries averaging {:?}",
+        avg_duration
+    );
 }
