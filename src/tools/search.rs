@@ -1009,8 +1009,6 @@ impl FastSearchTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
-        let db_lock = db.lock().await;
-
         // 🔥 NEW: Apply query preprocessing for better fallback search quality
         let processed_query = self.preprocess_fallback_query(&self.query);
         debug!(
@@ -1019,8 +1017,10 @@ impl FastSearchTool {
         );
 
         // Use the workspace-aware database search with processed query
-        let mut results =
-            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))?;
+        let mut results = {
+            let db_lock = db.lock().await;
+            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))?
+        };
 
         // Apply language filtering if specified
         if let Some(ref language) = self.language {

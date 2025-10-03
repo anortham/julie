@@ -17,7 +17,7 @@ async fn index_test_symbols(
     symbols: Vec<Symbol>,
 ) -> anyhow::Result<()> {
     writer.index_symbols(symbols).await?;
-    engine.reload_reader()?;
+    engine.reload_reader().await?;
     Ok(())
 }
 
@@ -148,6 +148,83 @@ async fn test_symbol_indexing() {
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0].symbol.name, "getUserById");
     assert_eq!(search_results[0].symbol.file_path, "src/user.ts");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_parallel_searches_do_not_deadlock() {
+    use std::sync::Arc;
+    use tokio::time::{timeout, Duration};
+
+    let (mut engine, mut writer) = create_test_engine();
+
+    let symbols = vec![
+        Symbol {
+            id: "parallel-search-1".to_string(),
+            name: "diff_match_patch".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/lib.rs".to_string(),
+            signature: Some("fn diff_match_patch()".to_string()),
+            start_line: 1,
+            end_line: 10,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: Some("fn diff_match_patch() { /* ... */ }".to_string()),
+        },
+        Symbol {
+            id: "parallel-search-2".to_string(),
+            name: "embedding_vector_semantic".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/embeddings.rs".to_string(),
+            signature: Some("fn embedding_vector_semantic()".to_string()),
+            start_line: 20,
+            end_line: 30,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 200,
+            end_byte: 400,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: Some("fn embedding_vector_semantic() { /* ... */ }".to_string()),
+        },
+    ];
+
+    index_test_symbols(&mut engine, &mut writer, symbols).await.unwrap();
+
+    let engine = Arc::new(engine);
+
+    let search_a = {
+        let engine = engine.clone();
+        async move { engine.search("diff-match-patch dmp").await }
+    };
+    let search_b = {
+        let engine = engine.clone();
+        async move { engine.search("embedding vector semantic").await }
+    };
+
+    let result = timeout(Duration::from_secs(2), async { tokio::join!(search_a, search_b) }).await;
+
+    assert!(
+        result.is_ok(),
+        "Parallel fast_search queries should complete without timing out"
+    );
+
+    let (first, second) = result.unwrap();
+    assert!(first.unwrap().len() > 0);
+    assert!(second.unwrap().len() > 0);
 }
 
 #[tokio::test]
@@ -1483,7 +1560,7 @@ async fn test_incremental_updates() {
     // Simulate file update: delete old symbols from the updated file
     writer.delete_file_symbols("src/updated.ts").await.unwrap();
     writer.commit().await.unwrap();
-    engine.reload_reader().unwrap();
+    engine.reload_reader().await.unwrap();
 
     // Add new symbols for the updated file
     let updated_symbols = vec![Symbol {

@@ -89,11 +89,45 @@ impl ManageWorkspaceTool {
         // Get SearchEngine and SearchWriter for single-pass indexing (Tantivy + SQLite together)
         match handler.active_search_engine().await {
             Ok(search_engine) => {
-                // Get search_writer from workspace
-                let workspace = handler.get_workspace().await?;
-                let search_writer = workspace.as_ref()
-                    .and_then(|ws| ws.search_writer.clone())
-                    .ok_or_else(|| anyhow::anyhow!("Search writer not available for indexing"))?;
+                // For reference workspaces, create dedicated search infrastructure
+                // For primary workspace, use existing infrastructure
+                let (workspace_search_engine, workspace_search_writer) = if is_primary_workspace {
+                    // Primary workspace: use existing search engine and writer
+                    let workspace = handler.get_workspace().await?;
+                    let search_writer = workspace.as_ref()
+                        .and_then(|ws| ws.search_writer.clone())
+                        .ok_or_else(|| anyhow::anyhow!("Search writer not available for indexing"))?;
+                    (search_engine, search_writer)
+                } else {
+                    // Reference workspace: create dedicated search engine and writer
+                    info!("Creating dedicated search infrastructure for reference workspace: {}", workspace_id);
+
+                    let workspace = handler.get_workspace().await?
+                        .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+
+                    let index_path = workspace.workspace_index_path(&workspace_id);
+
+                    // Create index directory if it doesn't exist
+                    std::fs::create_dir_all(&index_path)
+                        .map_err(|e| anyhow::anyhow!("Failed to create index directory for {}: {}", workspace_id, e))?;
+
+                    info!("Created index directory for reference workspace at: {}", index_path.display());
+
+                    // Create dedicated search engine for this workspace
+                    let ref_search_engine = crate::search::SearchEngine::new(&index_path)
+                        .map_err(|e| anyhow::anyhow!("Failed to create search engine for {}: {}", workspace_id, e))?;
+
+                    // Create dedicated search writer for this workspace
+                    let ref_search_writer = crate::search::SearchIndexWriter::new(
+                        ref_search_engine.index(),
+                        ref_search_engine.schema().clone(),
+                    ).map_err(|e| anyhow::anyhow!("Failed to create search writer for {}: {}", workspace_id, e))?;
+
+                    (
+                        Arc::new(tokio::sync::RwLock::new(ref_search_engine)),
+                        Arc::new(tokio::sync::Mutex::new(ref_search_writer))
+                    )
+                };
 
                 // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
                 self.process_files_optimized(
@@ -101,8 +135,8 @@ impl ManageWorkspaceTool {
                     files_to_index,
                     is_primary_workspace,
                     &mut total_files,
-                    search_engine,
-                    search_writer,
+                    workspace_search_engine,
+                    workspace_search_writer,
                     workspace_id.clone(),  // Pass workspace_id to avoid re-lookup
                 )
                 .await?;
@@ -139,8 +173,10 @@ impl ManageWorkspaceTool {
         );
 
         // 🔥 BACKGROUND TASK: Generate embeddings from SQLite (optional, compute-intensive)
-        if is_primary_workspace && total_symbols > 0 {
-            info!("🚀 Starting background embedding generation from SQLite...");
+        // Now runs for ALL workspaces (primary and reference)
+        if total_symbols > 0 {
+            let workspace_type = if is_primary_workspace { "primary" } else { "reference" };
+            info!("🚀 Starting background embedding generation from SQLite for {} workspace: {}", workspace_type, workspace_id);
 
             // Clone necessary references for background task
             let embedding_engine = handler.embedding_engine.clone();
@@ -151,31 +187,27 @@ impl ManageWorkspaceTool {
             let indexing_status_clone = handler.indexing_status.clone();
 
             tokio::spawn(async move {
-                info!("🐛 Background embedding task started");
+                info!("🐛 Background embedding task started for workspace: {}", workspace_id_clone);
                 let task_start = std::time::Instant::now();
                 match generate_embeddings_from_sqlite(
                     embedding_engine,
                     workspace_db,
                     workspace_root,
-                    workspace_id_clone,
+                    workspace_id_clone.clone(),
                     indexing_status_clone,
                 )
                 .await
                 {
                     Ok(_) => {
-                        info!("✅ Embeddings generated from SQLite in {:.2}s - semantic search available!",
-                              task_start.elapsed().as_secs_f64());
+                        info!("✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
+                              task_start.elapsed().as_secs_f64(), workspace_id_clone);
                     }
                     Err(e) => {
-                        error!("❌ Background embedding generation failed: {}", e);
+                        error!("❌ Background embedding generation failed for workspace {}: {}", workspace_id_clone, e);
                     }
                 }
-                info!("🐛 Background embedding task completed");
+                info!("🐛 Background embedding task completed for workspace: {}", workspace_id_clone);
             });
-        } else if !is_primary_workspace {
-            info!(
-                "📦 Reference workspace indexed - symbols stored in database for targeted search"
-            );
         }
 
         Ok((total_symbols, total_files, total_relationships))
@@ -385,33 +417,76 @@ impl ManageWorkspaceTool {
             info!("🚀 CASCADE: SQLite storage complete - launching background Tantivy indexing...");
 
             // Clone necessary references for background task
+            // CRITICAL: The search_engine and search_writer parameters are already workspace-specific
+            // (they were created for the correct workspace in index_workspace_files)
             let search_engine_clone = search_engine.clone();
+            let search_writer_clone = search_writer.clone();
             let workspace = handler.get_workspace().await?;
             let workspace_db = workspace.as_ref().and_then(|ws| ws.db.clone());
-            let search_writer_clone = workspace.and_then(|ws| ws.search_writer.clone());
+            let workspace_root = workspace.as_ref().map(|ws| ws.root.clone());
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();
 
-            // Ensure we have a search_writer before spawning background task
-            let search_writer = search_writer_clone.ok_or_else(|| {
-                anyhow::anyhow!("Search writer not available for background indexing")
-            })?;
-
             tokio::spawn(async move {
+                info!("🔥 Background Tantivy task starting for workspace: {}", workspace_id_clone);
                 match build_tantivy_from_sqlite(
                     search_engine_clone,
-                    search_writer,
+                    search_writer_clone,
                     workspace_db,
-                    workspace_id_clone,
+                    workspace_id_clone.clone(),
                     indexing_status_clone,
                 )
                 .await
                 {
                     Ok(_) => {
-                        // Success message logged by build_tantivy_from_sqlite
+                        info!("✅ Background Tantivy indexing completed for workspace: {}", workspace_id_clone);
+
+                        // Update workspace stats after Tantivy index is built
+                        if let Some(root) = workspace_root {
+                            use crate::workspace::registry_service::WorkspaceRegistryService;
+                            let registry_service = WorkspaceRegistryService::new(root.clone());
+
+                            // Calculate actual Tantivy index size
+                            let index_base = root.join(".julie/indexes");
+                            let index_path = index_base.join(&workspace_id_clone);
+
+                            fn calculate_dir_size(path: &std::path::Path) -> u64 {
+                                let mut total_size = 0u64;
+                                if let Ok(entries) = std::fs::read_dir(path) {
+                                    for entry in entries.flatten() {
+                                        if let Ok(metadata) = entry.metadata() {
+                                            if metadata.is_file() {
+                                                total_size += metadata.len();
+                                            } else if metadata.is_dir() {
+                                                total_size += calculate_dir_size(&entry.path());
+                                            }
+                                        }
+                                    }
+                                }
+                                total_size
+                            }
+
+                            let index_size = if index_path.exists() {
+                                calculate_dir_size(&index_path)
+                            } else {
+                                0
+                            };
+
+                            // Update stats with actual index size
+                            if let Err(e) = registry_service
+                                .update_index_size(&workspace_id_clone, index_size)
+                                .await
+                            {
+                                warn!("Failed to update workspace index size: {}", e);
+                            } else {
+                                info!("✅ Updated workspace index size: {} bytes ({:.2} MB)",
+                                      index_size, index_size as f64 / 1_048_576.0);
+                            }
+                        }
                     }
                     Err(e) => {
-                        error!("❌ CASCADE: Background Tantivy indexing failed: {}", e);
+                        error!("❌ CASCADE: Background Tantivy indexing failed for workspace {}: {}", workspace_id_clone, e);
+                        error!("Error details: {:?}", e);
                     }
                 }
             });
@@ -1105,16 +1180,18 @@ async fn build_tantivy_from_sqlite(
     use anyhow::Context;
 
     let start_time = std::time::Instant::now();
-    debug!("CASCADE: Building Tantivy index from SQLite");
+    info!("CASCADE: Building Tantivy index from SQLite for workspace: {}", workspace_id);
 
     // Get database connection
     let db = match workspace_db {
         Some(db_arc) => db_arc,
         None => {
-            warn!("No database available for Tantivy indexing");
+            warn!("No database available for Tantivy indexing for workspace: {}", workspace_id);
             return Ok(());
         }
     };
+
+    debug!("Database connection acquired for workspace: {}", workspace_id);
 
     // 1. Pull symbols from SQLite
     let symbols = {
@@ -1188,11 +1265,11 @@ async fn build_tantivy_from_sqlite(
             .context("Failed to index symbols in Tantivy")?;
     }
 
-    // 6. Reload reader to see new commits (eliminates RwLock contention)
+    // 6. Reload reader to see new commits (uses tokio::sync::Mutex - proper async await!)
     {
-        let mut search_engine_lock = search_engine.write().await;
+        let search_engine_lock = search_engine.read().await;
         search_engine_lock
-            .reload_reader()
+            .reload_reader().await
             .context("Failed to reload search reader after indexing")?;
     }
 

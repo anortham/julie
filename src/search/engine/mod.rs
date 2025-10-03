@@ -11,6 +11,7 @@ pub use writer::SearchIndexWriter;
 
 use anyhow::Result;
 use std::path::Path;
+use tokio::sync::Mutex;  // CRITICAL: Use tokio::sync::Mutex for async contexts (not std::sync::Mutex!)
 use tantivy::directory::MmapDirectory;
 use tantivy::tokenizer::{LowerCaser, TextAnalyzer};
 use tantivy::{Index, IndexReader};
@@ -39,9 +40,9 @@ fn register_code_tokenizers(index: &Index) -> Result<()> {
 pub struct SearchEngine {
     index: Index,
     schema: CodeSearchSchema,
-    reader: IndexReader,
+    reader: Mutex<IndexReader>,  // Mutex for interior mutability - allows reload without blocking searches
     query_processor: QueryProcessor,
-    language_boosting: LanguageBoosting,
+    _language_boosting: LanguageBoosting,
 }
 
 impl SearchEngine {
@@ -58,7 +59,6 @@ impl SearchEngine {
         let reader = index.reader()?;
         // CRITICAL: Reload reader to see existing index segments
         // Without this, get_indexed_document_count() returns 0 even for existing indexes
-        // Note: reload() is called on &IndexReader, not &mut, so no mut needed
         reader.reload()?;
 
         let query_processor = QueryProcessor::new()?;
@@ -67,9 +67,9 @@ impl SearchEngine {
         Ok(Self {
             index,
             schema,
-            reader,
+            reader: Mutex::new(reader),  // Wrap in Mutex for interior mutability
             query_processor,
-            language_boosting,
+            _language_boosting: language_boosting,
         })
     }
 
@@ -89,16 +89,16 @@ impl SearchEngine {
         Ok(Self {
             index,
             schema,
-            reader,
+            reader: Mutex::new(reader),  // Wrap in Mutex for interior mutability
             query_processor,
-            language_boosting,
+            _language_boosting: language_boosting,
         })
     }
 
     /// Get the total number of documents in the Tantivy index
     /// Used to check if the search index has been populated
-    pub fn get_indexed_document_count(&self) -> Result<u64> {
-        let searcher = self.reader.searcher();
+    pub async fn get_indexed_document_count(&self) -> Result<u64> {
+        let searcher = self.reader.lock().await.searcher();
         let segment_readers = searcher.segment_readers();
 
         let total_docs: u64 = segment_readers
@@ -113,8 +113,14 @@ impl SearchEngine {
     ///
     /// This MUST be called after SearchIndexWriter.commit() to make new changes visible to searches.
     /// This is a fast operation - Tantivy uses MVCC snapshots internally.
-    pub fn reload_reader(&mut self) -> Result<()> {
-        self.reader.reload()?;
+    ///
+    /// Uses interior mutability (tokio::sync::Mutex) so this can be called with &self, allowing concurrent searches
+    /// to continue without blocking. This fixes the deadlock where file watcher would hold a WRITE lock
+    /// on the entire SearchEngine just to reload the reader.
+    ///
+    /// CRITICAL: Uses tokio::sync::Mutex (not std::sync::Mutex) to avoid blocking executor threads in async contexts.
+    pub async fn reload_reader(&self) -> Result<()> {
+        self.reader.lock().await.reload()?;
         Ok(())
     }
 

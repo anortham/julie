@@ -119,10 +119,12 @@ impl GetSymbolsTool {
         debug!("🔍 Workspace root: '{}'", workspace.root.display());
 
         // Query symbols for this file using normalized path
-        let db_lock = db.lock().await;
-        let symbols = db_lock
-            .get_symbols_for_file(&absolute_path)
-            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
+        let symbols = {
+            let db_lock = db.lock().await;
+            db_lock
+                .get_symbols_for_file(&absolute_path)
+                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+        };
 
         if symbols.is_empty() {
             let message = format!(
@@ -185,19 +187,40 @@ impl GetSymbolsTool {
         // Build hierarchical symbol tree respecting max_depth
         let mut output = String::new();
 
-        // Apply target filter only to top-level symbols for display (bug fix)
-        let top_level_symbols: Vec<_> = all_symbols
-            .iter()
-            .filter(|s| s.parent_id.is_none())
-            .filter(|s| {
-                // If target specified, only show matching top-level symbols
-                if let Some(ref target) = self.target {
-                    s.name.to_lowercase().contains(&target.to_lowercase())
-                } else {
-                    true // No filter, show all
+        // Smart target filtering: Search ALL symbols, then show parent hierarchy
+        let top_level_symbols: Vec<_> = if let Some(ref target) = self.target {
+            let target_lower = target.to_lowercase();
+
+            // Find all symbols that match the target (including nested ones)
+            let matching_symbols: Vec<_> = all_symbols
+                .iter()
+                .filter(|s| s.name.to_lowercase().contains(&target_lower))
+                .collect();
+
+            if matching_symbols.is_empty() {
+                vec![] // No matches
+            } else {
+                // For each matching symbol, find its root parent (or use itself if top-level)
+                let mut root_parents = std::collections::HashSet::new();
+
+                for symbol in matching_symbols {
+                    let root = Self::find_root_parent(symbol, &all_symbols);
+                    root_parents.insert(root.id.clone());
                 }
-            })
-            .collect();
+
+                // Get the actual top-level symbols to display
+                all_symbols
+                    .iter()
+                    .filter(|s| s.parent_id.is_none() && root_parents.contains(&s.id))
+                    .collect()
+            }
+        } else {
+            // No filter - show all top-level symbols
+            all_symbols
+                .iter()
+                .filter(|s| s.parent_id.is_none())
+                .collect()
+        };
 
         let symbol_count_text = if let Some(ref t) = self.target {
             format!("📄 **{}** ({} symbols matching '{}')\n\n", self.file_path, top_level_symbols.len(), t)
@@ -391,6 +414,27 @@ impl GetSymbolsTool {
 
 // Implement token optimization trait
 impl GetSymbolsTool {
+    /// Find the root parent of a symbol (walk up the parent chain to top-level)
+    fn find_root_parent<'a>(
+        symbol: &'a crate::extractors::Symbol,
+        all_symbols: &'a [crate::extractors::Symbol],
+    ) -> &'a crate::extractors::Symbol {
+        let mut current = symbol;
+
+        // Walk up the parent chain until we find a top-level symbol
+        while let Some(ref parent_id) = current.parent_id {
+            // Find the parent symbol
+            if let Some(parent) = all_symbols.iter().find(|s| &s.id == parent_id) {
+                current = parent;
+            } else {
+                // Parent not found, return current (shouldn't happen in valid data)
+                break;
+            }
+        }
+
+        current
+    }
+
     fn optimize_response(&self, response: &str) -> String {
         let estimator = TokenEstimator::new();
         let tokens = estimator.estimate_string(response);

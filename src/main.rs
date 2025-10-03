@@ -299,7 +299,7 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
                 match handler.active_search_engine().await {
                     Ok(search_engine_arc) => {
                         let search_engine = search_engine_arc.read().await;
-                        let tantivy_doc_count = search_engine.get_indexed_document_count().unwrap_or(0);
+                        let tantivy_doc_count = search_engine.get_indexed_document_count().await.unwrap_or(0);
 
                         if tantivy_doc_count == 0 {
                             info!("🔍 Database has symbols but Tantivy search index is empty - indexing needed for consistency!");

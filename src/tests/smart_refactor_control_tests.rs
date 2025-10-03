@@ -438,7 +438,7 @@ mod smart_refactor_control_tests {
                         // Step 3a: Reload reader to see new indexed symbols
                         {
                             let mut search_engine = handler.search_engine.write().await;
-                            if let Err(e) = search_engine.reload_reader() {
+                            if let Err(e) = search_engine.reload_reader().await {
                                 println!("⚠️ Warning: Failed to reload search reader: {}", e);
                             }
                         }

@@ -11,6 +11,39 @@ use tracing::{debug, info, trace, warn};
 use super::super::schema::QueryIntent;
 
 impl SearchEngine {
+    /// Tantivy/Lucene special characters that need escaping for literal text search
+    /// Reference: coa-codesearch-mcp QueryPreprocessor.cs
+    const TANTIVY_SPECIAL_CHARS: &'static [char] = &[
+        '+', '-', '=', '&', '|', '!', '(', ')', '{', '}', '[', ']',
+        '^', '"', '~', '*', '?', ':', '\\', '/', '<', '>'
+    ];
+
+    /// Escape special characters in user input for literal text search
+    /// This prevents query parser errors when searching for code symbols with special chars like :: or <>
+    fn escape_query_text(query: &str) -> String {
+        let mut escaped = String::with_capacity(query.len() * 2);
+        for ch in query.chars() {
+            if Self::TANTIVY_SPECIAL_CHARS.contains(&ch) {
+                escaped.push('\\');
+            }
+            escaped.push(ch);
+        }
+        escaped
+    }
+
+    /// Escape special characters for wildcard queries (preserves * and ? wildcards)
+    fn escape_query_text_for_wildcard(query: &str) -> String {
+        let mut escaped = String::with_capacity(query.len() * 2);
+        for ch in query.chars() {
+            // Don't escape * and ? (they're wildcards)
+            if Self::TANTIVY_SPECIAL_CHARS.contains(&ch) && ch != '*' && ch != '?' {
+                escaped.push('\\');
+            }
+            escaped.push(ch);
+        }
+        escaped
+    }
+
     /// Perform intelligent search with intent detection
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
         let start_time = std::time::Instant::now();
@@ -69,7 +102,7 @@ impl SearchEngine {
     pub async fn exact_symbol_search(&self, query: &str) -> Result<Vec<SearchResult>> {
         let clean_query = query.trim_matches('"');
 
-        let searcher = self.reader.searcher();
+        let searcher = self.reader.lock().await.searcher();
         let fields = self.schema.fields();
 
         let term = Term::from_field_text(fields.symbol_name_exact, clean_query);
@@ -111,7 +144,8 @@ impl SearchEngine {
             let query_parser = QueryParser::for_index(&self.index, vec![fields.symbol_name, fields.code_context]);
 
             for variant in camelcase_variants {
-                match query_parser.parse_query(&variant) {
+                let escaped_variant = Self::escape_query_text_for_wildcard(&variant);
+                match query_parser.parse_query(&escaped_variant) {
                     Ok(wildcard_query) => {
                         let wildcard_docs =
                             searcher.search(&*wildcard_query, &TopDocs::with_limit(20))?;
@@ -146,7 +180,7 @@ impl SearchEngine {
     }
 
     async fn generic_type_search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        let searcher = self.reader.searcher();
+        let searcher = self.reader.lock().await.searcher();
         let fields = self.schema.fields();
 
         let base_type = self.extract_generic_base(query);
@@ -167,7 +201,12 @@ impl SearchEngine {
         search_terms.push(base_type.clone());
         search_terms.extend(inner_types);
 
-        let combined_query = search_terms.join(" OR ");
+        // Escape each term before joining with OR
+        let escaped_terms: Vec<String> = search_terms
+            .iter()
+            .map(|term| Self::escape_query_text(term))
+            .collect();
+        let combined_query = escaped_terms.join(" OR ");
         let parsed_query = query_parser.parse_query(&combined_query)?;
 
         let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(30))?;
@@ -213,7 +252,7 @@ impl SearchEngine {
     }
 
     async fn operator_search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        let searcher = self.reader.searcher();
+        let searcher = self.reader.lock().await.searcher();
         let fields = self.schema.fields();
 
         let term = Term::from_field_text(fields.signature, query);
@@ -224,8 +263,10 @@ impl SearchEngine {
             vec![fields.signature, fields.signature_exact, fields.all_text, fields.code_context],
         );
 
-        let escaped_query = format!("\"{}\"", query);
-        let parsed_query = match query_parser.parse_query(&escaped_query) {
+        // Escape special chars and wrap in quotes for exact phrase match
+        let escaped_text = Self::escape_query_text(query);
+        let phrase_query = format!("\"{}\"", escaped_text);
+        let parsed_query = match query_parser.parse_query(&phrase_query) {
             Ok(parsed) => parsed,
             Err(_) => Box::new(term_query) as Box<dyn Query>,
         };
@@ -251,11 +292,12 @@ impl SearchEngine {
     }
 
     async fn file_path_search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        let searcher = self.reader.searcher();
+        let searcher = self.reader.lock().await.searcher();
         let fields = self.schema.fields();
 
         let query_parser = QueryParser::for_index(&self.index, vec![fields.file_path]);
-        let parsed_query = query_parser.parse_query(query)?;
+        let escaped_query = Self::escape_query_text(query);
+        let parsed_query = query_parser.parse_query(&escaped_query)?;
 
         let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(20))?;
 
@@ -270,7 +312,7 @@ impl SearchEngine {
     }
 
     async fn semantic_search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        let searcher = self.reader.searcher();
+        let searcher = self.reader.lock().await.searcher();
         let fields = self.schema.fields();
 
         let query_parser = QueryParser::for_index(
@@ -322,15 +364,17 @@ impl SearchEngine {
                 // For each term, create OR clauses for its variants
                 let mut term_variants: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-                // Original term
-                if let Ok(original_query) = query_parser.parse_query(term) {
+                // Original term (escape special chars for literal search)
+                let escaped_term = Self::escape_query_text(term);
+                if let Ok(original_query) = query_parser.parse_query(&escaped_term) {
                     term_variants.push((Occur::Should, original_query));
                 }
 
-                // CamelCase variants
+                // CamelCase variants (escape for wildcards, preserving * and ?)
                 let camelcase_variants = self.expand_camelcase_query(term);
                 for variant in camelcase_variants {
-                    if let Ok(parsed_variant) = query_parser.parse_query(&variant) {
+                    let escaped_variant = Self::escape_query_text_for_wildcard(&variant);
+                    if let Ok(parsed_variant) = query_parser.parse_query(&escaped_variant) {
                         term_variants.push((Occur::Should, parsed_variant));
                     }
                 }
@@ -385,7 +429,8 @@ impl SearchEngine {
                 // Fallback: OR query (more permissive, ensures we return SOMETHING)
                 let mut or_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-                if let Ok(phrase_query) = query_parser.parse_query(query) {
+                let escaped_query = Self::escape_query_text(query);
+                if let Ok(phrase_query) = query_parser.parse_query(&escaped_query) {
                     or_clauses.push((Occur::Should, phrase_query));
                 }
 
@@ -396,13 +441,15 @@ impl SearchEngine {
                         continue;
                     }
 
-                    if let Ok(original_query) = query_parser.parse_query(term) {
+                    let escaped_term = Self::escape_query_text(term);
+                    if let Ok(original_query) = query_parser.parse_query(&escaped_term) {
                         or_clauses.push((Occur::Should, original_query));
                     }
 
                     let camelcase_variants = self.expand_camelcase_query(term);
                     for variant in camelcase_variants {
-                        if let Ok(parsed_variant) = query_parser.parse_query(&variant) {
+                        let escaped_variant = Self::escape_query_text_for_wildcard(&variant);
+                        if let Ok(parsed_variant) = query_parser.parse_query(&escaped_variant) {
                             or_clauses.push((Occur::Should, parsed_variant));
                         }
                     }
@@ -414,8 +461,9 @@ impl SearchEngine {
                         "⚠️  OR fallback produced zero clauses for query '{}' - query parser may have failed",
                         query
                     );
-                    // Last resort: just search for the raw query
-                    query_parser.parse_query(query)?
+                    // Last resort: just search for the escaped raw query
+                    let escaped_query = Self::escape_query_text(query);
+                    query_parser.parse_query(&escaped_query)?
                 } else {
                     debug!(
                         "🔄 OR fallback created {} clauses for query '{}'",
@@ -426,7 +474,9 @@ impl SearchEngine {
                 }
             }
         } else {
-            query_parser.parse_query(query)?
+            // Single term or simple query - escape special characters
+            let escaped_query = Self::escape_query_text(query);
+            query_parser.parse_query(&escaped_query)?
         };
 
         // SAFETY: Final search with timeout protection

@@ -7,6 +7,8 @@
 
 use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
+use crate::tools::symbols::GetSymbolsTool;
+use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
@@ -169,6 +171,193 @@ mod tests {
         ).await??;
 
         println!("✅ Search after indexing: {:?}", result);
+        Ok(())
+    }
+
+    /// Regression test for concurrent fast_search + get_symbols deadlock
+    ///
+    /// Reproduces the scenario where two parallel fast_search calls combined with
+    /// simultaneous get_symbols requests cause one fast_search to hang indefinitely.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_parallel_fast_search_with_get_symbols() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path();
+
+        // Create source files with recognizable symbols
+        std::fs::create_dir_all(workspace_path.join("src"))?;
+        std::fs::write(
+            workspace_path.join("src/lib.rs"),
+            r#"pub fn diff_match_patch() {
+    println!("diff match patch");
+}
+
+pub fn embedding_vector_semantic() {
+    println!("embedding vector semantic");
+}
+"#,
+        )?;
+
+        std::fs::write(
+            workspace_path.join("src/extra.rs"),
+            r#"pub fn get_symbols_target() {}
+pub fn helper_function() {}
+"#,
+        )?;
+
+        let workspace_path_str = workspace_path.to_string_lossy().to_string();
+
+        // Initialize handler and index workspace
+        let handler = Arc::new(JulieServerHandler::new().await?);
+        handler
+            .initialize_workspace(Some(workspace_path_str.clone()))
+            .await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path_str.clone()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        index_tool.call_tool(&handler).await?;
+
+        // Allow background indexing to flush
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        for iteration in 0..10 {
+            let fast_search_query_a = FastSearchTool {
+                query: "diff-match-patch dmp".to_string(),
+                mode: "text".to_string(),
+                limit: 15,
+                file_pattern: None,
+                language: None,
+                workspace: None,
+            };
+
+            let fast_search_query_b = FastSearchTool {
+                query: "embedding vector semantic".to_string(),
+                mode: "text".to_string(),
+                limit: 15,
+                file_pattern: None,
+                language: None,
+                workspace: None,
+            };
+
+            let get_symbols_main = GetSymbolsTool {
+                file_path: "src/lib.rs".to_string(),
+                max_depth: 2,
+                include_body: false,
+                target: None,
+                mode: None,
+            };
+
+            let get_symbols_extra = GetSymbolsTool {
+                file_path: "src/extra.rs".to_string(),
+                max_depth: 2,
+                include_body: false,
+                target: None,
+                mode: None,
+            };
+
+            let handler_a = handler.clone();
+            let handler_b = handler.clone();
+            let handler_c = handler.clone();
+            let handler_d = handler.clone();
+
+            let task = async move {
+                let fast_a = tokio::spawn(async move { fast_search_query_a.call_tool(&handler_a).await });
+                let fast_b = tokio::spawn(async move { fast_search_query_b.call_tool(&handler_b).await });
+                let symbols_a = tokio::spawn(async move { get_symbols_main.call_tool(&handler_c).await });
+                let symbols_b = tokio::spawn(async move { get_symbols_extra.call_tool(&handler_d).await });
+
+                tokio::join!(fast_a, fast_b, symbols_a, symbols_b)
+            };
+
+            match timeout(Duration::from_secs(5), task).await {
+                Ok((Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)))) => {}
+                Ok(results) => panic!("Concurrent execution error on iteration {}: {results:?}", iteration),
+                Err(_) => panic!("❌ BUG REPRODUCED on iteration {}: concurrent fast_search + get_symbols timed out", iteration),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// fast_search should not block when the symbol database mutex is held by another task
+    /// Regression test for deadlock where readiness check awaited the DB mutex
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_fast_search_not_blocked_by_db_lock() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path();
+
+        std::fs::create_dir_all(workspace_path.join("src"))?;
+        std::fs::write(
+            workspace_path.join("src/lib.rs"),
+            r#"pub fn diff_match_patch() {}
+pub fn embedding_vector_semantic() {}
+"#,
+        )?;
+
+        let workspace_path_str = workspace_path.to_string_lossy().to_string();
+
+        let handler = Arc::new(JulieServerHandler::new().await?);
+        handler
+            .initialize_workspace(Some(workspace_path_str.clone()))
+            .await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path_str.clone()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        index_tool.call_tool(&handler).await?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .expect("Workspace should exist");
+        let db = workspace
+            .db
+            .as_ref()
+            .expect("Database should be initialized")
+            .clone();
+
+        let db_guard = db.lock().await; // Hold DB mutex to simulate concurrent DB usage
+
+        let fast_search_tool = FastSearchTool {
+            query: "diff-match-patch dmp".to_string(),
+            mode: "text".to_string(),
+            limit: 15,
+            file_pattern: None,
+            language: None,
+            workspace: None,
+        };
+
+        let result = timeout(
+            Duration::from_millis(250),
+            fast_search_tool.call_tool(&handler),
+        )
+        .await;
+
+        // Expectation: fast_search should complete even while DB mutex is held
+        assert!(
+            result.is_ok(),
+            "fast_search blocked on DB mutex while it should degrade gracefully"
+        );
+
+        drop(db_guard);
+
         Ok(())
     }
 }

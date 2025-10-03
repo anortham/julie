@@ -79,6 +79,7 @@ pub struct AutoFixResult {
 #[derive(Debug, Clone)]
 struct DelimiterError {
     /// Line number where error occurs
+    #[allow(dead_code)]
     line: usize,
     /// Column number where error occurs (for future use)
     #[allow(dead_code)]
@@ -2676,9 +2677,9 @@ impl SmartRefactorTool {
         let mut brace_count = 0;
         let mut bracket_count = 0;
         let mut paren_count = 0;
-        let mut last_opening_brace_line = 0;
-        let mut last_opening_bracket_line = 0;
-        let mut last_opening_paren_line = 0;
+        let mut _last_opening_brace_line = 0;
+        let mut _last_opening_bracket_line = 0;
+        let mut _last_opening_paren_line = 0;
         let mut in_string = false;
         let mut string_char = '"';
         let mut current_line = 0;
@@ -2690,17 +2691,17 @@ impl SmartRefactorTool {
             match ch {
                 '{' if !in_string => {
                     brace_count += 1;
-                    last_opening_brace_line = current_line;
+                    _last_opening_brace_line = current_line;
                 }
                 '}' if !in_string => brace_count -= 1,
                 '[' if !in_string => {
                     bracket_count += 1;
-                    last_opening_bracket_line = current_line;
+                    _last_opening_bracket_line = current_line;
                 }
                 ']' if !in_string => bracket_count -= 1,
                 '(' if !in_string => {
                     paren_count += 1;
-                    last_opening_paren_line = current_line;
+                    _last_opening_paren_line = current_line;
                 }
                 ')' if !in_string => paren_count -= 1,
                 '"' | '\'' => {

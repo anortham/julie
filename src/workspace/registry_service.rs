@@ -419,6 +419,41 @@ impl WorkspaceRegistryService {
         Ok(())
     }
 
+    /// Update workspace index size only (called by background Tantivy task)
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
+    pub async fn update_index_size(
+        &self,
+        workspace_id: &str,
+        index_size_bytes: u64,
+    ) -> Result<()> {
+        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
+        let _lock = self.registry_lock.lock().await;
+
+        let mut registry = self.load_registry().await?;
+        let mut updated = false;
+
+        // Update primary workspace
+        if let Some(ref mut primary) = registry.primary_workspace {
+            if primary.id == workspace_id {
+                primary.index_size_bytes = index_size_bytes;
+                updated = true;
+            }
+        }
+
+        // Update reference workspace
+        if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
+            workspace.index_size_bytes = index_size_bytes;
+            updated = true;
+        }
+
+        if updated {
+            // Use internal save to avoid double-locking (we already hold the lock)
+            self.save_registry_internal(registry).await?;
+        }
+
+        Ok(())
+    }
+
     /// Update embedding status for a workspace
     /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_embedding_status(

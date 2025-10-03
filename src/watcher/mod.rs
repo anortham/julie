@@ -401,10 +401,10 @@ impl IncrementalIndexer {
             search_writer.commit().await?;
         }
 
-        // 5a. Reload reader to see new commits (eliminates RwLock contention)
+        // 5a. Reload reader to see new commits (uses tokio::sync::Mutex - proper async await!)
         {
-            let mut search = self.search_index.write().await;
-            search.reload_reader()?;
+            let search = self.search_index.read().await;
+            search.reload_reader().await?;
         }
 
         // 6. Update embeddings using mutex-protected engine
@@ -453,10 +453,10 @@ impl IncrementalIndexer {
             search_writer.commit().await?;
         }
 
-        // Reload reader to see deletions (eliminates RwLock contention)
+        // Reload reader to see deletions (uses tokio::sync::Mutex - proper async await!)
         {
-            let mut search = self.search_index.write().await;
-            search.reload_reader()?;
+            let search = self.search_index.read().await;
+            search.reload_reader().await?;
         }
 
         // Remove from embeddings (database will handle the actual deletion)

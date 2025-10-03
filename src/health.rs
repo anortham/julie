@@ -5,6 +5,7 @@
 
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
+use tracing::debug;
 
 /// System readiness levels for graceful degradation
 #[derive(Debug, Clone)]
@@ -52,11 +53,16 @@ impl HealthChecker {
         };
 
         // Step 3: Get symbol count from database using actual workspace ID
-        let symbol_count = {
-            let db_lock = db.lock().await;
-            db_lock
+        let symbol_count = match db.try_lock() {
+            Ok(db_lock) => db_lock
                 .get_symbol_count_for_workspace(&primary_workspace_id)
-                .unwrap_or(0)
+                .unwrap_or(0),
+            Err(_busy) => {
+                debug!(
+                    "Symbol database busy during readiness check; assuming symbols available"
+                );
+                1
+            }
         };
 
         if symbol_count == 0 {

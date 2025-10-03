@@ -92,7 +92,9 @@
       "Bash(env RUST_LOG=debug cargo test test_typescript_function_missing_paren --lib)",
       "Bash(env RUST_LOG=debug cargo test test_multi_property_object_missing_brace --lib)",
       "Bash(node:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(rustc:*)",
+      "Bash(gemini:*)"
     ],
     "deny": [],
     "ask": []
