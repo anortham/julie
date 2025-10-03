@@ -427,11 +427,19 @@ mod smart_refactor_control_tests {
 
                         // Step 3: Add symbols to search engine for actual searching
                         {
-                            let mut search_engine = handler.search_engine.write().await;
-                            if let Err(e) = search_engine.index_symbols(symbols).await {
+                            let mut search_writer = handler.search_writer.lock().await;
+                            if let Err(e) = search_writer.index_symbols(symbols).await {
                                 println!("⚠️ Warning: Failed to index symbols: {}", e);
                             } else {
                                 println!("✅ Symbols indexed successfully into in-memory search engine");
+                            }
+                        }
+
+                        // Step 3a: Reload reader to see new indexed symbols
+                        {
+                            let mut search_engine = handler.search_engine.write().await;
+                            if let Err(e) = search_engine.reload_reader() {
+                                println!("⚠️ Warning: Failed to reload search reader: {}", e);
                             }
                         }
                     }

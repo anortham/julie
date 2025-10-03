@@ -2890,8 +2890,17 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64;
 
+    // CRITICAL FIX: Canonicalize path to resolve symlinks (macOS /var vs /private/var)
+    // This ensures files table and symbols table use same canonical paths
+    // Without this: files table has /var/..., symbols have /private/var/... → FOREIGN KEY fail
+    let canonical_path = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+
     Ok(FileInfo {
-        path: path.to_string_lossy().to_string(),
+        path: canonical_path,  // Use canonical path, not original
         language: language.to_string(),
         hash,
         size: metadata.len() as i64,

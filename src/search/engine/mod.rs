@@ -4,14 +4,16 @@ mod result;
 #[cfg(test)]
 mod tests;
 mod utils;
+mod writer;
 
 pub use result::SearchResult;
+pub use writer::SearchIndexWriter;
 
 use anyhow::Result;
 use std::path::Path;
 use tantivy::directory::MmapDirectory;
 use tantivy::tokenizer::{LowerCaser, TextAnalyzer};
-use tantivy::{Index, IndexReader, IndexWriter};
+use tantivy::{Index, IndexReader};
 
 use super::schema::{CodeSearchSchema, LanguageBoosting, QueryProcessor};
 use super::tokenizers::CodeTokenizer;
@@ -30,17 +32,22 @@ fn register_code_tokenizers(index: &Index) -> Result<()> {
 }
 
 /// Main search engine implementing the Search Accelerator pillar
+///
+/// This struct is READ-ONLY and only handles search operations.
+/// All write operations (indexing, commits, deletions) are handled by SearchIndexWriter.
+/// This separation eliminates RwLock contention - searches can proceed during background indexing.
 pub struct SearchEngine {
     index: Index,
     schema: CodeSearchSchema,
     reader: IndexReader,
-    writer: IndexWriter,
     query_processor: QueryProcessor,
     language_boosting: LanguageBoosting,
 }
 
 impl SearchEngine {
     /// Create a new search engine with the given index path
+    ///
+    /// This creates a READ-ONLY search engine. For write operations, use SearchIndexWriter.
     pub fn new<P: AsRef<Path>>(index_path: P) -> Result<Self> {
         let schema = CodeSearchSchema::new()?;
         let directory = MmapDirectory::open(index_path.as_ref())?;
@@ -54,7 +61,6 @@ impl SearchEngine {
         // Note: reload() is called on &IndexReader, not &mut, so no mut needed
         reader.reload()?;
 
-        let writer = index.writer(50_000_000)?; // 50MB heap
         let query_processor = QueryProcessor::new()?;
         let language_boosting = LanguageBoosting::new();
 
@@ -62,13 +68,14 @@ impl SearchEngine {
             index,
             schema,
             reader,
-            writer,
             query_processor,
             language_boosting,
         })
     }
 
     /// Create a search engine in RAM for testing
+    ///
+    /// This creates a READ-ONLY search engine. For write operations, use SearchIndexWriter.
     pub fn in_memory() -> Result<Self> {
         let schema = CodeSearchSchema::new()?;
         let index = Index::create_in_ram(schema.schema().clone());
@@ -76,7 +83,6 @@ impl SearchEngine {
         register_code_tokenizers(&index)?;
 
         let reader = index.reader()?;
-        let writer = index.writer(15_000_000)?; // 15MB heap minimum for testing
         let query_processor = QueryProcessor::new()?;
         let language_boosting = LanguageBoosting::new();
 
@@ -84,7 +90,6 @@ impl SearchEngine {
             index,
             schema,
             reader,
-            writer,
             query_processor,
             language_boosting,
         })
@@ -102,5 +107,24 @@ impl SearchEngine {
             .sum();
 
         Ok(total_docs)
+    }
+
+    /// Reload the reader to see changes committed by SearchIndexWriter
+    ///
+    /// This MUST be called after SearchIndexWriter.commit() to make new changes visible to searches.
+    /// This is a fast operation - Tantivy uses MVCC snapshots internally.
+    pub fn reload_reader(&mut self) -> Result<()> {
+        self.reader.reload()?;
+        Ok(())
+    }
+
+    /// Get the underlying Index (needed for creating SearchIndexWriter)
+    pub fn index(&self) -> &Index {
+        &self.index
+    }
+
+    /// Get the schema (needed for creating SearchIndexWriter)
+    pub fn schema(&self) -> &CodeSearchSchema {
+        &self.schema
     }
 }

@@ -25,6 +25,7 @@ use crate::watcher::IncrementalIndexer;
 // Forward declarations for types we'll implement later
 pub type SqliteDB = crate::database::SymbolDatabase;
 pub type TantivyIndex = crate::search::SearchEngine;
+pub type TantivyWriter = crate::search::SearchIndexWriter;
 pub type EmbeddingStore = crate::embeddings::EmbeddingEngine;
 pub type VectorIndex = crate::embeddings::vector_store::VectorStore;
 
@@ -42,8 +43,11 @@ pub struct JulieWorkspace {
     /// Database connection (source of truth)
     pub db: Option<Arc<Mutex<SqliteDB>>>,
 
-    /// Search index (query accelerator)
+    /// Search index (query accelerator) - READ ONLY
     pub search: Option<Arc<RwLock<TantivyIndex>>>,
+
+    /// Search index writer (write operations) - SEPARATED to eliminate RwLock contention
+    pub search_writer: Option<Arc<Mutex<TantivyWriter>>>,
 
     /// Embedding store (semantic bridge)
     pub embeddings: Option<Arc<Mutex<EmbeddingStore>>>,
@@ -87,6 +91,7 @@ impl Clone for JulieWorkspace {
             julie_dir: self.julie_dir.clone(),
             db: self.db.clone(),
             search: self.search.clone(),
+            search_writer: self.search_writer.clone(),
             embeddings: self.embeddings.clone(),
             vector_store: self.vector_store.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
@@ -138,6 +143,7 @@ impl JulieWorkspace {
             julie_dir,
             db: None,
             search: None,
+            search_writer: None,
             embeddings: None,
             vector_store: None,
             watcher: None,
@@ -174,6 +180,7 @@ impl JulieWorkspace {
                     julie_dir: julie_path,
                     db: None,
                     search: None,
+                    search_writer: None,
                     embeddings: None,
                     vector_store: None,
                     watcher: None,
@@ -464,9 +471,18 @@ impl JulieWorkspace {
             .context(format!("Failed to create Tantivy index directory: {}", index_path.display()))?;
 
         let search_engine = TantivyIndex::new(&index_path)?;
-        self.search = Some(Arc::new(RwLock::new(search_engine)));
 
-        info!("Search index initialized successfully");
+        // Create search writer from the same index
+        // CRITICAL: Writer and reader must share the same Index instance
+        let search_writer = TantivyWriter::new(
+            search_engine.index(),
+            search_engine.schema().clone(),
+        )?;
+
+        self.search = Some(Arc::new(RwLock::new(search_engine)));
+        self.search_writer = Some(Arc::new(Mutex::new(search_writer)));
+
+        info!("Search index and writer initialized successfully");
         Ok(())
     }
 
@@ -621,6 +637,7 @@ impl JulieWorkspace {
             self.root.clone(),
             self.db.as_ref().unwrap().clone(),
             self.search.as_ref().unwrap().clone(),
+            self.search_writer.as_ref().unwrap().clone(),
             self.embeddings.as_ref().unwrap().clone(),
             extractor_manager,
         )?;

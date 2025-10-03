@@ -4,7 +4,7 @@ use super::SearchEngine;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::query::{BooleanQuery, Occur, Query, QueryClone, QueryParser, TermQuery};
 use tantivy::Term;
 use tracing::{debug, info, trace, warn};
 
@@ -343,10 +343,31 @@ impl SearchEngine {
             }
 
             // Create final AND query
+            debug!("🔍 Executing AND query with {} clauses for '{}'", and_clauses.len(), query);
             let and_query = Box::new(BooleanQuery::new(and_clauses));
 
             // Step 2: If AND query returns zero results, fall back to OR query
-            let and_docs = searcher.search(&*and_query, &TopDocs::with_limit(30))?;
+
+            // SAFETY: Wrap search in timeout to prevent hangs on complex queries
+            // Complex wildcard queries with many terms can hang Tantivy
+            let and_docs = match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::task::spawn_blocking({
+                    let query_clone = and_query.box_clone();
+                    let searcher_clone = searcher.clone();
+                    move || searcher_clone.search(&*query_clone, &TopDocs::with_limit(30))
+                })
+            ).await {
+                Ok(Ok(result)) => result?,
+                Ok(Err(e)) => {
+                    warn!("⚠️  AND query search failed: {}", e);
+                    vec![] // Treat as no results, will fall back to OR
+                }
+                Err(_) => {
+                    warn!("⚠️  AND query timeout after 5s for '{}' - query too complex!", query);
+                    vec![] // Treat as no results, will fall back to OR
+                }
+            };
 
             if !and_docs.is_empty() {
                 debug!(
@@ -408,7 +429,19 @@ impl SearchEngine {
             query_parser.parse_query(query)?
         };
 
-        let top_docs = searcher.search(&*parsed_query, &TopDocs::with_limit(30))?;
+        // SAFETY: Final search with timeout protection
+        let top_docs = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let query_clone = parsed_query.box_clone();
+                let searcher_clone = searcher.clone();
+                move || searcher_clone.search(&*query_clone, &TopDocs::with_limit(30))
+            })
+        ).await {
+            Ok(Ok(result)) => result?,
+            Ok(Err(e)) => return Err(anyhow::anyhow!("Search execution failed: {}", e)),
+            Err(_) => return Err(anyhow::anyhow!("Search timeout after 5s - query '{}' is too complex", query)),
+        };
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {

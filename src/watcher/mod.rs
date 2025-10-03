@@ -16,13 +16,14 @@ use tracing::{debug, error, info, warn};
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
-use crate::search::SearchEngine;
+use crate::search::{SearchEngine, SearchIndexWriter};
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<Mutex<SymbolDatabase>>,
     search_index: Arc<RwLock<SearchEngine>>,
+    search_writer: Arc<Mutex<SearchIndexWriter>>,
     embedding_engine: Arc<Mutex<EmbeddingEngine>>,
     extractor_manager: Arc<ExtractorManager>,
 
@@ -70,6 +71,7 @@ impl IncrementalIndexer {
         workspace_root: PathBuf,
         db: Arc<Mutex<SymbolDatabase>>,
         search_index: Arc<RwLock<SearchEngine>>,
+        search_writer: Arc<Mutex<SearchIndexWriter>>,
         embedding_engine: Arc<Mutex<EmbeddingEngine>>,
         extractor_manager: Arc<ExtractorManager>,
     ) -> Result<Self> {
@@ -80,6 +82,7 @@ impl IncrementalIndexer {
             watcher: None,
             db,
             search_index,
+            search_writer,
             embedding_engine,
             extractor_manager,
             index_queue: Arc::new(Mutex::new(VecDeque::new())),
@@ -390,12 +393,19 @@ impl IncrementalIndexer {
         db.commit_transaction()?;
         drop(db);
 
-        // 5. Update Tantivy search index
-        let mut search = self.search_index.write().await;
-        search.delete_file_symbols(&path_str).await?;
-        search.index_symbols(symbols.clone()).await?;
-        search.commit().await?;
-        drop(search);
+        // 5. Update Tantivy search index using separate writer
+        {
+            let mut search_writer = self.search_writer.lock().await;
+            search_writer.delete_file_symbols(&path_str).await?;
+            search_writer.index_symbols(symbols.clone()).await?;
+            search_writer.commit().await?;
+        }
+
+        // 5a. Reload reader to see new commits (eliminates RwLock contention)
+        {
+            let mut search = self.search_index.write().await;
+            search.reload_reader()?;
+        }
 
         // 6. Update embeddings using mutex-protected engine
         {
@@ -436,11 +446,18 @@ impl IncrementalIndexer {
         db.delete_file_record(&path_str)?;
         drop(db);
 
-        // Remove from Tantivy search index
-        let mut search = self.search_index.write().await;
-        search.delete_file_symbols(&path_str).await?;
-        search.commit().await?;
-        drop(search);
+        // Remove from Tantivy search index using separate writer
+        {
+            let mut search_writer = self.search_writer.lock().await;
+            search_writer.delete_file_symbols(&path_str).await?;
+            search_writer.commit().await?;
+        }
+
+        // Reload reader to see deletions (eliminates RwLock contention)
+        {
+            let mut search = self.search_index.write().await;
+            search.reload_reader()?;
+        }
 
         // Remove from embeddings (database will handle the actual deletion)
         if !symbol_ids.is_empty() {

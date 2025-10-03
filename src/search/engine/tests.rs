@@ -3,10 +3,28 @@ use crate::extractors::{base::Symbol, SymbolKind};
 use crate::search::schema::QueryIntent;
 use tracing::debug;
 
+/// Helper function to create an in-memory search engine and writer for tests
+fn create_test_engine() -> (SearchEngine, SearchIndexWriter) {
+    let engine = SearchEngine::in_memory().unwrap();
+    let writer = SearchIndexWriter::new(engine.index(), engine.schema().clone()).unwrap();
+    (engine, writer)
+}
+
+/// Helper function to index symbols in tests (writer + reload reader pattern)
+async fn index_test_symbols(
+    engine: &mut SearchEngine,
+    writer: &mut SearchIndexWriter,
+    symbols: Vec<Symbol>,
+) -> anyhow::Result<()> {
+    writer.index_symbols(symbols).await?;
+    engine.reload_reader()?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_file_content_search() {
     // TDD Test: FILE_CONTENT symbols with markdown should be searchable
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Create a FILE_CONTENT symbol with markdown content
     let file_content_symbol = Symbol {
@@ -32,7 +50,7 @@ async fn test_file_content_search() {
     };
 
     // Index the FILE_CONTENT symbol
-    engine.index_symbols(vec![file_content_symbol.clone()]).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer, vec![file_content_symbol.clone()]).await.unwrap();
 
     // Test 1: Multi-word semantic search (triggers SemanticConcept intent)
     let results = engine.search("Project Julie").await.unwrap();
@@ -53,7 +71,7 @@ async fn test_file_content_search() {
 #[tokio::test]
 async fn test_basic_search_functionality() {
     // TDD Test: Should index a symbol and find it via search
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Create a simple symbol to index
     let symbol = Symbol {
@@ -79,7 +97,7 @@ async fn test_basic_search_functionality() {
     };
 
     // Index the symbol
-    engine.index_symbols(vec![symbol]).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,vec![symbol]).await.unwrap();
 
     // Search for the symbol by name
     let results = engine.search("getUserById").await.unwrap();
@@ -97,7 +115,7 @@ async fn test_basic_search_functionality() {
 #[tokio::test]
 async fn test_symbol_indexing() {
     // Contract: Should index symbols successfully
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbol = Symbol {
         id: "test-symbol".to_string(),
@@ -122,7 +140,7 @@ async fn test_symbol_indexing() {
         code_context: None,
     };
 
-    let result = engine.index_symbols(vec![symbol]).await;
+    let result = index_test_symbols(&mut engine, &mut writer, vec![symbol]).await;
     assert!(result.is_ok());
 
     // Verify the symbol was actually indexed by searching for it
@@ -138,7 +156,7 @@ async fn test_exact_symbol_search() {
     // Setup: Index "getUserById" function
     // Query: "getUserById"
     // Expected: Find the exact function
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Create multiple symbols to test exact matching
     let symbols = vec![
@@ -187,7 +205,7 @@ async fn test_exact_symbol_search() {
     ];
 
     // Index the symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test exact symbol search - should find only the exact match
     let results = engine.search("getUserById").await.unwrap();
@@ -205,7 +223,7 @@ async fn test_generic_type_search() {
     // Setup: Index "List<User>" and "Promise<User>"
     // Query: "List<User>"
     // Expected: Find both exact and component matches
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -274,7 +292,7 @@ async fn test_generic_type_search() {
     ];
 
     // Index the symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test generic type search for "List<User>" - should find exact matches and component matches
     let results = engine.search("List<User>").await.unwrap();
@@ -310,7 +328,7 @@ async fn test_operator_search() {
     // Setup: Index functions with "&&" and "=>" operators
     // Query: "&&"
     // Expected: Find functions using logical AND
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -379,7 +397,7 @@ async fn test_operator_search() {
     ];
 
     // Index the symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test that we can search for and find functions by exact name
     let validate_results = engine.search("validateUser").await.unwrap();
@@ -423,7 +441,7 @@ async fn test_file_path_search() {
     // Setup: Index symbols from various files
     // Query: "src/user"
     // Expected: Find symbols in user-related files
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -515,7 +533,7 @@ async fn test_file_path_search() {
     ];
 
     // Index the symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test file path search - should find symbols in user.ts file
     let user_file_results = engine.search("src/user").await.unwrap();
@@ -558,7 +576,7 @@ async fn test_semantic_search() {
     // Setup: Index user-related functions
     // Query: "user authentication"
     // Expected: Find login, auth, user functions
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -655,7 +673,7 @@ async fn test_semantic_search() {
     ];
 
     // Index the symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test semantic search by finding related functions through exact name search
     let auth_results = engine.search("authenticateUser").await.unwrap();
@@ -711,7 +729,7 @@ async fn test_semantic_search() {
 
 #[tokio::test]
 async fn test_multi_word_text_search_returns_results() {
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -779,7 +797,7 @@ async fn test_multi_word_text_search_returns_results() {
         },
     ];
 
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     let intent = engine.query_processor.detect_intent("fn extract");
     match intent {
@@ -827,7 +845,7 @@ async fn test_multi_word_text_search_returns_results() {
 async fn test_multi_word_search_critical_bug_reproduction() {
     // TDD RED: This test will FAIL until we fix the multi-word search tokenization bug
     // Issue: Multi-word searches return NO results due to improper tokenization
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -897,7 +915,7 @@ async fn test_multi_word_search_critical_bug_reproduction() {
         },
     ];
 
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test 1: Multi-word query that should find UserService and DataService
     // BUG: This currently returns NO results due to tokenization issues
@@ -959,7 +977,7 @@ async fn test_multi_word_search_critical_bug_reproduction() {
 
 #[tokio::test]
 async fn test_multi_word_identifier_search_without_auxiliary_text() {
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -1008,7 +1026,7 @@ async fn test_multi_word_identifier_search_without_auxiliary_text() {
         },
     ];
 
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     let user_service_results = engine.search("user service").await.unwrap();
     let user_service_names: Vec<&str> = user_service_results
@@ -1036,7 +1054,7 @@ async fn test_multi_word_identifier_search_without_auxiliary_text() {
 #[tokio::test]
 async fn test_tokenization_issues_with_exact_vs_semantic_search() {
     // TDD: Test to isolate tokenization vs intent detection issues
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Create a more problematic case: symbols that should NOT match exact term queries
     let symbols = vec![
@@ -1084,7 +1102,7 @@ async fn test_tokenization_issues_with_exact_vs_semantic_search() {
         },
     ];
 
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test intent detection for multi-word queries
     let intent1 = engine.query_processor.detect_intent("fast search");
@@ -1170,7 +1188,7 @@ async fn test_tokenization_issues_with_exact_vs_semantic_search() {
 async fn test_custom_tokenizer_camelcase_splitting() {
     // TDD: Test that custom tokenizers properly split camelCase identifiers
     // This test should now PASS with our fixed tokenization
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     let symbols = vec![
         Symbol {
@@ -1238,7 +1256,7 @@ async fn test_custom_tokenizer_camelcase_splitting() {
         },
     ];
 
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test 1: "user service" should find UserService through camelCase splitting
     let user_service_results = engine.search("user service").await.unwrap();
@@ -1317,7 +1335,7 @@ async fn test_search_performance() {
     // Setup: Index 1000 symbols (scaled down for test speed)
     // Query: Various search patterns
     // Expected: All searches complete in <10ms
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Generate 1000 test symbols
     let mut symbols = Vec::new();
@@ -1349,7 +1367,7 @@ async fn test_search_performance() {
     }
 
     // Index all symbols
-    engine.index_symbols(symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,symbols).await.unwrap();
 
     // Test search performance with various queries
     let test_queries = vec![
@@ -1404,7 +1422,7 @@ async fn test_incremental_updates() {
     // Setup: Index symbols, then update a file
     // Action: Delete old symbols, add new ones
     // Expected: Search reflects changes
-    let mut engine = SearchEngine::in_memory().unwrap();
+    let (mut engine, mut writer) = create_test_engine();
 
     // Initial symbols from a file
     let initial_symbols = vec![
@@ -1453,7 +1471,7 @@ async fn test_incremental_updates() {
     ];
 
     // Index initial symbols
-    engine.index_symbols(initial_symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,initial_symbols).await.unwrap();
 
     // Verify initial state
     let old_results = engine.search("oldFunction").await.unwrap();
@@ -1463,8 +1481,9 @@ async fn test_incremental_updates() {
     assert_eq!(unchanged_results.len(), 1, "Should find unchanged function");
 
     // Simulate file update: delete old symbols from the updated file
-    engine.delete_file_symbols("src/updated.ts").await.unwrap();
-    engine.commit().await.unwrap();
+    writer.delete_file_symbols("src/updated.ts").await.unwrap();
+    writer.commit().await.unwrap();
+    engine.reload_reader().unwrap();
 
     // Add new symbols for the updated file
     let updated_symbols = vec![Symbol {
@@ -1489,7 +1508,7 @@ async fn test_incremental_updates() {
         code_context: None,
     }];
 
-    engine.index_symbols(updated_symbols).await.unwrap();
+    index_test_symbols(&mut engine, &mut writer,updated_symbols).await.unwrap();
 
     // Verify incremental update worked correctly
     let old_results_after = engine.search("oldFunction").await.unwrap();

@@ -328,9 +328,23 @@ pub struct BaseExtractor {
 impl BaseExtractor {
     /// Create new abstract extractor - port of Miller's constructor
     pub fn new(language: String, file_path: String, content: String) -> Self {
+        // CRITICAL FIX: Canonicalize file_path to resolve symlinks (macOS /var vs /private/var)
+        // This ensures database queries match during get_symbols (which also canonicalizes)
+        // Without this: indexing stores /var/..., queries use /private/var/... → zero results
+        let canonical_path = std::path::Path::new(&file_path)
+            .canonicalize()
+            .unwrap_or_else(|e| {
+                warn!("⚠️  Failed to canonicalize path '{}': {} - using original", file_path, e);
+                std::path::PathBuf::from(&file_path)
+            })
+            .to_string_lossy()
+            .to_string();
+
+        debug!("BaseExtractor path: '{}' -> '{}'", file_path, canonical_path);
+
         Self {
             language,
-            file_path,
+            file_path: canonical_path,  // Use canonical path, not original
             content,
             symbol_map: HashMap::new(),
             relationships: Vec::new(),

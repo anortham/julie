@@ -86,9 +86,15 @@ impl ManageWorkspaceTool {
             return Err(anyhow::anyhow!("No workspace available for indexing"));
         };
 
-        // Get SearchEngine for single-pass indexing (Tantivy + SQLite together)
+        // Get SearchEngine and SearchWriter for single-pass indexing (Tantivy + SQLite together)
         match handler.active_search_engine().await {
             Ok(search_engine) => {
+                // Get search_writer from workspace
+                let workspace = handler.get_workspace().await?;
+                let search_writer = workspace.as_ref()
+                    .and_then(|ws| ws.search_writer.clone())
+                    .ok_or_else(|| anyhow::anyhow!("Search writer not available for indexing"))?;
+
                 // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
                 self.process_files_optimized(
                     handler,
@@ -96,6 +102,7 @@ impl ManageWorkspaceTool {
                     is_primary_workspace,
                     &mut total_files,
                     search_engine,
+                    search_writer,
                     workspace_id.clone(),  // Pass workspace_id to avoid re-lookup
                 )
                 .await?;
@@ -183,6 +190,7 @@ impl ManageWorkspaceTool {
         is_primary_workspace: bool,
         total_files: &mut usize,
         search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
+        search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
         workspace_id: String,  // Pass workspace_id instead of re-looking it up
     ) -> Result<()> {
         // Group files by language for batch processing
@@ -314,11 +322,11 @@ impl ManageWorkspaceTool {
                         }
                     }
 
-                    // Clean up Tantivy entries for modified files
+                    // Clean up Tantivy entries for modified files using separate writer
                     {
-                        let mut search_engine_lock = search_engine.write().await;
+                        let mut search_writer_lock = search_writer.lock().await;
                         for file_path in &files_to_clean {
-                            if let Err(e) = search_engine_lock.delete_file_symbols(file_path).await {
+                            if let Err(e) = search_writer_lock.delete_file_symbols(file_path).await {
                                 warn!("Failed to delete old Tantivy entries for {}: {}", file_path, e);
                             }
                         }
@@ -347,16 +355,11 @@ impl ManageWorkspaceTool {
                     // Bulk store files
                     if let Err(e) = db_lock.bulk_store_files(&all_file_infos, &workspace_id) {
                         warn!("Failed to bulk store files: {}", e);
-                    } else {
-                        // Debug output removed
                     }
 
                     // Bulk store symbols (with index dropping optimization!)
-                    // Debug output removed
                     if let Err(e) = db_lock.bulk_store_symbols(&all_symbols, &workspace_id) {
                         warn!("Failed to bulk store symbols: {}", e);
-                    } else {
-                        // Debug output removed
                     }
 
                     // Bulk store relationships
@@ -383,13 +386,21 @@ impl ManageWorkspaceTool {
 
             // Clone necessary references for background task
             let search_engine_clone = search_engine.clone();
-            let workspace_db = handler.get_workspace().await?.and_then(|ws| ws.db.clone());
+            let workspace = handler.get_workspace().await?;
+            let workspace_db = workspace.as_ref().and_then(|ws| ws.db.clone());
+            let search_writer_clone = workspace.and_then(|ws| ws.search_writer.clone());
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();
+
+            // Ensure we have a search_writer before spawning background task
+            let search_writer = search_writer_clone.ok_or_else(|| {
+                anyhow::anyhow!("Search writer not available for background indexing")
+            })?;
 
             tokio::spawn(async move {
                 match build_tantivy_from_sqlite(
                     search_engine_clone,
+                    search_writer,
                     workspace_db,
                     workspace_id_clone,
                     indexing_status_clone,
@@ -1086,6 +1097,7 @@ impl ManageWorkspaceTool {
 /// This runs asynchronously after SQLite storage completes, enabling fast startup
 async fn build_tantivy_from_sqlite(
     search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
+    search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
     workspace_db: Option<Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
     workspace_id: String,
     indexing_status: Arc<crate::handler::IndexingStatus>,
@@ -1167,13 +1179,21 @@ async fn build_tantivy_from_sqlite(
 
     debug!("Total symbols for Tantivy: {}", all_symbols.len());
 
-    // 5. Index into Tantivy
+    // 5. Index into Tantivy using separate writer
     {
-        let mut search_engine_lock = search_engine.write().await;
-        search_engine_lock
+        let mut search_writer_lock = search_writer.lock().await;
+        search_writer_lock
             .index_symbols(all_symbols)
             .await
             .context("Failed to index symbols in Tantivy")?;
+    }
+
+    // 6. Reload reader to see new commits (eliminates RwLock contention)
+    {
+        let mut search_engine_lock = search_engine.write().await;
+        search_engine_lock
+            .reload_reader()
+            .context("Failed to reload search reader after indexing")?;
     }
 
     let duration = start_time.elapsed();

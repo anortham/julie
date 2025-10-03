@@ -58,8 +58,10 @@ impl Default for IndexingStatus {
 pub struct JulieServerHandler {
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
-    /// Tantivy-based search engine for fast indexed search
+    /// Tantivy-based search engine for fast indexed search (READ-ONLY)
     pub search_engine: Arc<RwLock<SearchEngine>>,
+    /// Tantivy search writer for indexing operations (WRITE-ONLY, eliminates RwLock contention)
+    pub search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
     /// Cached embedding engine for semantic search (expensive to initialize)
@@ -76,9 +78,17 @@ impl JulieServerHandler {
         // NO MORE IN-MEMORY FALLBACKS - workspace initialization will provide persistent engines
         debug!("✓ Julie handler components initialized (awaiting workspace for persistent engines)");
 
+        // Create in-memory search engine and writer (temporary until workspace overrides)
+        let search_engine = SearchEngine::in_memory().unwrap();
+        let search_writer = crate::search::SearchIndexWriter::new(
+            search_engine.index(),
+            search_engine.schema().clone(),
+        ).unwrap();
+
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
-            search_engine: Arc::new(RwLock::new(SearchEngine::in_memory().unwrap())),  // Temporary until workspace overrides
+            search_engine: Arc::new(RwLock::new(search_engine)),
+            search_writer: Arc::new(tokio::sync::Mutex::new(search_writer)),
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
