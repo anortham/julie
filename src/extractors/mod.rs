@@ -70,7 +70,7 @@ impl ExtractorManager {
     }
 
     /// Extract symbols from file content using the appropriate language extractor
-    pub async fn extract_symbols(
+    pub fn extract_symbols(
         &self,
         file_path: &str,
         content: &str,
@@ -130,8 +130,7 @@ impl ExtractorManager {
 
         // Extract symbols using the appropriate extractor
         let symbols = self
-            .extract_symbols_for_language(file_path, content, language, &tree)
-            .await?;
+            .extract_symbols_for_language(file_path, content, language, &tree)?;
 
         tracing::debug!(
             "Extracted {} symbols from {} file: {}",
@@ -151,7 +150,7 @@ impl ExtractorManager {
     }
 
     /// Extract symbols using the appropriate extractor for the detected language
-    async fn extract_symbols_for_language(
+    fn extract_symbols_for_language(
         &self,
         file_path: &str,
         content: &str,

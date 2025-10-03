@@ -373,7 +373,6 @@ mod smart_refactor_control_tests {
                 let extractor_manager = crate::extractors::ExtractorManager::new();
                 match extractor_manager
                     .extract_symbols(&test_file_path.to_string_lossy(), &original_content)
-                    .await
                 {
                     Ok(symbols) => {
                         println!("📊 Extracted {} symbols from test file", symbols.len());

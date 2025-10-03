@@ -335,7 +335,6 @@ impl IncrementalIndexer {
         let symbols = match self
             .extractor_manager
             .extract_symbols(&path_str, &content_str)
-            .await
         {
             Ok(symbols) => symbols,
             Err(e) => {
@@ -363,7 +362,11 @@ impl IncrementalIndexer {
             warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {} - extraction returned zero symbols",
                   existing_symbols.len(), path_str);
             warn!("⚠️  Possible causes: parser error, file corruption, or unsupported language changes");
-            warn!("⚠️  File size: {} bytes, Language: {}", content.len(), language);
+            warn!(
+                "⚠️  File size: {} bytes, Language: {}",
+                content.len(),
+                language
+            );
             return Ok(()); // Skip update to preserve existing data
         }
 
@@ -372,8 +375,10 @@ impl IncrementalIndexer {
             let existing_count = existing_symbols.len();
             let new_count = symbols.len();
             if new_count < existing_count / 2 {
-                warn!("⚠️  SIGNIFICANT SYMBOL REDUCTION: {} -> {} symbols in {}",
-                      existing_count, new_count, path_str);
+                warn!(
+                    "⚠️  SIGNIFICANT SYMBOL REDUCTION: {} -> {} symbols in {}",
+                    existing_count, new_count, path_str
+                );
                 warn!("⚠️  This may indicate partial parsing failure. Proceeding with update but flagging for review.");
             }
         }
@@ -410,7 +415,10 @@ impl IncrementalIndexer {
         // 6. Update embeddings using mutex-protected engine
         {
             let mut embedding_engine = self.embedding_engine.lock().await;
-            if let Err(e) = embedding_engine.upsert_file_embeddings(path_str.as_ref(), &symbols).await {
+            if let Err(e) = embedding_engine
+                .upsert_file_embeddings(path_str.as_ref(), &symbols)
+                .await
+            {
                 warn!("Failed to update embeddings for {}: {}", path_str, e);
             } else {
                 debug!(
@@ -462,7 +470,10 @@ impl IncrementalIndexer {
         // Remove from embeddings (database will handle the actual deletion)
         if !symbol_ids.is_empty() {
             let mut embedding_engine = self.embedding_engine.lock().await;
-            if let Err(e) = embedding_engine.remove_embeddings_for_symbols(&symbol_ids).await {
+            if let Err(e) = embedding_engine
+                .remove_embeddings_for_symbols(&symbol_ids)
+                .await
+            {
                 warn!("Failed to remove embeddings for {}: {}", path_str, e);
             }
         }

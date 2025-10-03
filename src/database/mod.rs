@@ -104,7 +104,10 @@ impl SymbolDatabase {
         let target_version = LATEST_SCHEMA_VERSION;
 
         if current_version >= target_version {
-            debug!("Database schema is up-to-date at version {}", current_version);
+            debug!(
+                "Database schema is up-to-date at version {}",
+                current_version
+            );
             return Ok(());
         }
 
@@ -258,10 +261,8 @@ impl SymbolDatabase {
         self.conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
 
         // Add the content column
-        self.conn.execute(
-            "ALTER TABLE files ADD COLUMN content TEXT",
-            [],
-        )?;
+        self.conn
+            .execute("ALTER TABLE files ADD COLUMN content TEXT", [])?;
 
         info!("✅ Content column added to files table");
 
@@ -326,8 +327,7 @@ impl SymbolDatabase {
         self.conn.execute("PRAGMA foreign_keys = ON", [])?;
 
         // Set WAL mode for better concurrency (this returns results, so ignore them)
-        self
-            .conn
+        self.conn
             .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
 
         // Create tables in dependency order
@@ -800,9 +800,9 @@ impl SymbolDatabase {
 
     /// CASCADE: Get all file contents for workspace (for rebuilding Tantivy)
     pub fn get_all_file_contents(&self, workspace_id: &str) -> Result<Vec<(String, String)>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT path, content FROM files WHERE workspace_id = ?1 AND content IS NOT NULL")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT path, content FROM files WHERE workspace_id = ?1 AND content IS NOT NULL",
+        )?;
 
         let rows = stmt.query_map(params![workspace_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -932,7 +932,11 @@ impl SymbolDatabase {
     }
 
     /// Delete file record for a specific workspace (workspace-aware cleanup)
-    pub fn delete_file_record_in_workspace(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+    pub fn delete_file_record_in_workspace(
+        &self,
+        file_path: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
         let count = self.conn.execute(
             "DELETE FROM files WHERE path = ?1 AND workspace_id = ?2",
             params![file_path, workspace_id],
@@ -1031,6 +1035,28 @@ impl SymbolDatabase {
         // STEP 3: Start transaction for atomic bulk insert
         // Use regular transaction (not unchecked) to ensure foreign key constraints are enforced
         let tx = self.conn.transaction()?;
+
+        // STEP 3.5: Insert file records first to satisfy foreign key constraints
+        // Extract unique file paths with their languages from symbols
+        let mut unique_files: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for symbol in symbols {
+            unique_files
+                .entry(symbol.file_path.clone())
+                .or_insert_with(|| symbol.language.clone());
+        }
+
+        debug!("📁 Inserting {} unique file records", unique_files.len());
+        let mut file_stmt = tx.prepare(
+            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed, workspace_id)
+             VALUES (?1, ?2, '', 0, 0, ?3, ?4)"
+        )?;
+
+        let timestamp = chrono::Utc::now().timestamp();
+        for (file_path, language) in unique_files {
+            file_stmt.execute(rusqlite::params![file_path, language, timestamp, workspace_id])?;
+        }
+        drop(file_stmt);
 
         // STEP 4: Prepare statement once, use many times
         let mut stmt = tx.prepare(
@@ -1368,7 +1394,8 @@ impl SymbolDatabase {
             ]) {
                 Ok(_) => inserted_count += 1,
                 Err(rusqlite::Error::SqliteFailure(err, _))
-                    if err.code == rusqlite::ErrorCode::ConstraintViolation => {
+                    if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+                {
                     // Skip relationships with missing symbol references
                     skipped_count += 1;
                     debug!(
@@ -1589,13 +1616,20 @@ impl SymbolDatabase {
     }
 
     /// Delete symbols for a specific file within a workspace (workspace-aware incremental updates)
-    pub fn delete_symbols_for_file_in_workspace(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+    pub fn delete_symbols_for_file_in_workspace(
+        &self,
+        file_path: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
         let count = self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1 AND workspace_id = ?2",
             params![file_path, workspace_id],
         )?;
 
-        debug!("Deleted {} symbols from file '{}' in workspace '{}'", count, file_path, workspace_id);
+        debug!(
+            "Deleted {} symbols from file '{}' in workspace '{}'",
+            count, file_path, workspace_id
+        );
         Ok(())
     }
 
@@ -1613,7 +1647,10 @@ impl SymbolDatabase {
             params![file_path, workspace_id],
         )?;
 
-        debug!("Deleted {} relationships for file '{}' in workspace '{}'", count, file_path, workspace_id);
+        debug!(
+            "Deleted {} relationships for file '{}' in workspace '{}'",
+            count, file_path, workspace_id
+        );
         Ok(())
     }
 
@@ -1759,7 +1796,7 @@ impl SymbolDatabase {
             to_symbol_id: row.get("to_symbol_id")?,
             kind,
             file_path: row.get("file_path").unwrap_or_else(|_| String::new()), // Support old DBs without migration
-            line_number: row.get("line_number").unwrap_or(0),                  // Support old DBs without migration
+            line_number: row.get("line_number").unwrap_or(0), // Support old DBs without migration
             confidence: row.get("confidence").unwrap_or(1.0),
             metadata,
         })
@@ -1928,10 +1965,7 @@ impl SymbolDatabase {
             .as_secs() as i64;
 
         // Serialize f32 vector to bytes using native endianness
-        let bytes: Vec<u8> = vector_data
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
+        let bytes: Vec<u8> = vector_data.iter().flat_map(|f| f.to_le_bytes()).collect();
 
         self.conn.execute(
             "INSERT OR REPLACE INTO embedding_vectors
@@ -2047,10 +2081,7 @@ impl SymbolDatabase {
 
         for (symbol_id, vector_data) in embeddings {
             // Serialize vector to bytes
-            let bytes: Vec<u8> = vector_data
-                .iter()
-                .flat_map(|f| f.to_le_bytes())
-                .collect();
+            let bytes: Vec<u8> = vector_data.iter().flat_map(|f| f.to_le_bytes()).collect();
 
             // Insert vector data (using symbol_id as vector_id for simplicity)
             vector_stmt.execute(params![
@@ -2112,8 +2143,10 @@ impl SymbolDatabase {
 
     /// Delete embedding vector and metadata
     pub fn delete_embedding(&self, vector_id: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM embedding_vectors WHERE vector_id = ?1", params![vector_id])?;
+        self.conn.execute(
+            "DELETE FROM embedding_vectors WHERE vector_id = ?1",
+            params![vector_id],
+        )?;
 
         // Metadata will cascade delete automatically due to FK constraint
         debug!("Deleted embedding vector: {}", vector_id);
@@ -2123,9 +2156,9 @@ impl SymbolDatabase {
     /// Delete embeddings for a specific symbol
     pub fn delete_embeddings_for_symbol(&self, symbol_id: &str) -> Result<()> {
         // Get all vector_ids before deleting metadata
-        let mut stmt = self.conn.prepare(
-            "SELECT vector_id FROM embeddings WHERE symbol_id = ?1"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT vector_id FROM embeddings WHERE symbol_id = ?1")?;
         let vector_ids: Vec<String> = stmt
             .query_map(params![symbol_id], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -2154,7 +2187,7 @@ impl SymbolDatabase {
             "SELECT e.symbol_id, ev.vector_data, ev.dimensions
              FROM embeddings e
              JOIN embedding_vectors ev ON e.vector_id = ev.vector_id
-             WHERE e.model_name = ?1"
+             WHERE e.model_name = ?1",
         )?;
 
         let rows = stmt.query_map(params![model_name], |row| {
@@ -2238,7 +2271,10 @@ impl SymbolDatabase {
     }
 
     /// Get file hashes for a specific workspace for incremental update detection
-    pub fn get_file_hashes_for_workspace(&self, workspace_id: &str) -> Result<std::collections::HashMap<String, String>> {
+    pub fn get_file_hashes_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<std::collections::HashMap<String, String>> {
         let mut stmt = self.conn.prepare(
             "
             SELECT path, hash
@@ -2364,7 +2400,11 @@ impl SymbolDatabase {
         let pattern_like = format!("%{}%", pattern);
 
         let query = if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             if let Some(_lang) = language {
                 format!(
                     "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
@@ -2395,7 +2435,8 @@ impl SymbolDatabase {
              FROM symbols
              WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2
              ORDER BY name, file_path
-             LIMIT 1000".to_string()
+             LIMIT 1000"
+                .to_string()
         } else {
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
@@ -2403,7 +2444,8 @@ impl SymbolDatabase {
              FROM symbols
              WHERE (name LIKE ?1 OR code_context LIKE ?1)
              ORDER BY name, file_path
-             LIMIT 1000".to_string()
+             LIMIT 1000"
+                .to_string()
         };
 
         let mut stmt = self.conn.prepare(&query)?;
@@ -2470,7 +2512,11 @@ impl SymbolDatabase {
         };
 
         let query = if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             format!(
                 "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                         end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
@@ -2486,7 +2532,8 @@ impl SymbolDatabase {
                     parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE kind = ?1
-             ORDER BY file_path, start_line".to_string()
+             ORDER BY file_path, start_line"
+                .to_string()
         };
 
         let mut stmt = self.conn.prepare(&query)?;
@@ -2514,7 +2561,11 @@ impl SymbolDatabase {
         workspace_ids: &[String],
     ) -> Result<Vec<Symbol>> {
         let query = if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             format!(
                 "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                         end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
@@ -2530,7 +2581,8 @@ impl SymbolDatabase {
                     parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE language = ?1
-             ORDER BY file_path, start_line".to_string()
+             ORDER BY file_path, start_line"
+                .to_string()
         };
 
         let mut stmt = self.conn.prepare(&query)?;
@@ -2555,7 +2607,10 @@ impl SymbolDatabase {
     pub fn get_symbol_statistics(
         &self,
         workspace_ids: &[String],
-    ) -> Result<(std::collections::HashMap<String, usize>, std::collections::HashMap<String, usize>)> {
+    ) -> Result<(
+        std::collections::HashMap<String, usize>,
+        std::collections::HashMap<String, usize>,
+    )> {
         use std::collections::HashMap;
 
         let mut by_kind = HashMap::new();
@@ -2563,14 +2618,21 @@ impl SymbolDatabase {
 
         // Count by kind
         if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let kind_query = format!(
                 "SELECT kind, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY kind",
                 workspace_placeholders
             );
 
             let mut stmt = self.conn.prepare(&kind_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
             let rows = stmt.query_map(params.as_slice(), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
             })?;
@@ -2594,14 +2656,21 @@ impl SymbolDatabase {
 
         // Count by language
         if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let lang_query = format!(
                 "SELECT language, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY language",
                 workspace_placeholders
             );
 
             let mut stmt = self.conn.prepare(&lang_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
             let rows = stmt.query_map(params.as_slice(), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
             })?;
@@ -2629,21 +2698,31 @@ impl SymbolDatabase {
     /// Get file-level statistics using SQL GROUP BY (O(log n) instead of O(n))
     ///
     /// Returns: HashMap<file_path, symbol_count>
-    pub fn get_file_statistics(&self, workspace_ids: &[String]) -> Result<std::collections::HashMap<String, usize>> {
+    pub fn get_file_statistics(
+        &self,
+        workspace_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
         let mut by_file = HashMap::new();
 
         // Count symbols per file using SQL GROUP BY
         if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let file_query = format!(
                 "SELECT file_path, COUNT(*) as count FROM symbols WHERE workspace_id IN ({}) GROUP BY file_path",
                 workspace_placeholders
             );
 
             let mut stmt = self.conn.prepare(&file_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
             let rows = stmt.query_map(params.as_slice(), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
             })?;
@@ -2671,14 +2750,21 @@ impl SymbolDatabase {
     /// Get total symbol count using SQL COUNT (O(1) database operation)
     pub fn get_total_symbol_count(&self, workspace_ids: &[String]) -> Result<usize> {
         let count: i64 = if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let count_query = format!(
                 "SELECT COUNT(*) FROM symbols WHERE workspace_id IN ({})",
                 workspace_placeholders
             );
 
             let mut stmt = self.conn.prepare(&count_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
             stmt.query_row(params.as_slice(), |row| row.get(0))?
         } else {
             let count_query = "SELECT COUNT(*) FROM symbols";
@@ -2692,7 +2778,10 @@ impl SymbolDatabase {
     /// Get file-level relationship statistics using SQL (for hotspot analysis)
     ///
     /// Returns: HashMap<file_path, relationship_count> counting relationships where symbols from this file participate
-    pub fn get_file_relationship_statistics(&self, workspace_ids: &[String]) -> Result<std::collections::HashMap<String, usize>> {
+    pub fn get_file_relationship_statistics(
+        &self,
+        workspace_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
         let mut by_file = HashMap::new();
@@ -2700,7 +2789,11 @@ impl SymbolDatabase {
         // This is a more complex query: count relationships per file
         // We need to join symbols with relationships to count how many relationships involve symbols from each file
         if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
             let rel_query = format!(
                 "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
                  FROM symbols s \
@@ -2711,7 +2804,10 @@ impl SymbolDatabase {
             );
 
             let mut stmt = self.conn.prepare(&rel_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
             let rows = stmt.query_map(params.as_slice(), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
             })?;
@@ -2900,14 +2996,14 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<
         .to_string();
 
     Ok(FileInfo {
-        path: canonical_path,  // Use canonical path, not original
+        path: canonical_path, // Use canonical path, not original
         language: language.to_string(),
         hash,
         size: metadata.len() as i64,
         last_modified,
         last_indexed: 0, // Will be set by database
         symbol_count: 0, // Will be updated after extraction
-        content,          // CASCADE: File content for FTS5
+        content,         // CASCADE: File content for FTS5
     })
 }
 
@@ -3540,7 +3636,9 @@ mod tests {
             end_byte: 450,
             doc_comment: Some("/// This function does something important".to_string()),
             visibility: Some(crate::extractors::base::Visibility::Public),
-            code_context: Some("  // line before\n  fn complete_function() {\n  // line after".to_string()),
+            code_context: Some(
+                "  // line before\n  fn complete_function() {\n  // line after".to_string(),
+            ),
             // Regular fields that work:
             signature: Some("fn complete_function() -> Result<()>".to_string()),
             parent_id: None,
@@ -3550,10 +3648,13 @@ mod tests {
         };
 
         // Store the symbol
-        db.store_symbols(&[symbol.clone()], "test_workspace").unwrap();
+        db.store_symbols(&[symbol.clone()], "test_workspace")
+            .unwrap();
 
         // Retrieve and verify ALL fields are preserved
-        let retrieved = db.get_symbol_by_id("complete-symbol-id").unwrap()
+        let retrieved = db
+            .get_symbol_by_id("complete-symbol-id")
+            .unwrap()
             .expect("Symbol should exist in database");
 
         // Basic fields (these already work)
@@ -3605,10 +3706,7 @@ mod tests {
         .unwrap();
 
         let content = db.get_file_content("test.md").unwrap();
-        assert_eq!(
-            content,
-            Some("# Test\nThis is test content".to_string())
-        );
+        assert_eq!(content, Some("# Test\nThis is test content".to_string()));
     }
 
     #[test]
@@ -3749,11 +3847,9 @@ mod tests {
         let db = SymbolDatabase::new(&db_path).unwrap();
 
         // Verify schema_version table exists
-        let result: Result<i64, rusqlite::Error> = db.conn.query_row(
-            "SELECT COUNT(*) FROM schema_version",
-            [],
-            |row| row.get(0)
-        );
+        let result: Result<i64, rusqlite::Error> =
+            db.conn
+                .query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0));
 
         assert!(result.is_ok(), "schema_version table should exist");
     }
@@ -3767,7 +3863,10 @@ mod tests {
 
         // Verify content column exists in files table
         let has_content = db.has_column("files", "content").unwrap();
-        assert!(has_content, "files table should have content column after migration");
+        assert!(
+            has_content,
+            "files table should have content column after migration"
+        );
     }
 
     #[test]
@@ -3794,14 +3893,16 @@ mod tests {
                     workspace_id TEXT NOT NULL DEFAULT 'primary'
                 )",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
 
             // Insert test data
             conn.execute(
                 "INSERT INTO files (path, language, hash, size, last_modified)
                  VALUES ('test.rs', 'rust', 'abc123', 1024, 1234567890)",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Now open with new code - should trigger migration
@@ -3809,19 +3910,28 @@ mod tests {
 
         // Verify migration occurred
         let version = db.get_schema_version().unwrap();
-        assert_eq!(version, LATEST_SCHEMA_VERSION, "Database should be migrated to latest version");
+        assert_eq!(
+            version, LATEST_SCHEMA_VERSION,
+            "Database should be migrated to latest version"
+        );
 
         // Verify content column exists
         let has_content = db.has_column("files", "content").unwrap();
         assert!(has_content, "Migration should have added content column");
 
         // Verify existing data is preserved
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files WHERE path = 'test.rs'",
-            [],
-            |row| row.get(0)
-        ).unwrap();
-        assert_eq!(file_count, 1, "Existing data should be preserved after migration");
+        let file_count: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path = 'test.rs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            file_count, 1,
+            "Existing data should be preserved after migration"
+        );
     }
 
     #[test]
@@ -3865,7 +3975,8 @@ mod tests {
                     workspace_id TEXT NOT NULL DEFAULT 'primary'
                 )",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Open and migrate
@@ -3879,8 +3990,9 @@ mod tests {
             1024,
             1234567890,
             "fn main() { println!(\"hello\"); }",
-            "primary"
-        ).unwrap();
+            "primary",
+        )
+        .unwrap();
 
         // Verify FTS5 search works (triggers populated FTS table)
         let results = db.search_file_content_fts("main", None, 10).unwrap();

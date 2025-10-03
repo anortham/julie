@@ -190,8 +190,10 @@ impl SmartRefactorTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(optimized_markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(optimized_markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -215,7 +217,7 @@ impl SmartRefactorTool {
                     self.operation
                 );
                 self.create_result(
-                    &self.operation,  // Use the invalid operation name for debugging
+                    &self.operation, // Use the invalid operation name for debugging
                     false,
                     vec![],
                     0,
@@ -286,7 +288,7 @@ impl SmartRefactorTool {
             );
             return self.create_result(
                 "rename_symbol",
-                false,  // Failed to find symbol
+                false, // Failed to find symbol
                 vec![],
                 0,
                 vec![
@@ -362,7 +364,7 @@ impl SmartRefactorTool {
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
             return self.create_result(
                 "rename_symbol",
-                true,  // Dry run succeeded
+                true, // Dry run succeeded
                 files,
                 total_changes,
                 vec!["Set dry_run=false to apply changes".to_string()],
@@ -626,13 +628,8 @@ impl SmartRefactorTool {
             "📝 About to call AST-aware smart_text_replace with old_name='{}', new_name='{}'",
             old_name, new_name
         );
-        let result = self.smart_text_replace(
-            content,
-            old_name,
-            new_name,
-            file_path,
-            update_comments,
-        )?;
+        let result =
+            self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
         debug!(
             "🎯 AST-aware smart_text_replace completed, result length: {}",
             result.len()
@@ -676,8 +673,7 @@ impl SmartRefactorTool {
         // Create an extractor manager and extract all symbols
         let extractor_manager = ExtractorManager::new();
         let symbols = extractor_manager
-            .extract_symbols(file_path, content)
-            .await?;
+            .extract_symbols(file_path, content)?;
 
         // Find symbols that match our target name exactly
         let matching_positions: Vec<(u32, u32)> = symbols
@@ -800,7 +796,8 @@ impl SmartRefactorTool {
                 );
 
                 if !comment_occurrences.is_empty() {
-                    let identifier_char_checker = |ch: char| ch.is_alphanumeric() || ch == '_' || ch == '$';
+                    let identifier_char_checker =
+                        |ch: char| ch.is_alphanumeric() || ch == '_' || ch == '$';
                     let quoted_old = format!("\"{}\"", old_name);
                     let single_quoted_old = format!("'{}'", old_name);
                     let backticked_old = format!("`{}`", old_name);
@@ -822,14 +819,10 @@ impl SmartRefactorTool {
                         let original_segment = &result[start..end];
                         let is_doc_comment = looks_like_doc_comment(original_segment);
                         let near_scope_top = occ.line >= definition.line
-                            && occ.line
-                                <= definition.line + TOP_OF_SCOPE_COMMENT_LINE_WINDOW;
+                            && occ.line <= definition.line + TOP_OF_SCOPE_COMMENT_LINE_WINDOW;
 
                         if !is_doc_comment && !near_scope_top {
-                            debug!(
-                                "ℹ️ Skipping deep comment occurrence at line {}",
-                                occ.line
-                            );
+                            debug!("ℹ️ Skipping deep comment occurrence at line {}", occ.line);
                             continue;
                         }
 
@@ -932,15 +925,12 @@ impl SmartRefactorTool {
             🎯 Function name: {}\n\n\
             💡 Coming soon - will extract selected code into a new function\n\
             📋 Use ReplaceSymbolBody operation for now",
-            file_path,
-            start_line,
-            end_line,
-            function_name
+            file_path, start_line, end_line, function_name
         );
 
         self.create_result(
             "extract_function",
-            false,  // Not yet implemented
+            false, // Not yet implemented
             vec![],
             0,
             vec!["Use replace_symbol_body for manual refactoring".to_string()],
@@ -1689,7 +1679,7 @@ impl SmartRefactorTool {
                 "replace_symbol_body",
                 true,
                 vec![file_path.to_string()],
-                1,  // One symbol replacement
+                1, // One symbol replacement
                 vec!["Set dry_run=false to apply changes".to_string()],
                 preview,
                 None,
@@ -1719,7 +1709,7 @@ impl SmartRefactorTool {
             "replace_symbol_body",
             true,
             vec![file_path.to_string()],
-            1,  // One symbol replacement
+            1, // One symbol replacement
             vec![
                 "Run tests to verify changes".to_string(),
                 format!("Use fast_goto to navigate to {}", symbol_name),
@@ -2229,10 +2219,7 @@ impl SmartRefactorTool {
 
     /// Handle validate_syntax operation - Week 3: AST Syntax Fix
     /// Uses tree-sitter error nodes to detect syntax errors across all 26 languages
-    async fn handle_validate_syntax(
-        &self,
-        handler: &JulieServerHandler,
-    ) -> Result<CallToolResult> {
+    async fn handle_validate_syntax(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Parse params to get file_path
         let params: serde_json::Value = serde_json::from_str(&self.params)?;
         let file_path = params["file_path"]
@@ -2284,7 +2271,11 @@ impl SmartRefactorTool {
                 // Check if this node is an error or missing node
                 if node.is_error() || node.is_missing() {
                     let start_pos = node.start_position();
-                    let error_type = if node.is_missing() { "missing" } else { "error" };
+                    let error_type = if node.is_missing() {
+                        "missing"
+                    } else {
+                        "error"
+                    };
 
                     // Extract context (3 lines before and after)
                     let lines: Vec<&str> = content.lines().collect();
@@ -2338,11 +2329,20 @@ impl SmartRefactorTool {
         });
 
         let message = if errors_count == 0 {
-            format!("✅ **Syntax validation passed**\n\n📄 File: `{}`\n🎉 No syntax errors found!", file_path)
+            format!(
+                "✅ **Syntax validation passed**\n\n📄 File: `{}`\n🎉 No syntax errors found!",
+                file_path
+            )
         } else {
             let mut msg = format!("❌ **Syntax validation failed**\n\n📄 File: `{}`\n🐛 Found {} syntax error(s):\n\n", file_path, errors_count);
             for (i, error) in errors.iter().enumerate() {
-                msg.push_str(&format!("{}. Line {}:{} - {}\n", i + 1, error.line, error.column, error.message));
+                msg.push_str(&format!(
+                    "{}. Line {}:{} - {}\n",
+                    i + 1,
+                    error.line,
+                    error.column,
+                    error.message
+                ));
                 if let Some(ref context) = error.context {
                     msg.push_str(&format!("```\n{}\n```\n\n", context));
                 }
@@ -2351,7 +2351,10 @@ impl SmartRefactorTool {
         };
 
         let next_actions = if errors_count > 0 {
-            vec![format!("Run smart_refactor operation=auto_fix_syntax to fix {} error(s) automatically", errors_count)]
+            vec![format!(
+                "Run smart_refactor operation=auto_fix_syntax to fix {} error(s) automatically",
+                errors_count
+            )]
         } else {
             vec!["Code is valid - ready for deployment".to_string()]
         };
@@ -2369,10 +2372,7 @@ impl SmartRefactorTool {
 
     /// Handle auto_fix_syntax operation - Week 3: AST Syntax Fix
     /// Automatically fixes common syntax errors (semicolons, braces, etc.)
-    async fn handle_auto_fix_syntax(
-        &self,
-        handler: &JulieServerHandler,
-    ) -> Result<CallToolResult> {
+    async fn handle_auto_fix_syntax(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Parse params to get file_path
         let params: serde_json::Value = serde_json::from_str(&self.params)?;
         let file_path = params["file_path"]
@@ -2431,7 +2431,10 @@ impl SmartRefactorTool {
 
         // Build response
         let message = if fixes_count == 0 {
-            format!("✅ **No syntax errors to fix**\n\n📄 File: `{}`\n🎉 Code is already valid!", file_path)
+            format!(
+                "✅ **No syntax errors to fix**\n\n📄 File: `{}`\n🎉 Code is already valid!",
+                file_path
+            )
         } else if self.dry_run {
             format!("🔍 **Dry run - {} fix(es) would be applied**\n\n📄 File: `{}`\n💡 Run without dry_run to apply fixes", fixes_count, file_path)
         } else {
@@ -2496,7 +2499,12 @@ impl SmartRefactorTool {
     /// Apply syntax fixes to code based on tree-sitter errors
     /// Focus: REAL parse-breaking errors (unmatched braces, unclosed strings, missing delimiters)
     /// Uses VALIDATION-DRIVEN approach: tries multiple positions and validates with tree-sitter
-    fn apply_syntax_fixes(&self, content: &str, tree: &tree_sitter::Tree, language: &str) -> Result<String> {
+    fn apply_syntax_fixes(
+        &self,
+        content: &str,
+        tree: &tree_sitter::Tree,
+        language: &str,
+    ) -> Result<String> {
         // Find the FIRST delimiter error (fix one at a time to avoid cascades)
         let delimiter_errors = self.find_delimiter_errors(tree, content)?;
 
@@ -2507,7 +2515,10 @@ impl SmartRefactorTool {
         // Get tree-sitter language for validation
         let tree_sitter_lang = self.get_tree_sitter_language(language)?;
 
-        debug!("🔍 Found {} delimiter errors, attempting to fix the first one", delimiter_errors.len());
+        debug!(
+            "🔍 Found {} delimiter errors, attempting to fix the first one",
+            delimiter_errors.len()
+        );
 
         // Fix the FIRST error using validation-driven approach
         if let Some(error) = delimiter_errors.first() {
@@ -2515,12 +2526,16 @@ impl SmartRefactorTool {
             debug!("🎯 Trying to fix missing: {}", delimiter);
 
             // Try multiple insertion strategies, validate each one
-            if let Some(fixed) = self.try_inline_insertion_strategies(content, delimiter, &tree_sitter_lang) {
+            if let Some(fixed) =
+                self.try_inline_insertion_strategies(content, delimiter, &tree_sitter_lang)
+            {
                 debug!("✅ INLINE insertion validated successfully!");
                 return Ok(fixed);
             }
 
-            if let Some(fixed) = self.try_newline_insertion_strategies(content, delimiter, &tree_sitter_lang) {
+            if let Some(fixed) =
+                self.try_newline_insertion_strategies(content, delimiter, &tree_sitter_lang)
+            {
                 debug!("✅ NEWLINE insertion validated successfully!");
                 return Ok(fixed);
             }
@@ -2534,7 +2549,12 @@ impl SmartRefactorTool {
 
     /// Try INLINE insertion strategies (e.g., `)` before `{` on same line)
     /// Returns the first valid fix or None
-    fn try_inline_insertion_strategies(&self, content: &str, delimiter: &str, lang: &tree_sitter::Language) -> Option<String> {
+    fn try_inline_insertion_strategies(
+        &self,
+        content: &str,
+        delimiter: &str,
+        lang: &tree_sitter::Language,
+    ) -> Option<String> {
         let lines: Vec<String> = content.lines().map(String::from).collect();
 
         // Strategy 1: Insert before `{` on the same line (for cases like `taxRate: number {` → `taxRate: number) {`)
@@ -2551,7 +2571,12 @@ impl SmartRefactorTool {
                     test_lines[line_idx] = modified_line.clone();
                     let test_content = test_lines.join("\n");
 
-                    debug!("  🔍 Trying INLINE before '{}' at line {}: {:?}", pattern.trim(), line_idx + 1, modified_line.trim());
+                    debug!(
+                        "  🔍 Trying INLINE before '{}' at line {}: {:?}",
+                        pattern.trim(),
+                        line_idx + 1,
+                        modified_line.trim()
+                    );
 
                     if self.parses_without_errors(&test_content, lang) {
                         debug!("  ✅ Valid! INLINE before '{}'", pattern.trim());
@@ -2566,7 +2591,12 @@ impl SmartRefactorTool {
 
     /// Try NEWLINE insertion strategies (delimiter on new line with reduced indentation)
     /// Returns the first valid fix or None
-    fn try_newline_insertion_strategies(&self, content: &str, delimiter: &str, lang: &tree_sitter::Language) -> Option<String> {
+    fn try_newline_insertion_strategies(
+        &self,
+        content: &str,
+        delimiter: &str,
+        lang: &tree_sitter::Language,
+    ) -> Option<String> {
         let lines: Vec<String> = content.lines().map(String::from).collect();
 
         // Strategy 1: Try inserting on new line after each line (from end backwards)
@@ -2575,12 +2605,19 @@ impl SmartRefactorTool {
 
             // Skip empty lines and comments
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("#") {
+            if trimmed.is_empty()
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with("#")
+            {
                 continue;
             }
 
             // Calculate indentation (reduce by 4 spaces for closing delimiters)
-            let current_indent = line.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+            let current_indent = line
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .collect::<String>();
             let closing_indent = if current_indent.len() >= 4 {
                 &current_indent[..current_indent.len() - 4]
             } else {
@@ -2593,7 +2630,11 @@ impl SmartRefactorTool {
             test_lines.insert(line_idx + 1, delimiter_line.clone());
             let test_content = test_lines.join("\n");
 
-            debug!("  🔍 Trying NEWLINE after line {}: inserting '{}'", line_idx + 1, delimiter_line.trim());
+            debug!(
+                "  🔍 Trying NEWLINE after line {}: inserting '{}'",
+                line_idx + 1,
+                delimiter_line.trim()
+            );
 
             if self.parses_without_errors(&test_content, lang) {
                 debug!("  ✅ Valid! NEWLINE after line {}", line_idx + 1);
@@ -2610,7 +2651,11 @@ impl SmartRefactorTool {
     /// Strategy: Fix one error at a time. After fixing, code should be re-parsed
     /// to find the next error. This prevents cascade effects where one missing
     /// delimiter causes tree-sitter to report spurious additional errors.
-    fn find_delimiter_errors(&self, tree: &tree_sitter::Tree, content: &str) -> Result<Vec<DelimiterError>> {
+    fn find_delimiter_errors(
+        &self,
+        tree: &tree_sitter::Tree,
+        content: &str,
+    ) -> Result<Vec<DelimiterError>> {
         let mut all_errors = Vec::new();
         let root = tree.root_node();
 
@@ -2632,7 +2677,7 @@ impl SmartRefactorTool {
         &self,
         cursor: &mut tree_sitter::TreeCursor,
         content: &str,
-        errors: &mut Vec<DelimiterError>
+        errors: &mut Vec<DelimiterError>,
     ) {
         loop {
             let node = cursor.node();
@@ -2659,15 +2704,24 @@ impl SmartRefactorTool {
 
     /// Analyze an error node to determine what delimiter is missing
     /// Returns the line where content ends (skipping comments/empty lines)
-    fn analyze_delimiter_error(&self, node: &tree_sitter::Node, content: &str) -> Option<DelimiterError> {
+    fn analyze_delimiter_error(
+        &self,
+        node: &tree_sitter::Node,
+        content: &str,
+    ) -> Option<DelimiterError> {
         // Use the error node's END position instead of START position
         // The error span often extends closer to where the fix should go
         let end_byte = node.end_byte();
         let error_line = node.end_position().row;
 
         // DEBUG: Print error node info
-        debug!("🔍 ERROR NODE: start={}, end={}, end_line={}, kind={}",
-               node.start_position().row, node.end_position().row, error_line, node.kind());
+        debug!(
+            "🔍 ERROR NODE: start={}, end={}, end_line={}, kind={}",
+            node.start_position().row,
+            node.end_position().row,
+            error_line,
+            node.kind()
+        );
 
         // Get the text before the error END to determine context
         let context_start = 0;
@@ -2733,7 +2787,10 @@ impl SmartRefactorTool {
         }
 
         // DEBUG: Print delimiter counts
-        debug!("  📊 Counts: braces={}, brackets={}, parens={}, in_string={}", brace_count, bracket_count, paren_count, in_string);
+        debug!(
+            "  📊 Counts: braces={}, brackets={}, parens={}, in_string={}",
+            brace_count, bracket_count, paren_count, in_string
+        );
         debug!("  📍 Insertion line calculated: {}", insertion_line);
 
         // Determine what's missing and return insertion position
@@ -2778,7 +2835,6 @@ impl SmartRefactorTool {
 
         None
     }
-
 
     /// Apply token optimization to SmartRefactorTool responses to prevent context overflow
     fn optimize_response(&self, message: &str) -> String {
