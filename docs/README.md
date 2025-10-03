@@ -1,43 +1,24 @@
 # Julie Documentation
 
-This directory contains active documentation for the Julie project.
+This directory contains **current** documentation for Julie. Code is the source of truth.
 
-## Current Documentation
+## Architecture Documentation
 
-- **`workspace_management.md`** - Julie's workspace registry system for multi-project support
-- **`future/`** - Future ideas and enhancements
+- **`SEARCH_FLOW.md`** - CASCADE architecture (SQLite → Tantivy → HNSW) and search flow
+- **`INTELLIGENCE_LAYER.md`** - Cross-language intelligence (tree-sitter + naming variants + semantic embeddings)
 
-## Historical Documentation
+## Roadmap
 
-The `historical/` directory contains archived documents from Julie's development:
-
-- **`THE_PLAN.md`** - Original vision document explaining Julie's mission and architecture decisions
-- **`julie.md`** - Technology comparison (Rust vs Go) and dependency analysis that informed the Rust choice
-- **`julie-implementation-checklist.md`** - Phase-by-phase implementation tracking (now complete)
-
-These historical docs provide context on design decisions but may reference features or issues that have since been resolved.
+- **`future/agent_first_tool_roadmap.md`** - Current roadmap for agent-first tools
 
 ## Primary Documentation
 
-The primary source of truth for Julie's current state and guidelines is:
-- **`/CLAUDE.md`** - Project development guidelines and TDD methodology
-- **`/ARCHITECTURE_DEBT.md`** - Technical debt tracking and resolved issues
-- **`/REALITY_CHECK.md`** - Honest assessment of what works vs. what's claimed
-- **`/TODO.md`** - Observations and ideas from current work
-
-## Removed Documentation
-
-The following outdated documents were deleted during 2025-09-30 cleanup:
-- `coder.md` - Sept 29 review claiming issues that were subsequently fixed
-- `review.md` - Sept 27 review with outdated findings
-
-These reviews pre-dated major fixes including:
-- ✅ Semantic search implementation (HNSW)
-- ✅ Database schema completion
-- ✅ Refactoring safety verification
-- ✅ Performance optimizations
+For development guidelines, TDD methodology, and current project status, see:
+- **`/CLAUDE.md`** - Project development guidelines
+- **`/TODO.md`** - Current observations and ideas
+- **Code** - The ultimate source of truth
 
 ---
 
-**Last Updated**: 2025-09-30
-**Status**: Documentation synchronized with actual implementation
+**Last Updated**: 2025-10-02
+**Philosophy**: Code is truth. Documentation describes how things work NOW and where we're going NEXT.
