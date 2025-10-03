@@ -95,12 +95,24 @@ fn setup_smart_refactor_test_environment() -> Result<PathBuf> {
 }
 
 /// Copy source file to test location (SOURCE files are never edited)
-fn setup_smart_refactor_test_file(source_file: &str, test_case_name: &str, temp_dir: &Path) -> Result<PathBuf> {
+fn setup_smart_refactor_test_file(
+    source_file: &str,
+    test_case_name: &str,
+    temp_dir: &Path,
+) -> Result<PathBuf> {
     let source_path = Path::new("tests/editing/sources").join(source_file);
 
     // Create unique filename using test case name to prevent contamination
-    let file_stem = Path::new(source_file).file_stem().unwrap().to_str().unwrap();
-    let file_ext = Path::new(source_file).extension().unwrap().to_str().unwrap();
+    let file_stem = Path::new(source_file)
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let file_ext = Path::new(source_file)
+        .extension()
+        .unwrap()
+        .to_str()
+        .unwrap();
     let unique_filename = format!("{}_{}.{}", file_stem, test_case_name, file_ext);
     let test_path = temp_dir.join(unique_filename);
 
@@ -162,9 +174,11 @@ fn simulate_rename_operation(file_content: &str, old_name: &str, new_name: &str)
 fn simulate_replace_symbol_body_operation(file_content: &str, params: &str) -> Result<String> {
     // Parse parameters
     let params: serde_json::Value = serde_json::from_str(params)?;
-    let symbol_name = params["symbol_name"].as_str()
+    let symbol_name = params["symbol_name"]
+        .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing symbol_name parameter"))?;
-    let new_body = params["new_body"].as_str()
+    let new_body = params["new_body"]
+        .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing new_body parameter"))?;
 
     // 🔴 RED PHASE: Simulate what ReplaceSymbolBody should do
@@ -281,7 +295,8 @@ mod smart_refactor_control_tests {
         temp_dir: &Path,
     ) -> Result<()> {
         // Step 1: Set up test file from source (SOURCE files are never edited)
-        let test_file_path = setup_smart_refactor_test_file(test_case.source_file, test_case.name, temp_dir)?;
+        let test_file_path =
+            setup_smart_refactor_test_file(test_case.source_file, test_case.name, temp_dir)?;
         println!("📁 Source file copied to: {}", test_file_path.display());
 
         // Step 2: Load expected control result (CONTROL files are expected outcomes)
@@ -339,7 +354,10 @@ mod smart_refactor_control_tests {
                         std::fs::read_to_string(&test_file_path)?
                     }
                     Err(e) => {
-                        println!("⚠️ AST-aware rename failed: {}, falling back to simple replacement", e);
+                        println!(
+                            "⚠️ AST-aware rename failed: {}, falling back to simple replacement",
+                            e
+                        );
                         simulate_rename_operation(&original_content, old_name, new_name)
                     }
                 }
@@ -353,7 +371,10 @@ mod smart_refactor_control_tests {
 
                 // Extract symbols from the test file using ExtractorManager
                 let extractor_manager = crate::extractors::ExtractorManager::new();
-                match extractor_manager.extract_symbols(&test_file_path.to_string_lossy(), &original_content).await {
+                match extractor_manager
+                    .extract_symbols(&test_file_path.to_string_lossy(), &original_content)
+                    .await
+                {
                     Ok(symbols) => {
                         println!("📊 Extracted {} symbols from test file", symbols.len());
 
@@ -371,12 +392,18 @@ mod smart_refactor_control_tests {
                         }
 
                         // Step 2: Set up minimal workspace with database for health checker
-                        let test_workspace = crate::workspace::JulieWorkspace::initialize(current_dir.clone())?;
+                        let test_workspace =
+                            crate::workspace::JulieWorkspace::initialize(current_dir.clone())
+                                .await?;
                         *handler.workspace.write().await = Some(test_workspace);
 
                         // Step 3: Get or register workspace in registry service for health checker
-                        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(current_dir.clone());
-                        let workspace_id = match registry_service.get_primary_workspace_id().await? {
+                        let registry_service =
+                            crate::workspace::registry_service::WorkspaceRegistryService::new(
+                                current_dir.clone(),
+                            );
+                        let workspace_id = match registry_service.get_primary_workspace_id().await?
+                        {
                             Some(workspace_id) => {
                                 // Primary workspace already exists, use it
                                 println!("✅ Using existing primary workspace: {}", workspace_id);
@@ -384,10 +411,12 @@ mod smart_refactor_control_tests {
                             }
                             None => {
                                 // Register new primary workspace
-                                let entry = registry_service.register_workspace(
-                                    current_dir.to_string_lossy().to_string(),
-                                    crate::workspace::registry::WorkspaceType::Primary
-                                ).await?;
+                                let entry = registry_service
+                                    .register_workspace(
+                                        current_dir.to_string_lossy().to_string(),
+                                        crate::workspace::registry::WorkspaceType::Primary,
+                                    )
+                                    .await?;
                                 println!("✅ Workspace registered with ID: {}", entry.id);
                                 entry.id
                             }
@@ -404,23 +433,40 @@ mod smart_refactor_control_tests {
                                     language: "typescript".to_string(),
                                     hash: "test-hash".to_string(), // Simple hash for testing
                                     size: original_content.len() as i64,
-                                    last_modified: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
-                                    last_indexed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
+                                    last_modified: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs()
+                                        as i64,
+                                    last_indexed: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs()
+                                        as i64,
                                     symbol_count: symbols.len() as i32,
                                     content: Some(original_content.clone()), // CASCADE: Include content
                                 };
 
                                 if let Err(e) = db_lock.store_file_info(&file_info, &workspace_id) {
-                                    println!("⚠️ Warning: Failed to store file info in database: {}", e);
+                                    println!(
+                                        "⚠️ Warning: Failed to store file info in database: {}",
+                                        e
+                                    );
                                 } else {
                                     println!("✅ File info added to database for FK constraint");
                                 }
 
                                 // Now store symbols (should work with file record in place)
                                 if let Err(e) = db_lock.store_symbols(&symbols, &workspace_id) {
-                                    println!("⚠️ Warning: Failed to store symbols in database: {}", e);
+                                    println!(
+                                        "⚠️ Warning: Failed to store symbols in database: {}",
+                                        e
+                                    );
                                 } else {
-                                    println!("✅ {} symbols added to database for health checker", symbols.len());
+                                    println!(
+                                        "✅ {} symbols added to database for health checker",
+                                        symbols.len()
+                                    );
                                 }
                             }
                         }
@@ -431,7 +477,9 @@ mod smart_refactor_control_tests {
                             if let Err(e) = search_writer.index_symbols(symbols).await {
                                 println!("⚠️ Warning: Failed to index symbols: {}", e);
                             } else {
-                                println!("✅ Symbols indexed successfully into in-memory search engine");
+                                println!(
+                                    "✅ Symbols indexed successfully into in-memory search engine"
+                                );
                             }
                         }
 
@@ -449,7 +497,10 @@ mod smart_refactor_control_tests {
                 }
 
                 // Keep original file path since we're not using temporary workspace
-                println!("🔧 Using original file path for SmartRefactorTool: {}", test_file_path.display());
+                println!(
+                    "🔧 Using original file path for SmartRefactorTool: {}",
+                    test_file_path.display()
+                );
 
                 // Update parameters to use the test file path
                 let absolute_path = test_file_path.to_string_lossy();
@@ -484,7 +535,10 @@ mod smart_refactor_control_tests {
 
         // For ReplaceSymbolBody and RenameSymbol, the file is already written by the real implementation
         // For other operations, write the result
-        if !matches!(test_case.operation, RefactorOperation::ReplaceSymbolBody | RefactorOperation::RenameSymbol) {
+        if !matches!(
+            test_case.operation,
+            RefactorOperation::ReplaceSymbolBody | RefactorOperation::RenameSymbol
+        ) {
             fs::write(&test_file_path, &modified_content)?;
             println!("✏️ Smart refactor operation completed (simulated for TDD)");
         } else {
@@ -512,7 +566,8 @@ mod smart_refactor_control_tests {
         println!("🔍 Testing SmartRefactorTool dry run safety...");
 
         let temp_dir = setup_smart_refactor_test_environment()?;
-        let test_file_path = setup_smart_refactor_test_file("refactor_source.ts", "dry_run_safety", &temp_dir)?;
+        let test_file_path =
+            setup_smart_refactor_test_file("refactor_source.ts", "dry_run_safety", &temp_dir)?;
 
         // Get original content
         let original_content = fs::read_to_string(&test_file_path)?;
@@ -571,7 +626,7 @@ mod smart_refactor_control_tests {
 #[tokio::test]
 async fn test_ast_aware_rename_preserves_strings_and_comments() {
     use anyhow::Result;
-    
+
     async fn inner_test() -> Result<()> {
         println!("🌳 CRITICAL TEST: AST-aware rename (tree-sitter, not regex!)");
 
@@ -579,12 +634,11 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
         let control_path = "tests/editing/controls/refactor/user_service_to_account_service.ts";
 
         // Read SOURCE file
-        let source_content = std::fs::read_to_string(source_path)
-            .expect("SOURCE file must exist");
+        let source_content = std::fs::read_to_string(source_path).expect("SOURCE file must exist");
 
         // Read CONTROL file
-        let expected_content = std::fs::read_to_string(control_path)
-            .expect("CONTROL file must exist");
+        let expected_content =
+            std::fs::read_to_string(control_path).expect("CONTROL file must exist");
 
         // Apply AST-aware rename using SmartRefactorTool
         let temp_file = tempfile::NamedTempFile::new()?;
@@ -609,9 +663,11 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
 
         // Verify using DMP (convert errors to anyhow)
         let dmp = DiffMatchPatch::new();
-        let diffs = dmp.diff_main::<Efficient>(&expected_content, &result_content)
+        let diffs = dmp
+            .diff_main::<Efficient>(&expected_content, &result_content)
             .map_err(|e| anyhow::anyhow!("Failed to create diffs: {:?}", e))?;
-        let patches = dmp.patch_make(PatchInput::new_diffs(&diffs))
+        let patches = dmp
+            .patch_make(PatchInput::new_diffs(&diffs))
             .map_err(|e| anyhow::anyhow!("Failed to create patches: {:?}", e))?;
 
         if !patches.is_empty() {
@@ -620,21 +676,35 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
             println!("Actual content length: {}", result_content.len());
             println!("\n🔍 This means Julie is NOT using tree-sitter AST properly!");
             println!("String literals or comments were renamed (they shouldn't be).");
-            println!("\n📝 First 500 chars of expected:\n{}", &expected_content[..500.min(expected_content.len())]);
-            println!("\n📝 First 500 chars of actual:\n{}", &result_content[..500.min(result_content.len())]);
+            println!(
+                "\n📝 First 500 chars of expected:\n{}",
+                &expected_content[..500.min(expected_content.len())]
+            );
+            println!(
+                "\n📝 First 500 chars of actual:\n{}",
+                &result_content[..500.min(result_content.len())]
+            );
 
             panic!("AST-aware rename test failed - contents don't match control file");
         }
 
         // Verify specific conditions
-        assert!(result_content.contains(r#""UserService""#),
-            "String literal 'UserService' should be preserved!");
-        assert!(result_content.contains("// UserService is mentioned"),
-            "Comment with UserService should be preserved!");
-        assert!(result_content.contains("class AccountService"),
-            "Class should be renamed to AccountService");
-        assert!(result_content.contains("new AccountService()"),
-            "Constructor call should be renamed");
+        assert!(
+            result_content.contains(r#""UserService""#),
+            "String literal 'UserService' should be preserved!"
+        );
+        assert!(
+            result_content.contains("// UserService is mentioned"),
+            "Comment with UserService should be preserved!"
+        );
+        assert!(
+            result_content.contains("class AccountService"),
+            "Class should be renamed to AccountService"
+        );
+        assert!(
+            result_content.contains("new AccountService()"),
+            "Constructor call should be renamed"
+        );
 
         println!("✅ AST-aware rename PASSED!");
         println!("   - String literals preserved ✅");
@@ -644,7 +714,7 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
 
         Ok(())
     }
-    
+
     inner_test().await.unwrap();
 }
 
@@ -679,19 +749,27 @@ export class UserService {
         )
         .expect("rename without comment updates should succeed");
 
-    assert!(result_without_comment_updates
-        .contains("Provides lifecycle management for the UserService class."),
-        "Doc comment should remain unchanged when update_comments is false");
-    assert!(result_without_comment_updates
-        .contains("// Inline note referencing UserService - aligns with class name"),
-        "Top-of-scope comment should remain unchanged when update_comments is false");
-    assert!(result_without_comment_updates
-        .contains("// Deep implementation comment mentioning UserService should stay as-is"),
-        "Deep implementation comment should remain unchanged when update_comments is false");
+    assert!(
+        result_without_comment_updates
+            .contains("Provides lifecycle management for the UserService class."),
+        "Doc comment should remain unchanged when update_comments is false"
+    );
+    assert!(
+        result_without_comment_updates
+            .contains("// Inline note referencing UserService - aligns with class name"),
+        "Top-of-scope comment should remain unchanged when update_comments is false"
+    );
+    assert!(
+        result_without_comment_updates
+            .contains("// Deep implementation comment mentioning UserService should stay as-is"),
+        "Deep implementation comment should remain unchanged when update_comments is false"
+    );
 
     let tool_with_comment_updates = SmartRefactorTool {
         operation: "rename_symbol".to_string(),
-        params: r#"{"old_name": "UserService", "new_name": "AccountService", "update_comments": true}"#.to_string(),
+        params:
+            r#"{"old_name": "UserService", "new_name": "AccountService", "update_comments": true}"#
+                .to_string(),
         dry_run: false,
     };
 
@@ -705,13 +783,17 @@ export class UserService {
         )
         .expect("rename with comment updates should succeed");
 
-    assert!(result_with_comment_updates
-        .contains("Provides lifecycle management for the AccountService class."),
-        "Doc comment should reflect the new symbol name when update_comments is true");
+    assert!(
+        result_with_comment_updates
+            .contains("Provides lifecycle management for the AccountService class."),
+        "Doc comment should reflect the new symbol name when update_comments is true"
+    );
 
-    assert!(result_with_comment_updates
-        .contains("// Inline note referencing AccountService - aligns with class name"),
-        "Top-of-scope comments should update when comment renaming is enabled");
+    assert!(
+        result_with_comment_updates
+            .contains("// Inline note referencing AccountService - aligns with class name"),
+        "Top-of-scope comments should update when comment renaming is enabled"
+    );
 
     assert!(result_with_comment_updates
         .contains("// Deep implementation comment mentioning UserService should stay as-is"),

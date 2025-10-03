@@ -76,14 +76,17 @@ impl JulieServerHandler {
         info!("🔧 Initializing Julie server handler");
 
         // NO MORE IN-MEMORY FALLBACKS - workspace initialization will provide persistent engines
-        debug!("✓ Julie handler components initialized (awaiting workspace for persistent engines)");
+        debug!(
+            "✓ Julie handler components initialized (awaiting workspace for persistent engines)"
+        );
 
         // Create in-memory search engine and writer (temporary until workspace overrides)
         let search_engine = SearchEngine::in_memory().unwrap();
         let search_writer = crate::search::SearchIndexWriter::new(
             search_engine.index(),
             search_engine.schema().clone(),
-        ).unwrap();
+        )
+        .unwrap();
 
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
@@ -244,17 +247,18 @@ impl JulieServerHandler {
             }
 
             // Initialize workspace (will reuse existing database if present)
-            JulieWorkspace::initialize(target_path)?
+            // 🔥 CRITICAL FIX: Now awaited due to async ONNX initialization
+            JulieWorkspace::initialize(target_path).await?
         } else {
             // Try to load existing workspace first
-            match JulieWorkspace::detect_and_load(target_path.clone())? {
+            match JulieWorkspace::detect_and_load(target_path.clone()).await? {
                 Some(existing_workspace) => {
                     info!("Loaded existing workspace");
                     existing_workspace
                 }
                 None => {
                     info!("Creating new workspace");
-                    JulieWorkspace::initialize(target_path)?
+                    JulieWorkspace::initialize(target_path).await?
                 }
             }
         };
@@ -387,9 +391,10 @@ impl ServerHandler for JulieServerHandler {
             }
             Err(e) => {
                 error!("❌ Tool execution failed: {}", e);
-                Err(CallToolError::new(std::io::Error::other(
-                    format!("Tool execution failed: {}", e),
-                )))
+                Err(CallToolError::new(std::io::Error::other(format!(
+                    "Tool execution failed: {}",
+                    e
+                ))))
             }
         }
     }

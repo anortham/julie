@@ -16,6 +16,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
 
 /// High-performance workspace registry service with caching and atomic operations
+#[derive(Clone)]
 pub struct WorkspaceRegistryService {
     /// Path to the primary workspace directory
     workspace_path: PathBuf,
@@ -104,24 +105,43 @@ impl WorkspaceRegistryService {
 
     /// Save the registry to disk with atomic operations
     pub async fn save_registry(&self, registry: WorkspaceRegistry) -> Result<()> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static CALL_ID: AtomicU64 = AtomicU64::new(0);
+        let call_id = CALL_ID.fetch_add(1, Ordering::SeqCst);
+
+        println!("🐛 [CALL {}] save_registry() ENTRY - acquiring lock...", call_id);
         let _lock = self.registry_lock.lock().await;
-        self.save_registry_internal(registry).await
+        println!("🐛 [CALL {}] save_registry() - lock acquired, calling save_registry_internal", call_id);
+        let result = self.save_registry_internal(registry).await;
+        println!("🐛 [CALL {}] save_registry() - save_registry_internal returned, releasing lock", call_id);
+        result
     }
 
     /// Internal save function that assumes lock is already held
     /// Used by both save_registry() and load_registry_from_disk() to prevent deadlock
     async fn save_registry_internal(&self, mut registry: WorkspaceRegistry) -> Result<()> {
+        // Get caller information using backtrace
+        let caller = std::panic::Location::caller();
+        println!("🐛 save_registry_internal() ENTRY - called from {}:{}:{}",
+                 caller.file(), caller.line(), caller.column());
         // Update metadata
         registry.last_updated = current_timestamp();
         self.update_registry_statistics(&mut registry).await?;
 
-        // Ensure .julie directory exists
+        // Ensure .julie directory exists (avoid redundant create_dir_all calls)
         let julie_dir = self.workspace_path.join(".julie");
-        fs::create_dir_all(&julie_dir).await?;
+        println!("🐛 save_registry: workspace_path = {:?}", self.workspace_path);
+        println!("🐛 save_registry: julie_dir = {:?}, exists = {}", julie_dir, julie_dir.exists());
+        if !julie_dir.exists() {
+            println!("🐛 save_registry: Creating julie_dir");
+            fs::create_dir_all(&julie_dir).await?;
+            println!("🐛 save_registry: julie_dir created successfully");
+        }
 
         // Atomic write with temp file
         let registry_path = self.registry_path();
         let temp_path = registry_path.with_extension("tmp");
+        println!("🐛 save_registry: registry_path = {:?}, temp_path = {:?}", registry_path, temp_path);
 
         let json = serde_json::to_string_pretty(&registry)
             .map_err(|e| anyhow!("Failed to serialize registry: {}", e))?;
@@ -129,14 +149,28 @@ impl WorkspaceRegistryService {
         fs::write(&temp_path, &json)
             .await
             .map_err(|e| anyhow!("Failed to write temp registry file: {}", e))?;
+        println!("🐛 save_registry: temp file written, checking existence...");
+        println!("🐛 save_registry: temp_path exists = {}", temp_path.exists());
+        println!("🐛 save_registry: registry_path exists = {}", registry_path.exists());
 
         // Atomic rename
-        fs::rename(&temp_path, &registry_path)
-            .await
-            .map_err(|e| anyhow!("Failed to rename temp registry file: {}", e))?;
+        println!("🐛 save_registry: About to rename {} -> {}", temp_path.display(), registry_path.display());
+        match fs::rename(&temp_path, &registry_path).await {
+            Ok(_) => {
+                println!("🐛 save_registry: Rename succeeded!");
+            }
+            Err(e) => {
+                println!("🐛 save_registry: Rename FAILED: {}", e);
+                println!("🐛 save_registry: After failure - temp_path exists = {}", temp_path.exists());
+                println!("🐛 save_registry: After failure - registry_path exists = {}", registry_path.exists());
+                println!("🐛 save_registry: After failure - julie_dir exists = {}", julie_dir.exists());
+                return Err(anyhow!("Failed to rename temp registry file: {}", e));
+            }
+        }
 
         // 🐛 VALIDATION: Verify the written file is valid JSON (catches corruption bugs)
-        let written_content = fs::read_to_string(&registry_path).await
+        let written_content = fs::read_to_string(&registry_path)
+            .await
             .map_err(|e| anyhow!("Failed to read back registry file: {}", e))?;
 
         if let Err(e) = serde_json::from_str::<WorkspaceRegistry>(&written_content) {
@@ -187,8 +221,9 @@ impl WorkspaceRegistryService {
                     info!("Attempting to restore from backup");
                     match self.try_load_registry_file(&backup_path).await {
                         Ok(registry) => {
-                            // Save restored registry as main file (using internal to avoid deadlock)
-                            self.save_registry_internal(registry.clone()).await?;
+                            // Save restored registry as main file (using save_registry to prevent race condition)
+                            // NOTE: Changed from save_registry_internal to save_registry to ensure proper locking
+                            self.save_registry(registry.clone()).await?;
                             info!("Registry restored from backup successfully");
                             Ok(registry)
                         }
@@ -209,6 +244,27 @@ impl WorkspaceRegistryService {
                 }
             }
         }
+    }
+
+    /// Load registry while holding the registry lock (avoids double-lock deadlocks)
+    async fn load_registry_locked(&self) -> Result<WorkspaceRegistry> {
+        // Try cache first (safe because caller holds lock)
+        {
+            let cache = self.cached_registry.read().unwrap();
+            if let Some((registry, cached_at)) = cache.as_ref() {
+                if cached_at.elapsed() < self.cache_duration {
+                    return Ok(registry.clone());
+                }
+            }
+        }
+
+        // Fallback to disk and refresh cache
+        let registry = self.load_registry_from_disk().await?;
+        {
+            let mut cache = self.cached_registry.write().unwrap();
+            *cache = Some((registry.clone(), Instant::now()));
+        }
+        Ok(registry)
     }
 
     /// Try to load a specific registry file
@@ -242,7 +298,9 @@ impl WorkspaceRegistryService {
         workspace_path: String,
         workspace_type: WorkspaceType,
     ) -> Result<WorkspaceEntry> {
-        let mut registry = self.load_registry().await?;
+        println!("🐛 register_workspace ENTRY: path={}, type={:?}", workspace_path, workspace_type);
+        let mut registry = self.load_registry_locked().await?;
+        println!("🐛 register_workspace: Loaded registry");
 
         // Create new workspace entry
         let workspace =
@@ -266,7 +324,9 @@ impl WorkspaceRegistryService {
             }
         }
 
+        println!("🐛 register_workspace: About to save registry (workspace_id={})", workspace.id);
         self.save_registry(registry).await?;
+        println!("🐛 register_workspace: Registry saved successfully");
 
         info!(
             "Registered new workspace: {} (type: {:?}, id: {})",
@@ -278,7 +338,7 @@ impl WorkspaceRegistryService {
 
     /// Unregister a workspace
     pub async fn unregister_workspace(&self, workspace_id: &str) -> Result<bool> {
-        let mut registry = self.load_registry().await?;
+        let mut registry = self.load_registry_locked().await?;
 
         // Check if it's the primary workspace
         if let Some(ref primary) = registry.primary_workspace {
@@ -350,13 +410,10 @@ impl WorkspaceRegistryService {
     /// Update workspace last accessed time
     /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_last_accessed(&self, workspace_id: &str) -> Result<()> {
-        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
         let _lock = self.registry_lock.lock().await;
-
-        let mut registry = self.load_registry().await?;
+        let mut registry = self.load_registry_locked().await?;
         let mut updated = false;
 
-        // Update primary workspace
         if let Some(ref mut primary) = registry.primary_workspace {
             if primary.id == workspace_id {
                 primary.update_last_accessed();
@@ -364,14 +421,12 @@ impl WorkspaceRegistryService {
             }
         }
 
-        // Update reference workspace
         if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
             workspace.update_last_accessed();
             updated = true;
         }
 
         if updated {
-            // Use internal save to avoid double-locking (we already hold the lock)
             self.save_registry_internal(registry).await?;
         }
 
@@ -387,10 +442,8 @@ impl WorkspaceRegistryService {
         file_count: usize,
         index_size_bytes: u64,
     ) -> Result<()> {
-        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
         let _lock = self.registry_lock.lock().await;
-
-        let mut registry = self.load_registry().await?;
+        let mut registry = self.load_registry_locked().await?;
         let mut updated = false;
 
         // Update primary workspace
@@ -412,7 +465,6 @@ impl WorkspaceRegistryService {
         }
 
         if updated {
-            // Use internal save to avoid double-locking (we already hold the lock)
             self.save_registry_internal(registry).await?;
         }
 
@@ -421,18 +473,11 @@ impl WorkspaceRegistryService {
 
     /// Update workspace index size only (called by background Tantivy task)
     /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
-    pub async fn update_index_size(
-        &self,
-        workspace_id: &str,
-        index_size_bytes: u64,
-    ) -> Result<()> {
-        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
+    pub async fn update_index_size(&self, workspace_id: &str, index_size_bytes: u64) -> Result<()> {
         let _lock = self.registry_lock.lock().await;
-
-        let mut registry = self.load_registry().await?;
+        let mut registry = self.load_registry_locked().await?;
         let mut updated = false;
 
-        // Update primary workspace
         if let Some(ref mut primary) = registry.primary_workspace {
             if primary.id == workspace_id {
                 primary.index_size_bytes = index_size_bytes;
@@ -440,14 +485,12 @@ impl WorkspaceRegistryService {
             }
         }
 
-        // Update reference workspace
         if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
             workspace.index_size_bytes = index_size_bytes;
             updated = true;
         }
 
         if updated {
-            // Use internal save to avoid double-locking (we already hold the lock)
             self.save_registry_internal(registry).await?;
         }
 
@@ -461,13 +504,10 @@ impl WorkspaceRegistryService {
         workspace_id: &str,
         status: crate::workspace::registry::EmbeddingStatus,
     ) -> Result<()> {
-        // 🔒 Acquire lock for ENTIRE operation to prevent concurrent modifications
         let _lock = self.registry_lock.lock().await;
-
-        let mut registry = self.load_registry().await?;
+        let mut registry = self.load_registry_locked().await?;
         let mut updated = false;
 
-        // Update primary workspace
         if let Some(ref mut primary) = registry.primary_workspace {
             if primary.id == workspace_id {
                 primary.embedding_status = status.clone();
@@ -475,14 +515,12 @@ impl WorkspaceRegistryService {
             }
         }
 
-        // Update reference workspace
         if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
             workspace.embedding_status = status;
             updated = true;
         }
 
         if updated {
-            // Use internal save to avoid double-locking (we already hold the lock)
             self.save_registry_internal(registry).await?;
         }
 

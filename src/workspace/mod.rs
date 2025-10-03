@@ -126,7 +126,8 @@ impl JulieWorkspace {
     /// Initialize a new Julie workspace at the given root directory
     ///
     /// This creates the .julie folder structure and sets up initial configuration
-    pub fn initialize(root: PathBuf) -> Result<Self> {
+    /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
+    pub async fn initialize(root: PathBuf) -> Result<Self> {
         info!("Initializing Julie workspace at: {}", root.display());
 
         let julie_dir = root.join(".julie");
@@ -150,8 +151,8 @@ impl JulieWorkspace {
             config,
         };
 
-        // Initialize persistent components
-        workspace.initialize_all_components()?;
+        // Initialize persistent components (now async due to ONNX fix)
+        workspace.initialize_all_components().await?;
 
         info!("Julie workspace initialized successfully");
         Ok(workspace)
@@ -160,7 +161,8 @@ impl JulieWorkspace {
     /// Detect and load an existing Julie workspace
     ///
     /// Searches up the directory tree from the given path to find a .julie folder
-    pub fn detect_and_load(start_path: PathBuf) -> Result<Option<Self>> {
+    /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
+    pub async fn detect_and_load(start_path: PathBuf) -> Result<Option<Self>> {
         let julie_dir = Self::find_workspace_root(&start_path)?;
 
         match julie_dir {
@@ -190,8 +192,8 @@ impl JulieWorkspace {
                 // Validate workspace structure
                 workspace.validate_structure()?;
 
-                // Initialize persistent components
-                workspace.initialize_all_components()?;
+                // Initialize persistent components (now async due to ONNX fix)
+                workspace.initialize_all_components().await?;
 
                 Ok(Some(workspace))
             }
@@ -214,9 +216,9 @@ impl JulieWorkspace {
         // NOTE: Per-workspace directories (db/, tantivy/, vectors/) are created on-demand
         // when each workspace is indexed. Here we only create shared infrastructure.
         let folders = [
-            julie_dir.join("indexes"),               // Per-workspace root (workspaces created on demand)
-            julie_dir.join("models"),                // Cached FastEmbed models (shared)
-            julie_dir.join("cache"),                 // File hashes and parse cache (shared)
+            julie_dir.join("indexes"), // Per-workspace root (workspaces created on demand)
+            julie_dir.join("models"),  // Cached FastEmbed models (shared)
+            julie_dir.join("cache"),   // File hashes and parse cache (shared)
             julie_dir.join("cache").join("embeddings"),
             julie_dir.join("cache").join("parse_cache"),
             julie_dir.join("logs"),   // Julie logs
@@ -236,7 +238,7 @@ impl JulieWorkspace {
                 &gitignore_path,
                 "# Julie code intelligence data - do not commit to version control\n\
                 *\n\
-                !.gitignore\n"
+                !.gitignore\n",
             )?;
             debug!("Created .gitignore in .julie directory");
         }
@@ -302,11 +304,8 @@ impl JulieWorkspace {
         debug!("Validating per-workspace structure");
 
         let required_dirs = [
-            "indexes",  // Per-workspace root (individual workspaces created on demand)
-            "models",
-            "cache",
-            "logs",
-            "config",
+            "indexes", // Per-workspace root (individual workspaces created on demand)
+            "models", "cache", "logs", "config",
         ];
 
         for dir in &required_dirs {
@@ -380,16 +379,12 @@ impl JulieWorkspace {
 
     /// Get the path to a specific workspace's index directory
     pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path()
-            .join(workspace_id)
-            .join("tantivy")
+        self.indexes_root_path().join(workspace_id).join("tantivy")
     }
 
     /// Get the path to a specific workspace's vector store
     pub fn workspace_vectors_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path()
-            .join(workspace_id)
-            .join("vectors")
+        self.indexes_root_path().join(workspace_id).join("vectors")
     }
 
     /// Get the path to a specific workspace's SQLite database
@@ -418,8 +413,9 @@ impl JulieWorkspace {
 
         // Compute workspace ID for per-workspace database
         let workspace_id = registry::generate_workspace_id(
-            self.root.to_str()
-                .ok_or_else(|| anyhow!("Invalid workspace path"))?
+            self.root
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
         )?;
 
         let db_path = self.workspace_db_path(&workspace_id);
@@ -431,8 +427,10 @@ impl JulieWorkspace {
 
         // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
-            fs::create_dir_all(parent)
-                .context(format!("Failed to create database directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).context(format!(
+                "Failed to create database directory: {}",
+                parent.display()
+            ))?;
         }
 
         let database = SqliteDB::new(&db_path)?;
@@ -455,8 +453,9 @@ impl JulieWorkspace {
 
         // Compute workspace ID from root path
         let workspace_id = registry::generate_workspace_id(
-            self.root.to_str()
-                .ok_or_else(|| anyhow!("Invalid workspace path"))?
+            self.root
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
         )?;
 
         let index_path = self.workspace_index_path(&workspace_id);
@@ -467,17 +466,17 @@ impl JulieWorkspace {
         );
 
         // Ensure the Tantivy directory itself exists (not just parent)
-        fs::create_dir_all(&index_path)
-            .context(format!("Failed to create Tantivy index directory: {}", index_path.display()))?;
+        fs::create_dir_all(&index_path).context(format!(
+            "Failed to create Tantivy index directory: {}",
+            index_path.display()
+        ))?;
 
         let search_engine = TantivyIndex::new(&index_path)?;
 
         // Create search writer from the same index
         // CRITICAL: Writer and reader must share the same Index instance
-        let search_writer = TantivyWriter::new(
-            search_engine.index(),
-            search_engine.schema().clone(),
-        )?;
+        let search_writer =
+            TantivyWriter::new(search_engine.index(), search_engine.schema().clone())?;
 
         self.search = Some(Arc::new(RwLock::new(search_engine)));
         self.search_writer = Some(Arc::new(Mutex::new(search_writer)));
@@ -487,9 +486,17 @@ impl JulieWorkspace {
     }
 
     /// Initialize embedding engine
-    pub fn initialize_embeddings(&mut self) -> Result<()> {
+    /// 🔥 CRITICAL FIX: This function is now async because ONNX model loading is blocking
+    /// We must use spawn_blocking to avoid blocking the tokio runtime
+    pub async fn initialize_embeddings(&mut self) -> Result<()> {
         if self.embeddings.is_some() {
             return Ok(()); // Already initialized
+        }
+
+        // 🚀 PERFORMANCE: Skip embeddings if env override set (for tests/development)
+        if std::env::var("JULIE_SKIP_EMBEDDINGS").is_ok() {
+            info!("Skipping embedding engine initialization (env override)");
+            return Ok(());
         }
 
         let db = self
@@ -504,7 +511,13 @@ impl JulieWorkspace {
             models_path.display()
         );
 
-        let embedding_engine = EmbeddingStore::new("bge-small", models_path, db)?;
+        // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
+        // Must run on blocking thread pool to avoid deadlocking the tokio runtime
+        let embedding_engine =
+            tokio::task::spawn_blocking(move || EmbeddingStore::new("bge-small", models_path, db))
+                .await
+                .context("Embedding engine initialization task failed")??;
+
         self.embeddings = Some(Arc::new(Mutex::new(embedding_engine)));
 
         info!("Embedding engine initialized successfully");
@@ -533,12 +546,18 @@ impl JulieWorkspace {
                     match db_lock.load_all_embeddings(model_name) {
                         Ok(embeddings) => {
                             let count = embeddings.len();
-                            info!("📥 Loading {} embeddings from database into vector store", count);
+                            info!(
+                                "📥 Loading {} embeddings from database into vector store",
+                                count
+                            );
 
                             // Store each embedding in the vector store
                             for (symbol_id, vector) in embeddings {
                                 if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
-                                    warn!("Failed to store embedding for symbol {}: {}", symbol_id, e);
+                                    warn!(
+                                        "Failed to store embedding for symbol {}: {}",
+                                        symbol_id, e
+                                    );
                                 }
                             }
 
@@ -546,8 +565,9 @@ impl JulieWorkspace {
 
                             // Compute workspace ID for per-workspace vectors path
                             let workspace_id = registry::generate_workspace_id(
-                                self.root.to_str()
-                                    .ok_or_else(|| anyhow!("Invalid workspace path"))?
+                                self.root
+                                    .to_str()
+                                    .ok_or_else(|| anyhow!("Invalid workspace path"))?,
                             )?;
 
                             // Now try to load HNSW index from disk (fast path)
@@ -562,7 +582,10 @@ impl JulieWorkspace {
                                         loaded_from_disk = true;
                                     }
                                     Err(e) => {
-                                        info!("⚠️  Failed to load HNSW from disk: {}. Rebuilding...", e);
+                                        info!(
+                                            "⚠️  Failed to load HNSW from disk: {}. Rebuilding...",
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -577,7 +600,9 @@ impl JulieWorkspace {
                                         // Save HNSW index to disk for faster startup next time
                                         match store.save_hnsw_index(&vectors_dir) {
                                             Ok(_) => {
-                                                info!("💾 HNSW index persisted to disk successfully");
+                                                info!(
+                                                    "💾 HNSW index persisted to disk successfully"
+                                                );
                                             }
                                             Err(e) => {
                                                 warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
@@ -649,13 +674,14 @@ impl JulieWorkspace {
     }
 
     /// Initialize all persistent components
-    pub fn initialize_all_components(&mut self) -> Result<()> {
+    /// 🔥 CRITICAL FIX: Now async because initialize_embeddings() is async (ONNX blocking fix)
+    pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
         self.initialize_search_index()?;
-        self.initialize_embeddings()?;
-        // REMOVED: Vector store initialization moved to end of background embedding generation
-        // HNSW index will be built AFTER embeddings are generated, not at startup
-        // This allows MCP server to start immediately without blocking
+        self.initialize_embeddings().await?; // 🚨 Now async to avoid runtime deadlock
+                                             // REMOVED: Vector store initialization moved to end of background embedding generation
+                                             // HNSW index will be built AFTER embeddings are generated, not at startup
+                                             // This allows MCP server to start immediately without blocking
 
         // Initialize file watcher last (requires other components)
         if self.config.incremental_updates {

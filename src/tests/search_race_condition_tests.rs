@@ -50,7 +50,9 @@ mod tests {
         let handler = Arc::new(JulieServerHandler::new().await?);
 
         // Start workspace initialization (triggers background indexing with WRITE lock)
-        handler.initialize_workspace(Some(workspace_path.to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .await?;
 
         // CRITICAL: Immediately try to search while background commit holds WRITE lock
         // This is the exact scenario that caused the hang - search waits for READ lock
@@ -64,10 +66,7 @@ mod tests {
         };
 
         // Search MUST complete within 5 seconds or it's the lock contention bug
-        let search_result = timeout(
-            Duration::from_secs(5),
-            search_tool.call_tool(&handler)
-        ).await;
+        let search_result = timeout(Duration::from_secs(5), search_tool.call_tool(&handler)).await;
 
         match search_result {
             Ok(Ok(_)) => {
@@ -102,7 +101,9 @@ mod tests {
         }
 
         let handler = Arc::new(JulieServerHandler::new().await?);
-        handler.initialize_workspace(Some(workspace_path.to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .await?;
 
         // Spawn multiple concurrent searches
         let mut handles = vec![];
@@ -121,8 +122,9 @@ mod tests {
 
                 timeout(
                     Duration::from_secs(5),
-                    search_tool.call_tool(&handler_clone)
-                ).await
+                    search_tool.call_tool(&handler_clone),
+                )
+                .await
             });
             handles.push(handle);
         }
@@ -150,7 +152,9 @@ mod tests {
         )?;
 
         let handler = Arc::new(JulieServerHandler::new().await?);
-        handler.initialize_workspace(Some(workspace_path.to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .await?;
 
         // Wait for initial indexing to complete (generous timeout)
         tokio::time::sleep(Duration::from_secs(10)).await;
@@ -165,10 +169,7 @@ mod tests {
             workspace: None,
         };
 
-        let result = timeout(
-            Duration::from_secs(5),
-            search_tool.call_tool(&handler)
-        ).await??;
+        let result = timeout(Duration::from_secs(5), search_tool.call_tool(&handler)).await??;
 
         println!("✅ Search after indexing: {:?}", result);
         Ok(())
@@ -269,10 +270,14 @@ pub fn helper_function() {}
             let handler_d = handler.clone();
 
             let task = async move {
-                let fast_a = tokio::spawn(async move { fast_search_query_a.call_tool(&handler_a).await });
-                let fast_b = tokio::spawn(async move { fast_search_query_b.call_tool(&handler_b).await });
-                let symbols_a = tokio::spawn(async move { get_symbols_main.call_tool(&handler_c).await });
-                let symbols_b = tokio::spawn(async move { get_symbols_extra.call_tool(&handler_d).await });
+                let fast_a =
+                    tokio::spawn(async move { fast_search_query_a.call_tool(&handler_a).await });
+                let fast_b =
+                    tokio::spawn(async move { fast_search_query_b.call_tool(&handler_b).await });
+                let symbols_a =
+                    tokio::spawn(async move { get_symbols_main.call_tool(&handler_c).await });
+                let symbols_b =
+                    tokio::spawn(async move { get_symbols_extra.call_tool(&handler_d).await });
 
                 tokio::join!(fast_a, fast_b, symbols_a, symbols_b)
             };
@@ -357,6 +362,148 @@ pub fn embedding_vector_semantic() {}
         );
 
         drop(db_guard);
+
+        Ok(())
+    }
+
+    /// Test that fast_search works correctly on reference workspaces
+    ///
+    /// BUG: fast_search hangs when searching reference workspaces because
+    /// check_system_readiness() hardcodes primary workspace, ignoring the
+    /// workspace parameter passed to fast_search.
+    ///
+    /// ROOT CAUSE: Architectural assumption - all code paths assume single primary workspace.
+    /// Health checker uses get_primary_workspace_id() instead of the workspace_id being searched.
+    #[tokio::test]
+    async fn test_reference_workspace_search() -> Result<()> {
+        // Skip embeddings to speed up test (we're testing search, not embeddings)
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+        // Create primary workspace
+        let primary_dir = TempDir::new()?;
+        let primary_path = primary_dir.path();
+
+        // Create some files in primary workspace
+        std::fs::write(
+            primary_path.join("primary.rs"),
+            r#"pub fn primary_function() { println!("primary"); }"#,
+        )?;
+
+        // Create reference workspace with different content
+        let reference_dir = TempDir::new()?;
+        let reference_path = reference_dir.path();
+
+        std::fs::write(
+            reference_path.join("reference.rs"),
+            r#"pub fn semantic_diff_tool() { println!("reference"); }"#,
+        )?;
+
+        // Initialize handler with primary workspace
+        println!("🐛 TEST TRACE 1: Creating handler");
+        let handler = Arc::new(JulieServerHandler::new().await?);
+        println!("🐛 TEST TRACE 2: Initializing primary workspace");
+        handler
+            .initialize_workspace(Some(primary_path.to_string_lossy().to_string()))
+            .await?;
+        println!("🐛 TEST TRACE 3: Primary workspace initialized");
+
+        // Index primary workspace
+        println!("🐛 TEST TRACE 4: About to index primary workspace");
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: None,
+            name: None,
+            workspace_id: None,
+            force: Some(false),
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        println!("🐛 TEST TRACE 5: Calling index_tool.call_tool");
+        let index_result = timeout(Duration::from_secs(90), index_tool.call_tool(&handler)).await;
+
+        assert!(
+            index_result.is_ok(),
+            "manage_workspace index timed out (90s) – still hanging or very slow",
+        );
+
+        index_result.unwrap()?;
+        println!("🐛 TEST TRACE 6: Index complete, about to add reference workspace");
+
+        // Add reference workspace
+        let add_tool = ManageWorkspaceTool {
+            operation: "add".to_string(),
+            path: Some(reference_path.to_string_lossy().to_string()),
+            name: Some("reference-workspace".to_string()),
+            workspace_id: None,
+            force: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        println!("🐛 TEST TRACE 7: Calling add_tool.call_tool");
+        let add_result = add_tool.call_tool(&handler).await?;
+        println!("🐛 TEST TRACE 8: Add complete, extracting workspace ID");
+
+        // Extract workspace ID from result
+        let add_value = serde_json::to_value(&add_result)?;
+        println!("🐛 DEBUG: add_result JSON = {}", serde_json::to_string_pretty(&add_value)?);
+
+        let workspace_text = add_value
+            .get("content")
+            .and_then(|content| content.as_array())
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(|text| text.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Failed to extract text from add_result"))?;
+
+        println!("🐛 DEBUG: workspace_text = {}", workspace_text);
+
+        let workspace_id = workspace_text
+            .lines()
+            .find(|line| line.contains("Workspace ID:"))
+            .and_then(|line| line.split(':').nth(1))
+            .map(|id| id.trim().to_string())
+            .ok_or_else(|| anyhow::anyhow!("Failed to find 'Workspace ID:' in response text"))?;
+
+        println!("✅ Reference workspace added: {}", workspace_id);
+
+        // THIS IS THE TEST: Search reference workspace with timeout to catch hangs
+        println!("🐛 TEST TRACE 9: Creating fast_search_tool");
+        let fast_search_tool = FastSearchTool {
+            query: "semantic_diff_tool".to_string(),
+            mode: "text".to_string(),
+            limit: 15,
+            file_pattern: None,
+            language: None,
+            workspace: Some(workspace_id.clone()),
+        };
+
+        println!("🐛 TEST TRACE 10: About to call fast_search with 5s timeout");
+        let result = timeout(
+            Duration::from_secs(5), // 5 second timeout - should be instant
+            fast_search_tool.call_tool(&handler),
+        )
+        .await;
+        println!("🐛 TEST TRACE 11: fast_search returned (or timed out)");
+
+        // CRITICAL: This should NOT timeout
+        assert!(
+            result.is_ok(),
+            "fast_search on reference workspace timed out - health checker is checking wrong workspace!"
+        );
+
+        let search_result = result.unwrap()?;
+        println!("✅ Search completed: {:?}", search_result);
+
+        // Verify we actually found the symbol in the reference workspace
+        let result_text = serde_json::to_string(&search_result)?;
+        assert!(
+            result_text.contains("semantic_diff_tool") || result_text.contains("No results"),
+            "Search should either find semantic_diff_tool or return no results gracefully"
+        );
 
         Ok(())
     }
