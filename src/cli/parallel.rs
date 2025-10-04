@@ -2,7 +2,6 @@
 ///
 /// Uses Rayon for parallel file processing and supports direct SQLite writes
 /// for maximum performance. Designed to handle large workspaces efficiently.
-
 use crate::database::SymbolDatabase;
 use crate::extractors::base::Symbol;
 use crate::extractors::ExtractorManager;
@@ -78,41 +77,39 @@ impl ParallelExtractor {
         let processed = Arc::new(Mutex::new(0usize));
         let total_files = files.len();
 
-        files
-            .par_chunks(self.config.batch_size)
-            .for_each(|batch| {
-                // Extract symbols for this batch (parallel within batch)
-                let batch_symbols: Vec<Symbol> = batch
-                    .par_iter()
-                    .flat_map(|file| {
-                        // TODO: Make extraction synchronous or use tokio runtime properly
-                        self.extract_file_sync(file).ok().unwrap_or_default()
-                    })
-                    .collect();
+        files.par_chunks(self.config.batch_size).for_each(|batch| {
+            // Extract symbols for this batch (parallel within batch)
+            let batch_symbols: Vec<Symbol> = batch
+                .par_iter()
+                .flat_map(|file| {
+                    // TODO: Make extraction synchronous or use tokio runtime properly
+                    self.extract_file_sync(file).ok().unwrap_or_default()
+                })
+                .collect();
 
-                // Write to output
-                if let Some(ref db) = db {
-                    // Direct SQLite write (using default workspace for CLI)
-                    if let Ok(mut db_lock) = db.lock() {
-                        if let Err(e) = db_lock.bulk_store_symbols(&batch_symbols, "cli-extraction") {
-                            eprintln!("⚠️  Failed to store batch: {}", e);
-                        }
-                    }
-                } else {
-                    // Collect in memory
-                    if let Ok(mut symbols) = all_symbols.lock() {
-                        symbols.extend(batch_symbols);
+            // Write to output
+            if let Some(ref db) = db {
+                // Direct SQLite write (using default workspace for CLI)
+                if let Ok(mut db_lock) = db.lock() {
+                    if let Err(e) = db_lock.bulk_store_symbols(&batch_symbols, "cli-extraction") {
+                        eprintln!("⚠️  Failed to store batch: {}", e);
                     }
                 }
-
-                // Progress reporting
-                if let Ok(mut proc) = processed.lock() {
-                    *proc += batch.len();
-                    if *proc % 100 == 0 || *proc == total_files {
-                        eprintln!("⚡ Processed {}/{} files", *proc, total_files);
-                    }
+            } else {
+                // Collect in memory
+                if let Ok(mut symbols) = all_symbols.lock() {
+                    symbols.extend(batch_symbols);
                 }
-            });
+            }
+
+            // Progress reporting
+            if let Ok(mut proc) = processed.lock() {
+                *proc += batch.len();
+                if *proc % 100 == 0 || *proc == total_files {
+                    eprintln!("⚡ Processed {}/{} files", *proc, total_files);
+                }
+            }
+        });
 
         // 5. Finalize
         if let Some(db) = db {
@@ -155,10 +152,7 @@ impl ParallelExtractor {
     fn discover_files(&self, directory: &str) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
 
-        for entry in WalkDir::new(directory)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(directory).into_iter().filter_map(|e| e.ok()) {
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -223,7 +217,9 @@ mod tests {
         let config = ExtractionConfig::default();
         let extractor = ParallelExtractor::new(config);
 
-        let files = extractor.discover_files(dir.path().to_str().unwrap()).unwrap();
+        let files = extractor
+            .discover_files(dir.path().to_str().unwrap())
+            .unwrap();
         assert_eq!(files.len(), 1);
     }
 
@@ -236,9 +232,7 @@ mod tests {
         let config = ExtractionConfig::default();
         let extractor = ParallelExtractor::new(config);
 
-        let symbols = extractor
-            .extract_file(test_file.to_str().unwrap())
-            .unwrap();
+        let symbols = extractor.extract_file(test_file.to_str().unwrap()).unwrap();
 
         assert!(!symbols.is_empty());
     }
@@ -277,6 +271,9 @@ mod tests {
             .unwrap();
 
         // Verify we actually extracted symbols
-        assert!(!symbols.is_empty(), "Should have extracted at least one symbol");
+        assert!(
+            !symbols.is_empty(),
+            "Should have extracted at least one symbol"
+        );
     }
 }

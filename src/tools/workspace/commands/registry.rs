@@ -4,6 +4,7 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use std::collections::HashSet;
 use tracing::{debug, info, warn};
 
 impl ManageWorkspaceTool {
@@ -147,6 +148,9 @@ impl ManageWorkspaceTool {
             // Remove from registry
             match registry_service.unregister_workspace(workspace_id).await {
                 Ok(true) => {
+                    handler
+                        .remove_reference_search_infrastructure(workspace_id)
+                        .await;
                     let message = format!(
                         "✅ **Workspace Removed Successfully**\n\
                         🗑️ Workspace: {}\n\
@@ -290,6 +294,11 @@ impl ManageWorkspaceTool {
                 .await
             {
                 Ok(report) => {
+                    for workspace_id in &report.workspaces_removed {
+                        handler
+                            .remove_reference_search_infrastructure(workspace_id)
+                            .await;
+                    }
                     let message = if report.workspaces_removed.is_empty() {
                         "✨ No expired workspaces to clean.".to_string()
                     } else {
@@ -329,6 +338,15 @@ impl ManageWorkspaceTool {
                 .await
             {
                 Ok(report) => {
+                    let mut removed_ids = HashSet::new();
+                    removed_ids.extend(report.ttl_cleanup.workspaces_removed.iter().cloned());
+                    removed_ids.extend(report.size_cleanup.workspaces_removed.iter().cloned());
+                    removed_ids.extend(report.orphaned_cleaned.iter().cloned());
+                    for workspace_id in removed_ids {
+                        handler
+                            .remove_reference_search_infrastructure(&workspace_id)
+                            .await;
+                    }
                     let ttl_count = report.ttl_cleanup.workspaces_removed.len();
                     let size_count = report.size_cleanup.workspaces_removed.len();
                     let orphan_count = report.orphaned_cleaned.len();

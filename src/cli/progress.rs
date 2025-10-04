@@ -2,7 +2,6 @@
 ///
 /// Provides user-friendly progress updates to stderr, leaving stdout
 /// clean for piped output.
-
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
@@ -34,8 +33,7 @@ impl ProgressReporter {
     pub fn report(&mut self, processed: usize) {
         // Throttle: only report every 100ms
         let now = Instant::now();
-        if now.duration_since(self.last_report).as_millis() < 100 && processed < self.total_files
-        {
+        if now.duration_since(self.last_report).as_millis() < 100 && processed < self.total_files {
             return;
         }
         self.last_report = now;

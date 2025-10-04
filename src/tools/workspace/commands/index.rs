@@ -52,7 +52,10 @@ impl ManageWorkspaceTool {
         // This prevents Tantivy lock failures from duplicate initialization
         let workspace_already_loaded = handler.get_workspace().await?.is_some();
 
-        println!("🐛 [HANDLE_INDEX TRACE 1] workspace_already_loaded={}, force_reindex={}", workspace_already_loaded, force_reindex);
+        println!(
+            "🐛 [HANDLE_INDEX TRACE 1] workspace_already_loaded={}, force_reindex={}",
+            workspace_already_loaded, force_reindex
+        );
 
         if !workspace_already_loaded || force_reindex {
             println!("🐛 [HANDLE_INDEX TRACE 2] About to call initialize_workspace_with_force");
@@ -64,7 +67,9 @@ impl ManageWorkspaceTool {
                 .await?;
             println!("🐛 [HANDLE_INDEX TRACE 3] initialize_workspace_with_force completed");
         } else {
-            println!("🐛 [HANDLE_INDEX TRACE 3] Workspace already loaded, skipping re-initialization");
+            println!(
+                "🐛 [HANDLE_INDEX TRACE 3] Workspace already loaded, skipping re-initialization"
+            );
         }
 
         // Check if already indexed and not forcing reindex

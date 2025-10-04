@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 /// High-performance workspace registry service with caching and atomic operations
 #[derive(Clone)]
@@ -109,11 +110,20 @@ impl WorkspaceRegistryService {
         static CALL_ID: AtomicU64 = AtomicU64::new(0);
         let call_id = CALL_ID.fetch_add(1, Ordering::SeqCst);
 
-        println!("🐛 [CALL {}] save_registry() ENTRY - acquiring lock...", call_id);
+        println!(
+            "🐛 [CALL {}] save_registry() ENTRY - acquiring lock...",
+            call_id
+        );
         let _lock = self.registry_lock.lock().await;
-        println!("🐛 [CALL {}] save_registry() - lock acquired, calling save_registry_internal", call_id);
+        println!(
+            "🐛 [CALL {}] save_registry() - lock acquired, calling save_registry_internal",
+            call_id
+        );
         let result = self.save_registry_internal(registry).await;
-        println!("🐛 [CALL {}] save_registry() - save_registry_internal returned, releasing lock", call_id);
+        println!(
+            "🐛 [CALL {}] save_registry() - save_registry_internal returned, releasing lock",
+            call_id
+        );
         result
     }
 
@@ -122,16 +132,27 @@ impl WorkspaceRegistryService {
     async fn save_registry_internal(&self, mut registry: WorkspaceRegistry) -> Result<()> {
         // Get caller information using backtrace
         let caller = std::panic::Location::caller();
-        println!("🐛 save_registry_internal() ENTRY - called from {}:{}:{}",
-                 caller.file(), caller.line(), caller.column());
+        println!(
+            "🐛 save_registry_internal() ENTRY - called from {}:{}:{}",
+            caller.file(),
+            caller.line(),
+            caller.column()
+        );
         // Update metadata
         registry.last_updated = current_timestamp();
         self.update_registry_statistics(&mut registry).await?;
 
         // Ensure .julie directory exists (avoid redundant create_dir_all calls)
         let julie_dir = self.workspace_path.join(".julie");
-        println!("🐛 save_registry: workspace_path = {:?}", self.workspace_path);
-        println!("🐛 save_registry: julie_dir = {:?}, exists = {}", julie_dir, julie_dir.exists());
+        println!(
+            "🐛 save_registry: workspace_path = {:?}",
+            self.workspace_path
+        );
+        println!(
+            "🐛 save_registry: julie_dir = {:?}, exists = {}",
+            julie_dir,
+            julie_dir.exists()
+        );
         if !julie_dir.exists() {
             println!("🐛 save_registry: Creating julie_dir");
             fs::create_dir_all(&julie_dir).await?;
@@ -140,8 +161,12 @@ impl WorkspaceRegistryService {
 
         // Atomic write with temp file
         let registry_path = self.registry_path();
-        let temp_path = registry_path.with_extension("tmp");
-        println!("🐛 save_registry: registry_path = {:?}, temp_path = {:?}", registry_path, temp_path);
+        let temp_path =
+            registry_path.with_file_name(format!("workspace_registry.{}.tmp", Uuid::new_v4()));
+        println!(
+            "🐛 save_registry: registry_path = {:?}, temp_path = {:?}",
+            registry_path, temp_path
+        );
 
         let json = serde_json::to_string_pretty(&registry)
             .map_err(|e| anyhow!("Failed to serialize registry: {}", e))?;
@@ -150,20 +175,45 @@ impl WorkspaceRegistryService {
             .await
             .map_err(|e| anyhow!("Failed to write temp registry file: {}", e))?;
         println!("🐛 save_registry: temp file written, checking existence...");
-        println!("🐛 save_registry: temp_path exists = {}", temp_path.exists());
-        println!("🐛 save_registry: registry_path exists = {}", registry_path.exists());
+        println!(
+            "🐛 save_registry: temp_path exists = {}",
+            temp_path.exists()
+        );
+        println!(
+            "🐛 save_registry: registry_path exists = {}",
+            registry_path.exists()
+        );
 
         // Atomic rename
-        println!("🐛 save_registry: About to rename {} -> {}", temp_path.display(), registry_path.display());
+        println!(
+            "🐛 save_registry: About to rename {} -> {}",
+            temp_path.display(),
+            registry_path.display()
+        );
         match fs::rename(&temp_path, &registry_path).await {
             Ok(_) => {
                 println!("🐛 save_registry: Rename succeeded!");
             }
             Err(e) => {
                 println!("🐛 save_registry: Rename FAILED: {}", e);
-                println!("🐛 save_registry: After failure - temp_path exists = {}", temp_path.exists());
-                println!("🐛 save_registry: After failure - registry_path exists = {}", registry_path.exists());
-                println!("🐛 save_registry: After failure - julie_dir exists = {}", julie_dir.exists());
+                println!(
+                    "🐛 save_registry: After failure - temp_path exists = {}",
+                    temp_path.exists()
+                );
+                println!(
+                    "🐛 save_registry: After failure - registry_path exists = {}",
+                    registry_path.exists()
+                );
+                println!(
+                    "🐛 save_registry: After failure - julie_dir exists = {}",
+                    julie_dir.exists()
+                );
+
+                // Attempt cleanup of unique temp file before returning error
+                if temp_path.exists() {
+                    let _ = std::fs::remove_file(&temp_path);
+                }
+
                 return Err(anyhow!("Failed to rename temp registry file: {}", e));
             }
         }
@@ -298,7 +348,10 @@ impl WorkspaceRegistryService {
         workspace_path: String,
         workspace_type: WorkspaceType,
     ) -> Result<WorkspaceEntry> {
-        println!("🐛 register_workspace ENTRY: path={}, type={:?}", workspace_path, workspace_type);
+        println!(
+            "🐛 register_workspace ENTRY: path={}, type={:?}",
+            workspace_path, workspace_type
+        );
         let mut registry = self.load_registry_locked().await?;
         println!("🐛 register_workspace: Loaded registry");
 
@@ -324,7 +377,10 @@ impl WorkspaceRegistryService {
             }
         }
 
-        println!("🐛 register_workspace: About to save registry (workspace_id={})", workspace.id);
+        println!(
+            "🐛 register_workspace: About to save registry (workspace_id={})",
+            workspace.id
+        );
         self.save_registry(registry).await?;
         println!("🐛 register_workspace: Registry saved successfully");
 
@@ -957,7 +1013,9 @@ fn calculate_directory_size<P: AsRef<std::path::Path>>(path: P) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use tempfile::TempDir;
+    use tokio::sync::Barrier;
 
     #[tokio::test]
     async fn test_registry_creation() {
@@ -1029,5 +1087,67 @@ mod tests {
             let registry = service.load_registry().await.unwrap();
             assert!(registry.primary_workspace.is_some());
         }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_registry_saves_do_not_conflict_on_temp_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+
+        // Prime the registry with a primary workspace using one service instance
+        {
+            let primary_service = WorkspaceRegistryService::new(workspace_root.clone());
+            let primary_dir = workspace_root.join("primary");
+            std::fs::create_dir_all(&primary_dir).unwrap();
+            primary_service
+                .register_workspace(
+                    primary_dir.to_string_lossy().to_string(),
+                    WorkspaceType::Primary,
+                )
+                .await
+                .unwrap();
+        }
+
+        let reference_a_dir = workspace_root.join("reference_a");
+        let reference_b_dir = workspace_root.join("reference_b");
+        std::fs::create_dir_all(&reference_a_dir).unwrap();
+        std::fs::create_dir_all(&reference_b_dir).unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_a = barrier.clone();
+        let barrier_b = barrier.clone();
+
+        let workspace_path_a = workspace_root.clone();
+        let workspace_path_b = workspace_root.clone();
+        let reference_a_path = reference_a_dir.to_string_lossy().to_string();
+        let reference_b_path = reference_b_dir.to_string_lossy().to_string();
+
+        let (result_a, result_b) = tokio::join!(
+            async move {
+                let service = WorkspaceRegistryService::new(workspace_path_a);
+                barrier_a.wait().await;
+                service
+                    .register_workspace(reference_a_path, WorkspaceType::Reference)
+                    .await
+            },
+            async move {
+                let service = WorkspaceRegistryService::new(workspace_path_b);
+                barrier_b.wait().await;
+                service
+                    .register_workspace(reference_b_path, WorkspaceType::Reference)
+                    .await
+            }
+        );
+
+        assert!(
+            result_a.is_ok(),
+            "First concurrent save failed: {:?}",
+            result_a
+        );
+        assert!(
+            result_b.is_ok(),
+            "Second concurrent save failed: {:?}",
+            result_b
+        );
     }
 }

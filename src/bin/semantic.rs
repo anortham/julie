@@ -5,7 +5,6 @@
 ///
 /// Commands:
 /// - embed: Generate embeddings for symbols and output statistics
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use julie::database::SymbolDatabase;
@@ -158,10 +157,7 @@ async fn generate_embeddings(
     let avg_time_ms = (total_time.as_secs_f64() * 1000.0) / symbols.len() as f64;
 
     eprintln!("✅ Embedding generation complete!");
-    eprintln!(
-        "   Total time: {:.2}s",
-        total_time.as_secs_f64()
-    );
+    eprintln!("   Total time: {:.2}s", total_time.as_secs_f64());
     eprintln!(
         "   Rate: {:.0} embeddings/sec",
         total_embedded as f64 / total_time.as_secs_f64()

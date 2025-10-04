@@ -449,7 +449,10 @@ pub fn embedding_vector_semantic() {}
 
         // Extract workspace ID from result
         let add_value = serde_json::to_value(&add_result)?;
-        println!("🐛 DEBUG: add_result JSON = {}", serde_json::to_string_pretty(&add_value)?);
+        println!(
+            "🐛 DEBUG: add_result JSON = {}",
+            serde_json::to_string_pretty(&add_value)?
+        );
 
         let workspace_text = add_value
             .get("content")
@@ -504,6 +507,95 @@ pub fn embedding_vector_semantic() {}
             result_text.contains("semantic_diff_tool") || result_text.contains("No results"),
             "Search should either find semantic_diff_tool or return no results gracefully"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_reference_workspace_reindex_does_not_lock() -> Result<()> {
+        // Skip embeddings to avoid network/download requirements in test environment
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+        // Primary workspace (required for registry service)
+        let primary_dir = TempDir::new()?;
+        let primary_path = primary_dir.path();
+        std::fs::write(
+            primary_path.join("main.rs"),
+            r#"pub fn main() { println!("primary"); }"#,
+        )?;
+
+        // Reference workspace that will be reindexed immediately after add
+        let reference_dir = TempDir::new()?;
+        let reference_path = reference_dir.path();
+        std::fs::write(
+            reference_path.join("lib.rs"),
+            r#"pub fn reindex_target() { println!("reference"); }"#,
+        )?;
+
+        let handler = Arc::new(JulieServerHandler::new().await?);
+        handler
+            .initialize_workspace(Some(primary_path.to_string_lossy().to_string()))
+            .await?;
+
+        // Initial index of primary workspace
+        let index_primary = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: None,
+            name: None,
+            workspace_id: None,
+            force: Some(false),
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        index_primary.call_tool(&handler).await?;
+
+        // Add reference workspace (triggers first indexing run)
+        let add_tool = ManageWorkspaceTool {
+            operation: "add".to_string(),
+            path: Some(reference_path.to_string_lossy().to_string()),
+            name: Some("reindex-test".to_string()),
+            workspace_id: None,
+            force: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+        let add_result = add_tool.call_tool(&handler).await?;
+
+        // Extract workspace ID from add result
+        let add_value = serde_json::to_value(add_result)?;
+        let workspace_id = add_value
+            .get("content")
+            .and_then(|content| content.as_array())
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(|text| text.as_str())
+            .and_then(|text| {
+                text.lines()
+                    .find(|line| line.contains("Workspace ID:"))
+                    .and_then(|line| line.split(':').nth(1))
+            })
+            .map(|id| id.trim().to_string())
+            .ok_or_else(|| anyhow::anyhow!("Failed to extract workspace ID"))?;
+
+        // Immediately re-index the same reference workspace before background tasks complete
+        let reindex_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(reference_path.to_string_lossy().to_string()),
+            name: None,
+            workspace_id: Some(workspace_id.clone()),
+            force: Some(false),
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+
+        // Use timeout to surface hangs caused by LockBusy deadlocks
+        timeout(Duration::from_secs(10), reindex_tool.call_tool(&handler)).await??;
 
         Ok(())
     }

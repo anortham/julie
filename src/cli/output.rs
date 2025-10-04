@@ -4,7 +4,6 @@
 /// - JSON: Single array, pretty-printed (for single file extraction)
 /// - NDJSON: Newline-delimited JSON, streaming-friendly (for large directories)
 /// - SQLite: Direct database writes (for bulk operations, fastest)
-
 use crate::extractors::base::Symbol;
 use anyhow::Result;
 use std::io::{self, Write};

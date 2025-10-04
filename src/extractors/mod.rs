@@ -129,8 +129,7 @@ impl ExtractorManager {
             .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
 
         // Extract symbols using the appropriate extractor
-        let symbols = self
-            .extract_symbols_for_language(file_path, content, language, &tree)?;
+        let symbols = self.extract_symbols_for_language(file_path, content, language, &tree)?;
 
         tracing::debug!(
             "Extracted {} symbols from {} file: {}",

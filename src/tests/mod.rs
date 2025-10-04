@@ -15,8 +15,8 @@ pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)
 pub mod search_race_condition_tests;
 pub mod smart_read_tests; // Smart Read tests - validate 70-90% token savings
 pub mod syntax_validation_tests; // AST Syntax Fix tests - Week 3 (ValidateSyntax, AutoFixSyntax) // Race condition tests for search during indexing (Heisenbug reproduction)
-                                                                                                  // pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool - DISABLED: uses SafeEditTool
-                                                                                                  // pub mod line_edit_tests; // DISABLED: uses SafeEditTool
+                                 // pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool - DISABLED: uses SafeEditTool
+                                 // pub mod line_edit_tests; // DISABLED: uses SafeEditTool
 pub mod refactoring_tests; // Smart refactoring tool tests
 pub mod smart_refactor_control_tests; // SOURCE/CONTROL tests for SmartRefactorTool
 pub mod trace_call_path_tests; // Comprehensive tests for TraceCallPathTool

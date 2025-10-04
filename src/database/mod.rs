@@ -1054,7 +1054,12 @@ impl SymbolDatabase {
 
         let timestamp = chrono::Utc::now().timestamp();
         for (file_path, language) in unique_files {
-            file_stmt.execute(rusqlite::params![file_path, language, timestamp, workspace_id])?;
+            file_stmt.execute(rusqlite::params![
+                file_path,
+                language,
+                timestamp,
+                workspace_id
+            ])?;
         }
         drop(file_stmt);
 

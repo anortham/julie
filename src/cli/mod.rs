@@ -8,7 +8,6 @@
 /// - output: Handles different output formats (JSON, NDJSON, SQLite)
 /// - parallel: Parallel extraction with Rayon for optimal performance
 /// - progress: Progress reporting for long-running operations
-
 pub mod output;
 pub mod parallel;
 pub mod progress;

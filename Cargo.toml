@@ -26,6 +26,10 @@ path = "src/bin/extract.rs"
 name = "julie-semantic"
 path = "src/bin/semantic.rs"
 
+[[bin]]
+name = "julie-codesearch"
+path = "src/bin/codesearch.rs"
+
 
 [dependencies]
 # MCP Server SDK

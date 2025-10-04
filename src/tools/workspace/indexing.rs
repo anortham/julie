@@ -17,14 +17,20 @@ impl ManageWorkspaceTool {
         workspace_path: &Path,
         force_reindex: bool,
     ) -> Result<(usize, usize, usize)> {
-        println!("🐛 [INDEX_WORKSPACE_FILES ENTRY] Function called for: {:?}", workspace_path);
+        println!(
+            "🐛 [INDEX_WORKSPACE_FILES ENTRY] Function called for: {:?}",
+            workspace_path
+        );
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
         // Check if this is the primary workspace (current directory)
         println!("🐛 [INDEX TRACE A] About to get current_dir");
         let current_dir = std::env::current_dir().unwrap_or_default();
         let is_primary_workspace = workspace_path == current_dir;
-        println!("🐛 [INDEX TRACE B] Got current_dir, is_primary={}", is_primary_workspace);
+        println!(
+            "🐛 [INDEX TRACE B] Got current_dir, is_primary={}",
+            is_primary_workspace
+        );
 
         // Log workspace path comparison for debugging
         debug!(
@@ -45,7 +51,10 @@ impl ManageWorkspaceTool {
         // Use blacklist-based file discovery
         println!("🐛 [INDEX TRACE C] About to call discover_indexable_files");
         let all_discovered_files = self.discover_indexable_files(workspace_path)?;
-        println!("🐛 [INDEX TRACE D] discover_indexable_files returned {} files", all_discovered_files.len());
+        println!(
+            "🐛 [INDEX TRACE D] discover_indexable_files returned {} files",
+            all_discovered_files.len()
+        );
 
         info!(
             "📊 Discovered {} files total after filtering",
@@ -53,7 +62,10 @@ impl ManageWorkspaceTool {
         );
 
         // 🚀 INCREMENTAL UPDATE: Filter files that need re-indexing based on hash changes
-        println!("🐛 [INDEX TRACE E] About to filter files, force_reindex={}", force_reindex);
+        println!(
+            "🐛 [INDEX TRACE E] About to filter files, force_reindex={}",
+            force_reindex
+        );
         let files_to_index = if force_reindex {
             debug!(
                 "Force reindex mode - processing all {} files",
@@ -63,12 +75,19 @@ impl ManageWorkspaceTool {
             all_discovered_files
         } else {
             println!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
-            let result = self.filter_changed_files(handler, all_discovered_files, workspace_path)
+            let result = self
+                .filter_changed_files(handler, all_discovered_files, workspace_path)
                 .await?;
-            println!("🐛 [INDEX TRACE E3] filter_changed_files returned {} files", result.len());
+            println!(
+                "🐛 [INDEX TRACE E3] filter_changed_files returned {} files",
+                result.len()
+            );
             result
         };
-        println!("🐛 [INDEX TRACE F] Files filtered, {} files to index", files_to_index.len());
+        println!(
+            "🐛 [INDEX TRACE F] Files filtered, {} files to index",
+            files_to_index.len()
+        );
 
         info!(
             "⚡ Need to process {} files (incremental filtering applied)",
@@ -80,39 +99,45 @@ impl ManageWorkspaceTool {
             workspace_path
         );
 
+        // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
+        // Calling get_workspace() multiple times causes lock contention and deadlocks
+        println!("🐛 [INDEX TRACE G] About to get workspace for ID generation (ONCE)");
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
+        println!("🐛 [INDEX TRACE H] Got workspace successfully (reusing throughout function)");
+
         // Get workspace ID early for use throughout the function
         // CRITICAL DEADLOCK FIX: Generate workspace ID directly to avoid registry lock contention
-        println!("🐛 [INDEX TRACE G] About to get workspace for ID generation");
-        let workspace_id = if let Some(_workspace) = handler.get_workspace().await? {
-            println!("🐛 [INDEX TRACE H] Got workspace successfully");
+        // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
+        // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
+        println!("🐛 [INDEX TRACE I] Canonicalizing path");
+        let canonical_path = workspace_path
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_path.to_path_buf())
+            .to_string_lossy()
+            .to_string();
 
-            // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
-            // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
-            println!("🐛 [INDEX TRACE I] Canonicalizing path");
-            let canonical_path = workspace_path
-                .canonicalize()
-                .unwrap_or_else(|_| workspace_path.to_path_buf())
-                .to_string_lossy()
-                .to_string();
-
-            // DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
-            // Same pattern as search_workspace_tantivy and filter_changed_files
-            println!("🐛 [INDEX TRACE J] Generating workspace ID directly from: {}", canonical_path);
-            match crate::workspace::registry::generate_workspace_id(&canonical_path) {
-                Ok(id) => {
-                    println!("🐛 [INDEX TRACE K] Generated workspace ID: {}", id);
-                    id
-                }
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Failed to generate workspace ID for path {}: {}",
-                        canonical_path,
-                        e
-                    ));
-                }
+        // DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
+        // Same pattern as search_workspace_tantivy and filter_changed_files
+        println!(
+            "🐛 [INDEX TRACE J] Generating workspace ID directly from: {}",
+            canonical_path
+        );
+        let workspace_id = match crate::workspace::registry::generate_workspace_id(&canonical_path)
+        {
+            Ok(id) => {
+                println!("🐛 [INDEX TRACE K] Generated workspace ID: {}", id);
+                id
             }
-        } else {
-            return Err(anyhow::anyhow!("No workspace available for indexing"));
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to generate workspace ID for path {}: {}",
+                    canonical_path,
+                    e
+                ));
+            }
         };
         println!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
@@ -126,72 +151,20 @@ impl ManageWorkspaceTool {
         println!("🐛 [INDEX TRACE O] About to get workspace_search_engine and writer");
         let (workspace_search_engine, workspace_search_writer) = if is_primary_workspace {
             println!("🐛 [INDEX TRACE P] Primary workspace path - getting existing infrastructure");
-            // Primary workspace: use existing search engine and writer
-            let workspace = handler.get_workspace().await?;
             let search_writer = workspace
-                .as_ref()
-                .and_then(|ws| ws.search_writer.clone())
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Search writer not available for indexing")
-                })?;
+                .search_writer
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("Search writer not available for indexing"))?;
             println!("🐛 [INDEX TRACE Q] Got primary workspace writer");
             (search_engine.clone(), search_writer)
         } else {
-            println!("🐛 [INDEX TRACE R] Reference workspace path - creating dedicated infrastructure");
-            // Reference workspace: create dedicated search engine and writer
-            info!(
-                "Creating dedicated search infrastructure for reference workspace: {}",
-                workspace_id
+            println!(
+                "🐛 [INDEX TRACE R] Reference workspace path - obtaining shared infrastructure"
             );
-
-            let workspace = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-
             let index_path = workspace.workspace_index_path(&workspace_id);
-
-            // Create index directory if it doesn't exist
-            std::fs::create_dir_all(&index_path).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create index directory for {}: {}",
-                    workspace_id,
-                    e
-                )
-            })?;
-
-            info!(
-                "Created index directory for reference workspace at: {}",
-                index_path.display()
-            );
-
-            // Create dedicated search engine for this workspace
-            let ref_search_engine =
-                crate::search::SearchEngine::new(&index_path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to create search engine for {}: {}",
-                        workspace_id,
-                        e
-                    )
-                })?;
-
-            // Create dedicated search writer for this workspace
-            let ref_search_writer = crate::search::SearchIndexWriter::new(
-                ref_search_engine.index(),
-                ref_search_engine.schema().clone(),
-            )
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create search writer for {}: {}",
-                    workspace_id,
-                    e
-                )
-            })?;
-
-            (
-                Arc::new(tokio::sync::RwLock::new(ref_search_engine)),
-                Arc::new(tokio::sync::Mutex::new(ref_search_writer)),
-            )
+            handler
+                .get_reference_search_infrastructure(&workspace_id, &index_path)
+                .await?
         };
 
         println!("🐛 [INDEX TRACE S] About to call process_files_optimized");
@@ -209,22 +182,18 @@ impl ManageWorkspaceTool {
         println!("🐛 [INDEX TRACE T] process_files_optimized completed");
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
-        let (total_symbols, total_relationships) =
-            if let Some(workspace) = handler.get_workspace().await? {
-                if let Some(db_arc) = &workspace.db {
-                    let db = db_arc.lock().await;
-                    let symbols_count = db
-                        .get_symbol_count_for_workspace(&workspace_id)
-                        .unwrap_or(0);
-                    // Debug output removed to prevent stdio flooding
-                    let stats = db.get_stats().unwrap_or_default();
-                    (symbols_count as usize, stats.total_relationships as usize)
-                } else {
-                    (0, 0)
-                }
-            } else {
-                (0, 0)
-            };
+        // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
+        let (total_symbols, total_relationships) = if let Some(db_arc) = &workspace.db {
+            let db = db_arc.lock().await;
+            let symbols_count = db
+                .get_symbol_count_for_workspace(&workspace_id)
+                .unwrap_or(0);
+            // Debug output removed to prevent stdio flooding
+            let stats = db.get_stats().unwrap_or_default();
+            (symbols_count as usize, stats.total_relationships as usize)
+        } else {
+            (0, 0)
+        };
 
         info!(
             "✅ Indexing complete: {} symbols, {} relationships stored in SQLite",
@@ -245,10 +214,10 @@ impl ManageWorkspaceTool {
             );
 
             // Clone necessary references for background task
+            // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
             let embedding_engine = handler.embedding_engine.clone();
-            let workspace = handler.get_workspace().await?;
-            let workspace_db = workspace.as_ref().and_then(|ws| ws.db.clone());
-            let workspace_root = workspace.as_ref().map(|ws| ws.root.clone());
+            let workspace_db = workspace.db.clone();
+            let workspace_root = Some(workspace.root.clone());
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();
 
@@ -1053,7 +1022,10 @@ impl ManageWorkspaceTool {
             match crate::workspace::registry::generate_workspace_id(&canonical_path) {
                 Ok(id) => id,
                 Err(e) => {
-                    warn!("Failed to generate workspace ID: {} - indexing all files", e);
+                    warn!(
+                        "Failed to generate workspace ID: {} - indexing all files",
+                        e
+                    );
                     return Ok(all_files);
                 }
             }

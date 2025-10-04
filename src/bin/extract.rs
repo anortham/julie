@@ -7,7 +7,6 @@
 /// - single: Extract one file, output JSON (for incremental updates)
 /// - bulk: Extract directory, write to SQLite (for initial indexing, fastest)
 /// - stream: Extract directory, stream NDJSON (for large workspaces, memory-efficient)
-
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use julie::cli::{ExtractionConfig, OutputFormat, OutputWriter, ParallelExtractor};

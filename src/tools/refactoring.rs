@@ -672,8 +672,7 @@ impl SmartRefactorTool {
 
         // Create an extractor manager and extract all symbols
         let extractor_manager = ExtractorManager::new();
-        let symbols = extractor_manager
-            .extract_symbols(file_path, content)?;
+        let symbols = extractor_manager.extract_symbols(file_path, content)?;
 
         // Find symbols that match our target name exactly
         let matching_positions: Vec<(u32, u32)> = symbols

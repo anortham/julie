@@ -5,6 +5,7 @@ use rust_mcp_sdk::schema::{
     ListToolsResult, RpcError,
 };
 use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -62,6 +63,11 @@ pub struct JulieServerHandler {
     pub search_engine: Arc<RwLock<SearchEngine>>,
     /// Tantivy search writer for indexing operations (WRITE-ONLY, eliminates RwLock contention)
     pub search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
+    /// Cache of reference workspace search engines keyed by workspace ID
+    pub reference_search_engines: Arc<RwLock<HashMap<String, Arc<RwLock<SearchEngine>>>>>,
+    /// Cache of reference workspace search writers keyed by workspace ID
+    pub reference_search_writers:
+        Arc<RwLock<HashMap<String, Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>>>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
     /// Cached embedding engine for semantic search (expensive to initialize)
@@ -92,6 +98,8 @@ impl JulieServerHandler {
             workspace: Arc::new(RwLock::new(None)),
             search_engine: Arc::new(RwLock::new(search_engine)),
             search_writer: Arc::new(tokio::sync::Mutex::new(search_writer)),
+            reference_search_engines: Arc::new(RwLock::new(HashMap::new())),
+            reference_search_writers: Arc::new(RwLock::new(HashMap::new())),
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
@@ -171,6 +179,105 @@ impl JulieServerHandler {
         }
 
         Ok(())
+    }
+
+    /// Get or create the Tantivy search infrastructure for a reference workspace.
+    ///
+    /// Reuses the same SearchEngine/SearchIndexWriter per workspace to avoid
+    /// acquiring multiple Tantivy lockfiles (which would surface as `LockBusy`).
+    pub async fn get_reference_search_infrastructure(
+        &self,
+        workspace_id: &str,
+        index_path: &std::path::Path,
+    ) -> Result<(
+        Arc<RwLock<SearchEngine>>,
+        Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
+    )> {
+        if let (Some(engine), Some(writer)) = {
+            let engines = self.reference_search_engines.read().await;
+            let writers = self.reference_search_writers.read().await;
+            (
+                engines.get(workspace_id).cloned(),
+                writers.get(workspace_id).cloned(),
+            )
+        } {
+            debug!(
+                "♻️  Reusing cached Tantivy infrastructure for workspace {}",
+                workspace_id
+            );
+            return Ok((engine, writer));
+        }
+
+        // Create index directory before opening search engine
+        std::fs::create_dir_all(index_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create index directory for workspace {}: {}",
+                workspace_id,
+                e
+            )
+        })?;
+
+        // Acquire write locks to insert the infrastructure if it's still missing
+        let mut engines = self.reference_search_engines.write().await;
+        let mut writers = self.reference_search_writers.write().await;
+
+        if let (Some(engine), Some(writer)) = (
+            engines.get(workspace_id).cloned(),
+            writers.get(workspace_id).cloned(),
+        ) {
+            return Ok((engine, writer));
+        }
+
+        debug!(
+            "🆕 Creating Tantivy infrastructure for reference workspace {} at {}",
+            workspace_id,
+            index_path.display()
+        );
+
+        let search_engine = SearchEngine::new(index_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to open Tantivy index for workspace {}: {}",
+                workspace_id,
+                e
+            )
+        })?;
+
+        let writer = crate::search::SearchIndexWriter::new(
+            search_engine.index(),
+            search_engine.schema().clone(),
+        )
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create search writer for workspace {}: {}",
+                workspace_id,
+                e
+            )
+        })?;
+
+        debug!(
+            "✅ Tantivy infrastructure ready for workspace {}; caching for reuse",
+            workspace_id
+        );
+
+        let engine_arc = Arc::new(RwLock::new(search_engine));
+        let writer_arc = Arc::new(tokio::sync::Mutex::new(writer));
+
+        engines.insert(workspace_id.to_string(), engine_arc.clone());
+        writers.insert(workspace_id.to_string(), writer_arc.clone());
+
+        Ok((engine_arc, writer_arc))
+    }
+
+    /// Remove cached Tantivy infrastructure for a reference workspace.
+    pub async fn remove_reference_search_infrastructure(&self, workspace_id: &str) {
+        self.reference_search_engines
+            .write()
+            .await
+            .remove(workspace_id);
+        self.reference_search_writers
+            .write()
+            .await
+            .remove(workspace_id);
     }
 
     /// Get the active Tantivy search engine - returns error if workspace not initialized

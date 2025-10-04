@@ -108,7 +108,14 @@
       "Bash(env RUST_LOG=debug timeout 20 cargo test test_reference_workspace_search -- --nocapture)",
       "Bash(env RUST_LOG=debug timeout 30 cargo test test_reference_workspace_search -- --nocapture)",
       "Bash(timeout 60 cargo test test_reference_workspace_search -- --nocapture)",
-      "Bash(env RUST_LOG=debug cargo test test_reference_workspace_search -- --nocapture)"
+      "Bash(env RUST_LOG=debug cargo test test_reference_workspace_search -- --nocapture)",
+      "Bash(timeout 180 cargo test --lib)",
+      "Bash(wait)",
+      "Bash(timeout 60 cargo test test_target_filtering_top_level_still_works --lib -- --nocapture)",
+      "Bash(timeout 120 cargo test test_reference_workspace_search --lib)",
+      "Bash(timeout 300 cargo test --lib)",
+      "Bash(timeout 30 cargo test --lib)",
+      "Bash(timeout 120 cargo test test_target_filtering_top_level_still_works test_reference_workspace_search --lib)"
     ],
     "deny": [],
     "ask": []
