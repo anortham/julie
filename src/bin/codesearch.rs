@@ -142,7 +142,8 @@ struct FileResult {
     symbols: Vec<julie::extractors::base::Symbol>,
 }
 
-/// Discover all supported files in directory, excluding ignored patterns
+/// Discover all non-binary files in directory, excluding ignored patterns
+/// Includes ALL text-based files (not just ones with Tree-sitter parsers)
 fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathBuf>> {
     use walkdir::WalkDir;
 
@@ -159,10 +160,19 @@ fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathB
             continue;
         }
 
-        if let Some(ext) = entry.path().extension() {
-            if is_supported_extension(ext.to_str().unwrap_or("")) {
-                files.push(entry.path().to_path_buf());
+        // Include file if:
+        // 1. It has no extension (like Makefile, Dockerfile)
+        // 2. It has a non-binary extension
+        let should_include = match entry.path().extension() {
+            None => true, // Include files without extensions
+            Some(ext) => {
+                let ext_str = ext.to_str().unwrap_or("");
+                !is_binary_extension(ext_str)
             }
+        };
+
+        if should_include {
+            files.push(entry.path().to_path_buf());
         }
     }
 
@@ -204,7 +214,7 @@ fn should_ignore_path(path: &std::path::Path, patterns: &[String]) -> bool {
     false
 }
 
-/// Check if file extension is supported for symbol extraction
+/// Check if file extension is supported for symbol extraction (has Tree-sitter parser)
 fn is_supported_extension(ext: &str) -> bool {
     matches!(
         ext,
@@ -236,6 +246,24 @@ fn is_supported_extension(ext: &str) -> bool {
             | "bash"
             | "ps1"
             | "zig"
+    )
+}
+
+/// Check if file extension is binary (should be excluded from indexing)
+fn is_binary_extension(ext: &str) -> bool {
+    matches!(
+        ext,
+        // Executables and libraries
+        "exe" | "dll" | "so" | "dylib" | "lib" | "a" | "o" | "obj" | "pdb" |
+        // Archives
+        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" |
+        // Media files
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "ico" | "svg" | "webp" |
+        "mp3" | "mp4" | "avi" | "mov" | "wmv" | "flv" | "webm" | "mkv" |
+        // Database files
+        "db" | "sqlite" | "mdf" | "ldf" | "bak" |
+        // Other binary formats
+        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx"
     )
 }
 
@@ -374,10 +402,10 @@ fn scan_directory(
     // Discover all files
     eprintln!("🔍 Discovering files...");
     let files = discover_files(&dir, &ignore_patterns)?;
-    eprintln!("📁 Found {} supported files", files.len());
+    eprintln!("📁 Found {} files", files.len());
 
     if files.is_empty() {
-        eprintln!("⚠️  No supported files found");
+        eprintln!("⚠️  No files found");
         return Ok(());
     }
 
@@ -479,14 +507,11 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
         anyhow::bail!("File does not exist: {:?}", file);
     }
 
-    // Check if file is supported
-    let extension = file
-        .extension()
-        .and_then(|e| e.to_str())
-        .ok_or_else(|| anyhow::anyhow!("No file extension: {:?}", file))?;
-
-    if !is_supported_extension(extension) {
-        anyhow::bail!("Unsupported file extension: {}", extension);
+    // Check if file is binary (we only index text files)
+    if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
+        if is_binary_extension(ext) {
+            anyhow::bail!("Binary file extension not supported: {}", ext);
+        }
     }
 
     // Open database

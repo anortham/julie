@@ -398,4 +398,106 @@ mod error_handling_tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_scan_indexes_all_non_binary_files() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let workspace = temp_dir.path();
+        let db_path = workspace.join("test.db");
+
+        // Create files with and without symbol support
+        // Files WITH Tree-sitter parsers (will have symbols)
+        std::fs::write(
+            workspace.join("code.cs"),
+            r#"public class User { public string Name { get; set; } }"#,
+        )?;
+        std::fs::write(
+            workspace.join("script.js"),
+            r#"function hello() { return "world"; }"#,
+        )?;
+
+        // Files WITHOUT Tree-sitter parsers (no symbols, but should still be indexed)
+        std::fs::write(
+            workspace.join("config.json"),
+            r#"{"version": "1.0", "name": "test"}"#,
+        )?;
+        std::fs::write(
+            workspace.join("README.md"),
+            r#"# Test Project\nThis is a test."#,
+        )?;
+        std::fs::write(
+            workspace.join("data.xml"),
+            r#"<root><item>value</item></root>"#,
+        )?;
+
+        // Files that should be EXCLUDED (binary)
+        std::fs::write(workspace.join("binary.exe"), &[0xFF, 0xFE, 0x00, 0x01])?;
+
+        // Run scan
+        let output = run_scan(workspace, &db_path)?;
+        assert!(
+            output.status.success(),
+            "Scan failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Verify database
+        let conn = rusqlite::Connection::open(&db_path)?;
+
+        // Should have 5 files (code.cs, script.js, config.json, README.md, data.xml)
+        // Excludes binary.exe
+        let file_count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM files",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(file_count, 5, "Should index all 5 non-binary files");
+
+        // Verify code files have symbols
+        let cs_symbols: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%code.cs'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(cs_symbols > 0, "C# file should have symbols");
+
+        let js_symbols: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%script.js'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(js_symbols > 0, "JavaScript file should have symbols");
+
+        // Verify non-code files are indexed but have no symbols
+        let json_symbols: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%config.json'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(json_symbols, 0, "JSON file should have no symbols");
+
+        let md_symbols: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%README.md'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(md_symbols, 0, "Markdown file should have no symbols");
+
+        // Verify all non-binary files have content stored
+        let json_content: String = conn.query_row(
+            "SELECT content FROM files WHERE file_path LIKE '%config.json'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(json_content.contains("version"), "JSON content should be stored");
+
+        let md_content: String = conn.query_row(
+            "SELECT content FROM files WHERE file_path LIKE '%README.md'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(md_content.contains("Test Project"), "Markdown content should be stored");
+
+        Ok(())
+    }
 }
