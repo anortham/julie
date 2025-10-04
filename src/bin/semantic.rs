@@ -9,6 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use julie::database::SymbolDatabase;
 use julie::embeddings::EmbeddingEngine;
+use julie::embeddings::vector_store::VectorStore;
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -22,11 +23,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate embeddings for symbols database (demo/validation)
+    /// Generate embeddings for symbols database and build HNSW index
     Embed {
-        /// SQLite symbols database path (from julie-extract)
+        /// SQLite symbols database path (from julie-codesearch)
         #[arg(long)]
         symbols_db: String,
+
+        /// Output directory for HNSW index (e.g., .coa/codesearch/indexes/{workspace}/vectors)
+        #[arg(long)]
+        output: Option<String>,
 
         /// Embedding model name
         #[arg(long, default_value = "bge-small")]
@@ -60,20 +65,22 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Embed {
             symbols_db,
+            output,
             model,
             batch_size,
             limit,
         } => {
-            generate_embeddings(&symbols_db, &model, batch_size, limit).await?;
+            generate_embeddings(&symbols_db, output.as_deref(), &model, batch_size, limit).await?;
         }
     }
 
     Ok(())
 }
 
-/// Generate embeddings for symbols (demonstrates capability)
+/// Generate embeddings for symbols and optionally build HNSW index
 async fn generate_embeddings(
     db_path: &str,
+    output_dir: Option<&str>,
     model: &str,
     batch_size: usize,
     limit: Option<usize>,
@@ -119,7 +126,10 @@ async fn generate_embeddings(
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
     eprintln!("⚡ Batch size: {}", batch_size);
 
-    // 3. Process in batches and collect timing stats
+    // 3. Create VectorStore for collecting embeddings
+    let mut vector_store = VectorStore::new(engine.dimensions())?;
+
+    // 4. Process in batches and collect embeddings into VectorStore
     let start_time = Instant::now();
     let mut total_embedded = 0;
     let batch_count = (symbols.len() + batch_size - 1) / batch_size;
@@ -130,6 +140,11 @@ async fn generate_embeddings(
         // Generate embeddings for batch
         let embeddings = engine.embed_symbols_batch(batch)?;
         total_embedded += embeddings.len();
+
+        // Store embeddings in VectorStore
+        for (symbol_id, vector) in &embeddings {
+            vector_store.store_vector(symbol_id.clone(), vector.clone())?;
+        }
 
         let batch_time = batch_start.elapsed();
 
@@ -162,6 +177,29 @@ async fn generate_embeddings(
         "   Rate: {:.0} embeddings/sec",
         total_embedded as f64 / total_time.as_secs_f64()
     );
+
+    // 5. Build and save HNSW index if output directory specified
+    if let Some(output_path) = output_dir {
+        eprintln!("\n🏗️  Building HNSW index...");
+        let hnsw_start = Instant::now();
+
+        vector_store.build_hnsw_index()?;
+
+        let hnsw_time = hnsw_start.elapsed();
+        eprintln!("✅ HNSW index built in {:.2}s", hnsw_time.as_secs_f64());
+
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(output_path)?;
+        let index_path = std::path::Path::new(output_path);
+
+        eprintln!("💾 Saving HNSW index to {}...", output_path);
+        let save_start = Instant::now();
+
+        vector_store.save_hnsw_index(index_path)?;
+
+        let save_time = save_start.elapsed();
+        eprintln!("✅ HNSW index saved in {:.2}s", save_time.as_secs_f64());
+    }
 
     // Output JSON statistics
     let stats = EmbeddingStats {

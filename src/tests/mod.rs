@@ -9,6 +9,8 @@
 // pub mod fast_edit_search_replace_tests; // DISABLED: uses SafeEditTool
 pub mod auto_fix_syntax_control_tests; // SOURCE/CONTROL tests for AutoFixSyntax - comprehensive edge cases
 pub mod auto_fix_syntax_tests; // TDD tests for AutoFixSyntax operation - Week 3 (missing semicolons, braces, etc)
+pub mod cli_codesearch_tests; // CLI integration tests for julie-codesearch (scan/update)
+pub mod cli_semantic_tests; // CLI integration tests for julie-semantic (embed with HNSW)
 pub mod fuzzy_replace_tests; // Comprehensive tests for FuzzyReplaceTool
 pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering tests (TDD) - methods in impl blocks
 pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)

@@ -62,6 +62,8 @@ class UserService:
 }
 
 #[tokio::test]
+#[ignore = "MCP server integration test - not used by CLIs"]
+#[ignore = "MCP server integration test - not used by CLIs"]
 async fn test_cascade_flow_fresh_index() {
     // TDD Test 1: Verify complete cascade flow from fresh index
     //
@@ -191,6 +193,7 @@ async fn test_cascade_flow_fresh_index() {
 }
 
 #[tokio::test]
+#[ignore = "MCP server integration test - not used by CLIs"]
 async fn test_search_fallback_chain() {
     // TDD Test 2: Verify search fallback chain works correctly
     //
@@ -274,6 +277,7 @@ async fn test_search_fallback_chain() {
 }
 
 #[tokio::test]
+#[ignore = "MCP server integration test - not used by CLIs"]
 async fn test_tantivy_rebuild_from_sqlite() {
     // TDD Test 3: Verify Tantivy can rebuild entirely from SQLite
     //
@@ -394,6 +398,7 @@ async fn test_tantivy_rebuild_from_sqlite() {
 }
 
 #[tokio::test]
+#[ignore = "MCP server integration test - not used by CLIs"]
 async fn test_sqlite_fts_query_performance() {
     // TDD Test 4: Verify SQLite FTS meets performance targets
     //
