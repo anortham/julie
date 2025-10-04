@@ -378,13 +378,16 @@ fn scan_directory(
     let mut database = SymbolDatabase::new(&db)
         .with_context(|| format!("Failed to open database: {:?}", db))?;
 
-    // Configure ignore patterns
-    let mut ignore_patterns = default_ignore_patterns();
-    if let Some(custom) = ignore {
-        ignore_patterns.extend(custom.split(',').map(|s| s.trim().to_string()));
-    }
+    // Configure ignore patterns (use only what's passed via --ignore parameter)
+    // No built-in defaults - caller controls all ignore patterns for single source of truth
+    let ignore_patterns: Vec<String> = match ignore {
+        Some(patterns) => patterns.split(',').map(|s| s.trim().to_string()).collect(),
+        None => Vec::new(),
+    };
 
-    info!("🚫 Ignoring patterns: {:?}", ignore_patterns);
+    if !ignore_patterns.is_empty() {
+        info!("🚫 Ignoring patterns: {:?}", ignore_patterns);
+    }
 
     // Use directory path as workspace ID
     let workspace_id = dir
@@ -595,20 +598,3 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn default_ignore_patterns() -> Vec<String> {
-    vec![
-        "**/node_modules/**".to_string(),
-        "**/.git/**".to_string(),
-        "**/.coa/**".to_string(),
-        "**/*.log".to_string(),
-        // Build output directories (but not source directories like src/bin)
-        "bin/Debug/**".to_string(),
-        "bin/Release/**".to_string(),
-        "**/obj/**".to_string(),
-        "**/target/**".to_string(),
-        "**/.vs/**".to_string(),
-        "**/.vscode/**".to_string(),
-        "**/dist/**".to_string(),
-        "**/build/**".to_string(),
-    ]
-}

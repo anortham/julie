@@ -80,6 +80,9 @@ impl SymbolDatabase {
         let conn =
             Connection::open(&file_path).map_err(|e| anyhow!("Failed to open database: {}", e))?;
 
+        // Set busy timeout for concurrent access - wait up to 5 seconds for locks
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+
         let mut db = Self { conn, file_path };
 
         // Run schema migrations BEFORE initializing schema
