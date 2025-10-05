@@ -521,11 +521,61 @@ impl ExtractorManager {
             }
 
             // ========================================================================
+            // Batch 2: Implemented languages (extract_identifiers available)
+            // ========================================================================
+            "ruby" => {
+                let mut extractor = crate::extractors::ruby::RubyExtractor::new(
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "php" => {
+                let mut extractor = crate::extractors::php::PhpExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "kotlin" => {
+                let mut extractor = crate::extractors::kotlin::KotlinExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "c" => {
+                let mut extractor = crate::extractors::c::CExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "cpp" => {
+                let mut extractor = crate::extractors::cpp::CppExtractor::new(
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "bash" => {
+                let mut extractor = crate::extractors::bash::BashExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+
+            // ========================================================================
             // Remaining languages: Not yet implemented (return empty for now)
             // TODO: Implement extract_identifiers() for these languages
             // ========================================================================
-            "c" | "cpp" | "ruby" | "php" | "kotlin" | "dart" | "gdscript" | "lua"
-            | "vue" | "razor" | "sql" | "html" | "css" | "bash" | "powershell"
+            "dart" | "gdscript" | "lua"
+            | "vue" | "razor" | "sql" | "html" | "css" | "powershell"
             | "zig" | "regex" => {
                 tracing::debug!(
                     "Identifier extraction not yet implemented for language: {} (file: {})",

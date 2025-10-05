@@ -13,7 +13,7 @@
 // other programs (Python, Node.js, Go binaries, Docker containers, etc.).
 
 use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -725,5 +725,110 @@ impl BashExtractor {
         for child in node.children(&mut cursor) {
             self.walk_tree(child, callback);
         }
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (command calls, array access, etc.)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    fn extract_identifier_from_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        match node.kind() {
+            // Command invocations: build_app, npm install, etc.
+            "command" => {
+                // Extract command name using the existing helper
+                if let Some(command_name_node) = self.find_command_name_node(node) {
+                    let name = self.base.get_node_text(&command_name_node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &command_name_node,
+                        name,
+                        IdentifierKind::Call,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            // Array/subscript access: ${arr[0]}, ${data[key]}
+            "subscript" => {
+                // The subscript node should have a name or identifier child
+                // Extract the variable name being accessed
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "variable_name" || child.kind() == "simple_expansion" {
+                        let name = self.base.get_node_text(&child);
+                        // Clean up the name - remove $ prefix if present
+                        let clean_name = name.trim_start_matches('$').to_string();
+                        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                        self.base.create_identifier(
+                            &child,
+                            clean_name,
+                            IdentifierKind::MemberAccess,
+                            containing_symbol_id,
+                        );
+                        break;
+                    }
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }

@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod bash_extractor_tests {
-    use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
+    use crate::extractors::base::{IdentifierKind, RelationshipKind, Symbol, SymbolKind};
     use crate::extractors::bash::BashExtractor;
     use tree_sitter::Parser;
 
@@ -612,6 +612,274 @@ helper_function() {
         assert!(
             minimal_symbols.is_empty(),
             "Minimal bash should produce no symbols"
+        );
+    }
+}
+
+// Bash Identifier Extraction Tests (TDD RED phase)
+//
+// These tests validate the extract_identifiers() functionality which extracts:
+// - Command invocations (command nodes)
+// - Array/subscript access (subscript nodes)
+// - Proper containing symbol tracking (file-scoped)
+//
+// Following the Rust extractor reference implementation pattern
+
+#[cfg(test)]
+mod identifier_extraction_tests {
+    use crate::extractors::base::IdentifierKind;
+    use crate::extractors::bash::BashExtractor;
+    use tree_sitter::Parser;
+
+    fn init_parser() -> Parser {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_bash::LANGUAGE.into())
+            .expect("Error loading Bash grammar");
+        parser
+    }
+
+    #[test]
+    fn test_extract_function_calls() {
+        let bash_code = r#"#!/bin/bash
+
+deploy_app() {
+    local environment=$1
+
+    echo "Deploying to $environment"
+    build_app "$environment"      # Command call to build_app
+    npm install                    # Command call to npm
+    test_deployment                # Command call to test_deployment
+}
+
+build_app() {
+    echo "Building app"
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).unwrap();
+
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            bash_code.to_string(),
+        );
+
+        // Extract symbols first
+        let symbols = extractor.extract_symbols(&tree);
+
+        // NOW extract identifiers (this will FAIL until we implement it)
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found the command calls
+        let build_call = identifiers.iter().find(|id| id.name == "build_app");
+        assert!(
+            build_call.is_some(),
+            "Should extract 'build_app' command call identifier"
+        );
+        let build_call = build_call.unwrap();
+        assert_eq!(build_call.kind, IdentifierKind::Call);
+
+        let npm_call = identifiers.iter().find(|id| id.name == "npm");
+        assert!(
+            npm_call.is_some(),
+            "Should extract 'npm' command call identifier"
+        );
+        let npm_call = npm_call.unwrap();
+        assert_eq!(npm_call.kind, IdentifierKind::Call);
+
+        // Verify containing symbol is set correctly (should be inside deploy_app function)
+        assert!(
+            build_call.containing_symbol_id.is_some(),
+            "Command call should have containing symbol"
+        );
+
+        // Find the deploy_app function symbol
+        let deploy_method = symbols.iter().find(|s| s.name == "deploy_app").unwrap();
+
+        // Verify the build_app call is contained within deploy_app function
+        assert_eq!(
+            build_call.containing_symbol_id.as_ref(),
+            Some(&deploy_method.id),
+            "build_app call should be contained within deploy_app function"
+        );
+    }
+
+    #[test]
+    fn test_extract_member_access() {
+        let bash_code = r#"#!/bin/bash
+
+process_data() {
+    # Array access using subscript
+    local names=("Alice" "Bob" "Charlie")
+
+    echo "${names[0]}"      # Subscript access: names[0]
+    local first="${names[1]}"  # Subscript access: names[1]
+    echo "${data[key]}"     # Subscript access: data[key]
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).unwrap();
+
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            bash_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found subscript access identifiers
+        let names_access = identifiers
+            .iter()
+            .filter(|id| id.name == "names" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            names_access > 0,
+            "Should extract 'names' subscript access identifier"
+        );
+
+        let data_access = identifiers
+            .iter()
+            .filter(|id| id.name == "data" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            data_access > 0,
+            "Should extract 'data' subscript access identifier"
+        );
+    }
+
+    #[test]
+    fn test_file_scoped_containing_symbol() {
+        // This test ensures we ONLY match symbols from the SAME FILE
+        // Critical bug fix from Rust implementation
+        let bash_code = r#"#!/bin/bash
+
+main_function() {
+    helper_function    # Call to helper_function in same file
+}
+
+helper_function() {
+    echo "Helper"
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).unwrap();
+
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            bash_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Find the helper_function call
+        let helper_call = identifiers.iter().find(|id| id.name == "helper_function");
+        assert!(helper_call.is_some());
+        let helper_call = helper_call.unwrap();
+
+        // Verify it has a containing symbol (the main_function)
+        assert!(
+            helper_call.containing_symbol_id.is_some(),
+            "helper_function call should have containing symbol from same file"
+        );
+
+        // Verify the containing symbol is the main_function
+        let main_func = symbols.iter().find(|s| s.name == "main_function").unwrap();
+        assert_eq!(
+            helper_call.containing_symbol_id.as_ref(),
+            Some(&main_func.id),
+            "helper_function call should be contained within main_function"
+        );
+    }
+
+    #[test]
+    fn test_chained_member_access() {
+        let bash_code = r#"#!/bin/bash
+
+process_config() {
+    # Nested array access
+    local config=("${settings[0]}" "${options[1]}")
+
+    echo "${matrix[row][col]}"     # Chained subscript access
+    local value="${data[key1][key2]}"  # Chained subscript access
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).unwrap();
+
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            bash_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract subscript access from nested structures
+        let settings_access = identifiers
+            .iter()
+            .find(|id| id.name == "settings" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            settings_access.is_some(),
+            "Should extract 'settings' from subscript access"
+        );
+
+        let matrix_access = identifiers
+            .iter()
+            .find(|id| id.name == "matrix" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            matrix_access.is_some(),
+            "Should extract 'matrix' from chained subscript access"
+        );
+    }
+
+    #[test]
+    fn test_no_duplicate_identifiers() {
+        let bash_code = r#"#!/bin/bash
+
+run_tests() {
+    npm test
+    npm test  # Same command twice
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).unwrap();
+
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            bash_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract BOTH calls (they're at different locations)
+        let npm_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.name == "npm" && id.kind == IdentifierKind::Call)
+            .collect();
+
+        assert_eq!(
+            npm_calls.len(),
+            2,
+            "Should extract both npm calls at different locations"
+        );
+
+        // Verify they have different line numbers
+        assert_ne!(
+            npm_calls[0].start_line, npm_calls[1].start_line,
+            "Duplicate calls should have different line numbers"
         );
     }
 }

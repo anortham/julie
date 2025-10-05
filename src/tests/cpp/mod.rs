@@ -33,6 +33,7 @@ pub mod classes;
 pub mod concurrency;
 pub mod exceptions;
 pub mod functions;
+pub mod identifier_extraction;
 pub mod modern;
 pub mod namespaces;
 pub mod robustness;

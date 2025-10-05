@@ -1,6 +1,7 @@
 use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Ruby extractor for extracting symbols and relationships from Ruby source code
@@ -1219,5 +1220,114 @@ impl RubyExtractor {
             current = parent;
         }
         false
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (function calls, member access, etc.)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    /// Ruby-specific: "call" nodes are used for both function calls and member access
+    fn extract_identifier_from_node(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        match node.kind() {
+            // Ruby uses "call" for both function calls and member access
+            // The difference is whether there's a receiver field
+            "call" => {
+                // Check if this call has a receiver (member access)
+                if let Some(receiver) = node.child_by_field_name("receiver") {
+                    // This is member access like obj.method
+                    // Extract the method name (rightmost identifier)
+                    if let Some(method_node) = node.child_by_field_name("method") {
+                        let name = self.base.get_node_text(&method_node);
+                        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                        self.base.create_identifier(
+                            &method_node,
+                            name,
+                            IdentifierKind::MemberAccess,
+                            containing_symbol_id,
+                        );
+                    }
+                } else {
+                    // This is a simple function call (no receiver)
+                    // Extract the method/function name
+                    if let Some(name) = self.extract_method_name_from_call(node) {
+                        // Find the identifier node for proper location
+                        let mut cursor = node.walk();
+                        for child in node.children(&mut cursor) {
+                            if child.kind() == "identifier" {
+                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                                self.base.create_identifier(
+                                    &child,
+                                    name.clone(),
+                                    IdentifierKind::Call,
+                                    containing_symbol_id,
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+                // Future: type usage, constructor calls, etc.
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }
