@@ -14,9 +14,10 @@ pub mod registry_service;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
@@ -28,6 +29,21 @@ pub type TantivyIndex = crate::search::SearchEngine;
 pub type TantivyWriter = crate::search::SearchIndexWriter;
 pub type EmbeddingStore = crate::embeddings::EmbeddingEngine;
 pub type VectorIndex = crate::embeddings::vector_store::VectorStore;
+
+type SearchInfraWeak = (
+    Weak<RwLock<TantivyIndex>>,
+    Weak<Mutex<TantivyWriter>>,
+);
+
+fn search_infra_cache() -> &'static StdMutex<HashMap<PathBuf, SearchInfraWeak>> {
+    static CACHE: OnceLock<StdMutex<HashMap<PathBuf, SearchInfraWeak>>> = OnceLock::new();
+    CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
+fn search_infra_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<StdMutex<()>>>> {
+    static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<StdMutex<()>>>>> = OnceLock::new();
+    LOCKS.get_or_init(|| StdMutex::new(HashMap::new()))
+}
 
 /// The main Julie workspace structure
 ///
@@ -471,6 +487,40 @@ impl JulieWorkspace {
             index_path.display()
         ))?;
 
+        let canonical_index_path = fs::canonicalize(&index_path).unwrap_or(index_path.clone());
+
+        // Serialize creation per index path to prevent competing IndexWriter instances.
+        let creation_lock = {
+            let mut locks = search_infra_lock_cache().lock().unwrap();
+            locks
+                .entry(canonical_index_path.clone())
+                .or_insert_with(|| Arc::new(StdMutex::new(())))
+                .clone()
+        };
+        let _creation_guard = creation_lock.lock().unwrap();
+
+        // Reuse existing Tantivy infrastructure when available to avoid LockBusy errors
+        if let Some((engine_weak, writer_weak)) = {
+            let cache = search_infra_cache().lock().unwrap();
+            cache.get(&canonical_index_path).cloned()
+        } {
+            if let (Some(engine_arc), Some(writer_arc)) =
+                (engine_weak.upgrade(), writer_weak.upgrade())
+            {
+                info!(
+                    "♻️ Reusing cached Tantivy search infrastructure at {}",
+                    canonical_index_path.display()
+                );
+                self.search = Some(engine_arc);
+                self.search_writer = Some(writer_arc);
+                return Ok(());
+            } else {
+                // Clean up stale cache entry and continue with fresh initialization
+                let mut cache = search_infra_cache().lock().unwrap();
+                cache.remove(&canonical_index_path);
+            }
+        }
+
         let search_engine = TantivyIndex::new(&index_path)?;
 
         // Create search writer from the same index
@@ -478,8 +528,27 @@ impl JulieWorkspace {
         let search_writer =
             TantivyWriter::new(search_engine.index(), search_engine.schema().clone())?;
 
-        self.search = Some(Arc::new(RwLock::new(search_engine)));
-        self.search_writer = Some(Arc::new(Mutex::new(search_writer)));
+        let search_engine_arc = Arc::new(RwLock::new(search_engine));
+        let search_writer_arc = Arc::new(Mutex::new(search_writer));
+
+        {
+            let mut cache = search_infra_cache().lock().unwrap();
+            cache.insert(
+                canonical_index_path.clone(),
+                (
+                    Arc::downgrade(&search_engine_arc),
+                    Arc::downgrade(&search_writer_arc),
+                ),
+            );
+        }
+
+        info!(
+            "✅ Cached Tantivy search infrastructure at {}",
+            canonical_index_path.display()
+        );
+
+        self.search = Some(search_engine_arc);
+        self.search_writer = Some(search_writer_arc);
 
         info!("Search index and writer initialized successfully");
         Ok(())

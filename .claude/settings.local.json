@@ -118,7 +118,12 @@
       "Bash(timeout 120 cargo test test_target_filtering_top_level_still_works test_reference_workspace_search --lib)",
       "Bash(timeout 120 cargo test csharp::identifier_extraction --lib)",
       "Bash(python3:*)",
-      "Bash(tree-sitter parse:*)"
+      "Bash(tree-sitter parse:*)",
+      "Bash(timeout 5 cargo test:*)",
+      "Bash(timeout 10 cargo test --lib cli_semantic)",
+      "Bash(timeout 10 cargo test --lib cli_codesearch)",
+      "Bash(timeout 10 cargo test --lib workspace_mod_tests::test_concurrent)",
+      "Bash(timeout 120 cargo test --lib)"
     ],
     "deny": [],
     "ask": []

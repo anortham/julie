@@ -4,7 +4,10 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
 
 /// Calculate the total size of a directory recursively
@@ -26,6 +29,11 @@ fn calculate_dir_size(path: &Path) -> u64 {
     total_size
 }
 
+fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
+    static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+    LOCKS.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace
     pub(crate) async fn handle_index_command(
@@ -37,9 +45,25 @@ impl ManageWorkspaceTool {
         info!("📚 Starting workspace indexing...");
 
         let workspace_path = self.resolve_workspace_path(path)?;
+        let canonical_path = workspace_path
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_path.clone());
+
+        let index_lock = {
+            let mut locks = indexing_lock_cache().lock().unwrap();
+            locks
+                .entry(canonical_path.clone())
+                .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+                .clone()
+        };
+
+        let _index_guard = index_lock.lock().await;
         let force_reindex = force;
 
-        info!("🎯 Resolved workspace path: {}", workspace_path.display());
+        info!(
+            "🎯 Resolved workspace path: {}",
+            canonical_path.display()
+        );
 
         // Clear existing state if force reindexing
         if force_reindex {
@@ -61,7 +85,7 @@ impl ManageWorkspaceTool {
             println!("🐛 [HANDLE_INDEX TRACE 2] About to call initialize_workspace_with_force");
             handler
                 .initialize_workspace_with_force(
-                    Some(workspace_path.to_string_lossy().to_string()),
+                    Some(canonical_path.to_string_lossy().to_string()),
                     force_reindex,
                 )
                 .await?;
@@ -119,7 +143,7 @@ impl ManageWorkspaceTool {
 
         // Perform indexing
         match self
-            .index_workspace_files(handler, &workspace_path, force_reindex)
+            .index_workspace_files(handler, &canonical_path, force_reindex)
             .await
         {
             Ok((symbol_count, file_count, relationship_count)) => {
@@ -131,9 +155,6 @@ impl ManageWorkspaceTool {
                     let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
 
                     // Determine canonical path for lookup/registration
-                    let canonical_path = workspace_path
-                        .canonicalize()
-                        .unwrap_or_else(|_| workspace_path.clone());
                     let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
                     // Prefer existing registry entry to avoid redundant registration
