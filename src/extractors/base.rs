@@ -81,6 +81,87 @@ pub struct Symbol {
     pub code_context: Option<String>,
 }
 
+/// An identifier (reference/usage) extracted from source code
+///
+/// Unlike Symbols (definitions), Identifiers represent usage sites like function calls,
+/// variable references, type usages, etc. They are extracted unresolved (target_symbol_id is None)
+/// and resolved on-demand during queries for optimal incremental update performance.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Identifier {
+    /// Unique identifier for this reference (MD5 hash)
+    pub id: String,
+    /// Identifier name as it appears in code
+    pub name: String,
+    /// Kind of identifier (call, variable_ref, type_usage, member_access)
+    pub kind: IdentifierKind,
+    /// Programming language this identifier is from
+    pub language: String,
+    /// File path where this identifier appears
+    pub file_path: String,
+    /// Start line number (1-based)
+    pub start_line: u32,
+    /// Start column number (0-based)
+    pub start_column: u32,
+    /// End line number (1-based)
+    pub end_line: u32,
+    /// End column number (0-based)
+    pub end_column: u32,
+    /// Start byte offset in file
+    pub start_byte: u32,
+    /// End byte offset in file
+    pub end_byte: u32,
+    /// ID of the symbol that contains this identifier (e.g., which function uses this variable)
+    pub containing_symbol_id: Option<String>,
+    /// ID of the symbol this identifier refers to (None until resolved on-demand)
+    pub target_symbol_id: Option<String>,
+    /// Confidence score for identifier extraction (0.0 to 1.0)
+    pub confidence: f32,
+    /// Code context around the identifier
+    pub code_context: Option<String>,
+}
+
+/// Identifier kinds - types of references/usages in code
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentifierKind {
+    /// Function/method call
+    Call,
+    /// Variable reference (reading a variable)
+    VariableRef,
+    /// Type usage (in type annotations, casts, etc.)
+    TypeUsage,
+    /// Member access (object.property, object.method)
+    MemberAccess,
+    /// Import/use statement
+    Import,
+}
+
+impl std::fmt::Display for IdentifierKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdentifierKind::Call => write!(f, "call"),
+            IdentifierKind::VariableRef => write!(f, "variable_ref"),
+            IdentifierKind::TypeUsage => write!(f, "type_usage"),
+            IdentifierKind::MemberAccess => write!(f, "member_access"),
+            IdentifierKind::Import => write!(f, "import"),
+        }
+    }
+}
+
+impl IdentifierKind {
+    /// Convert from string representation (for database deserialization)
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "call" => IdentifierKind::Call,
+            "variable_ref" => IdentifierKind::VariableRef,
+            "type_usage" => IdentifierKind::TypeUsage,
+            "member_access" => IdentifierKind::MemberAccess,
+            "import" => IdentifierKind::Import,
+            _ => IdentifierKind::VariableRef, // Default fallback
+        }
+    }
+}
+
 /// Symbol kinds - direct port of Miller's SymbolKind enum
 ///
 /// CRITICAL: Order and values must match Miller exactly for test compatibility
@@ -322,6 +403,7 @@ pub struct BaseExtractor {
     pub symbol_map: HashMap<String, Symbol>,
     pub relationships: Vec<Relationship>,
     pub type_info: HashMap<String, TypeInfo>,
+    pub identifiers: Vec<Identifier>, // NEW: Reference extraction for LSP-quality tools
     pub context_config: ContextConfig,
 }
 
@@ -355,6 +437,7 @@ impl BaseExtractor {
             symbol_map: HashMap::new(),
             relationships: Vec::new(),
             type_info: HashMap::new(),
+            identifiers: Vec::new(), // NEW: Initialize empty identifier list
             context_config: ContextConfig::default(),
         }
     }
@@ -512,6 +595,49 @@ impl BaseExtractor {
 
         self.symbol_map.insert(id, symbol.clone());
         symbol
+    }
+
+    /// Create an identifier (reference/usage) - NEW for LSP-quality reference tracking
+    ///
+    /// Unlike symbols (definitions), identifiers represent usage sites.
+    /// They are stored unresolved (target_symbol_id = None) and resolved on-demand
+    /// during queries for optimal incremental update performance.
+    pub fn create_identifier(
+        &mut self,
+        node: &Node,
+        name: String,
+        kind: IdentifierKind,
+        containing_symbol_id: Option<String>,
+    ) -> Identifier {
+        let start_pos = node.start_position();
+        let end_pos = node.end_position();
+
+        // Generate unique ID for this identifier
+        let id = self.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+
+        // Extract code context around the identifier (lighter context for identifiers)
+        let code_context = self.extract_code_context(start_pos.row, end_pos.row);
+
+        let identifier = Identifier {
+            id,
+            name,
+            kind,
+            language: self.language.clone(),
+            file_path: self.file_path.clone(),
+            start_line: (start_pos.row + 1) as u32, // 1-based line numbers
+            start_column: start_pos.column as u32,  // 0-based column numbers
+            end_line: (end_pos.row + 1) as u32,
+            end_column: end_pos.column as u32,
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+            containing_symbol_id,
+            target_symbol_id: None, // Unresolved - will be resolved on-demand in C#
+            confidence: 1.0,        // Default high confidence for tree-sitter extractions
+            code_context,
+        };
+
+        self.identifiers.push(identifier.clone());
+        identifier
     }
 
     /// Create a relationship - exact port of Miller's createRelationship
@@ -747,6 +873,7 @@ impl BaseExtractor {
         self.symbol_map.clear();
         self.relationships.clear();
         self.type_info.clear();
+        self.identifiers.clear(); // NEW: Clear identifiers too
     }
 
     /// Traverse tree with error handling - exact port of Miller's traverseTree
@@ -828,6 +955,7 @@ impl BaseExtractor {
             symbols: self.symbol_map.values().cloned().collect(),
             relationships: self.relationships.clone(),
             types: self.type_info.clone(),
+            identifiers: self.identifiers.clone(), // NEW: Include identifiers in results
         }
     }
 }
@@ -849,6 +977,7 @@ pub struct ExtractionResults {
     pub symbols: Vec<Symbol>,
     pub relationships: Vec<Relationship>,
     pub types: HashMap<String, TypeInfo>,
+    pub identifiers: Vec<Identifier>, // NEW: Include identifiers for LSP-quality tools
 }
 
 #[cfg(test)]

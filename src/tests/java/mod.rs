@@ -7,6 +7,7 @@
 
 pub mod class_tests;
 pub mod package_import_tests;
+pub mod identifier_extraction;
 // TODO: Add more modules as they are extracted from the large java_tests.rs file
 // pub mod interface_tests;
 // pub mod method_tests;

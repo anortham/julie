@@ -373,3 +373,265 @@ mod typescript_extractor_tests {
         assert_eq!(test_fn.end_line, 1); // Function name spans only one line
     }
 }
+
+// ========================================================================
+// Identifier Extraction Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate the extract_identifiers() functionality which extracts:
+// - Function calls (call_expression)
+// - Member access (property_access_expression)
+// - Proper containing symbol tracking (file-scoped)
+//
+// Following the Rust extractor reference implementation pattern
+
+#[cfg(test)]
+mod identifier_extraction {
+    use super::*;
+    use crate::extractors::base::IdentifierKind;
+
+    #[test]
+    fn test_extract_function_calls() {
+        let code = r#"
+function add(a, b) {
+    return a + b;
+}
+
+function calculate() {
+    const result = add(5, 3);      // Function call to add
+    console.log(result);            // Function call to log
+    return result;
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "test.js".to_string(),
+            code.to_string(),
+        );
+
+        // Extract symbols first
+        let symbols = extractor.extract_symbols(&tree);
+
+        // NOW extract identifiers (this will FAIL until we implement it)
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found the function calls
+        let add_call = identifiers.iter().find(|id| id.name == "add");
+        assert!(
+            add_call.is_some(),
+            "Should extract 'add' function call identifier"
+        );
+        let add_call = add_call.unwrap();
+        assert_eq!(add_call.kind, IdentifierKind::Call);
+
+        let log_call = identifiers.iter().find(|id| id.name == "log");
+        assert!(
+            log_call.is_some(),
+            "Should extract 'log' function call identifier"
+        );
+        let log_call = log_call.unwrap();
+        assert_eq!(log_call.kind, IdentifierKind::Call);
+
+        // Verify containing symbol is set correctly (should be inside calculate method)
+        assert!(
+            add_call.containing_symbol_id.is_some(),
+            "Function call should have containing symbol"
+        );
+
+        // Find the calculate method symbol
+        let calculate_method = symbols.iter().find(|s| s.name == "calculate").unwrap();
+
+        // Verify the add call is contained within calculate method
+        assert_eq!(
+            add_call.containing_symbol_id.as_ref(),
+            Some(&calculate_method.id),
+            "add call should be contained within calculate method"
+        );
+    }
+
+    #[test]
+    fn test_extract_member_access() {
+        let code = r#"
+class User {
+    constructor(name, email) {
+        this.name = name;
+        this.email = email;
+    }
+
+    printInfo() {
+        console.log(this.name);   // Member access: this.name
+        const email = this.email;  // Member access: this.email
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "test.js".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found member access identifiers
+        let name_access = identifiers
+            .iter()
+            .filter(|id| id.name == "name" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            name_access > 0,
+            "Should extract 'name' member access identifier"
+        );
+
+        let email_access = identifiers
+            .iter()
+            .filter(|id| id.name == "email" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            email_access > 0,
+            "Should extract 'email' member access identifier"
+        );
+    }
+
+    #[test]
+    fn test_file_scoped_containing_symbol() {
+        // This test ensures we ONLY match symbols from the SAME FILE
+        // Critical bug fix from Rust implementation
+        let code = r#"
+class Service {
+    process() {
+        this.helper();              // Call to helper in same file
+    }
+
+    helper() {
+        // Helper method
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "test.js".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Find the helper call
+        let helper_call = identifiers.iter().find(|id| id.name == "helper");
+        assert!(helper_call.is_some());
+        let helper_call = helper_call.unwrap();
+
+        // Verify it has a containing symbol (the process method)
+        assert!(
+            helper_call.containing_symbol_id.is_some(),
+            "helper call should have containing symbol from same file"
+        );
+
+        // Verify the containing symbol is the process method
+        let process_method = symbols.iter().find(|s| s.name == "process").unwrap();
+        assert_eq!(
+            helper_call.containing_symbol_id.as_ref(),
+            Some(&process_method.id),
+            "helper call should be contained within process method"
+        );
+    }
+
+    #[test]
+    fn test_chained_member_access() {
+        let code = r#"
+class DataService {
+    execute() {
+        const result = user.account.balance;   // Chained member access
+        const name = customer.profile.name;     // Chained member access
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "test.js".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract the rightmost identifiers in chains
+        let balance_access = identifiers
+            .iter()
+            .find(|id| id.name == "balance" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            balance_access.is_some(),
+            "Should extract 'balance' from chained member access"
+        );
+
+        let name_access = identifiers
+            .iter()
+            .find(|id| id.name == "name" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            name_access.is_some(),
+            "Should extract 'name' from chained member access"
+        );
+    }
+
+    #[test]
+    fn test_no_duplicate_identifiers() {
+        let code = r#"
+class Test {
+    run() {
+        process();
+        process();  // Same call twice
+    }
+
+    process() {
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "test.js".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract BOTH calls (they're at different locations)
+        let process_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.name == "process" && id.kind == IdentifierKind::Call)
+            .collect();
+
+        assert_eq!(
+            process_calls.len(),
+            2,
+            "Should extract both process calls at different locations"
+        );
+
+        // Verify they have different line numbers
+        assert_ne!(
+            process_calls[0].start_line, process_calls[1].start_line,
+            "Duplicate calls should have different line numbers"
+        );
+    }
+}

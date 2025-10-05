@@ -44,6 +44,7 @@ pub(crate) fn get_csharp_visibility(symbol: &Symbol) -> String {
 }
 
 pub mod core;
+pub mod identifier_extraction;
 pub mod language_features;
 pub mod metadata;
 pub mod runtime;
