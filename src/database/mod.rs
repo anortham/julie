@@ -337,6 +337,7 @@ impl SymbolDatabase {
         self.create_workspaces_table()?;
         self.create_files_table()?;
         self.create_symbols_table()?;
+        self.create_identifiers_table()?;  // Reference tracking
         self.create_relationships_table()?;
         self.create_embeddings_table()?;
 
@@ -542,6 +543,74 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created symbols table and indexes");
+        Ok(())
+    }
+
+    /// Create the identifiers table for reference tracking
+    fn create_identifiers_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS identifiers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL,  -- call, variable_ref, type_usage, member_access
+                language TEXT NOT NULL,
+
+                -- Location
+                file_path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+                start_line INTEGER NOT NULL,
+                start_col INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                end_col INTEGER NOT NULL,
+                start_byte INTEGER,
+                end_byte INTEGER,
+
+                -- Semantic links (target_symbol_id is NULL until resolved on-demand)
+                containing_symbol_id TEXT REFERENCES symbols(id) ON DELETE CASCADE,
+                target_symbol_id TEXT REFERENCES symbols(id) ON DELETE SET NULL,
+                confidence REAL DEFAULT 1.0,
+
+                -- Context
+                code_context TEXT,
+
+                -- Infrastructure
+                workspace_id TEXT NOT NULL DEFAULT 'primary',
+                last_indexed INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        // Essential indexes for fast queries
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_name ON identifiers(name)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_file ON identifiers(file_path)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_containing ON identifiers(containing_symbol_id)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_target ON identifiers(target_symbol_id)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_workspace ON identifiers(workspace_id)",
+            [],
+        )?;
+
+        debug!("Created identifiers table and indexes");
         Ok(())
     }
 
@@ -1301,6 +1370,159 @@ impl SymbolDatabase {
         )?;
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Bulk store identifiers (references/usages) for LSP-quality reference tracking
+    ///
+    /// NEW: This is the write path for identifier extraction. Identifiers are stored
+    /// unresolved (target_symbol_id = NULL) and resolved on-demand during queries.
+    ///
+    /// Performance optimized like bulk_store_symbols: drop indexes, batch insert, rebuild indexes.
+    pub fn bulk_store_identifiers(&mut self, identifiers: &[crate::extractors::Identifier], workspace_id: &str) -> Result<()> {
+        if identifiers.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting bulk insert of {} identifiers with workspace_id: {}",
+            identifiers.len(),
+            workspace_id
+        );
+
+        // STEP 1: Drop all indexes for maximum insert speed
+        debug!("🗑️ Dropping identifier indexes for bulk insert optimization");
+        self.drop_identifier_indexes()?;
+
+        // STEP 2: Optimize SQLite for bulk operations
+        self.conn.execute("PRAGMA synchronous = OFF", [])?;
+        self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?;
+        self.conn.execute("PRAGMA cache_size = 20000", [])?;
+
+        // STEP 3: Start transaction for atomic bulk insert
+        let tx = self.conn.transaction()?;
+
+        // STEP 4: Prepare statement once, use many times
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO identifiers
+             (id, name, kind, language, file_path, start_line, start_col,
+              end_line, end_col, start_byte, end_byte, containing_symbol_id,
+              target_symbol_id, confidence, code_context, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        )?;
+
+        // STEP 5: Batch insert for optimal performance
+        const BATCH_SIZE: usize = 1000;
+        let mut processed = 0;
+
+        for chunk in identifiers.chunks(BATCH_SIZE) {
+            for identifier in chunk {
+                stmt.execute(params![
+                    identifier.id,
+                    identifier.name,
+                    identifier.kind.to_string(),
+                    identifier.language,
+                    identifier.file_path,
+                    identifier.start_line,
+                    identifier.start_column,
+                    identifier.end_line,
+                    identifier.end_column,
+                    identifier.start_byte,
+                    identifier.end_byte,
+                    identifier.containing_symbol_id,
+                    identifier.target_symbol_id, // NULL until resolved on-demand
+                    identifier.confidence,
+                    identifier.code_context,
+                    workspace_id
+                ])?;
+
+                processed += 1;
+            }
+
+            // Progress logging for large bulk operations
+            if processed % 5000 == 0 {
+                debug!(
+                    "📊 Bulk insert progress: {}/{} identifiers",
+                    processed,
+                    identifiers.len()
+                );
+            }
+        }
+
+        // STEP 6: Drop statement and commit transaction
+        drop(stmt);
+        tx.commit()?;
+
+        // STEP 7: Restore safe SQLite settings
+        self.conn.execute("PRAGMA synchronous = NORMAL", [])?;
+        self.conn.execute_batch("PRAGMA journal_mode = WAL")?;
+
+        // STEP 8: Rebuild all indexes
+        debug!("🏗️ Rebuilding identifier indexes after bulk insert");
+        self.create_identifier_indexes()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Bulk identifier insert complete! {} identifiers in {:.2}ms ({:.0} identifiers/sec)",
+            identifiers.len(),
+            duration.as_millis(),
+            identifiers.len() as f64 / duration.as_secs_f64()
+        );
+
+        Ok(())
+    }
+
+    /// Drop all identifier table indexes for bulk operations
+    fn drop_identifier_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_identifiers_name",
+            "idx_identifiers_file",
+            "idx_identifiers_containing",
+            "idx_identifiers_target",
+            "idx_identifiers_kind",
+            "idx_identifiers_workspace",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create all identifier table indexes after bulk operations
+    fn create_identifier_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_name ON identifiers(name)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_file ON identifiers(file_path)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_containing ON identifiers(containing_symbol_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_target ON identifiers(target_symbol_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_workspace ON identifiers(workspace_id)",
             [],
         )?;
 

@@ -39,7 +39,7 @@ pub mod vue;
 pub mod zig; // Zig extractor - FIXING metadata access patterns
 
 // Re-export the base extractor types
-pub use base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+pub use base::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// Manager for all language extractors
 #[allow(dead_code)] // TODO: Implement centralized extractor management
