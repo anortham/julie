@@ -26,6 +26,7 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 pub mod classes;
 pub mod functions;
+pub mod identifier_extraction;
 pub mod modern;
 pub mod patterns;
 pub mod resources;

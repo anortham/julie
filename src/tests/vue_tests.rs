@@ -300,3 +300,248 @@ export default {
         assert!(relationships.len() == 0);
     }
 }
+
+// ========================================================================
+// Vue Identifier Extraction Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate extract_identifiers() functionality for Vue SFCs
+// - Function calls within <script> section
+// - Member access within <script> section
+// - Proper containing symbol tracking
+//
+// Vue-specific approach: Parse <script> section with JavaScript tree-sitter
+
+#[cfg(test)]
+mod vue_identifier_extraction_tests {
+    use crate::extractors::base::IdentifierKind;
+    use crate::extractors::vue::VueExtractor;
+
+    #[test]
+    fn test_vue_function_calls() {
+        let vue_code = r#"
+<template>
+  <div>{{ message }}</div>
+</template>
+
+<script>
+export default {
+  data() {
+    return { message: 'Hello' }
+  },
+  methods: {
+    greet() {
+      console.log(this.message);    // Function call: console.log
+      this.updateMessage('Hi');      // Method call: updateMessage
+    },
+    updateMessage(msg) {
+      this.message = msg;
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "test.vue".to_string(),
+            vue_code.to_string(),
+        );
+
+        // Extract symbols first
+        let symbols = extractor.extract_symbols(None);
+
+        // Extract identifiers from script section
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        // Verify function calls are extracted
+        let log_call = identifiers.iter().find(|id| id.name == "log");
+        assert!(
+            log_call.is_some(),
+            "Should extract 'log' function call from script section"
+        );
+        assert_eq!(log_call.unwrap().kind, IdentifierKind::Call);
+
+        let update_call = identifiers.iter().find(|id| id.name == "updateMessage");
+        assert!(
+            update_call.is_some(),
+            "Should extract 'updateMessage' method call"
+        );
+        assert_eq!(update_call.unwrap().kind, IdentifierKind::Call);
+    }
+
+    #[test]
+    fn test_vue_member_access() {
+        let vue_code = r#"
+<script>
+export default {
+  data() {
+    return {
+      user: { name: 'Alice', email: 'alice@example.com' }
+    }
+  },
+  methods: {
+    printUserInfo() {
+      let userName = this.user.name;      // Member access: name
+      let userEmail = this.user.email;    // Member access: email
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "test.vue".to_string(),
+            vue_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(None);
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        // Verify member access is extracted
+        let name_access = identifiers
+            .iter()
+            .filter(|id| id.name == "name" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            name_access > 0,
+            "Should extract 'name' member access from script section"
+        );
+
+        let email_access = identifiers
+            .iter()
+            .filter(|id| id.name == "email" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            email_access > 0,
+            "Should extract 'email' member access from script section"
+        );
+    }
+
+    #[test]
+    fn test_vue_identifiers_have_containing_symbol() {
+        let vue_code = r#"
+<script>
+export default {
+  methods: {
+    calculate() {
+      let result = this.add(5, 3);    // Call within calculate method
+      return result;
+    },
+    add(a, b) {
+      return a + b;
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "test.vue".to_string(),
+            vue_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(None);
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        // Find the add call
+        let add_call = identifiers.iter().find(|id| id.name == "add");
+        assert!(add_call.is_some(), "Should find 'add' method call");
+
+        // Verify it has a containing symbol
+        assert!(
+            add_call.unwrap().containing_symbol_id.is_some(),
+            "Function call should have containing symbol from script section"
+        );
+    }
+
+    #[test]
+    fn test_vue_chained_member_access() {
+        let vue_code = r#"
+<script>
+export default {
+  methods: {
+    getUserData() {
+      let balance = this.user.account.balance;    // Chained access
+      let city = this.user.address.city;          // Chained access
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "test.vue".to_string(),
+            vue_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(None);
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        // Should extract rightmost identifiers in chains
+        let balance_access = identifiers
+            .iter()
+            .find(|id| id.name == "balance" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            balance_access.is_some(),
+            "Should extract 'balance' from chained member access"
+        );
+
+        let city_access = identifiers
+            .iter()
+            .find(|id| id.name == "city" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            city_access.is_some(),
+            "Should extract 'city' from chained member access"
+        );
+    }
+
+    #[test]
+    fn test_vue_duplicate_calls_at_different_locations() {
+        let vue_code = r#"
+<script>
+export default {
+  methods: {
+    process() {
+      this.validate();
+      this.validate();    // Same call twice
+    },
+    validate() {
+      return true;
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "test.vue".to_string(),
+            vue_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(None);
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        // Should extract BOTH calls at different locations
+        let validate_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.name == "validate" && id.kind == IdentifierKind::Call)
+            .collect();
+
+        assert_eq!(
+            validate_calls.len(),
+            2,
+            "Should extract both validate calls at different locations"
+        );
+
+        // Verify different line numbers
+        assert_ne!(
+            validate_calls[0].start_line, validate_calls[1].start_line,
+            "Duplicate calls should have different line numbers"
+        );
+    }
+}

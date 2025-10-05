@@ -1120,3 +1120,246 @@ const Container(comptime T: type) = struct {
             .contains("[]const BaseShape"));
     }
 }
+
+// ========================================================================
+// Zig Identifier Extraction Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate the extract_identifiers() functionality which extracts:
+// - Function calls (call_expression)
+// - Member access (field_expression)
+// - Proper containing symbol tracking (file-scoped)
+//
+// Following the proven 4-method pattern from Rust and C# implementations
+
+#[cfg(test)]
+mod zig_identifier_extraction_tests {
+    use crate::extractors::base::IdentifierKind;
+    use crate::extractors::zig::ZigExtractor;
+    use crate::tests::test_utils::init_parser;
+
+    #[test]
+    fn test_zig_function_calls() {
+        let zig_code = r#"
+const std = @import("std");
+
+fn calculate() i32 {
+    return 42;
+}
+
+fn processData() void {
+    const result = calculate();      // Function call to calculate
+    std.debug.print("{}", .{result}); // Builtin call to print
+}
+"#;
+
+        let tree = init_parser(zig_code, "zig");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            zig_code.to_string(),
+        );
+
+        // Extract symbols first
+        let symbols = extractor.extract_symbols(&tree);
+
+        // NOW extract identifiers (this will FAIL until we implement it)
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found the function calls
+        let calculate_call = identifiers.iter().find(|id| id.name == "calculate");
+        assert!(
+            calculate_call.is_some(),
+            "Should extract 'calculate' function call identifier"
+        );
+        let calculate_call = calculate_call.unwrap();
+        assert_eq!(calculate_call.kind, IdentifierKind::Call);
+
+        // Verify containing symbol is set correctly (should be inside processData function)
+        assert!(
+            calculate_call.containing_symbol_id.is_some(),
+            "Function call should have containing symbol"
+        );
+
+        // Find the processData function symbol
+        let process_data_fn = symbols.iter().find(|s| s.name == "processData").unwrap();
+
+        // Verify the calculate call is contained within processData function
+        assert_eq!(
+            calculate_call.containing_symbol_id.as_ref(),
+            Some(&process_data_fn.id),
+            "calculate call should be contained within processData function"
+        );
+    }
+
+    #[test]
+    fn test_zig_member_access() {
+        let zig_code = r#"
+const Point = struct {
+    x: f32,
+    y: f32,
+};
+
+fn getX(point: Point) f32 {
+    return point.x;  // Member access: point.x
+}
+
+fn getY(point: Point) f32 {
+    const val = point.y;  // Member access: point.y
+    return val;
+}
+"#;
+
+        let tree = init_parser(zig_code, "zig");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            zig_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Verify we found member access identifiers
+        let x_access = identifiers
+            .iter()
+            .filter(|id| id.name == "x" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            x_access > 0,
+            "Should extract 'x' member access identifier"
+        );
+
+        let y_access = identifiers
+            .iter()
+            .filter(|id| id.name == "y" && id.kind == IdentifierKind::MemberAccess)
+            .count();
+        assert!(
+            y_access > 0,
+            "Should extract 'y' member access identifier"
+        );
+    }
+
+    #[test]
+    fn test_zig_identifiers_have_containing_symbol() {
+        // This test ensures we ONLY match symbols from the SAME FILE
+        // Critical bug fix from Rust implementation
+        let zig_code = r#"
+fn helper() void {
+    // Helper function
+}
+
+fn process() void {
+    helper();  // Call to helper in same file
+}
+"#;
+
+        let tree = init_parser(zig_code, "zig");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            zig_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Find the helper call
+        let helper_call = identifiers.iter().find(|id| id.name == "helper");
+        assert!(helper_call.is_some());
+        let helper_call = helper_call.unwrap();
+
+        // Verify it has a containing symbol (the process function)
+        assert!(
+            helper_call.containing_symbol_id.is_some(),
+            "helper call should have containing symbol from same file"
+        );
+
+        // Verify the containing symbol is the process function
+        let process_fn = symbols.iter().find(|s| s.name == "process").unwrap();
+        assert_eq!(
+            helper_call.containing_symbol_id.as_ref(),
+            Some(&process_fn.id),
+            "helper call should be contained within process function"
+        );
+    }
+
+    #[test]
+    fn test_zig_chained_member_access() {
+        let zig_code = r#"
+const User = struct {
+    account: Account,
+};
+
+const Account = struct {
+    balance: i32,
+};
+
+fn getBalance(user: User) i32 {
+    const bal = user.account.balance;  // Chained member access
+    return bal;
+}
+"#;
+
+        let tree = init_parser(zig_code, "zig");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            zig_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract the rightmost identifier in the chain
+        let balance_access = identifiers
+            .iter()
+            .find(|id| id.name == "balance" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            balance_access.is_some(),
+            "Should extract 'balance' from chained member access"
+        );
+    }
+
+    #[test]
+    fn test_zig_duplicate_calls_at_different_locations() {
+        let zig_code = r#"
+fn process() void {
+    // Process implementation
+}
+
+fn run() void {
+    process();
+    process();  // Same call twice
+}
+"#;
+
+        let tree = init_parser(zig_code, "zig");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            zig_code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Should extract BOTH calls (they're at different locations)
+        let process_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.name == "process" && id.kind == IdentifierKind::Call)
+            .collect();
+
+        assert_eq!(
+            process_calls.len(),
+            2,
+            "Should extract both process calls at different locations"
+        );
+
+        // Verify they have different line numbers
+        assert_ne!(
+            process_calls[0].start_line, process_calls[1].start_line,
+            "Duplicate calls should have different line numbers"
+        );
+    }
+}

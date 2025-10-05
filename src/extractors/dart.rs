@@ -7,7 +7,7 @@
 // Test parity: All Miller test cases must pass
 
 use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1473,5 +1473,118 @@ impl DartExtractor {
         for child in node.children(&mut cursor) {
             self.traverse_tree(child, callback);
         }
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (function calls, member access, etc.)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    fn extract_identifier_from_node(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        match node.kind() {
+            // In Dart, both function calls and member access use "member_access" nodes
+            // The difference is whether the selector contains an argument_part (function call)
+            // or just accesses a field (member access)
+            "member_access" => {
+                // Find the identifier (function or field name)
+                if let Some(id_node) = self.find_child_by_type(&node, "identifier") {
+                    let name = self.base.get_node_text(&id_node);
+
+                    // Check if the selector has an argument_part (indicates function call)
+                    let is_call = if let Some(selector_node) = self.find_child_by_type(&node, "selector") {
+                        self.find_child_by_type(&selector_node, "argument_part").is_some()
+                    } else {
+                        false
+                    };
+
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                    let kind = if is_call {
+                        IdentifierKind::Call
+                    } else {
+                        IdentifierKind::MemberAccess
+                    };
+
+                    self.base.create_identifier(
+                        &id_node,
+                        name,
+                        kind,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            // Unconditional assignable selector (also used for member access)
+            "unconditional_assignable_selector" => {
+                // Extract the identifier from the selector
+                if let Some(id_node) = self.find_child_by_type(&node, "identifier") {
+                    let name = self.base.get_node_text(&id_node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &id_node,
+                        name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }

@@ -15,6 +15,7 @@ pub fn init_parser() -> Parser {
 pub mod control_flow;
 pub mod core;
 pub mod coroutines;
+pub mod identifier_extraction;
 pub mod metatables;
 pub mod modules;
 pub mod strings;

@@ -571,12 +571,63 @@ impl ExtractorManager {
             }
 
             // ========================================================================
+            // Batch 3: Implemented languages (extract_identifiers available)
+            // ========================================================================
+            "lua" => {
+                let mut extractor = crate::extractors::lua::LuaExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "gdscript" => {
+                let mut extractor = crate::extractors::gdscript::GDScriptExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "vue" => {
+                let mut extractor = crate::extractors::vue::VueExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                // Vue parses internally (extracts <script> section first)
+                Ok(extractor.extract_identifiers(symbols))
+            }
+            "razor" => {
+                let mut extractor = crate::extractors::razor::RazorExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "zig" => {
+                let mut extractor = crate::extractors::zig::ZigExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "dart" => {
+                let mut extractor = crate::extractors::dart::DartExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+
+            // ========================================================================
             // Remaining languages: Not yet implemented (return empty for now)
             // TODO: Implement extract_identifiers() for these languages
             // ========================================================================
-            "dart" | "gdscript" | "lua"
-            | "vue" | "razor" | "sql" | "html" | "css" | "powershell"
-            | "zig" | "regex" => {
+            "sql" | "html" | "css" | "powershell" | "regex" => {
                 tracing::debug!(
                     "Identifier extraction not yet implemented for language: {} (file: {})",
                     language,

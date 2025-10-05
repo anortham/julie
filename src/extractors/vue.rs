@@ -1,10 +1,12 @@
 use crate::extractors::base::{
-    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind, SymbolOptions,
+    Visibility,
 };
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use tree_sitter::{Node, Parser};
 
 // Static regex patterns compiled once for performance
 static TEMPLATE_START_RE: LazyLock<Regex> =
@@ -529,6 +531,238 @@ impl VueExtractor {
         }
 
         Some("VueComponent".to_string())
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (function calls, member access, etc.)
+    /// Vue-specific: Parses <script> section with JavaScript tree-sitter
+    pub fn extract_identifiers(&mut self, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Parse Vue SFC to extract script section
+        if let Ok(sections) = self.parse_vue_sfc(&self.base.content.clone()) {
+            for section in &sections {
+                if section.section_type == "script" {
+                    // Parse script section with JavaScript tree-sitter
+                    if let Some(tree) = self.parse_script_section(section) {
+                        // CRITICAL: We need to use the script content, not the full Vue SFC content
+                        // Walk the JavaScript tree and extract identifiers
+                        self.walk_tree_for_identifiers_with_content(
+                            tree.root_node(),
+                            &symbol_map,
+                            &section.content,
+                            section.start_line,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Parse script section with JavaScript tree-sitter parser
+    fn parse_script_section(&self, section: &VueSection) -> Option<tree_sitter::Tree> {
+        let mut parser = Parser::new();
+
+        // Determine language based on lang attribute
+        let lang = section.lang.as_deref().unwrap_or("js");
+
+        // Use JavaScript/TypeScript tree-sitter parser
+        let tree_sitter_lang = if lang == "ts" || lang == "typescript" {
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+        } else {
+            tree_sitter_javascript::LANGUAGE.into()
+        };
+
+        parser.set_language(&tree_sitter_lang).ok()?;
+        parser.parse(&section.content, None)
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    /// With script content and line offset for correct text extraction
+    fn walk_tree_for_identifiers_with_content(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+        script_content: &str,
+        start_line_offset: usize,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node_with_content(node, symbol_map, script_content, start_line_offset);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers_with_content(child, symbol_map, script_content, start_line_offset);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    /// Uses JavaScript tree-sitter node types: call_expression, member_expression
+    /// With script content for correct text extraction
+    fn extract_identifier_from_node_with_content(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+        script_content: &str,
+        start_line_offset: usize,
+    ) {
+        match node.kind() {
+            // Function/method calls: foo(), bar.baz()
+            "call_expression" => {
+                // The function being called is in the "function" field
+                if let Some(function_node) = node.child_by_field_name("function") {
+                    match function_node.kind() {
+                        "identifier" => {
+                            // Simple function call: foo()
+                            let name = self.get_node_text_from_content(&function_node, script_content);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
+
+                            self.create_identifier_with_offset(
+                                &function_node,
+                                name,
+                                IdentifierKind::Call,
+                                containing_symbol_id,
+                                start_line_offset,
+                            );
+                        }
+                        "member_expression" => {
+                            // Method call: obj.method()
+                            // Extract the rightmost identifier (the method name)
+                            if let Some(property_node) = function_node.child_by_field_name("property")
+                            {
+                                let name = self.get_node_text_from_content(&property_node, script_content);
+                                let containing_symbol_id =
+                                    self.find_containing_symbol_id(node, symbol_map);
+
+                                self.create_identifier_with_offset(
+                                    &property_node,
+                                    name,
+                                    IdentifierKind::Call,
+                                    containing_symbol_id,
+                                    start_line_offset,
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Member access: object.field
+            "member_expression" => {
+                // Only extract if it's NOT part of a call_expression
+                // (we handle those in the call_expression case above)
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "call_expression" {
+                        return; // Skip - handled by call_expression
+                    }
+                }
+
+                // Extract the rightmost identifier (the property name)
+                if let Some(property_node) = node.child_by_field_name("property") {
+                    let name = self.get_node_text_from_content(&property_node, script_content);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.create_identifier_with_offset(
+                        &property_node,
+                        name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                        start_line_offset,
+                    );
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+            }
+        }
+    }
+
+    /// Get node text from script content (not full Vue SFC)
+    fn get_node_text_from_content(&self, node: &Node, content: &str) -> String {
+        let start_byte = node.start_byte();
+        let end_byte = node.end_byte();
+        content[start_byte..end_byte].to_string()
+    }
+
+    /// Create identifier with line offset adjustment
+    /// Uses content swap to correctly extract from script section
+    fn create_identifier_with_offset(
+        &mut self,
+        node: &Node,
+        name: String,
+        kind: IdentifierKind,
+        containing_symbol_id: Option<String>,
+        line_offset: usize,
+    ) {
+        // Temporarily swap the base content with script content
+        // This allows create_identifier to extract text correctly using script-relative byte positions
+        let original_content = std::mem::replace(&mut self.base.content, String::new());
+
+        // Get script content from the original content
+        if let Ok(sections) = self.parse_vue_sfc(&original_content) {
+            for section in &sections {
+                if section.section_type == "script" {
+                    // Set base.content to script content temporarily
+                    self.base.content = section.content.clone();
+
+                    // Create identifier with script content
+                    let mut identifier = self.base.create_identifier(
+                        node,
+                        name,
+                        kind,
+                        containing_symbol_id,
+                    );
+
+                    // Adjust line numbers for the script section offset
+                    identifier.start_line += line_offset as u32;
+                    identifier.end_line += line_offset as u32;
+
+                    // Restore original content
+                    self.base.content = original_content;
+
+                    // Replace the last identifier (which was just added by create_identifier)
+                    if let Some(last) = self.base.identifiers.last_mut() {
+                        *last = identifier;
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        // Restore original content if we didn't find script section
+        self.base.content = original_content;
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }
 
