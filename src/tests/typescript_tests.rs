@@ -368,9 +368,13 @@ mod typescript_extractor_tests {
         let test_function = symbols.iter().find(|s| s.name == "test");
         assert!(test_function.is_some());
         let test_fn = test_function.unwrap();
+
+        // CRITICAL: Function symbol must span entire body for containment logic
+        // (identifiers inside function must find function as containing symbol)
         assert_eq!(test_fn.start_line, 1);
-        assert_eq!(test_fn.start_column, 9);
-        assert_eq!(test_fn.end_line, 1); // Function name spans only one line
+        assert_eq!(test_fn.start_column, 0); // Start of "function" keyword
+        assert_eq!(test_fn.end_line, 3); // Closing brace line
+        assert_eq!(test_fn.end_column, 1); // After closing brace
     }
 }
 

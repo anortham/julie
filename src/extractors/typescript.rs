@@ -150,9 +150,15 @@ impl TypeScriptExtractor {
         );
 
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(
-            &node,  // Use the whole function node for correct start/end positions
-            name,
+
+        // CRITICAL FIX: Symbol must span entire function body for containment logic,
+        // but ID should be generated from function name position (not body start).
+        // Previous bug: adjust_symbol_span() overrode span to just the name, breaking containment.
+
+        // First create symbol with full function body span
+        let mut symbol = self.base.create_symbol(
+            &node,
+            name.clone(),
             SymbolKind::Function,
             SymbolOptions {
                 signature: Some(signature),
@@ -161,7 +167,36 @@ impl TypeScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment: None,
             },
-        )
+        );
+
+        // Then regenerate ID using function name position (not body start)
+        // This keeps the full body span but uses name position for ID consistency
+        if let Some(name_node) = node.child_by_field_name("name") {
+            let start_pos = name_node.start_position();
+            let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+
+            // Update ID in symbol and symbol_map
+            let old_id = symbol.id.clone();
+            symbol.id = new_id.clone();
+            self.base.symbol_map.remove(&old_id);
+            self.base.symbol_map.insert(new_id, symbol.clone());
+        } else if node.kind() == "arrow_function" {
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "variable_declarator" {
+                    if let Some(var_name_node) = parent.child_by_field_name("name") {
+                        let start_pos = var_name_node.start_position();
+                        let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+
+                        let old_id = symbol.id.clone();
+                        symbol.id = new_id.clone();
+                        self.base.symbol_map.remove(&old_id);
+                        self.base.symbol_map.insert(new_id, symbol.clone());
+                    }
+                }
+            }
+        }
+
+        symbol
     }
 
     // Port of Miller's extractClass method
@@ -267,9 +302,11 @@ impl TypeScriptExtractor {
         let parent_id = self.find_parent_class_id(&node);
 
         use crate::extractors::base::SymbolOptions;
-        self.base.create_symbol(
-            &node,  // Use the whole method node for correct start/end positions
-            name,
+
+        // CRITICAL FIX: Same as extract_function - keep full body span for containment
+        let mut symbol = self.base.create_symbol(
+            &node,
+            name.clone(),
             symbol_kind,
             SymbolOptions {
                 signature: Some(signature),
@@ -278,7 +315,20 @@ impl TypeScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment: None,
             },
-        )
+        );
+
+        // Regenerate ID using method name position (not body start)
+        if let Some(name_node) = node.child_by_field_name("name") {
+            let start_pos = name_node.start_position();
+            let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+
+            let old_id = symbol.id.clone();
+            symbol.id = new_id.clone();
+            self.base.symbol_map.remove(&old_id);
+            self.base.symbol_map.insert(new_id, symbol.clone());
+        }
+
+        symbol
     }
 
     fn extract_variable(&mut self, node: tree_sitter::Node) -> Symbol {
@@ -418,17 +468,62 @@ impl TypeScriptExtractor {
                 // Extract the class name and generate its ID
                 if let Some(class_name_node) = parent_node.child_by_field_name("name") {
                     let class_name = self.base.get_node_text(&class_name_node);
-                    let start_pos = class_name_node.start_position();
-                    return Some(self.base.generate_id(
-                        &class_name,
-                        start_pos.row as u32,
-                        start_pos.column as u32,
-                    ));
+                    let class_start = parent_node.start_position();
+                    let candidates = [
+                        self.base.generate_id(
+                            &class_name,
+                            class_start.row as u32,
+                            class_start.column as u32,
+                        ),
+                        self.base.generate_id(
+                            &class_name,
+                            class_name_node.start_position().row as u32,
+                            class_name_node.start_position().column as u32,
+                        ),
+                    ];
+
+                    for candidate in candidates { 
+                        if self.base.symbol_map.contains_key(&candidate) {
+                            return Some(candidate);
+                        }
+                    }
+
+                    if let Some((id, _symbol)) = self
+                        .base
+                        .symbol_map
+                        .iter()
+                        .find(|(_, symbol)| symbol.name == class_name && symbol.kind == SymbolKind::Class)
+                    {
+                        return Some(id.clone());
+                    }
                 }
             }
             current = parent_node.parent();
         }
         None
+    }
+
+    fn adjust_symbol_span(&mut self, mut symbol: Symbol, span_node: tree_sitter::Node) -> Symbol {
+        let original_id = symbol.id.clone();
+        let start_pos = span_node.start_position();
+        let end_pos = span_node.end_position();
+
+        symbol.start_line = (start_pos.row + 1) as u32;
+        symbol.start_column = start_pos.column as u32;
+        symbol.end_line = (end_pos.row + 1) as u32;
+        symbol.end_column = end_pos.column as u32;
+        symbol.start_byte = span_node.start_byte() as u32;
+        symbol.end_byte = span_node.end_byte() as u32;
+
+        let new_id = self
+            .base
+            .generate_id(&symbol.name, start_pos.row as u32, start_pos.column as u32);
+        symbol.id = new_id.clone();
+
+        self.base.symbol_map.remove(&original_id);
+        self.base.symbol_map.insert(new_id, symbol.clone());
+
+        symbol
     }
 
     // Helper methods (port from Miller)

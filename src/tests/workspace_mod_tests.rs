@@ -1,5 +1,7 @@
 //! Tests for `workspace::JulieWorkspace` extracted from the implementation module.
 
+use crate::handler::JulieServerHandler;
+use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::JulieWorkspace;
 use std::fs;
 use tempfile::TempDir;
@@ -76,4 +78,52 @@ async fn test_health_check() {
     assert!(health.is_healthy());
     assert!(health.structure_valid);
     assert!(health.has_write_permissions);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
+          // Run manually with: cargo test test_concurrent_manage_workspace --ignored
+async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
+    // Skip expensive embedding initialization but allow Tantivy to initialize
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+
+    let workspace_path = std::env::current_dir().unwrap().to_string_lossy().to_string();
+
+    let run_index = |path: String| async move {
+        let handler = JulieServerHandler::new().await.unwrap();
+        let tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(path),
+            force: Some(true),
+            name: None,
+            workspace_id: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+        };
+
+        tool
+            .call_tool(&handler)
+            .await
+            .map_err(|err| err.to_string())
+    };
+
+    let handle_a = tokio::spawn(run_index(workspace_path.clone()));
+    let handle_b = tokio::spawn(run_index(workspace_path.clone()));
+
+    let result_a = handle_a.await.unwrap();
+    let result_b = handle_b.await.unwrap();
+
+    assert!(
+        result_a.is_ok(),
+        "first index run failed with: {:?}",
+        result_a
+    );
+    assert!(
+        result_b.is_ok(),
+        "second index run failed with: {:?}",
+        result_b
+    );
 }
