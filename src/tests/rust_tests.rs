@@ -971,4 +971,260 @@ static mut COUNTER: i32 = 0;
     // - Performance and Edge Cases tests
     // - Type Inference tests
     // - Relationship Extraction tests
+
+    // ========================================================================
+    // Identifier Extraction Tests (TDD - matches C# reference pattern)
+    // ========================================================================
+    //
+    // These tests validate the extract_identifiers() functionality:
+    // - Function calls (call_expression) → IdentifierKind::Call
+    // - Field access (field_expression) → IdentifierKind::MemberAccess
+    // - Proper containing symbol tracking (file-scoped)
+    //
+    // Following the proven pattern from C#, Python, etc.
+
+    mod identifier_extraction_tests {
+        use super::*;
+        use crate::extractors::base::IdentifierKind;
+
+        #[test]
+        fn test_rust_function_calls() {
+            let rust_code = r#"
+struct Calculator;
+
+impl Calculator {
+    fn add(&self, a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    fn calculate(&self) -> i32 {
+        let result = self.add(5, 3);      // Method call to add
+        println!("{}", result);            // Function call to println macro
+        result
+    }
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            // Extract symbols first
+            let symbols = extractor.extract_symbols(&tree);
+
+            // NOW extract identifiers
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Verify we found the function call to 'add'
+            let add_call = identifiers.iter().find(|id| id.name == "add");
+            assert!(
+                add_call.is_some(),
+                "Should extract 'add' method call identifier"
+            );
+            let add_call = add_call.unwrap();
+            assert_eq!(add_call.kind, IdentifierKind::Call);
+
+            // Verify containing symbol is set correctly (should be inside calculate method)
+            assert!(
+                add_call.containing_symbol_id.is_some(),
+                "Method call should have containing symbol"
+            );
+
+            // Find the calculate method symbol
+            let calculate_method = symbols.iter().find(|s| s.name == "calculate").unwrap();
+
+            // Verify the add call is contained within calculate method
+            assert_eq!(
+                add_call.containing_symbol_id.as_ref(),
+                Some(&calculate_method.id),
+                "add call should be contained within calculate method"
+            );
+        }
+
+        #[test]
+        fn test_rust_member_access() {
+            let rust_code = r#"
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+fn get_coordinates(point: &Point) -> (f64, f64) {
+    let x_val = point.x;     // Field access: point.x
+    let y_val = point.y;     // Field access: point.y
+    (x_val, y_val)
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Verify we found member access identifiers
+            let x_access = identifiers
+                .iter()
+                .filter(|id| id.name == "x" && id.kind == IdentifierKind::MemberAccess)
+                .count();
+            assert!(x_access > 0, "Should extract 'x' field access identifier");
+
+            let y_access = identifiers
+                .iter()
+                .filter(|id| id.name == "y" && id.kind == IdentifierKind::MemberAccess)
+                .count();
+            assert!(y_access > 0, "Should extract 'y' field access identifier");
+        }
+
+        #[test]
+        fn test_rust_identifiers_have_containing_symbol() {
+            // This test ensures we ONLY match symbols from the SAME FILE
+            // Critical bug fix from reference implementation
+            let rust_code = r#"
+fn helper() -> i32 {
+    42
+}
+
+fn process() -> i32 {
+    let result = helper();    // Function call to helper
+    result
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Find the helper call
+            let helper_call = identifiers
+                .iter()
+                .find(|id| id.name == "helper" && id.kind == IdentifierKind::Call)
+                .expect("Should find helper function call");
+
+            // Verify it has a containing symbol
+            assert!(
+                helper_call.containing_symbol_id.is_some(),
+                "Helper call should have containing symbol"
+            );
+
+            // Verify it's contained in the process function (not some other file's symbol)
+            let process_fn = symbols.iter().find(|s| s.name == "process").unwrap();
+            assert_eq!(
+                helper_call.containing_symbol_id.as_ref(),
+                Some(&process_fn.id),
+                "helper call should be contained within process function"
+            );
+        }
+
+        #[test]
+        fn test_rust_chained_member_access() {
+            let rust_code = r#"
+struct Account {
+    balance: i32,
+}
+
+struct User {
+    account: Account,
+}
+
+fn get_balance(user: &User) -> i32 {
+    user.account.balance    // Chained field access
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Should extract both 'account' and 'balance' from the chain
+            let account_access = identifiers
+                .iter()
+                .find(|id| id.name == "account" && id.kind == IdentifierKind::MemberAccess);
+            assert!(
+                account_access.is_some(),
+                "Should extract 'account' from chained member access"
+            );
+
+            let balance_access = identifiers
+                .iter()
+                .find(|id| id.name == "balance" && id.kind == IdentifierKind::MemberAccess);
+            assert!(
+                balance_access.is_some(),
+                "Should extract 'balance' from chained member access"
+            );
+        }
+
+        #[test]
+        fn test_rust_duplicate_calls_at_different_locations() {
+            let rust_code = r#"
+fn process() -> i32 {
+    42
+}
+
+fn run() {
+    process();
+    let x = 10;
+    process();
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Should find TWO separate identifiers for the two process() calls
+            let process_calls: Vec<_> = identifiers
+                .iter()
+                .filter(|id| id.name == "process" && id.kind == IdentifierKind::Call)
+                .collect();
+
+            assert_eq!(
+                process_calls.len(),
+                2,
+                "Should extract both process() calls as separate identifiers"
+            );
+
+            // Verify they have different line numbers
+            assert_ne!(
+                process_calls[0].start_line,
+                process_calls[1].start_line,
+                "Duplicate calls should be on different lines"
+            );
+        }
+    }
 }

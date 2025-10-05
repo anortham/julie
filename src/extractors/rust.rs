@@ -1263,14 +1263,26 @@ impl RustExtractor {
             // Function calls: foo(), bar.baz()
             "call_expression" => {
                 if let Some(func_node) = node.child_by_field_name("function") {
-                    let name = self.base.get_node_text(&func_node);
+                    // Handle method calls (e.g., self.method())
+                    // Extract just the method name, not the whole "self.method" text
+                    let (identifier_node, name) = if func_node.kind() == "field_expression" {
+                        // Method call: extract just the field name
+                        if let Some(field_node) = func_node.child_by_field_name("field") {
+                            (field_node, self.base.get_node_text(&field_node))
+                        } else {
+                            (func_node, self.base.get_node_text(&func_node))
+                        }
+                    } else {
+                        // Regular function call
+                        (func_node, self.base.get_node_text(&func_node))
+                    };
 
                     // Find containing symbol (which function/method contains this call)
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
 
                     // Create identifier for this function call
                     self.base.create_identifier(
-                        &func_node,
+                        &identifier_node,
                         name,
                         IdentifierKind::Call,
                         containing_symbol_id,
@@ -1281,7 +1293,20 @@ impl RustExtractor {
             // Variable/field references in specific contexts
             // We're conservative - only extract clear variable usages, not all identifiers
             "field_expression" => {
-                // object.field - extract the field name
+                // Skip if this field_expression is the function of a call_expression
+                // (e.g., self.method() - we want "method" as Call, not MemberAccess)
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "call_expression" {
+                        if let Some(func_child) = parent.child_by_field_name("function") {
+                            if func_child.id() == node.id() {
+                                // This field_expression IS the function being called, skip it
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // object.field - extract the field name (not part of a call)
                 if let Some(field_node) = node.child_by_field_name("field") {
                     let name = self.base.get_node_text(&field_node);
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
