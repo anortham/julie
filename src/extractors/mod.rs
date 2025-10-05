@@ -364,4 +364,185 @@ impl ExtractorManager {
             }
         }
     }
+
+    /// Extract identifiers (references/usages) from file content for LSP-quality find_references
+    ///
+    /// This method follows the same pattern as extract_symbols() but calls extract_identifiers()
+    /// on the language-specific extractors.
+    pub fn extract_identifiers(
+        &self,
+        file_path: &str,
+        content: &str,
+        symbols: &[Symbol],
+    ) -> Result<Vec<Identifier>, anyhow::Error> {
+        use std::path::Path;
+        use tree_sitter::Parser;
+
+        // Determine language from file extension
+        let path = Path::new(file_path);
+        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+
+        let language = match extension {
+            "rs" => "rust",
+            "ts" => "typescript",
+            "tsx" => "tsx",
+            "js" => "javascript",
+            "py" => "python",
+            "go" => "go",
+            "java" => "java",
+            "c" => "c",
+            "cpp" | "cc" | "cxx" => "cpp",
+            "cs" => "csharp",
+            "rb" => "ruby",
+            "php" => "php",
+            "swift" => "swift",
+            "kt" => "kotlin",
+            "dart" => "dart",
+            "gd" => "gdscript",
+            "lua" => "lua",
+            "vue" => "vue",
+            "razor" => "razor",
+            "sql" => "sql",
+            "html" => "html",
+            "css" => "css",
+            "sh" | "bash" => "bash",
+            "ps1" => "powershell",
+            "zig" => "zig",
+            "regex" => "regex",
+            _ => {
+                // Unsupported file type - return empty results
+                return Ok(Vec::new());
+            }
+        };
+
+        // Create parser for the language
+        let mut parser = Parser::new();
+        let tree_sitter_language = self.get_tree_sitter_language(language)?;
+
+        parser.set_language(&tree_sitter_language).map_err(|e| {
+            anyhow::anyhow!("Failed to set parser language for {}: {}", language, e)
+        })?;
+
+        // Parse the file
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
+
+        // Extract identifiers using the appropriate extractor
+        let identifiers = self.extract_identifiers_for_language(file_path, content, language, &tree, symbols)?;
+
+        tracing::debug!(
+            "Extracted {} identifiers from {} file: {}",
+            identifiers.len(),
+            language,
+            file_path
+        );
+        Ok(identifiers)
+    }
+
+    /// Extract identifiers using the appropriate extractor for the detected language
+    ///
+    /// NOTE: Only languages that have implemented extract_identifiers() will return results.
+    /// Languages without implementation will return empty Vec (they need to be implemented).
+    fn extract_identifiers_for_language(
+        &self,
+        file_path: &str,
+        content: &str,
+        language: &str,
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
+    ) -> Result<Vec<Identifier>, anyhow::Error> {
+        match language {
+            // ========================================================================
+            // Batch 1: Implemented languages (extract_identifiers available)
+            // ========================================================================
+            "rust" => {
+                let mut extractor = crate::extractors::rust::RustExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "csharp" => {
+                let mut extractor = crate::extractors::csharp::CSharpExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "python" => {
+                let mut extractor = crate::extractors::python::PythonExtractor::new(
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "javascript" => {
+                let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "typescript" => {
+                let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "java" => {
+                let mut extractor = crate::extractors::java::JavaExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "go" => {
+                let mut extractor = crate::extractors::go::GoExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "swift" => {
+                let mut extractor = crate::extractors::swift::SwiftExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+
+            // ========================================================================
+            // Remaining languages: Not yet implemented (return empty for now)
+            // TODO: Implement extract_identifiers() for these languages
+            // ========================================================================
+            "c" | "cpp" | "ruby" | "php" | "kotlin" | "dart" | "gdscript" | "lua"
+            | "vue" | "razor" | "sql" | "html" | "css" | "bash" | "powershell"
+            | "zig" | "regex" => {
+                tracing::debug!(
+                    "Identifier extraction not yet implemented for language: {} (file: {})",
+                    language,
+                    file_path
+                );
+                Ok(Vec::new())
+            }
+
+            _ => {
+                tracing::debug!(
+                    "No identifier extraction available for language: {} (file: {})",
+                    language,
+                    file_path
+                );
+                Ok(Vec::new())
+            }
+        }
+    }
 }

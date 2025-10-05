@@ -357,36 +357,6 @@ fn process_file(
     }))
 }
 
-/// Extract identifiers (references/usages) from a Rust file
-/// NEW: Phase 2 of extraction for LSP-quality reference tracking
-fn extract_identifiers_from_file(
-    file_path: &PathBuf,
-    symbols: &[julie::extractors::Symbol],
-) -> Result<Vec<julie::extractors::Identifier>> {
-    use julie::extractors::rust::RustExtractor;
-
-    let file_path_str = file_path.to_string_lossy().to_string();
-    let content = std::fs::read_to_string(file_path)
-        .with_context(|| format!("Failed to read file: {:?}", file_path))?;
-
-    // Create parser
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(&tree_sitter_rust::LANGUAGE.into())
-        .with_context(|| "Failed to set Rust language")?;
-
-    // Parse file
-    let tree = parser
-        .parse(&content, None)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse {:?}", file_path))?;
-
-    // Create Rust extractor and extract identifiers
-    let mut rust_extractor = RustExtractor::new("rust".to_string(), file_path_str, content);
-    let identifiers = rust_extractor.extract_identifiers(&tree, symbols);
-
-    Ok(identifiers)
-}
-
 fn scan_directory(
     dir: PathBuf,
     db: PathBuf,
@@ -524,17 +494,25 @@ fn scan_directory(
         let all_extracted_symbols = database.get_all_symbols()?;
         eprintln!("📚 Loaded {} symbols for identifier extraction", all_extracted_symbols.len());
 
-        // Extract identifiers from files in parallel
+        // Extract identifiers from files in parallel (ALL supported languages)
         let all_identifiers = Arc::new(Mutex::new(Vec::new()));
         let processed_phase2 = Arc::new(Mutex::new(0usize));
+        let extractor_manager = ExtractorManager::new();
 
         files.par_iter().for_each(|file_path| {
-            // Only extract from Rust files for now (other languages pending)
-            if !file_path.to_string_lossy().ends_with(".rs") {
-                return;
-            }
+            let file_path_str = file_path.to_string_lossy().to_string();
 
-            match extract_identifiers_from_file(file_path, &all_extracted_symbols) {
+            // Read file content
+            let content = match std::fs::read_to_string(file_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    debug!("⚠️  Failed to read file {:?}: {}", file_path, e);
+                    return;
+                }
+            };
+
+            // Extract identifiers using ExtractorManager (language-aware)
+            match extractor_manager.extract_identifiers(&file_path_str, &content, &all_extracted_symbols) {
                 Ok(identifiers) => {
                     if !identifiers.is_empty() {
                         if let Ok(mut all_ids) = all_identifiers.lock() {
@@ -545,7 +523,7 @@ fn scan_directory(
                     if let Ok(mut proc) = processed_phase2.lock() {
                         *proc += 1;
                         if *proc % 50 == 0 {
-                            eprintln!("⚡ Phase 2: Processed {} Rust files", *proc);
+                            eprintln!("⚡ Phase 2: Processed {} files", *proc);
                         }
                     }
                 }
@@ -566,7 +544,7 @@ fn scan_directory(
             database.bulk_store_identifiers(&identifiers, &workspace_id)?;
             eprintln!("✅ Phase 2 complete: {} identifiers extracted and stored", identifiers.len());
         } else {
-            eprintln!("ℹ️  No identifiers extracted (only Rust files supported currently)");
+            eprintln!("ℹ️  No identifiers extracted");
         }
     }
 
