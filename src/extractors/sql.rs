@@ -1,11 +1,12 @@
 use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
+    self, BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
+    SymbolKind, SymbolOptions,
 };
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use tree_sitter::Tree;
+use tree_sitter::{Node, Tree};
 
 // Static regexes compiled once for performance
 static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -2214,5 +2215,193 @@ impl SqlExtractor {
                 }
             }
         });
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (function calls, member access, etc.)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    fn extract_identifier_from_node(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        match node.kind() {
+            // Function calls with invocation nodes (when parser recognizes them correctly)
+            "invocation" => {
+                // Look for identifier or object_reference containing identifier
+                let name_node = if let Some(obj_ref) = self.base.find_child_by_type(&node, "object_reference") {
+                    self.base.find_child_by_type(&obj_ref, "identifier")
+                } else {
+                    self.base.find_child_by_type(&node, "identifier")
+                };
+
+                if let Some(name_node) = name_node {
+                    let name = self.base.get_node_text(&name_node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::Call,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            // Function calls in SQL: identifier followed by function_arguments
+            // e.g., SUM(amount), COUNT(*), DATE(created_at)
+            "identifier" => {
+                // Check if the next sibling is function_arguments
+                if let Some(next_sibling) = node.next_sibling() {
+                    if next_sibling.kind() == "function_arguments" {
+                        // This is a function call
+                        let name = self.base.get_node_text(&node);
+                        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                        self.base.create_identifier(
+                            &node,
+                            name,
+                            IdentifierKind::Call,
+                            containing_symbol_id,
+                        );
+                        return; // Don't process as member access below
+                    }
+                }
+
+                // Also check if parent has this pattern (identifier + function_arguments as siblings)
+                if let Some(parent) = node.parent() {
+                    match parent.kind() {
+                        "select_expression" | "where_clause" | "having_clause" => {
+                            // This is a column reference in SELECT/WHERE/HAVING
+                            let name = self.base.get_node_text(&node);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
+
+                            self.base.create_identifier(
+                                &node,
+                                name,
+                                IdentifierKind::MemberAccess,
+                                containing_symbol_id,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Column references: SELECT username, WHERE user_id = ...
+            "field" => {
+                // Skip if part of a table_reference or qualified_name (handled separately)
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "table_reference" || parent.kind() == "qualified_name" {
+                        return;
+                    }
+                }
+
+                // Extract the field name
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = self.base.get_node_text(&name_node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                    );
+                } else {
+                    // If no field name, the field node itself is the identifier
+                    let name = self.base.get_node_text(&node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &node,
+                        name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            // Qualified names: table.column, schema.table.column
+            "qualified_name" => {
+                // Extract the rightmost identifier (the column name)
+                let mut rightmost_identifier = None;
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "identifier" {
+                        rightmost_identifier = Some(child);
+                    }
+                }
+
+                if let Some(name_node) = rightmost_identifier {
+                    let name = self.base.get_node_text(&name_node);
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: tree_sitter::Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }

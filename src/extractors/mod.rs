@@ -624,17 +624,52 @@ impl ExtractorManager {
             }
 
             // ========================================================================
-            // Remaining languages: Not yet implemented (return empty for now)
-            // TODO: Implement extract_identifiers() for these languages
+            // Batch 4: Implemented languages (extract_identifiers available)
             // ========================================================================
-            "sql" | "html" | "css" | "powershell" | "regex" => {
-                tracing::debug!(
-                    "Identifier extraction not yet implemented for language: {} (file: {})",
-                    language,
-                    file_path
+            "sql" => {
+                let mut extractor = crate::extractors::sql::SqlExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
                 );
-                Ok(Vec::new())
+                Ok(extractor.extract_identifiers(tree, symbols))
             }
+            "html" => {
+                let mut extractor = crate::extractors::html::HTMLExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "css" => {
+                let mut extractor = crate::extractors::css::CSSExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "powershell" => {
+                let mut extractor = crate::extractors::powershell::PowerShellExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+            "regex" => {
+                let mut extractor = crate::extractors::regex::RegexExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                );
+                Ok(extractor.extract_identifiers(tree, symbols))
+            }
+
+            // ========================================================================
+            // All 25 languages now have identifier extraction implemented!
+            // ========================================================================
 
             _ => {
                 tracing::debug!(

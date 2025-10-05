@@ -25,5 +25,6 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
 }
 
 pub mod forms;
+pub mod identifier_extraction;
 pub mod media;
 pub mod structure;

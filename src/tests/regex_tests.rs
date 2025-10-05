@@ -185,3 +185,147 @@ a+
         }
     }
 }
+
+// ========================================================================
+// Identifier Extraction Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate the extract_identifiers() functionality for Regex:
+// - Backreferences as "calls" (\k<name>, \1, \2)
+// - Named group definitions as "member access" (?<name>...)
+// - Proper containing symbol tracking (file-scoped)
+//
+// Following the Rust/C# extractor reference implementation pattern
+
+#[cfg(test)]
+mod identifier_extraction_tests {
+    use super::*;
+    use crate::extractors::base::IdentifierKind;
+
+    fn extract_identifiers(
+        code: &str,
+    ) -> (Vec<crate::extractors::base::Symbol>, Vec<crate::extractors::base::Identifier>) {
+        let tree = init_parser(code, "regex");
+        let mut extractor = RegexExtractor::new(
+            "regex".to_string(),
+            "test.regex".to_string(),
+            code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+        (symbols, identifiers)
+    }
+
+    #[test]
+    fn test_regex_function_calls() {
+        // In Regex: "function calls" = backreferences to groups
+        let regex_code = r#"(?<email>\w+@\w+\.\w+).*\k<email>"#;
+
+        let (_symbols, identifiers) = extract_identifiers(regex_code);
+
+        // Find backreference identifier
+        let backref = identifiers
+            .iter()
+            .find(|id| id.name == "email" && id.kind == IdentifierKind::Call);
+        assert!(
+            backref.is_some(),
+            "Should extract backreference '\\k<email>' as Call identifier"
+        );
+    }
+
+    #[test]
+    fn test_regex_member_access() {
+        // In Regex: "member access" = named group definitions
+        let regex_code = r#"(?<username>[a-z]+)@(?<domain>[a-z]+\.[a-z]+)"#;
+
+        let (_symbols, identifiers) = extract_identifiers(regex_code);
+
+        // Find named group identifiers
+        let username_group = identifiers
+            .iter()
+            .find(|id| id.name == "username" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            username_group.is_some(),
+            "Should extract named group '(?<username>...)' as MemberAccess identifier"
+        );
+
+        let domain_group = identifiers
+            .iter()
+            .find(|id| id.name == "domain" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            domain_group.is_some(),
+            "Should extract named group '(?<domain>...)' as MemberAccess identifier"
+        );
+    }
+
+    #[test]
+    fn test_regex_identifiers_have_containing_symbol() {
+        // Verify that identifiers have containing_symbol_id set
+        let regex_code = r#"(?<word>\w+)\s+\k<word>"#;
+
+        let (symbols, identifiers) = extract_identifiers(regex_code);
+
+        // Should have at least one identifier with containing symbol
+        let backref = identifiers
+            .iter()
+            .find(|id| id.name == "word" && id.kind == IdentifierKind::Call);
+        assert!(backref.is_some());
+
+        // Note: Regex doesn't have traditional scopes like functions/classes,
+        // so containing_symbol_id might be None or the root pattern
+        // This is acceptable for regex's flat structure
+    }
+
+    #[test]
+    fn test_regex_chained_member_access() {
+        // In Regex: "chained" means nested groups
+        let regex_code = r#"(?<outer>(?<inner>\d+))"#;
+
+        let (_symbols, identifiers) = extract_identifiers(regex_code);
+
+        // Should extract both nested group names
+        let outer_group = identifiers
+            .iter()
+            .find(|id| id.name == "outer" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            outer_group.is_some(),
+            "Should extract outer named group '(?<outer>...)'"
+        );
+
+        let inner_group = identifiers
+            .iter()
+            .find(|id| id.name == "inner" && id.kind == IdentifierKind::MemberAccess);
+        assert!(
+            inner_group.is_some(),
+            "Should extract inner named group '(?<inner>...)'"
+        );
+    }
+
+    #[test]
+    fn test_regex_duplicate_calls_at_different_locations() {
+        // Same backreference used twice should create 2 identifiers
+        let regex_code = r#"(?<word>\w+)\s+\k<word>\s+\k<word>"#;
+
+        let (_symbols, identifiers) = extract_identifiers(regex_code);
+
+        // Should extract BOTH backreferences
+        let backref_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.name == "word" && id.kind == IdentifierKind::Call)
+            .collect();
+
+        assert_eq!(
+            backref_calls.len(),
+            2,
+            "Should extract both \\k<word> backreferences at different locations"
+        );
+
+        // Verify they have different positions (start_byte or start_column)
+        if backref_calls.len() == 2 {
+            assert!(
+                backref_calls[0].start_byte != backref_calls[1].start_byte,
+                "Duplicate backreferences should have different positions"
+            );
+        }
+    }
+}

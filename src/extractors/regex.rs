@@ -1,5 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind, SymbolOptions,
+    Visibility,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -968,5 +969,124 @@ impl RegexExtractor {
             }
         }
         types
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (backreferences and named groups)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+        match node.kind() {
+            // Backreferences: tree-sitter-regex uses "backreference_escape" for \k
+            // But doesn't properly parse the <name> part, so we need to extract manually
+            "backreference_escape" => {
+                // Get the full text context around this node to find the group name
+                let start_byte = node.start_byte();
+                let content_after = &self.base.content[start_byte..];
+
+                // Try to extract \k<name> pattern manually
+                if content_after.starts_with("\\k<") {
+                    if let Some(end_pos) = content_after.find('>') {
+                        let group_name = content_after[3..end_pos].to_string();
+                        if !group_name.is_empty() {
+                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                            self.base.create_identifier(
+                                &node,
+                                group_name,
+                                IdentifierKind::Call,
+                                containing_symbol_id,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Original "backreference" node type (if tree-sitter-regex ever adds proper support)
+            "backreference" => {
+                let backref_text = self.base.get_node_text(&node);
+
+                // Try to extract named backreference (e.g., \k<email>)
+                if let Some(group_name) = self.extract_backref_group_name(&backref_text) {
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &node,
+                        group_name,
+                        IdentifierKind::Call,
+                        containing_symbol_id,
+                    );
+                }
+                // Note: Numeric backreferences (\1, \2) don't have names to track
+            }
+
+            // Named groups: (?<name>...) (these are "member access" in regex context)
+            "named_capturing_group" => {
+                let group_text = self.base.get_node_text(&node);
+
+                // Extract the group name
+                if let Some(group_name) = self.extract_group_name(&group_text) {
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &node,
+                        group_name,
+                        IdentifierKind::MemberAccess,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }

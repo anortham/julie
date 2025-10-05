@@ -4,7 +4,7 @@
 // Original: /Users/murphy/Source/miller/src/extractors/html-extractor.ts
 
 use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1047,5 +1047,115 @@ impl HTMLExtractor {
         }
 
         types
+    }
+
+    // ========================================================================
+    // Identifier Extraction (for LSP-quality find_references)
+    // ========================================================================
+
+    /// Extract all identifier usages (event handlers, id/class references)
+    /// Following the Rust extractor reference implementation pattern
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        // Create symbol map for fast lookup
+        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+
+        // Walk the tree and extract identifiers
+        self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
+
+        // Return the collected identifiers
+        self.base.identifiers.clone()
+    }
+
+    /// Recursively walk tree extracting identifiers from each node
+    fn walk_tree_for_identifiers(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        // Extract identifier from this node if applicable
+        self.extract_identifier_from_node(node, symbol_map);
+
+        // Recursively walk children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_identifiers(child, symbol_map);
+        }
+    }
+
+    /// Extract identifier from a single node based on its kind
+    fn extract_identifier_from_node(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        match node.kind() {
+            // HTML attributes: onclick, data-action (as "calls"), id, class (as "member access")
+            "attribute" => {
+                if let (Some(attr_name), Some(attr_value)) = self.extract_attribute_name_value(node) {
+                    // Event handlers and data-action attributes are "calls"
+                    if attr_name.starts_with("on") || attr_name.starts_with("data-action") {
+                        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                        self.base.create_identifier(
+                            &node,
+                            attr_value,
+                            IdentifierKind::Call,
+                            containing_symbol_id,
+                        );
+                    }
+                    // id and class attributes are "member access"
+                    else if attr_name == "id" || attr_name == "class" {
+                        // For class, split by spaces and extract each class name
+                        if attr_name == "class" {
+                            for class_name in attr_value.split_whitespace() {
+                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                                self.base.create_identifier(
+                                    &node,
+                                    class_name.to_string(),
+                                    IdentifierKind::MemberAccess,
+                                    containing_symbol_id,
+                                );
+                            }
+                        } else {
+                            // id attribute
+                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                            self.base.create_identifier(
+                                &node,
+                                attr_value,
+                                IdentifierKind::MemberAccess,
+                                containing_symbol_id,
+                            );
+                        }
+                    }
+                }
+            }
+
+            _ => {
+                // Skip other node types for now
+                // Future: custom element names, template references, etc.
+            }
+        }
+    }
+
+    /// Find the ID of the symbol that contains this node
+    /// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
+    fn find_containing_symbol_id(
+        &self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
+        // Bug was: searching all symbols in DB caused wrong file symbols to match
+        let file_symbols: Vec<Symbol> = symbol_map
+            .values()
+            .filter(|s| s.file_path == self.base.file_path)
+            .map(|&s| s.clone())
+            .collect();
+
+        self.base
+            .find_containing_symbol(&node, &file_symbols)
+            .map(|s| s.id.clone())
     }
 }

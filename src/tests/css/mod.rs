@@ -22,4 +22,5 @@ pub mod advanced;
 pub mod at_rules;
 pub mod basic;
 pub mod custom;
+pub mod identifier_extraction;
 pub mod modern;

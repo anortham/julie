@@ -725,4 +725,236 @@ $ValidVariable = "This should work"
             );
         }
     }
+
+    // PowerShell Identifier Extraction Tests (TDD RED phase)
+    //
+    // These tests validate the extract_identifiers() functionality which extracts:
+    // - Function/cmdlet calls (command_expression, invocation_expression)
+    // - Member access (member_access_expression)
+    // - Proper containing symbol tracking (file-scoped)
+    //
+    // Following the Rust/C# extractor reference implementation pattern
+    mod identifier_extraction {
+        use super::*;
+        use crate::extractors::base::IdentifierKind;
+
+        #[test]
+        fn test_powershell_function_calls() {
+            let powershell_code = r#"
+function Get-UserData {
+    param([string]$UserName)
+    return "User: $UserName"
+}
+
+function Process-Data {
+    $result = Get-UserData -UserName "John"  # Function call
+    Write-Host $result                        # Cmdlet call
+    Get-Process | Where-Object { $_.Status -eq 'Running' }  # Cmdlet calls
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // NOW extract identifiers (this will FAIL until we implement it)
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Verify we found the function calls
+            let get_user_data_call = identifiers
+                .iter()
+                .find(|id| id.name == "Get-UserData" && id.kind == IdentifierKind::Call);
+            assert!(
+                get_user_data_call.is_some(),
+                "Should extract 'Get-UserData' function call identifier"
+            );
+
+            let write_host_call = identifiers
+                .iter()
+                .find(|id| id.name == "Write-Host" && id.kind == IdentifierKind::Call);
+            assert!(
+                write_host_call.is_some(),
+                "Should extract 'Write-Host' cmdlet call identifier"
+            );
+
+            let get_process_call = identifiers
+                .iter()
+                .find(|id| id.name == "Get-Process" && id.kind == IdentifierKind::Call);
+            assert!(
+                get_process_call.is_some(),
+                "Should extract 'Get-Process' cmdlet call identifier"
+            );
+
+            // Verify containing symbol is set
+            assert!(
+                get_user_data_call.unwrap().containing_symbol_id.is_some(),
+                "Function call should have containing symbol"
+            );
+        }
+
+        #[test]
+        fn test_powershell_member_access() {
+            let powershell_code = r#"
+class User {
+    [string]$Name
+    [string]$Email
+
+    [void] PrintInfo() {
+        Write-Host $this.Name    # Member access: this.Name
+        $email = $this.Email      # Member access: this.Email
+    }
+}
+
+function Get-SystemInfo {
+    $process = Get-Process
+    $name = $process.Name        # Member access: process.Name
+    $id = $process.Id            # Member access: process.Id
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Verify we found member access identifiers
+            let name_access_count = identifiers
+                .iter()
+                .filter(|id| id.name == "Name" && id.kind == IdentifierKind::MemberAccess)
+                .count();
+            assert!(
+                name_access_count >= 1,
+                "Should extract 'Name' member access identifier. Found {} identifiers total",
+                identifiers.len()
+            );
+
+            let email_access = identifiers
+                .iter()
+                .find(|id| id.name == "Email" && id.kind == IdentifierKind::MemberAccess);
+            assert!(
+                email_access.is_some(),
+                "Should extract 'Email' member access identifier"
+            );
+
+            let id_access = identifiers
+                .iter()
+                .find(|id| id.name == "Id" && id.kind == IdentifierKind::MemberAccess);
+            assert!(
+                id_access.is_some(),
+                "Should extract 'Id' member access identifier"
+            );
+        }
+
+        #[test]
+        fn test_powershell_identifiers_have_containing_symbol() {
+            // This test ensures we ONLY match symbols from the SAME FILE
+            // Critical bug fix from Rust implementation
+            let powershell_code = r#"
+function Get-Data {
+    return @{ Value = 42 }
+}
+
+function Process-All {
+    $data = Get-Data          # Call to Get-Data in same file
+    Format-Output $data       # Call to Format-Output
+}
+
+function Format-Output {
+    param($InputData)
+    Write-Host $InputData
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Find the Get-Data call
+            let get_data_call = identifiers
+                .iter()
+                .find(|id| id.name == "Get-Data" && id.kind == IdentifierKind::Call);
+            assert!(get_data_call.is_some());
+            let get_data_call = get_data_call.unwrap();
+
+            // Verify it has a containing symbol (the Process-All function)
+            assert!(
+                get_data_call.containing_symbol_id.is_some(),
+                "Get-Data call should have containing symbol from same file"
+            );
+
+            // Verify the containing symbol is the Process-All function
+            let process_all_function = symbols.iter().find(|s| s.name == "Process-All");
+            assert!(process_all_function.is_some());
+            let process_all_function = process_all_function.unwrap();
+
+            assert_eq!(
+                get_data_call.containing_symbol_id.as_ref(),
+                Some(&process_all_function.id),
+                "Get-Data call should be contained within Process-All function"
+            );
+        }
+
+        #[test]
+        fn test_powershell_chained_member_access() {
+            let powershell_code = r#"
+function Get-ProcessInfo {
+    $processes = Get-Process
+    $name = $processes[0].MainModule.FileName     # Chained member access
+    $version = $processes[0].MainModule.FileVersionInfo.ProductVersion  # Deep chaining
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Should extract the rightmost identifiers in chains
+            let filename_access = identifiers
+                .iter()
+                .find(|id| id.name == "FileName" && id.kind == IdentifierKind::MemberAccess);
+            assert!(
+                filename_access.is_some(),
+                "Should extract 'FileName' from chained member access"
+            );
+
+            let product_version_access = identifiers.iter().find(|id| {
+                id.name == "ProductVersion" && id.kind == IdentifierKind::MemberAccess
+            });
+            assert!(
+                product_version_access.is_some(),
+                "Should extract 'ProductVersion' from deeply chained member access"
+            );
+        }
+
+        #[test]
+        fn test_powershell_duplicate_calls_at_different_locations() {
+            let powershell_code = r#"
+function Test-Process {
+    Get-Process
+    Start-Sleep -Seconds 1
+    Get-Process    # Same call twice at different locations
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            // Should extract BOTH calls (they're at different locations)
+            let process_calls: Vec<_> = identifiers
+                .iter()
+                .filter(|id| id.name == "Get-Process" && id.kind == IdentifierKind::Call)
+                .collect();
+
+            assert_eq!(
+                process_calls.len(),
+                2,
+                "Should extract both Get-Process calls at different locations"
+            );
+
+            // Verify they have different line numbers
+            assert_ne!(
+                process_calls[0].start_line, process_calls[1].start_line,
+                "Duplicate calls should have different line numbers"
+            );
+        }
+    }
 }
