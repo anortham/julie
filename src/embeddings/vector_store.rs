@@ -75,6 +75,11 @@ impl VectorStore {
         Ok(())
     }
 
+    /// Get all vectors (for bulk operations like writing to SQLite)
+    pub fn get_all_vectors(&self) -> HashMap<String, Vec<f32>> {
+        self.vectors.clone()
+    }
+
     /// Search for similar vectors using cosine similarity
     pub fn search_similar(
         &self,

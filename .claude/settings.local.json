@@ -123,7 +123,10 @@
       "Bash(timeout 10 cargo test --lib cli_semantic)",
       "Bash(timeout 10 cargo test --lib cli_codesearch)",
       "Bash(timeout 10 cargo test --lib workspace_mod_tests::test_concurrent)",
-      "Bash(timeout 120 cargo test --lib)"
+      "Bash(timeout 120 cargo test --lib)",
+      "mcp__codesearch__text_search",
+      "mcp__codesearch__file_search",
+      "mcp__codesearch__goto_definition"
     ],
     "deny": [],
     "ask": []

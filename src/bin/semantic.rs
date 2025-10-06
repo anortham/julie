@@ -33,6 +33,10 @@ enum Commands {
         #[arg(long)]
         output: Option<String>,
 
+        /// Write embeddings back to SQLite database (symbols_db) for cross-language access
+        #[arg(long)]
+        write_db: bool,
+
         /// Embedding model name
         #[arg(long, default_value = "bge-small")]
         model: String,
@@ -60,6 +64,10 @@ enum Commands {
         #[arg(long)]
         output: String,
 
+        /// Write embeddings back to SQLite database (symbols_db) for cross-language access
+        #[arg(long)]
+        write_db: bool,
+
         /// Embedding model name (must match original)
         #[arg(long, default_value = "bge-small")]
         model: String,
@@ -85,19 +93,21 @@ async fn main() -> Result<()> {
         Commands::Embed {
             symbols_db,
             output,
+            write_db,
             model,
             batch_size,
             limit,
         } => {
-            generate_embeddings(&symbols_db, output.as_deref(), &model, batch_size, limit).await?;
+            generate_embeddings(&symbols_db, output.as_deref(), write_db, &model, batch_size, limit).await?;
         }
         Commands::Update {
             file,
             symbols_db,
             output,
+            write_db,
             model,
         } => {
-            update_file_embeddings(&file, &symbols_db, &output, &model).await?;
+            update_file_embeddings(&file, &symbols_db, &output, write_db, &model).await?;
         }
     }
 
@@ -108,6 +118,7 @@ async fn main() -> Result<()> {
 async fn generate_embeddings(
     db_path: &str,
     output_dir: Option<&str>,
+    write_db: bool,
     model: &str,
     batch_size: usize,
     limit: Option<usize>,
@@ -148,7 +159,7 @@ async fn generate_embeddings(
     std::fs::create_dir_all(&cache_dir)?;
 
     let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
     eprintln!("⚡ Batch size: {}", batch_size);
@@ -205,7 +216,34 @@ async fn generate_embeddings(
         total_embedded as f64 / total_time.as_secs_f64()
     );
 
-    // 5. Build and save HNSW index if output directory specified
+    // 5. Write embeddings to SQLite if requested (for cross-language access)
+    if write_db {
+        eprintln!("\n💾 Writing embeddings to SQLite database...");
+        let db_write_start = Instant::now();
+
+        // Get database connection back from Arc<Mutex<>>
+        let mut db = db_arc.lock().await;
+
+        // Convert VectorStore's HashMap to Vec for bulk_store_embeddings
+        // We need to access the internal vectors HashMap - add a getter method
+        let all_embeddings: Vec<(String, Vec<f32>)> = vector_store
+            .get_all_vectors()
+            .into_iter()
+            .collect();
+
+        // Store in database using the existing bulk method
+        db.bulk_store_embeddings(&all_embeddings, engine.dimensions(), model)?;
+
+        let db_write_time = db_write_start.elapsed();
+        eprintln!(
+            "✅ {} embeddings written to database in {:.2}s ({:.0} embeddings/sec)",
+            all_embeddings.len(),
+            db_write_time.as_secs_f64(),
+            all_embeddings.len() as f64 / db_write_time.as_secs_f64()
+        );
+    }
+
+    // 6. Build and save HNSW index if output directory specified
     if let Some(output_path) = output_dir {
         eprintln!("\n🏗️  Building HNSW index...");
         let hnsw_start = Instant::now();
@@ -248,6 +286,7 @@ async fn update_file_embeddings(
     file_path: &str,
     db_path: &str,
     output_dir: &str,
+    write_db: bool,
     model: &str,
 ) -> Result<()> {
     use std::time::Instant;
@@ -286,7 +325,7 @@ async fn update_file_embeddings(
     std::fs::create_dir_all(&cache_dir)?;
 
     let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
 
@@ -327,7 +366,27 @@ async fn update_file_embeddings(
         vector_store.store_vector(symbol_id.clone(), vector.clone())?;
     }
 
-    // 7. Rebuild HNSW index with updated vectors
+    // 7. Write embeddings to SQLite if requested (for cross-language access)
+    if write_db {
+        eprintln!("\n💾 Writing embeddings to SQLite database...");
+        let db_write_start = Instant::now();
+
+        // Get database connection (Arc is cloned, so engine still has its reference)
+        let mut db = db_arc.lock().await;
+
+        // Store only the new embeddings for this file
+        db.bulk_store_embeddings(&embeddings, engine.dimensions(), model)?;
+
+        let db_write_time = db_write_start.elapsed();
+        eprintln!(
+            "✅ {} embeddings written to database in {:.2}s ({:.0} embeddings/sec)",
+            embeddings.len(),
+            db_write_time.as_secs_f64(),
+            embeddings.len() as f64 / db_write_time.as_secs_f64()
+        );
+    }
+
+    // 8. Rebuild HNSW index with updated vectors
     eprintln!("🏗️  Rebuilding HNSW index...");
     let rebuild_start = Instant::now();
     vector_store.build_hnsw_index()?;
