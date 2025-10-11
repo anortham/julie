@@ -1267,7 +1267,7 @@ impl RubyExtractor {
             // The difference is whether there's a receiver field
             "call" => {
                 // Check if this call has a receiver (member access)
-                if let Some(receiver) = node.child_by_field_name("receiver") {
+                if let Some(_receiver) = node.child_by_field_name("receiver") {
                     // This is member access like obj.method
                     // Extract the method name (rightmost identifier)
                     if let Some(method_node) = node.child_by_field_name("method") {

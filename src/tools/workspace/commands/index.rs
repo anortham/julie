@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// Calculate the total size of a directory recursively
 fn calculate_dir_size(path: &Path) -> u64 {

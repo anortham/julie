@@ -965,7 +965,7 @@ impl LuaExtractor {
                 else if let Some(dot_index) = self.find_child_by_type(node, "dot_index_expression")
                 {
                     // Extract the rightmost identifier (the method name)
-                    if let Some(method_node) = self.find_child_by_type(dot_index, "identifier") {
+                    if let Some(_method_node) = self.find_child_by_type(dot_index, "identifier") {
                         // Get all identifiers and use the last one (rightmost)
                         let mut cursor = dot_index.walk();
                         let identifiers: Vec<Node> = dot_index

@@ -126,7 +126,8 @@
       "Bash(timeout 120 cargo test --lib)",
       "mcp__codesearch__text_search",
       "mcp__codesearch__file_search",
-      "mcp__codesearch__goto_definition"
+      "mcp__codesearch__goto_definition",
+      "Bash(./target/debug/julie-codesearch:*)"
     ],
     "deny": [],
     "ask": []

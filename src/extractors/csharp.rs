@@ -14,7 +14,7 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 use crate::extractors::base::{
-    self, BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};

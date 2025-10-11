@@ -214,41 +214,6 @@ fn should_ignore_path(path: &std::path::Path, patterns: &[String]) -> bool {
     false
 }
 
-/// Check if file extension is supported for symbol extraction (has Tree-sitter parser)
-fn is_supported_extension(ext: &str) -> bool {
-    matches!(
-        ext,
-        "rs" | "ts"
-            | "tsx"
-            | "js"
-            | "jsx"
-            | "py"
-            | "java"
-            | "cs"
-            | "go"
-            | "cpp"
-            | "c"
-            | "h"
-            | "hpp"
-            | "rb"
-            | "php"
-            | "swift"
-            | "kt"
-            | "dart"
-            | "gd"
-            | "lua"
-            | "vue"
-            | "razor"
-            | "sql"
-            | "html"
-            | "css"
-            | "sh"
-            | "bash"
-            | "ps1"
-            | "zig"
-    )
-}
-
 /// Check if file extension is binary (should be excluded from indexing)
 fn is_binary_extension(ext: &str) -> bool {
     matches!(
@@ -365,9 +330,7 @@ fn scan_directory(
 ) -> Result<()> {
     use julie::extractors::ExtractorManager;
     use rayon::prelude::*;
-    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use walkdir::WalkDir;
 
     let start = Instant::now();
 
@@ -545,6 +508,61 @@ fn scan_directory(
             eprintln!("✅ Phase 2 complete: {} identifiers extracted and stored", identifiers.len());
         } else {
             eprintln!("ℹ️  No identifiers extracted");
+        }
+
+        // PHASE 3: Extract relationships (inheritance, implements, etc.) for cross-file analysis
+        eprintln!("\n🔗 Phase 3: Extracting relationships (inheritance, implements)...");
+
+        // Extract relationships from files in parallel (ALL supported languages)
+        let all_relationships = Arc::new(Mutex::new(Vec::new()));
+        let processed_phase3 = Arc::new(Mutex::new(0usize));
+
+        files.par_iter().for_each(|file_path| {
+            let file_path_str = file_path.to_string_lossy().to_string();
+
+            // Read file content
+            let content = match std::fs::read_to_string(file_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    debug!("⚠️  Failed to read file {:?}: {}", file_path, e);
+                    return;
+                }
+            };
+
+            // Extract relationships using ExtractorManager (language-aware)
+            match extractor_manager.extract_relationships(&file_path_str, &content, &all_extracted_symbols) {
+                Ok(relationships) => {
+                    if !relationships.is_empty() {
+                        if let Ok(mut all_rels) = all_relationships.lock() {
+                            all_rels.extend(relationships);
+                        }
+                    }
+
+                    if let Ok(mut proc) = processed_phase3.lock() {
+                        *proc += 1;
+                        if *proc % 50 == 0 {
+                            eprintln!("⚡ Phase 3: Processed {} files", *proc);
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("⚠️  Error extracting relationships from {:?}: {}", file_path, e);
+                }
+            }
+        });
+
+        // Store relationships in database
+        let relationships = Arc::try_unwrap(all_relationships)
+            .map_err(|_| anyhow::anyhow!("Failed to unwrap relationships Arc"))?
+            .into_inner()
+            .map_err(|e| anyhow::anyhow!("Lock error: {:?}", e))?;
+
+        if !relationships.is_empty() {
+            eprintln!("💾 Writing {} relationships to database...", relationships.len());
+            database.bulk_store_relationships(&relationships, &workspace_id)?;
+            eprintln!("✅ Phase 3 complete: {} relationships extracted and stored", relationships.len());
+        } else {
+            eprintln!("ℹ️  No relationships extracted");
         }
     }
 

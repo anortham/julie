@@ -503,6 +503,7 @@ impl TypeScriptExtractor {
         None
     }
 
+    #[allow(dead_code)]
     fn adjust_symbol_span(&mut self, mut symbol: Symbol, span_node: tree_sitter::Node) -> Symbol {
         let original_id = symbol.id.clone();
         let start_pos = span_node.start_position();

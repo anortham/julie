@@ -1,12 +1,12 @@
 use crate::extractors::base::{
-    self, BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
     SymbolKind, SymbolOptions,
 };
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use tree_sitter::{Node, Tree};
+use tree_sitter::Tree;
 
 // Static regexes compiled once for performance
 static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {

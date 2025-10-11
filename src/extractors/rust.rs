@@ -1,5 +1,5 @@
 use crate::extractors::base::{
-    self, BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
     SymbolKind, SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
