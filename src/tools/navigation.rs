@@ -235,12 +235,10 @@ impl FastGotoTool {
         let mut exact_matches = Vec::new();
 
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
-        if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
                 let db_lock = db.lock().await;
-                exact_matches = db_lock
-                    .get_symbols_by_name(&self.symbol)
-                    .unwrap_or_default();
+                exact_matches = db_lock.get_symbols_by_name(&self.symbol)?;
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     exact_matches.len()
@@ -248,32 +246,20 @@ impl FastGotoTool {
             }
         }
 
-        // OPTIMIZED: Query symbols by name FIRST using indexed query, then get relationships
-        // This avoids loading ALL symbols and relationships (O(n) → O(log n))
-        let matching_symbols = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
-                // Use exact name match to find symbols
-                db_lock
-                    .find_symbols_by_name(&self.symbol)
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
-
         // Strategy 2: Use relationships to find actual definitions
         // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
-        // This changes from O(n) linear scan to O(k * log n) indexed queries where k = matching_symbols.len()
-        if !matching_symbols.is_empty() {
+        // This changes from O(n) linear scan to O(k * log n) indexed queries where k = exact_matches.len()
+        // REDUNDANCY FIX: Reuse exact_matches instead of querying database again
+        if !exact_matches.is_empty() {
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
                     let db_lock = db.lock().await;
+                    let mut additional_matches = Vec::new();
 
                     // Query relationships for each matching symbol using indexed query
-                    for symbol in &matching_symbols {
+                    // Clone exact_matches to avoid borrow checker issues
+                    let symbols_to_check = exact_matches.clone();
+                    for symbol in &symbols_to_check {
                         if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
                         {
                             for relationship in relationships {
@@ -283,13 +269,14 @@ impl FastGotoTool {
                                     | crate::extractors::base::RelationshipKind::Defines
                                     | crate::extractors::base::RelationshipKind::Extends => {
                                         // The symbol itself is the definition we want
-                                        exact_matches.push(symbol.clone());
+                                        additional_matches.push(symbol.clone());
                                     }
                                     _ => {}
                                 }
                             }
                         }
                     }
+                    exact_matches.extend(additional_matches);
                 }
             }
         }
@@ -396,6 +383,7 @@ impl FastGotoTool {
                                 };
 
                                 // Get actual symbol data from database for all results
+                                // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
                                 if !similar_symbols.is_empty() {
                                     debug!(
                                         "📊 Processing {} similar symbols from semantic search",
@@ -403,12 +391,16 @@ impl FastGotoTool {
                                     );
                                     if let Some(db_arc) = &workspace.db {
                                         let db = db_arc.lock().await;
-                                        for result in similar_symbols {
-                                            if let Ok(Some(symbol)) =
-                                                db.get_symbol_by_id(&result.symbol_id)
-                                            {
-                                                exact_matches.push(symbol);
-                                            }
+
+                                        // Collect all symbol IDs for batch fetch
+                                        let symbol_ids: Vec<String> = similar_symbols
+                                            .iter()
+                                            .map(|result| result.symbol_id.clone())
+                                            .collect();
+
+                                        // Single batch query instead of N individual queries
+                                        if let Ok(symbols) = db.get_symbols_by_ids(&symbol_ids) {
+                                            exact_matches.extend(symbols);
                                         }
                                     }
                                 }
@@ -633,11 +625,9 @@ impl FastGotoTool {
         let db_lock = db.lock().await;
 
         // Find exact matches by name with workspace filtering
+        // PERFORMANCE FIX: Use exact name matching instead of LIKE + client-side filtering
         let mut exact_matches =
-            db_lock.find_symbols_by_pattern(&self.symbol, Some(workspace_ids.clone()))?;
-
-        // Filter for exact name matches (find_symbols_by_pattern uses LIKE)
-        exact_matches.retain(|symbol| symbol.name == self.symbol);
+            db_lock.get_symbols_by_name_and_workspace(&self.symbol, workspace_ids.clone())?;
 
         // Strategy 2: Cross-language Intelligence Layer - naming convention variants
         // This enables workspace-filtered searches to find getUserData -> get_user_data -> GetUserData
@@ -653,12 +643,10 @@ impl FastGotoTool {
             for variant in variants {
                 if variant != self.symbol {
                     // Try each variant with workspace filtering
-                    if let Ok(mut variant_matches) =
-                        db_lock.find_symbols_by_pattern(&variant, Some(workspace_ids.clone()))
+                    // PERFORMANCE FIX: Use exact name matching instead of LIKE + client-side filtering
+                    if let Ok(variant_matches) =
+                        db_lock.get_symbols_by_name_and_workspace(&variant, workspace_ids.clone())
                     {
-                        // Filter for exact variant matches
-                        variant_matches.retain(|symbol| symbol.name == variant);
-
                         if !variant_matches.is_empty() {
                             debug!(
                                 "🎯 Found cross-language match: {} -> {} ({} results)",
@@ -937,12 +925,10 @@ impl FastRefsTool {
         let mut definitions = Vec::new();
 
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
-        if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
                 let db_lock = db.lock().await;
-                definitions = db_lock
-                    .get_symbols_by_name(&self.symbol)
-                    .unwrap_or_default();
+                definitions = db_lock.get_symbols_by_name(&self.symbol)?;
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     definitions.len()
@@ -1077,42 +1063,55 @@ impl FastRefsTool {
                                                 .map(|r| r.to_symbol_id.clone())
                                                 .collect();
 
-                                        for result in hnsw_results {
-                                            if let Ok(Some(symbol)) =
-                                                db_lock.get_symbol_by_id(&result.symbol_id)
-                                            {
+                                        // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
+                                        // Collect all symbol IDs for batch fetch
+                                        let symbol_ids: Vec<String> = hnsw_results
+                                            .iter()
+                                            .map(|result| result.symbol_id.clone())
+                                            .collect();
+
+                                        // Single batch query instead of N individual queries
+                                        if let Ok(symbols) = db_lock.get_symbols_by_ids(&symbol_ids) {
+                                            // Create a map from symbol_id to similarity_score for O(1) lookup
+                                            let score_map: std::collections::HashMap<_, _> = hnsw_results
+                                                .iter()
+                                                .map(|r| (r.symbol_id.clone(), r.similarity_score))
+                                                .collect();
+
+                                            // Process each symbol with O(1) score lookup
+                                            for symbol in symbols {
                                                 // Skip if already in definitions or references (O(1) HashSet lookup!)
                                                 if !existing_def_ids.contains(&symbol.id)
                                                     && !existing_ref_ids.contains(&symbol.id)
                                                 {
-                                                    // Create metadata HashMap with similarity score
-                                                    let mut metadata =
-                                                        std::collections::HashMap::new();
-                                                    metadata.insert(
-                                                        "similarity".to_string(),
-                                                        serde_json::json!(result.similarity_score),
-                                                    );
+                                                    // Get similarity score from map (O(1) lookup)
+                                                    if let Some(&similarity_score) = score_map.get(&symbol.id) {
+                                                        // Create metadata HashMap with similarity score
+                                                        let mut metadata =
+                                                            std::collections::HashMap::new();
+                                                        metadata.insert(
+                                                            "similarity".to_string(),
+                                                            serde_json::json!(similarity_score),
+                                                        );
 
-                                                    // Convert to Relationship for consistency
-                                                    let semantic_ref = Relationship {
-                                                        id: format!(
-                                                            "semantic_{}",
-                                                            result.symbol_id
-                                                        ),
-                                                        from_symbol_id: self.symbol.clone(),
-                                                        to_symbol_id: symbol.id.clone(),
-                                                        kind: RelationshipKind::References,
-                                                        file_path: symbol.file_path.clone(),
-                                                        line_number: symbol.start_line,
-                                                        confidence: result.similarity_score,
-                                                        metadata: Some(metadata),
-                                                    };
+                                                        // Convert to Relationship for consistency
+                                                        let semantic_ref = Relationship {
+                                                            id: format!("semantic_{}", symbol.id),
+                                                            from_symbol_id: self.symbol.clone(),
+                                                            to_symbol_id: symbol.id.clone(),
+                                                            kind: RelationshipKind::References,
+                                                            file_path: symbol.file_path.clone(),
+                                                            line_number: symbol.start_line,
+                                                            confidence: similarity_score,
+                                                            metadata: Some(metadata),
+                                                        };
 
-                                                    debug!(
-                                                        "✨ Semantic match: {} (similarity: {:.2})",
-                                                        symbol.name, result.similarity_score
-                                                    );
-                                                    references.push(semantic_ref);
+                                                        debug!(
+                                                            "✨ Semantic match: {} (similarity: {:.2})",
+                                                            symbol.name, similarity_score
+                                                        );
+                                                        references.push(semantic_ref);
+                                                    }
                                                 }
                                             }
                                         }

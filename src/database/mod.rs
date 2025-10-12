@@ -2185,6 +2185,62 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// Get symbols by exact name match with workspace filtering
+    /// PERFORMANCE: Uses indexed WHERE name = ?1 instead of LIKE for O(log n) lookup
+    pub fn get_symbols_by_name_and_workspace(
+        &self,
+        name: &str,
+        workspace_ids: Vec<String>,
+    ) -> Result<Vec<Symbol>> {
+        if workspace_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build parameterized query with IN clause for workspace filtering
+        let placeholders = workspace_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 2))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let query = format!(
+            "SELECT id, name, kind, language, file_path, signature,
+                    start_line, start_col, end_line, end_col, start_byte, end_byte,
+                    doc_comment, visibility, code_context, parent_id,
+                    metadata, semantic_group, confidence
+             FROM symbols
+             WHERE name = ?1 AND workspace_id IN ({})
+             ORDER BY workspace_id, file_path, start_line",
+            placeholders
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        // Build parameters: name first, then workspace IDs
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&name as &dyn rusqlite::ToSql];
+        let ws_params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+        params.extend(ws_params);
+
+        let rows = stmt.query_map(&params[..], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        debug!(
+            "Retrieved {} symbols with exact name '{}' from {} workspace(s)",
+            symbols.len(),
+            name,
+            workspace_ids.len()
+        );
+        Ok(symbols)
+    }
+
     /// Get all relationships from the database
     /// Used to replace in-memory Vec<Relationship> fallbacks with persistent SQLite queries
     pub fn get_all_relationships(&self) -> Result<Vec<Relationship>> {
