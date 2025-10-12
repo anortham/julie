@@ -1724,6 +1724,37 @@ impl SymbolDatabase {
         }
     }
 
+    /// Get multiple symbols by their IDs in one batched query (for semantic search results)
+    pub fn get_symbols_by_ids(&self, ids: &[String]) -> Result<Vec<Symbol>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build parameterized query with IN clause for batch fetch
+        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+        let query = format!(
+            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
+                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+                    parent_id, metadata, semantic_group, confidence
+             FROM symbols WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        // Convert Vec<String> to Vec<&dyn ToSql> for params!
+        let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+        let symbol_iter = stmt.query_map(&params[..], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for symbol_result in symbol_iter {
+            symbols.push(symbol_result?);
+        }
+
+        Ok(symbols)
+    }
+
     /// Find symbols by name with optional language filter
     pub fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(

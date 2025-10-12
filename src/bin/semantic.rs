@@ -87,6 +87,33 @@ enum Commands {
         #[arg(long, default_value = "json")]
         format: String,
     },
+
+    /// Search for similar symbols using HNSW index
+    Search {
+        /// The search query text
+        #[arg(long)]
+        text: String,
+
+        /// Path to HNSW index directory (contains hnsw_index.hnsw.*)
+        #[arg(long)]
+        index: String,
+
+        /// SQLite symbols database path (to load vector data)
+        #[arg(long)]
+        symbols_db: String,
+
+        /// Embedding model name (must match indexed model)
+        #[arg(long, default_value = "bge-small")]
+        model: String,
+
+        /// Number of results to return
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+
+        /// Minimum similarity threshold (0.0 to 1.0)
+        #[arg(long, default_value_t = 0.0)]
+        threshold: f32,
+    },
 }
 
 /// Embedding statistics for JSON output
@@ -126,6 +153,9 @@ async fn main() -> Result<()> {
         }
         Commands::Query { text, model, format } => {
             generate_query_embedding(&text, &model, &format).await?;
+        }
+        Commands::Search { text, index, symbols_db, model, limit, threshold } => {
+            search_hnsw(&text, &index, &symbols_db, &model, limit, threshold).await?;
         }
     }
 
@@ -469,6 +499,122 @@ async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Resu
             anyhow::bail!("Unknown format '{}'. Supported formats: json, binary", format);
         }
     }
+
+    Ok(())
+}
+
+/// Search for similar symbols using HNSW index
+async fn search_hnsw(
+    text: &str,
+    index_path: &str,
+    db_path: &str,
+    model: &str,
+    limit: usize,
+    threshold: f32,
+) -> Result<()> {
+    use std::time::Instant;
+
+    // 1. Generate query embedding
+    eprintln!("🧠 Generating embedding for query: '{}'", text);
+    let cache_dir = std::env::temp_dir().join("julie-embeddings");
+    std::fs::create_dir_all(&cache_dir)?;
+
+    let temp_dir = std::env::temp_dir().join("julie-query-temp");
+    std::fs::create_dir_all(&temp_dir)?;
+    let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
+    let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
+    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(dummy_db));
+
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+
+    let embed_start = Instant::now();
+    let query_vector = engine.embed_text(text)?;
+    eprintln!(
+        "✅ Query embedding generated in {:.2}ms ({}D)",
+        embed_start.elapsed().as_secs_f64() * 1000.0,
+        query_vector.len()
+    );
+
+    // 2. Load vectors from database
+    eprintln!("📖 Loading vectors from database: {}...", db_path);
+    let db = SymbolDatabase::new(db_path)?;
+    let load_vectors_start = Instant::now();
+    let all_embeddings = db.load_all_embeddings(model)?;
+    eprintln!(
+        "✅ Loaded {} vectors in {:.2}ms",
+        all_embeddings.len(),
+        load_vectors_start.elapsed().as_secs_f64() * 1000.0
+    );
+
+    // 3. Create vector store and populate with vectors
+    let mut vector_store = VectorStore::new(engine.dimensions())?;
+    for (symbol_id, vector) in all_embeddings {
+        vector_store.store_vector(symbol_id, vector)?;
+    }
+
+    // 4. Load HNSW index
+    let index_path_obj = std::path::Path::new(index_path);
+    eprintln!("📂 Loading HNSW index from {}...", index_path);
+    let load_start = Instant::now();
+    vector_store.load_hnsw_index(index_path_obj)?;
+    eprintln!(
+        "✅ HNSW index loaded in {:.2}ms",
+        load_start.elapsed().as_secs_f64() * 1000.0
+    );
+
+    // 5. Search using HNSW
+    eprintln!("🔍 Searching for top {} results (threshold: {})...", limit, threshold);
+    let search_start = Instant::now();
+    let results = vector_store.search_similar_hnsw(&query_vector, limit, threshold)?;
+    let search_time = search_start.elapsed();
+
+    eprintln!(
+        "✅ Found {} results in {:.2}ms",
+        results.len(),
+        search_time.as_secs_f64() * 1000.0
+    );
+
+    // 6. Fetch complete symbol data for results
+    let symbol_ids: Vec<String> = results.iter().map(|r| r.symbol_id.clone()).collect();
+    eprintln!("📥 Fetching {} symbol records from database...", symbol_ids.len());
+    let fetch_start = Instant::now();
+    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+    eprintln!(
+        "✅ Fetched symbol data in {:.2}ms",
+        fetch_start.elapsed().as_secs_f64() * 1000.0
+    );
+
+    // 7. Create lookup map for similarity scores
+    let similarity_map: std::collections::HashMap<_, _> = results
+        .iter()
+        .map(|r| (r.symbol_id.clone(), r.similarity_score))
+        .collect();
+
+    // 8. Output complete symbol data with similarity scores as JSON
+    let output: Vec<_> = symbols
+        .iter()
+        .map(|symbol| {
+            let similarity = similarity_map.get(&symbol.id).copied().unwrap_or(0.0);
+            serde_json::json!({
+                "symbol_id": symbol.id,
+                "similarity": similarity,
+                "name": symbol.name,
+                "kind": symbol.kind.to_string(),
+                "language": symbol.language,
+                "file_path": symbol.file_path,
+                "start_line": symbol.start_line,
+                "start_col": symbol.start_column,
+                "end_line": symbol.end_line,
+                "end_col": symbol.end_column,
+                "signature": symbol.signature,
+                "doc_comment": symbol.doc_comment,
+                "visibility": symbol.visibility.as_ref().map(|v| v.to_string()),
+                "parent_id": symbol.parent_id,
+            })
+        })
+        .collect();
+
+    println!("{}", serde_json::to_string_pretty(&output)?);
 
     Ok(())
 }
