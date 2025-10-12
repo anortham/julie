@@ -141,32 +141,7 @@ impl ManageWorkspaceTool {
         };
         println!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
-        // Get SearchEngine and SearchWriter for single-pass indexing (Tantivy + SQLite together)
-        println!("🐛 [INDEX TRACE M] About to call handler.active_search_engine().await");
-        let search_engine = handler.active_search_engine().await?;
-        println!("🐛 [INDEX TRACE N] active_search_engine() returned successfully");
-
-        // For reference workspaces, create dedicated search infrastructure
-        // For primary workspace, use existing infrastructure
-        println!("🐛 [INDEX TRACE O] About to get workspace_search_engine and writer");
-        let (workspace_search_engine, workspace_search_writer) = if is_primary_workspace {
-            println!("🐛 [INDEX TRACE P] Primary workspace path - getting existing infrastructure");
-            let search_writer = workspace
-                .search_writer
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("Search writer not available for indexing"))?;
-            println!("🐛 [INDEX TRACE Q] Got primary workspace writer");
-            (search_engine.clone(), search_writer)
-        } else {
-            println!(
-                "🐛 [INDEX TRACE R] Reference workspace path - obtaining shared infrastructure"
-            );
-            let index_path = workspace.workspace_index_path(&workspace_id);
-            handler
-                .get_reference_search_infrastructure(&workspace_id, &index_path)
-                .await?
-        };
-
+        // Tantivy removed - proceeding with SQLite-only indexing
         println!("🐛 [INDEX TRACE S] About to call process_files_optimized");
         // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
         self.process_files_optimized(
@@ -174,8 +149,6 @@ impl ManageWorkspaceTool {
             files_to_index,
             is_primary_workspace,
             &mut total_files,
-            workspace_search_engine,
-            workspace_search_writer,
             workspace_id.clone(), // Pass workspace_id to avoid re-lookup
         )
         .await?;
@@ -257,16 +230,14 @@ impl ManageWorkspaceTool {
         Ok((total_symbols, total_files, total_relationships))
     }
 
-    /// 🚀 SINGLE-PASS PROCESSING: Index in Tantivy + SQLite simultaneously
-    /// This eliminates redundant file reads and provides immediate search availability
+    /// SQLite-only file processing with optimized parser reuse
+    /// Tantivy removed - using SQLite FTS5 for search
     async fn process_files_optimized(
         &self,
         handler: &JulieServerHandler,
         files_to_index: Vec<PathBuf>,
-        is_primary_workspace: bool,
+        _is_primary_workspace: bool,
         total_files: &mut usize,
-        search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
-        search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
         workspace_id: String, // Pass workspace_id instead of re-looking it up
     ) -> Result<()> {
         // Group files by language for batch processing
@@ -293,7 +264,6 @@ impl ManageWorkspaceTool {
         let mut all_relationships = Vec::new();
         let mut all_file_infos = Vec::new();
         let mut files_to_clean = Vec::new(); // Track files that need cleanup before re-indexing
-        let mut all_tantivy_symbols = Vec::new(); // Collect ALL symbols for single Tantivy transaction
 
         // Process each language group with its dedicated parser
         for (language, file_paths) in files_by_language {
@@ -313,18 +283,17 @@ impl ManageWorkspaceTool {
                     // Has parser: full symbol extraction + text indexing for all files
                     for file_path in file_paths {
                         match self
-                            .process_file_with_parser(&file_path, &language, parser, &search_engine)
+                            .process_file_with_parser(&file_path, &language, parser)
                             .await
                         {
-                            Ok((symbols, relationships, file_info, tantivy_symbols)) => {
+                            Ok((symbols, relationships, file_info)) => {
                                 *total_files += 1;
 
                                 // Per-file processing details at trace level
                                 trace!(
-                                    "File {} extracted {} symbols, {} for Tantivy",
+                                    "File {} extracted {} symbols",
                                     file_path.display(),
-                                    symbols.len(),
-                                    tantivy_symbols.len()
+                                    symbols.len()
                                 );
 
                                 // Track this file for cleanup (remove old symbols/data before adding new)
@@ -334,7 +303,6 @@ impl ManageWorkspaceTool {
                                 all_symbols.extend(symbols);
                                 all_relationships.extend(relationships);
                                 all_file_infos.push(file_info);
-                                all_tantivy_symbols.extend(tantivy_symbols); // Collect for single big transaction
 
                                 if (*total_files).is_multiple_of(50) {
                                     debug!(
@@ -363,22 +331,13 @@ impl ManageWorkspaceTool {
                             .process_file_without_parser(&file_path, &language)
                             .await
                         {
-                            Ok((symbols, relationships, file_info, tantivy_symbols)) => {
-                                debug!("📄 Processed file without parser: {:?} - created {} tantivy symbols", file_path, tantivy_symbols.len());
-                                for sym in &tantivy_symbols {
-                                    debug!(
-                                        "  └─ Symbol: {} (kind: {:?}, code_context length: {})",
-                                        sym.name,
-                                        sym.kind,
-                                        sym.code_context.as_ref().map(|c| c.len()).unwrap_or(0)
-                                    );
-                                }
+                            Ok((symbols, relationships, file_info)) => {
+                                debug!("📄 Processed file without parser: {:?}", file_path);
                                 *total_files += 1;
                                 files_to_clean.push(file_path.to_string_lossy().to_string());
                                 all_symbols.extend(symbols); // Will be empty
                                 all_relationships.extend(relationships); // Will be empty
                                 all_file_infos.push(file_info);
-                                all_tantivy_symbols.extend(tantivy_symbols); // File content for text search
                             }
                             Err(e) => {
                                 warn!(
@@ -393,10 +352,7 @@ impl ManageWorkspaceTool {
         }
 
         // 🧹 CLEANUP: Remove old data for files being re-processed (incremental updates)
-        // Run cleanup if we have files to clean AND either extracted symbols OR tantivy symbols
-        if !files_to_clean.is_empty()
-            && (!all_symbols.is_empty() || !all_tantivy_symbols.is_empty())
-        {
+        if !files_to_clean.is_empty() && !all_symbols.is_empty() {
             debug!(
                 "Cleaning up old data for {} modified files before bulk storage",
                 files_to_clean.len()
@@ -422,20 +378,6 @@ impl ManageWorkspaceTool {
                                 "Failed to delete old relationships for {}: {}",
                                 file_path, e
                             );
-                        }
-                    }
-
-                    // Clean up Tantivy entries for modified files using separate writer
-                    {
-                        let mut search_writer_lock = search_writer.lock().await;
-                        for file_path in &files_to_clean {
-                            if let Err(e) = search_writer_lock.delete_file_symbols(file_path).await
-                            {
-                                warn!(
-                                    "Failed to delete old Tantivy entries for {}: {}",
-                                    file_path, e
-                                );
-                            }
                         }
                     }
 
@@ -482,174 +424,34 @@ impl ManageWorkspaceTool {
                         bulk_duration.as_secs_f64()
                     );
 
-                    // CASCADE: Mark SQLite FTS5 as ready
+                    // Mark SQLite FTS5 as ready
                     handler
                         .indexing_status
                         .sqlite_fts_ready
                         .store(true, std::sync::atomic::Ordering::Release);
-                    debug!("🔍 CASCADE: SQLite FTS5 search now available");
+                    debug!("🔍 SQLite FTS5 search now available");
                 }
-            }
-
-            // 🔥 CASCADE: Launch background Tantivy indexing from SQLite
-            info!("🚀 CASCADE: SQLite storage complete - launching background Tantivy indexing...");
-
-            // Clone necessary references for background task
-            // CRITICAL: The search_engine and search_writer parameters are already workspace-specific
-            // (they were created for the correct workspace in index_workspace_files)
-            let search_engine_clone = search_engine.clone();
-            let search_writer_clone = search_writer.clone();
-            let workspace = handler.get_workspace().await?;
-            let workspace_db = workspace.as_ref().and_then(|ws| ws.db.clone());
-            let workspace_root = workspace.as_ref().map(|ws| ws.root.clone());
-            let workspace_id_clone = workspace_id.clone();
-            let indexing_status_clone = handler.indexing_status.clone();
-
-            tokio::spawn(async move {
-                info!(
-                    "🔥 Background Tantivy task starting for workspace: {}",
-                    workspace_id_clone
-                );
-                match build_tantivy_from_sqlite(
-                    search_engine_clone,
-                    search_writer_clone,
-                    workspace_db,
-                    workspace_id_clone.clone(),
-                    indexing_status_clone,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        info!(
-                            "✅ Background Tantivy indexing completed for workspace: {}",
-                            workspace_id_clone
-                        );
-
-                        // Update workspace stats after Tantivy index is built
-                        if let Some(root) = workspace_root {
-                            use crate::workspace::registry_service::WorkspaceRegistryService;
-                            let registry_service = WorkspaceRegistryService::new(root.clone());
-
-                            // Calculate actual Tantivy index size
-                            let index_base = root.join(".julie/indexes");
-                            let index_path = index_base.join(&workspace_id_clone);
-
-                            fn calculate_dir_size(path: &std::path::Path) -> u64 {
-                                let mut total_size = 0u64;
-                                if let Ok(entries) = std::fs::read_dir(path) {
-                                    for entry in entries.flatten() {
-                                        if let Ok(metadata) = entry.metadata() {
-                                            if metadata.is_file() {
-                                                total_size += metadata.len();
-                                            } else if metadata.is_dir() {
-                                                total_size += calculate_dir_size(&entry.path());
-                                            }
-                                        }
-                                    }
-                                }
-                                total_size
-                            }
-
-                            let index_size = if index_path.exists() {
-                                calculate_dir_size(&index_path)
-                            } else {
-                                0
-                            };
-
-                            // Update stats with actual index size
-                            if let Err(e) = registry_service
-                                .update_index_size(&workspace_id_clone, index_size)
-                                .await
-                            {
-                                warn!("Failed to update workspace index size: {}", e);
-                            } else {
-                                info!(
-                                    "✅ Updated workspace index size: {} bytes ({:.2} MB)",
-                                    index_size,
-                                    index_size as f64 / 1_048_576.0
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "❌ CASCADE: Background Tantivy indexing failed for workspace {}: {}",
-                            workspace_id_clone, e
-                        );
-                        error!("Error details: {:?}", e);
-                    }
-                }
-            });
-
-            // Store in handler memory for compatibility (primary workspace only)
-            if is_primary_workspace {
-                debug!(
-                    "Storing {} symbols in memory for compatibility",
-                    all_symbols.len()
-                );
-                // Symbols and relationships already persisted to SQLite database
-                // No need for in-memory storage - all reads now query database directly
-                debug!("Database storage complete");
             }
         }
 
         Ok(())
     }
 
-    /// Process a single file with single-pass indexing (Tantivy + symbol extraction)
-    /// Returns (symbols, relationships, file_info, tantivy_symbols) for bulk storage
+    /// Process a single file with symbol extraction
+    /// Returns (symbols, relationships, file_info) for bulk storage
     async fn process_file_with_parser(
         &self,
         file_path: &Path,
         language: &str,
         parser: &mut Parser,
-        _search_engine: &Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
     ) -> Result<(
         Vec<Symbol>,
         Vec<Relationship>,
         crate::database::FileInfo,
-        Vec<Symbol>,
     )> {
-        // Read file content ONCE for both Tantivy and symbol extraction
+        // Read file content for symbol extraction
         let content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
-
-        let file_path_str = file_path.to_string_lossy().to_string();
-
-        // 🚀 COLLECT: Prepare full file content symbol for batch Tantivy indexing
-        let mut tantivy_symbols = Vec::new();
-        if !content.trim().is_empty() {
-            let file_content_symbol = crate::extractors::Symbol {
-                id: format!("file_content_{}", file_path_str.replace(['/', '\\'], "_")),
-                name: format!(
-                    "FILE_CONTENT_{}",
-                    std::path::Path::new(&file_path_str)
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                ),
-                kind: crate::extractors::SymbolKind::Module, // Use Module for files
-                language: "text".to_string(),                // Generic text for full content
-                file_path: file_path_str.clone(),
-                signature: Some(format!("Full content of {}", file_path_str)),
-                doc_comment: None,
-                code_context: Some(content.clone()), // Put full file content in code_context
-                start_line: 1,
-                end_line: content.lines().count() as u32,
-                start_column: 1,
-                end_column: 1,
-                start_byte: 0,
-                end_byte: content.len() as u32,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: Some("file_content".to_string()),
-                confidence: Some(1.0),
-            };
-
-            // Collect file content symbol for batch indexing (no immediate commit)
-            tantivy_symbols.push(file_content_symbol);
-        }
 
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
@@ -664,9 +466,8 @@ impl ManageWorkspaceTool {
                     last_modified: 0,
                     last_indexed: 0,
                     symbol_count: 0,
-                    content: Some(String::new()), // CASCADE: Empty content
+                    content: Some(String::new()),
                 },
-                tantivy_symbols, // Return empty tantivy symbols for empty files
             ));
         }
 
@@ -682,8 +483,8 @@ impl ManageWorkspaceTool {
             let file_path_str = file_path.to_string_lossy().to_string();
             let file_info = crate::database::create_file_info(&file_path_str, language)?;
 
-            // Return file info and tantivy symbols (for text search), but no extracted symbols
-            return Ok((Vec::new(), Vec::new(), file_info, tantivy_symbols));
+            // Return file info, but no extracted symbols
+            return Ok((Vec::new(), Vec::new(), file_info));
         }
 
         let file_path_str = file_path.to_string_lossy().to_string();
@@ -700,11 +501,6 @@ impl ManageWorkspaceTool {
         // Calculate file info for database storage
         let file_info = crate::database::create_file_info(&file_path_str, language)?;
 
-        // 🚀 COLLECT: Add extracted symbols to Tantivy batch (no immediate commit)
-        if !symbols.is_empty() {
-            tantivy_symbols.extend(symbols.clone());
-        }
-
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
             debug!(
@@ -714,8 +510,8 @@ impl ManageWorkspaceTool {
             );
         }
 
-        // Return data for bulk operations (SQLite + Tantivy batch)
-        Ok((symbols, relationships, file_info, tantivy_symbols))
+        // Return data for bulk operations (SQLite storage)
+        Ok((symbols, relationships, file_info))
     }
 
     /// Extract symbols from an already-parsed tree (PERFORMANCE OPTIMIZED)
@@ -1248,8 +1044,8 @@ impl ManageWorkspaceTool {
         !matches!(language, "css" | "html")
     }
 
-    /// Process a file without a tree-sitter parser (text indexing only, no symbol extraction)
-    /// This ensures ALL non-binary files are searchable, even without language extractors
+    /// Process a file without a tree-sitter parser (no symbol extraction)
+    /// Files without parsers are still indexed for full-text search via database
     async fn process_file_without_parser(
         &self,
         file_path: &Path,
@@ -1258,7 +1054,6 @@ impl ManageWorkspaceTool {
         Vec<Symbol>,
         Vec<Relationship>,
         crate::database::FileInfo,
-        Vec<Symbol>,
     )> {
         trace!(
             "Processing file without parser: {:?} (language: {})",
@@ -1266,7 +1061,7 @@ impl ManageWorkspaceTool {
             language
         );
 
-        // Read file content for text indexing
+        // Read file content for database storage
         let content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
 
@@ -1274,201 +1069,12 @@ impl ManageWorkspaceTool {
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
-        // Create file_content_symbol for Tantivy text search
-        let mut tantivy_symbols = Vec::new();
-        if !content.trim().is_empty() {
-            let file_content_symbol = crate::extractors::Symbol {
-                id: format!("file_content_{}", file_path_str.replace(['/', '\\'], "_")),
-                name: format!(
-                    "FILE_CONTENT_{}",
-                    std::path::Path::new(&file_path_str)
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                ),
-                kind: crate::extractors::SymbolKind::Module,
-                language: "text".to_string(), // Generic text for full content
-                file_path: file_path_str.clone(),
-                signature: Some(format!("Full content of {}", file_path_str)),
-                doc_comment: None,
-                code_context: Some(content.clone()), // Full file content for text search
-                start_line: 1,
-                end_line: content.lines().count() as u32,
-                start_column: 1,
-                end_column: 1,
-                start_byte: 0,
-                end_byte: content.len() as u32,
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: Some("file_content".to_string()),
-                confidence: Some(1.0),
-            };
-            trace!(
-                "Created FILE_CONTENT symbol: {} for {:?}",
-                file_content_symbol.name,
-                file_path
-            );
-            tantivy_symbols.push(file_content_symbol);
-        } else {
-            warn!(
-                "⚠️  File {:?} has empty content, skipping FILE_CONTENT symbol creation",
-                file_path
-            );
-        }
-
         // Calculate file info for database storage
         let file_info = crate::database::create_file_info(&file_path_str, language)?;
 
-        trace!(
-            "Returning from process_file_without_parser: {} tantivy_symbols",
-            tantivy_symbols.len()
-        );
-
-        // Return: FILE_CONTENT symbols for BOTH database storage AND Tantivy indexing
-        // Clone is necessary because both database and Tantivy need the symbols
-        let database_symbols = tantivy_symbols.clone();
-        Ok((database_symbols, Vec::new(), file_info, tantivy_symbols))
+        // No symbols extracted (no parser available)
+        Ok((Vec::new(), Vec::new(), file_info))
     }
-}
-
-/// 🔥 CASCADE BACKGROUND TASK: Build Tantivy index from SQLite database
-/// This runs asynchronously after SQLite storage completes, enabling fast startup
-async fn build_tantivy_from_sqlite(
-    search_engine: Arc<tokio::sync::RwLock<crate::search::SearchEngine>>,
-    search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
-    workspace_db: Option<Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
-    workspace_id: String,
-    indexing_status: Arc<crate::handler::IndexingStatus>,
-) -> Result<()> {
-    use anyhow::Context;
-
-    let start_time = std::time::Instant::now();
-    info!(
-        "CASCADE: Building Tantivy index from SQLite for workspace: {}",
-        workspace_id
-    );
-
-    // Get database connection
-    let db = match workspace_db {
-        Some(db_arc) => db_arc,
-        None => {
-            warn!(
-                "No database available for Tantivy indexing for workspace: {}",
-                workspace_id
-            );
-            return Ok(());
-        }
-    };
-
-    debug!(
-        "Database connection acquired for workspace: {}",
-        workspace_id
-    );
-
-    // 1. Pull symbols from SQLite
-    let symbols = {
-        let db_lock = db.lock().await;
-        db_lock
-            .get_symbols_for_workspace(&workspace_id)
-            .context("Failed to read symbols from database")?
-    };
-
-    // 2. Pull file contents from SQLite (for FILE_CONTENT symbols)
-    let file_contents = {
-        let db_lock = db.lock().await;
-        db_lock
-            .get_all_file_contents(&workspace_id)
-            .context("Failed to read file contents from database")?
-    };
-
-    if symbols.is_empty() && file_contents.is_empty() {
-        debug!("No symbols or files to index in Tantivy");
-        return Ok(());
-    }
-
-    debug!(
-        "Indexing {} symbols + {} file contents into Tantivy",
-        symbols.len(),
-        file_contents.len()
-    );
-
-    // 3. Create FILE_CONTENT symbols from file contents
-    let mut file_content_symbols = Vec::new();
-    for (path, content) in file_contents {
-        let file_content_symbol = crate::extractors::Symbol {
-            id: format!("file_content_{}", path.replace(['/', '\\'], "_")),
-            name: format!(
-                "FILE_CONTENT_{}",
-                std::path::Path::new(&path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            ),
-            kind: crate::extractors::SymbolKind::Module, // Use Module for files
-            language: "text".to_string(),                // Generic text for full content
-            file_path: path.clone(),
-            signature: Some(format!("Full content of {}", path)),
-            doc_comment: None,
-            code_context: Some(content.clone()), // Put full file content in code_context
-            start_line: 1,
-            end_line: content.lines().count() as u32,
-            start_column: 1,
-            end_column: 1,
-            start_byte: 0,
-            end_byte: content.len() as u32,
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: Some("file_content".to_string()),
-            confidence: Some(1.0),
-        };
-
-        file_content_symbols.push(file_content_symbol);
-    }
-
-    debug!(
-        "Created {} FILE_CONTENT symbols",
-        file_content_symbols.len()
-    );
-
-    // 4. Combine all symbols
-    let mut all_symbols = symbols;
-    all_symbols.extend(file_content_symbols);
-
-    debug!("Total symbols for Tantivy: {}", all_symbols.len());
-
-    // 5. Index into Tantivy using separate writer
-    {
-        let mut search_writer_lock = search_writer.lock().await;
-        search_writer_lock
-            .index_symbols(all_symbols)
-            .await
-            .context("Failed to index symbols in Tantivy")?;
-    }
-
-    // 6. Reload reader to see new commits (uses tokio::sync::Mutex - proper async await!)
-    {
-        let search_engine_lock = search_engine.read().await;
-        search_engine_lock
-            .reload_reader()
-            .await
-            .context("Failed to reload search reader after indexing")?;
-    }
-
-    let duration = start_time.elapsed();
-    info!(
-        "✅ CASCADE: Tantivy index built from SQLite in {:.2}s - advanced search available!",
-        duration.as_secs_f64()
-    );
-
-    // CASCADE: Mark Tantivy as ready
-    indexing_status
-        .tantivy_ready
-        .store(true, std::sync::atomic::Ordering::Release);
-    debug!("🚀 CASCADE: Tantivy search now available");
-
-    Ok(())
 }
 
 /// 🔥 BACKGROUND TASK: Generate embeddings from SQLite database

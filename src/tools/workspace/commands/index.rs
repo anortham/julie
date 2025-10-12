@@ -186,16 +186,18 @@ impl ManageWorkspaceTool {
                     };
 
                     // ALWAYS update statistics after indexing (regardless of registration status)
-                    // Calculate actual Tantivy index size using per-workspace path
+                    // Move blocking dir size calculation into background task
                     let index_path = workspace.workspace_index_path(&workspace_id);
-                    let index_size = index_path
-                        .metadata()
-                        .map(|_m| calculate_dir_size(&index_path))
-                        .unwrap_or(0);
-
                     let registry_service_clone = registry_service.clone();
                     let workspace_id_for_stats = workspace_id.clone();
                     tokio::spawn(async move {
+                        // Calculate actual database index size using per-workspace path
+                        // This is a blocking operation so we do it in background
+                        let index_size = index_path
+                            .metadata()
+                            .map(|_m| calculate_dir_size(&index_path))
+                            .unwrap_or(0);
+
                         if let Err(e) = registry_service_clone
                             .update_workspace_statistics(
                                 &workspace_id_for_stats,

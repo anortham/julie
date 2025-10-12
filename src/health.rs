@@ -12,15 +12,9 @@ use tracing::debug;
 pub enum SystemReadiness {
     /// No workspace or database available
     NotReady,
-    /// Only SQLite database is ready (fallback mode)
+    /// Only SQLite database is ready (FTS5 search available)
     SqliteOnly { symbol_count: i64 },
-    /// Some systems ready (partial functionality)
-    PartiallyReady {
-        tantivy_ready: bool,
-        embeddings_ready: bool,
-        symbol_count: i64,
-    },
-    /// All systems operational
+    /// All systems operational (SQLite FTS5 + Embeddings)
     FullyReady { symbol_count: i64 },
 }
 
@@ -80,27 +74,18 @@ impl HealthChecker {
         // Use the target workspace ID for per-workspace paths
         let workspace_id_for_paths = target_workspace_id.clone();
 
-        // Step 4: Check Tantivy search engine status
-        let tantivy_ready = workspace.search.is_some()
-            && workspace
-                .workspace_index_path(&workspace_id_for_paths)
-                .exists();
-
-        // Step 5: Check embedding system status
+        // Step 4: Check embedding system status
         let embeddings_ready = workspace.embeddings.is_some()
             && Self::has_embedding_files(
                 &workspace.workspace_vectors_path(&workspace_id_for_paths),
             );
 
-        // Step 6: Determine overall readiness level
-        match (tantivy_ready, embeddings_ready) {
-            (false, false) => Ok(SystemReadiness::SqliteOnly { symbol_count }),
-            (true, true) => Ok(SystemReadiness::FullyReady { symbol_count }),
-            _ => Ok(SystemReadiness::PartiallyReady {
-                tantivy_ready,
-                embeddings_ready,
-                symbol_count,
-            }),
+        // Step 5: Determine overall readiness level
+        // With Tantivy removed, we only have SQLite FTS5 + optional embeddings
+        if embeddings_ready {
+            Ok(SystemReadiness::FullyReady { symbol_count })
+        } else {
+            Ok(SystemReadiness::SqliteOnly { symbol_count })
         }
     }
 
@@ -112,21 +97,10 @@ impl HealthChecker {
         }
     }
 
-    /// Quick check: Is Tantivy search available for optimal performance?
-    pub async fn is_tantivy_ready(handler: &JulieServerHandler) -> Result<bool> {
-        match Self::check_system_readiness(handler, None).await? {
-            SystemReadiness::PartiallyReady { tantivy_ready, .. } => Ok(tantivy_ready),
-            SystemReadiness::FullyReady { .. } => Ok(true),
-            _ => Ok(false),
-        }
-    }
 
     /// Quick check: Are embeddings available for semantic search?
     pub async fn are_embeddings_ready(handler: &JulieServerHandler) -> Result<bool> {
         match Self::check_system_readiness(handler, None).await? {
-            SystemReadiness::PartiallyReady {
-                embeddings_ready, ..
-            } => Ok(embeddings_ready),
             SystemReadiness::FullyReady { .. } => Ok(true),
             _ => Ok(false),
         }
@@ -141,23 +115,11 @@ impl HealthChecker {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
             SystemReadiness::SqliteOnly { symbol_count } => Ok(format!(
-                "🔄 Basic mode: {} symbols available via database search (Tantivy building)",
+                "🟢 Ready: {} symbols available via SQLite FTS5 search (<5ms)",
                 symbol_count
             )),
-            SystemReadiness::PartiallyReady {
-                tantivy_ready,
-                embeddings_ready,
-                symbol_count,
-            } => {
-                let tantivy_status = if tantivy_ready { "✅" } else { "🔄" };
-                let embedding_status = if embeddings_ready { "✅" } else { "🔄" };
-                Ok(format!(
-                    "🟡 Partially ready: {} symbols | Tantivy: {} | Embeddings: {}",
-                    symbol_count, tantivy_status, embedding_status
-                ))
-            }
             SystemReadiness::FullyReady { symbol_count } => Ok(format!(
-                "🟢 Fully operational: {} symbols with lightning-fast search!",
+                "🟢 Fully operational: {} symbols with semantic search enabled!",
                 symbol_count
             )),
         }
@@ -195,17 +157,8 @@ impl HealthChecker {
         let workspace_id_result =
             registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""));
 
-        // Tantivy status
-        if let Ok(workspace_id) = &workspace_id_result {
-            let tantivy_path = workspace.workspace_index_path(workspace_id);
-            if tantivy_path.exists() {
-                report.push_str("✅ Tantivy search index ready\n");
-            } else {
-                report.push_str("🔄 Tantivy search index building\n");
-            }
-        } else {
-            report.push_str("❌ Could not determine workspace ID\n");
-        }
+        // SQLite FTS5 search status (always available if database exists)
+        report.push_str("✅ SQLite FTS5 search ready (<5ms queries)\n");
 
         // Embeddings status
         if let Ok(workspace_id) = &workspace_id_result {

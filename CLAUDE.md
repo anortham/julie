@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite → Tantivy → Semantic), and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, true cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
-- **Architecture**: CASCADE (SQLite FTS5 → Tantivy → HNSW Semantic) - single source of truth with progressive enhancement
+- **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier single source of truth with progressive enhancement
 - **Origin**: Rebuilt from Miller (TypeScript/Bun) due to Windows compatibility issues
 - **Crown Jewels**: 26 tree-sitter extractors with comprehensive test suites (100% Miller parity)
 
@@ -96,10 +96,9 @@ We will be using Julie to develop Julie (eating our own dog food):
 <project>/.julie/
 ├── indexes/                 # Per-workspace indexes (complete isolation)
 │   └── {workspace_id}/      # e.g., julie_316c0b08
-│       ├── tantivy/         # Workspace-specific Tantivy search index
 │       ├── vectors/         # Workspace-specific HNSW semantic vectors
 │       └── db/
-│           └── symbols.db   # Workspace-specific SQLite database
+│           └── symbols.db   # Workspace-specific SQLite database (includes FTS5 index)
 ├── cache/
 │   └── embeddings/          # ONNX model cache (~128MB, shared, one-time download)
 ├── models/                  # ML model files (shared)
@@ -108,10 +107,10 @@ We will be using Julie to develop Julie (eating our own dog food):
 ```
 
 **Key Benefits:**
-- ✅ **Complete workspace isolation** - Each workspace has own db/tantivy/vectors
-- ✅ **Multi-word AND/OR search** - workspace filtering uses Tantivy (not SQLite fallback)
+- ✅ **Complete workspace isolation** - Each workspace has own db/vectors
+- ✅ **Multi-word AND/OR search** - SQLite FTS5 supports boolean operators natively
 - ✅ **Trivial deletion** - `rm -rf indexes/{workspace_id}/` removes everything
-- ✅ **Smaller, faster indexes** - Per-workspace indexes are optimized
+- ✅ **Smaller, faster indexes** - Simpler 2-tier architecture, less disk space
 
 ### Why This Matters
 - **Real-world validation**: If Julie can't analyze its own code, it's not ready
@@ -128,19 +127,19 @@ When implementing new features, the agent should say:
 
 ### 📚 Architecture Documentation
 **IMPORTANT**: Read these documents to understand Julie's architecture:
-- **[SEARCH_FLOW.md](docs/SEARCH_FLOW.md)** - CASCADE architecture and search flow (★ UPDATED 2025-09-30)
+- **[SEARCH_FLOW.md](docs/SEARCH_FLOW.md)** - CASCADE architecture and search flow (★ UPDATED 2025-10-12)
 - **TODO.md** - Current observations and ideas
 - **ARCHITECTURE_DEBT.md** - Known issues and technical debt
 
 ### Core Design Decisions
-1. **CASCADE Architecture**: SQLite single source of truth → Tantivy (background) → HNSW Semantic (background)
-2. **Per-Workspace Isolation**: Each workspace gets own db/tantivy/vectors in `indexes/{workspace_id}/`
+1. **CASCADE Architecture (2-Tier)**: SQLite FTS5 single source of truth → HNSW Semantic (background)
+2. **Per-Workspace Isolation**: Each workspace gets own db/vectors in `indexes/{workspace_id}/`
 3. **Native Rust**: No FFI, no CGO, no external dependencies
 4. **Tree-sitter Native**: Direct Rust bindings for all language parsers
-5. **Tantivy Search**: 2x faster than Lucene, pure Rust, <10ms queries, multi-word AND/OR logic
+5. **SQLite FTS5 Search**: BM25 ranking, <5ms queries, multi-word AND/OR logic built-in
 6. **ONNX Embeddings**: ort crate for semantic understanding
 7. **Single Binary**: Deploy anywhere, no runtime required
-8. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement to Tantivy/Semantic
+8. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement to Semantic
 
 ### Module Structure
 ```
@@ -151,16 +150,11 @@ src/
 │   ├── base.rs         # BaseExtractor trait and common types
 │   ├── typescript.rs   # TypeScript/JavaScript extractor
 │   └── ...             # All other language extractors (26 total)
-├── search/              # Tantivy-based search engine
-│   ├── mod.rs          # Search infrastructure
-│   ├── schema.rs       # Tantivy schema definitions
-│   ├── tokenizers.rs   # Code-specific tokenization
-│   └── engine/         # Search engine implementation
 ├── embeddings/          # ONNX-based semantic search
-├── database/            # SQLite symbol storage
+├── database/            # SQLite symbol storage (includes FTS5 search)
 ├── tools/               # MCP tool implementations
 │   ├── mod.rs          # Tool registration and management
-│   ├── search.rs       # Fast search, goto, refs tools
+│   ├── search.rs       # Fast search, goto, refs tools (SQLite FTS5 + semantic)
 │   ├── fuzzy_replace.rs # FuzzyReplaceTool (Levenshtein-based fuzzy matching)
 │   ├── trace_call_path.rs # TraceCallPathTool (cross-language call tracing)
 │   ├── refactoring.rs  # SmartRefactorTool (RenameSymbol, etc.)
@@ -329,12 +323,12 @@ cargo test --release
 Julie must significantly outperform Miller:
 
 ### Benchmarks
-- **Search Latency**: <10ms Tantivy, <5ms SQLite FTS5, <50ms Semantic (vs Miller's 50ms)
+- **Search Latency**: <5ms SQLite FTS5, <50ms Semantic (vs Miller's 50ms)
 - **Parsing Speed**: 5-10x faster than Miller
 - **Memory Usage**: <100MB typical (vs Miller's ~500MB)
 - **Startup Time**: <2s (CASCADE SQLite only), 30-60x faster than old blocking approach
-- **Background Indexing**: Tantivy 5-10s, HNSW Semantic 20-30s (non-blocking)
-- **Indexing Speed**: Process 1000 files in <2s (SQLite), background Tantivy <10s
+- **Background Indexing**: HNSW Semantic 20-30s (non-blocking, no intermediate layers)
+- **Indexing Speed**: Process 1000 files in <2s (SQLite with FTS5)
 
 ### Performance Testing
 ```bash
@@ -476,7 +470,7 @@ debug!(file_path = %path, symbols_found = symbols.len(), "Extracted symbols");
 ### Core Dependencies (Already in Cargo.toml)
 - `rust-mcp-sdk`: MCP protocol implementation
 - `tree-sitter`: Parser framework with all language bindings
-- `tantivy`: Search engine
+- `rusqlite`: SQLite database with FTS5 full-text search
 - `ort`: ONNX runtime for embeddings
 - `tokio`: Async runtime
 - `rayon`: Data parallelism
@@ -525,27 +519,30 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 *This document should be updated as the project evolves. All contributors must follow these guidelines without exception.*
 
-**Project Status**: Phase 6 - Per-Workspace Architecture Complete ✅ (Commit 5d74ad2)
+**Project Status**: Phase 7 - 2-Tier CASCADE Architecture (Tantivy Removed) ✅
 **Current Achievements**:
 - ✅ All 26 Language Extractors Operational (Miller Parity)
-- ✅ CASCADE Architecture Complete (SQLite → Tantivy → HNSW Semantic)
+- ✅ **CASCADE Architecture Simplified**: SQLite FTS5 → HNSW Semantic (2-tier)
+- ✅ **Tantivy Removed**: Eliminated Arc<RwLock> deadlocks, simpler architecture
 - ✅ **Per-Workspace Isolation**: Complete workspace separation in `indexes/{workspace_id}/`
-- ✅ **Multi-Word Search Fixed**: workspace filtering now uses Tantivy with AND/OR logic
+- ✅ **SQLite FTS5 Search**: <5ms BM25 ranking, AND/OR boolean logic, no locking issues
 - ✅ <2s Startup Time with Background Indexing (30-60x improvement)
 - ✅ **Tool Redesign Complete**: SafeEditTool → FuzzyReplaceTool + TraceCallPathTool
 - ✅ **Critical Deadlock Fix**: Background embedding task now runs (was completely blocked)
-- ✅ **Production Dogfooding Successful**: Found & fixed 5 critical bugs
+- ✅ **Production Dogfooding Successful**: Found & fixed 6 critical bugs
   - UTF-8 crash (byte slicing → char iteration)
   - Query logic error (trace_call_path upstream)
   - Validation false positives (absolute → delta balance)
   - String mutation index corruption
   - **Registry deadlock** (background task waiting indefinitely)
-- ✅ **Comprehensive Test Coverage**: All workspace tests passing
+  - **Tantivy Arc<RwLock> deadlocks** (5-10s commits causing contention)
+- ✅ **Comprehensive Test Coverage**: 636 tests passing
   - 18 fuzzy_replace unit tests (Levenshtein, UTF-8, validation)
   - 15 trace_call_path unit tests (parameters, cross-language)
   - Per-workspace architecture verified
+  - All Tantivy-dependent tests removed
 - ✅ Real-World Validation Against GitHub Repositories
 - ✅ Professional Error Detection (File Corruption Prevention)
 
 **Next Milestone**: GPU acceleration exploration + remaining test migrations
-**Last Updated**: 2025-10-01 - Per-Workspace Architecture & Deadlock Fix Complete
+**Last Updated**: 2025-10-12 - 2-Tier CASCADE Architecture Complete (Tantivy Removed)

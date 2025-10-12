@@ -1,11 +1,10 @@
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::Symbol;
-use crate::search::SearchEngine;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// The revolutionary cross-language tracing engine
@@ -13,8 +12,6 @@ use uuid::Uuid;
 pub struct CrossLanguageTracer {
     #[allow(dead_code)]
     db: Arc<Mutex<SymbolDatabase>>,
-    #[allow(dead_code)]
-    search: Arc<RwLock<SearchEngine>>,
     #[allow(dead_code)]
     embeddings: Arc<EmbeddingEngine>,
 }
@@ -108,12 +105,10 @@ pub struct ConfidenceScore {
 impl CrossLanguageTracer {
     pub fn new(
         db: Arc<Mutex<SymbolDatabase>>,
-        search: Arc<RwLock<SearchEngine>>,
         embeddings: Arc<EmbeddingEngine>,
     ) -> Self {
         Self {
             db,
-            search,
             embeddings,
         }
     }
@@ -562,18 +557,13 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
 
-        // Create a temporary search index for testing
-        let index_dir = temp_dir.path().join("index");
-        std::fs::create_dir_all(&index_dir).unwrap();
-        let search = Arc::new(RwLock::new(SearchEngine::new(&index_dir).unwrap()));
-
         // Create embedding engine (will need cache dir)
         let cache_dir = temp_dir.path().join("cache");
         std::fs::create_dir_all(&cache_dir).unwrap();
         let embeddings =
             Arc::new(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).unwrap());
 
-        CrossLanguageTracer::new(db, search, embeddings)
+        CrossLanguageTracer::new(db, embeddings)
     }
 
     #[cfg_attr(

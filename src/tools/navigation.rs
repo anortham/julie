@@ -230,56 +230,21 @@ impl FastGotoTool {
             return self.database_find_definitions(handler, workspace_ids).await;
         }
 
-        // For "all" workspaces, use the existing search engine approach
-        // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
+        // For "all" workspaces, use SQLite FTS5 for fast symbol lookup
+        // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
         let mut exact_matches = Vec::new();
 
-        // Use indexed search for exact matches - MUCH faster than linear scan!
-        match handler.active_search_engine().await {
-            Ok(search_engine) => {
-                let search_engine = search_engine.read().await;
-                match search_engine.search(&self.symbol).await {
-                    Ok(search_results) => {
-                        // Use SearchResult's symbol directly - no O(n) linear lookup needed!
-                        for search_result in search_results {
-                            // Only include exact name matches for definitions
-                            if search_result.symbol.name == self.symbol {
-                                exact_matches.push(search_result.symbol);
-                            }
-                        }
-                        debug!(
-                            "⚡ Indexed search found {} exact matches",
-                            exact_matches.len()
-                        );
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Search engine failed, falling back to SQLite database: {}",
-                            e
-                        );
-                        // Fallback to database search for exact name lookup (indexed, fast)
-                        if let Ok(Some(workspace)) = handler.get_workspace().await {
-                            if let Some(db) = workspace.db.as_ref() {
-                                let db_lock = db.lock().await;
-                                exact_matches = db_lock
-                                    .get_symbols_by_name(&self.symbol)
-                                    .unwrap_or_default();
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                debug!("Search engine unavailable, using SQLite database: {}", e);
-                // Fallback to database search for exact name lookup (indexed, fast)
-                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    if let Some(db) = workspace.db.as_ref() {
-                        let db_lock = db.lock().await;
-                        exact_matches = db_lock
-                            .get_symbols_by_name(&self.symbol)
-                            .unwrap_or_default();
-                    }
-                }
+        // Use SQLite FTS5 for exact name lookup (indexed, fast)
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
+                exact_matches = db_lock
+                    .get_symbols_by_name(&self.symbol)
+                    .unwrap_or_default();
+                debug!(
+                    "⚡ SQLite FTS5 found {} exact matches",
+                    exact_matches.len()
+                );
             }
         }
 
@@ -346,9 +311,9 @@ impl FastGotoTool {
             // 3a. Try naming convention variants (fast, works across Python/JS/C#/Rust)
             // Examples: getUserData -> get_user_data (Python), GetUserData (C#)
             // Uses Julie's Intelligence Layer for smart variant generation
-            match handler.active_search_engine().await {
-                Ok(search_engine) => {
-                    let search_engine = search_engine.read().await;
+            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_lock = db.lock().await;
 
                     // Generate all naming convention variants using shared intelligence module
                     let variants = generate_naming_variants(&self.symbol);
@@ -356,32 +321,19 @@ impl FastGotoTool {
                     for variant in variants {
                         if variant != self.symbol {
                             // Avoid duplicate searches
-                            match search_engine.search(&variant).await {
-                                Ok(search_results) => {
-                                    for search_result in search_results {
-                                        if search_result.symbol.name == variant {
-                                            debug!(
-                                                "🎯 Found cross-language match: {} -> {}",
-                                                self.symbol, variant
-                                            );
-                                            exact_matches.push(search_result.symbol);
-                                        }
+                            if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                                for symbol in variant_symbols {
+                                    if symbol.name == variant {
+                                        debug!(
+                                            "🎯 Found cross-language match: {} -> {}",
+                                            self.symbol, variant
+                                        );
+                                        exact_matches.push(symbol);
                                     }
-                                }
-                                Err(_) => {
-                                    // Skip failed variant searches - not critical
-                                    debug!("Variant search failed for: {}", variant);
                                 }
                             }
                         }
                     }
-                }
-                Err(e) => {
-                    debug!(
-                        "Search engine not available for cross-language resolution: {}",
-                        e
-                    );
-                    // Fall through to semantic search (Strategy 4)
                 }
             }
 
@@ -770,8 +722,24 @@ impl FastGotoTool {
                 Ok(None)
             }
             "primary" => {
-                // Search only primary workspace
-                Ok(Some(vec!["primary".to_string()]))
+                // Resolve "primary" to actual primary workspace ID
+                if let Some(primary_workspace) = handler.get_workspace().await? {
+                    let registry_service =
+                        WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+                    match registry_service.get_primary_workspace_id().await? {
+                        Some(workspace_id) => Ok(Some(vec![workspace_id])),
+                        None => {
+                            Err(anyhow::anyhow!(
+                                "No primary workspace registered. Initialize workspace first."
+                            ))
+                        }
+                    }
+                } else {
+                    Err(anyhow::anyhow!(
+                        "No primary workspace found. Initialize workspace first."
+                    ))
+                }
             }
             workspace_id => {
                 // Validate the workspace ID exists
@@ -965,55 +933,20 @@ impl FastRefsTool {
         // No longer load ALL relationships here - we'll use targeted queries below
         // This fixes the N+1 query pattern identified in STATUS.md #4
 
-        // Strategy 1: Use SearchEngine for O(log n) performance instead of O(n) linear scan
+        // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
         let mut definitions = Vec::new();
 
-        // Use indexed search for exact matches - MUCH faster than linear scan!
-        match handler.active_search_engine().await {
-            Ok(search_engine) => {
-                let search_engine = search_engine.read().await;
-                match search_engine.search(&self.symbol).await {
-                    Ok(search_results) => {
-                        // Use SearchResult's symbol directly - no O(n) linear lookup needed!
-                        for search_result in search_results {
-                            // Only include exact name matches for definitions
-                            if search_result.symbol.name == self.symbol {
-                                definitions.push(search_result.symbol);
-                            }
-                        }
-                        debug!(
-                            "⚡ Indexed search found {} exact matches",
-                            definitions.len()
-                        );
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Search engine failed, falling back to SQLite database: {}",
-                            e
-                        );
-                        // Fallback to database search for exact name lookup (indexed, fast)
-                        if let Ok(Some(workspace)) = handler.get_workspace().await {
-                            if let Some(db) = workspace.db.as_ref() {
-                                let db_lock = db.lock().await;
-                                definitions = db_lock
-                                    .get_symbols_by_name(&self.symbol)
-                                    .unwrap_or_default();
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                debug!("Search engine unavailable, using SQLite database: {}", e);
-                // Fallback to database search for exact name lookup (indexed, fast)
-                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    if let Some(db) = workspace.db.as_ref() {
-                        let db_lock = db.lock().await;
-                        definitions = db_lock
-                            .get_symbols_by_name(&self.symbol)
-                            .unwrap_or_default();
-                    }
-                }
+        // Use SQLite FTS5 for exact name lookup (indexed, fast)
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
+                definitions = db_lock
+                    .get_symbols_by_name(&self.symbol)
+                    .unwrap_or_default();
+                debug!(
+                    "⚡ SQLite FTS5 found {} exact matches",
+                    definitions.len()
+                );
             }
         }
 
@@ -1022,28 +955,24 @@ impl FastRefsTool {
         let variants = generate_naming_variants(&self.symbol);
         debug!("🔍 Cross-language search variants: {:?}", variants);
 
-        if let Ok(search_engine) = handler.active_search_engine().await {
-            let search_engine = search_engine.read().await;
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_lock = db.lock().await;
 
-            for variant in variants {
-                if variant != self.symbol {
-                    // Avoid duplicate searches
-                    match search_engine.search(&variant).await {
-                        Ok(search_results) => {
-                            for search_result in search_results {
+                for variant in variants {
+                    if variant != self.symbol {
+                        // Avoid duplicate searches
+                        if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                            for symbol in variant_symbols {
                                 // Exact match on variant name
-                                if search_result.symbol.name == variant {
+                                if symbol.name == variant {
                                     debug!(
                                         "✨ Found cross-language match: {} (variant: {})",
-                                        search_result.symbol.name, variant
+                                        symbol.name, variant
                                     );
-                                    definitions.push(search_result.symbol);
+                                    definitions.push(symbol);
                                 }
                             }
-                        }
-                        Err(e) => {
-                            // Skip failed variant searches - not critical
-                            debug!("⚠️ Variant search failed for '{}': {}", variant, e);
                         }
                     }
                 }

@@ -3324,8 +3324,12 @@ mod tests {
         println!("File path in file_info: {}", file_info.path);
         db.store_file_info(&file_info, "test").unwrap();
 
-        // Create a symbol with the same file path
-        let file_path = test_file.to_string_lossy().to_string();
+        // Create a symbol with the same file path (canonicalized to match file_info)
+        let file_path = test_file
+            .canonicalize()
+            .unwrap_or_else(|_| test_file.clone())
+            .to_string_lossy()
+            .to_string();
         println!("File path in symbol: {}", file_path);
 
         let symbol = Symbol {
@@ -3538,7 +3542,11 @@ mod tests {
             name: "getUserAsync".to_string(),
             kind: SymbolKind::Function,
             language: "typescript".to_string(),
-            file_path: test_file.to_string_lossy().to_string(),
+            file_path: test_file
+                .canonicalize()
+                .unwrap_or_else(|_| test_file.clone())
+                .to_string_lossy()
+                .to_string(),
             start_line: 20,
             start_column: 4,
             end_line: 30,

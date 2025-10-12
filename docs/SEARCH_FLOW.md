@@ -1,8 +1,8 @@
 # Julie Search Flow Documentation
 
 **Purpose**: Living document tracking how searches flow through Julie's CASCADE architecture
-**Last Updated**: 2025-09-30
-**Status**: ✅ CASCADE Architecture Complete
+**Last Updated**: 2025-10-12
+**Status**: ✅ CASCADE Architecture - 2-Tier (Tantivy Removed)
 
 ---
 
@@ -19,23 +19,26 @@ Files → Tree-sitter → Symbols + Content
                   ├─ files_fts (FTS5 index)
                   └─ symbols (extracted symbols)
                             ↓
-                  ┌─────────┴─────────┐
-                  ↓ (background)      ↓ (background)
-               Tantivy              Embeddings
-            (rebuilt from          (rebuilt from
-             SQLite)                SQLite)
+                            ↓ (background)
+                       Embeddings
+                      (rebuilt from
+                        SQLite)
 ```
 
-**Three-Tier Progressive Enhancement**:
-1. **Tier 1: SQLite FTS5** (Immediate, <5ms) - Basic full-text search
-2. **Tier 2: Tantivy** (5-10s background) - Advanced code-aware search
-3. **Tier 3: HNSW Semantic** (20-30s background) - AI-powered semantic search
+**Two-Tier Progressive Enhancement**:
+1. **Tier 1: SQLite FTS5** (Immediate, <5ms) - Full-text search with BM25 ranking
+2. **Tier 2: HNSW Semantic** (20-30s background) - AI-powered semantic search
 
 **Startup Flow**:
 - **Startup completes in <2 seconds** (SQLite only)
-- Tantivy builds in background (5-10s)
 - HNSW embeddings build in background (20-30s)
 - **Search works immediately** using best available tier
+
+**Why 2-Tier (Tantivy Removed)**:
+- SQLite FTS5 provides <5ms queries with BM25 ranking (sufficient for most searches)
+- Tantivy was causing Arc<RwLock<SearchEngine>> deadlocks during slow commits (5-10s)
+- Simpler architecture: SQLite (truth) → HNSW (semantic) - no intermediate layer
+- Background indexing complexity eliminated
 
 ---
 
@@ -50,18 +53,18 @@ User Query → MCP Tool → Workspace Filter → Search Mode Router → Tier Sel
 ### Mode-Based Routing
 
 **1. Text Search Mode** (`mode: "text"`):
-- Tries Tantivy first (if ready)
-- Falls back to SQLite FTS5
+- Uses SQLite FTS5 (always available)
 - Best for: exact matches, code patterns, symbol names
+- Latency: <5ms
 
 **2. Semantic Search Mode** (`mode: "semantic"`):
 - Tries HNSW semantic (if ready)
-- Falls back to Tantivy (if ready)
 - Falls back to SQLite FTS5
 - Best for: conceptual queries, "find code that does X"
+- Latency: <50ms (semantic) or <5ms (fallback)
 
 **3. Hybrid Search Mode** (`mode: "hybrid"`):
-- Combines Tantivy + semantic results
+- Combines FTS + semantic results
 - Merges and re-ranks by relevance
 - Best for: comprehensive searches
 
@@ -96,15 +99,13 @@ User Query → MCP Tool → Workspace Filter → Search Mode Router → Tier Sel
 ```rust
 pub struct IndexingStatus {
     pub sqlite_fts_ready: AtomicBool,    // Always true after indexing
-    pub tantivy_ready: AtomicBool,       // True after 5-10s
     pub semantic_ready: AtomicBool,      // True after 20-30s
 }
 ```
 
 **Status Flags Control Fallback Chain**:
-- If `tantivy_ready = false` → Use SQLite FTS5
-- If `semantic_ready = false` → Use Tantivy or FTS5
-- Graceful degradation through tiers
+- If `semantic_ready = false` → Use SQLite FTS5
+- Graceful degradation: HNSW → SQLite FTS5
 
 ---
 
@@ -116,23 +117,12 @@ pub struct IndexingStatus {
 
 ```rust
 async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-    let status = handler.indexing_status();
-
-    // Try Tantivy first (if ready)
-    if status.tantivy_ready.load(Ordering::Relaxed) {
-        if let Ok(results) = self.try_tantivy_search(handler).await {
-            if !results.is_empty() {
-                return Ok(results);
-            }
-        }
-    }
-
-    // Fall back to SQLite FTS5
+    // Always use SQLite FTS5 for text search
     self.sqlite_fts_search(handler).await
 }
 ```
 
-**Tier Priority**: Tantivy → SQLite FTS5
+**Single Tier**: SQLite FTS5 (always available)
 
 ---
 
@@ -151,19 +141,12 @@ async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symb
         }
     }
 
-    // Fall back to Tantivy (if ready)
-    if status.tantivy_ready.load(Ordering::Relaxed) {
-        if let Ok(results) = self.try_tantivy_search(handler).await {
-            return Ok(results);
-        }
-    }
-
     // Fall back to SQLite FTS5
     self.sqlite_fts_search(handler).await
 }
 ```
 
-**Tier Priority**: HNSW Semantic → Tantivy → SQLite FTS5
+**Tier Priority**: HNSW Semantic → SQLite FTS5
 
 ---
 
@@ -176,6 +159,7 @@ async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symb
 - Searches both file content and symbol code_context
 - Sub-5ms query latency
 - Always available (no background indexing needed)
+- Supports multi-word AND/OR queries
 
 **SQL Query**:
 ```sql
@@ -187,26 +171,18 @@ ORDER BY rank
 LIMIT ?
 ```
 
+**Why SQLite FTS5 is Sufficient**:
+- BM25 ranking provides relevance scoring
+- Porter stemming handles variations (authentication → authenticate)
+- Multi-word queries with AND/OR logic
+- Sub-5ms latency competitive with specialized search engines
+- No complex index management needed
+
 ---
 
 ### Layer 4: Background Index Building
 
-#### A. Tantivy Background Build
-**File**: `src/tools/workspace/indexing.rs`
-**Function**: `build_tantivy_from_sqlite()`
-
-**Process**:
-1. Pull all symbols from SQLite
-2. Pull all file contents from SQLite
-3. Create FILE_CONTENT symbols from file contents
-4. Index into Tantivy (code-aware tokenization)
-5. Set `tantivy_ready = true`
-
-**Timing**: 5-10s for 10k symbols
-
----
-
-#### B. HNSW Semantic Background Build
+#### HNSW Semantic Background Build
 **File**: `src/tools/workspace/indexing.rs`
 **Function**: `generate_embeddings_from_sqlite()`
 
@@ -224,44 +200,28 @@ LIMIT ?
 
 ## 🔍 Query Processing
 
-### Tantivy Query Intent Detection
-**File**: `src/search/engine/queries.rs`
-**Function**: `QueryProcessor::detect_intent()`
+### SQLite FTS5 Query Syntax
 
-**Intent Types**:
-- `ExactSymbol`: All-caps queries, quoted strings
-- `GenericType`: Generic syntax like `Vec<T>`
-- `OperatorSearch`: Operators like `+`, `*`, `==`
-- `FilePath`: Paths like `src/main.rs`
-- `SemanticConcept`: Natural language queries
-- `Mixed`: Combination of above
+**Exact Phrase**:
+```sql
+"exact phrase"      -- Must appear exactly
+```
 
-**Example Intent Routing**:
-- `"getUserData"` → ExactSymbol → Fast symbol_name search
-- `"authentication logic"` → SemanticConcept → Semantic search
-- `"Vec<String>"` → GenericType → Generic type search
+**Boolean Operators**:
+```sql
+authentication AND user     -- Both terms required
+authentication OR login     -- Either term
+authentication NOT test     -- Exclude "test"
+```
 
----
+**Prefix Matching**:
+```sql
+auth*                       -- Matches authentication, authorize, etc.
+```
 
-### Tokenization Strategy
-
-**1. Code-Aware Tokenizer** (`CodeTokenizer`):
-- Splits on: alphanumeric + underscore only
-- CamelCase splitting: `getUserData` → ["get", "user", "data"]
-- Used for: `symbol_name`, `signature`, `all_text`
-
-**2. Standard Tokenizer** (Tantivy default):
-- Preserves words with punctuation
-- Better for natural language
-- Used for: `code_context`, `doc_comment`
-
-**Fields in Tantivy Schema**:
-```rust
-all_text         -> code_aware tokenizer
-symbol_name      -> code_aware tokenizer
-signature        -> code_aware tokenizer
-doc_comment      -> standard tokenizer
-code_context     -> standard tokenizer  // For FILE_CONTENT
+**Proximity Search**:
+```sql
+NEAR(authentication user, 5) -- Terms within 5 words of each other
 ```
 
 ---
@@ -270,22 +230,20 @@ code_context     -> standard tokenizer  // For FILE_CONTENT
 
 ### Startup Performance
 - **SQLite indexing**: <2 seconds (blocking)
-- **Tantivy build**: 5-10s (background, non-blocking)
 - **HNSW build**: 20-30s (background, non-blocking)
-- **Total to full capability**: ~30-40s
+- **Total to full capability**: ~30s
 - **Search available**: Immediately (SQLite FTS5)
 
 ### Search Latency
-- **SQLite FTS5**: <5ms (basic text search)
-- **Tantivy**: <10ms (code-aware search)
+- **SQLite FTS5**: <5ms (full-text search with BM25)
 - **HNSW Semantic**: <50ms (vector similarity)
 - **Fallback overhead**: <1ms (negligible)
 
 ### Storage
 - **SQLite database**: ~1-2KB per symbol
-- **Tantivy index**: ~5-10KB per symbol
 - **HNSW embeddings**: ~1-2KB per symbol
 - **Embedding models cache**: ~128MB (one-time download)
+- **Total savings**: ~5-10KB per symbol (Tantivy removed)
 
 ---
 
@@ -293,19 +251,25 @@ code_context     -> standard tokenizer  // For FILE_CONTENT
 
 ### Reliability
 - ✅ Single source of truth (SQLite)
-- ✅ Tantivy rebuildable from SQLite (<10s)
 - ✅ HNSW rebuildable from SQLite (<30s)
 - ✅ Search always available (graceful degradation)
+- ✅ No deadlocks (Tantivy Arc<RwLock> removed)
 
 ### Performance
 - ✅ Startup time: <2 seconds (30-60x improvement)
 - ✅ SQLite FTS: <5ms query latency
-- ✅ Tantivy background: <10s for 10k symbols
+- ✅ HNSW background: <30s for 10k symbols
 - ✅ No blocking during startup
+
+### Simplicity
+- ✅ 2-tier architecture (vs 3-tier)
+- ✅ No Tantivy index management
+- ✅ No search engine locks/deadlocks
+- ✅ Smaller disk footprint
 
 ### User Experience
 - ✅ Immediate search (SQLite FTS5)
-- ✅ Progressive enhancement (FTS → Tantivy → Semantic)
+- ✅ Progressive enhancement (FTS → Semantic)
 - ✅ Status indicators show capability
 - ✅ Graceful degradation on failures
 
@@ -319,14 +283,11 @@ code_context     -> standard tokenizer  // For FILE_CONTENT
 tail -f .julie/logs/julie.log
 
 # Check SQLite database
-sqlite3 .julie/db/symbols.db "SELECT COUNT(*) FROM symbols;"
-sqlite3 .julie/db/symbols.db "SELECT COUNT(*) FROM files_fts;"
-
-# Check Tantivy index
-ls -lh .julie/index/tantivy/
+sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM symbols;"
+sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM files_fts;"
 
 # Check HNSW embeddings
-ls -lh .julie/vectors/
+ls -lh .julie/indexes/{workspace_id}/vectors/
 ```
 
 ### Test Search Tiers
@@ -334,10 +295,6 @@ ls -lh .julie/vectors/
 # Test SQLite FTS (always available)
 # Query: "authentication"
 # Expected: Results immediately, even during startup
-
-# Test Tantivy (after 5-10s)
-# Query: "getUserData"
-# Expected: Code-aware tokenization, camelCase splitting
 
 # Test Semantic (after 20-30s)
 # Query: "code that handles authentication"
@@ -351,11 +308,11 @@ ls -lh .julie/vectors/
 ### Potential Improvements
 - [ ] **Query caching**: Cache frequent queries for <1ms response
 - [ ] **Incremental updates**: Update indexes without full rebuild
-- [ ] **Ranking tuning**: Boost FILE_CONTENT for documentation queries
+- [ ] **Ranking tuning**: Boost relevance for code patterns
 - [ ] **Multi-modal search**: Combine code + docs + tests in results
 - [ ] **Query suggestions**: "Did you mean..." for typos
 - [ ] **Search analytics**: Track popular queries and performance
 
 ---
 
-**This document reflects the production CASCADE architecture (2025-09-30).**
+**This document reflects the production CASCADE architecture after Tantivy removal (2025-10-12).**

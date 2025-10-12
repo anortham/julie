@@ -638,22 +638,29 @@ impl SmartRefactorTool {
         Ok(result)
     }
 
-    /// Find symbol positions using search engine (for indexed files)
+    /// Find symbol positions using SQLite database (for indexed files)
     async fn find_symbols_via_search(
         &self,
         file_path: &str,
         old_name: &str,
         handler: &JulieServerHandler,
     ) -> Result<Vec<(u32, u32)>> {
-        let search_engine = handler.active_search_engine().await?;
-        let search_engine = search_engine.read().await;
+        // Get workspace and database
+        let workspace = handler.get_workspace().await?
+            .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
 
-        let search_results = search_engine.exact_symbol_search(old_name).await?;
+        let db = workspace.db.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
 
-        let positions: Vec<(u32, u32)> = search_results
+        let db_lock = db.lock().await;
+
+        // Search for symbols by name in the specific file
+        let symbols = db_lock.find_symbols_by_name(old_name)?;
+
+        let positions: Vec<(u32, u32)> = symbols
             .into_iter()
-            .filter(|result| result.symbol.file_path == file_path)
-            .map(|result| (result.symbol.start_byte, result.symbol.end_byte))
+            .filter(|symbol| symbol.file_path == file_path)
+            .map(|symbol| (symbol.start_byte, symbol.end_byte))
             .collect();
 
         Ok(positions)

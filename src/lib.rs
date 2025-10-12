@@ -1,7 +1,7 @@
 // Julie - Cross-Platform Code Intelligence Server Library
 //!
 //! Julie provides code intelligence across 26+ programming languages using
-//! a three-pillar architecture: SQLite (truth), Tantivy (search), FastEmbed (semantic).
+//! a two-tier architecture: SQLite FTS5 (search + truth), FastEmbed (semantic).
 
 pub mod database;
 pub mod embeddings;
@@ -9,7 +9,6 @@ pub mod extractors;
 pub mod handler;
 pub mod health;
 pub mod language; // Shared language support (tree-sitter configuration)
-pub mod search;
 pub mod tools;
 pub mod tracing;
 pub mod utils;

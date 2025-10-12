@@ -4,7 +4,6 @@ use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use std::collections::HashSet;
 use tracing::{debug, info, warn};
 
 impl ManageWorkspaceTool {
@@ -148,9 +147,6 @@ impl ManageWorkspaceTool {
             // Remove from registry
             match registry_service.unregister_workspace(workspace_id).await {
                 Ok(true) => {
-                    handler
-                        .remove_reference_search_infrastructure(workspace_id)
-                        .await;
                     let message = format!(
                         "✅ **Workspace Removed Successfully**\n\
                         🗑️ Workspace: {}\n\
@@ -294,11 +290,6 @@ impl ManageWorkspaceTool {
                 .await
             {
                 Ok(report) => {
-                    for workspace_id in &report.workspaces_removed {
-                        handler
-                            .remove_reference_search_infrastructure(workspace_id)
-                            .await;
-                    }
                     let message = if report.workspaces_removed.is_empty() {
                         "✨ No expired workspaces to clean.".to_string()
                     } else {
@@ -338,15 +329,6 @@ impl ManageWorkspaceTool {
                 .await
             {
                 Ok(report) => {
-                    let mut removed_ids = HashSet::new();
-                    removed_ids.extend(report.ttl_cleanup.workspaces_removed.iter().cloned());
-                    removed_ids.extend(report.size_cleanup.workspaces_removed.iter().cloned());
-                    removed_ids.extend(report.orphaned_cleaned.iter().cloned());
-                    for workspace_id in removed_ids {
-                        handler
-                            .remove_reference_search_infrastructure(&workspace_id)
-                            .await;
-                    }
                     let ttl_count = report.ttl_cleanup.workspaces_removed.len();
                     let size_count = report.size_cleanup.workspaces_removed.len();
                     let orphan_count = report.orphaned_cleaned.len();
@@ -684,8 +666,8 @@ impl ManageWorkspaceTool {
         health_report.push_str(&db_status);
         health_report.push('\n');
 
-        // 🔍 PHASE 2: Tantivy Search Engine Health
-        health_report.push_str("🔍 **Tantivy Search Engine**\n");
+        // 🔍 PHASE 2: SQLite FTS5 Search Health
+        health_report.push_str("🔍 **SQLite FTS5 Search**\n");
         let search_status = self
             .check_search_engine_health(&primary_workspace, detailed)
             .await?;
@@ -780,54 +762,22 @@ impl ManageWorkspaceTool {
         Ok(status)
     }
 
-    /// Check Tantivy search engine health
+    /// Check SQLite FTS5 search health
     async fn check_search_engine_health(
         &self,
         workspace: &crate::workspace::JulieWorkspace,
-        detailed: bool,
+        _detailed: bool,
     ) -> Result<String> {
         let mut status = String::new();
 
-        match &workspace.search {
-            Some(search_arc) => {
-                let _search = search_arc.read().await;
-
-                // Compute workspace ID for per-workspace path
-                use crate::workspace::registry as ws_registry;
-                let workspace_id =
-                    ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
-
-                // Check if search index exists and is populated
-                let index_path = workspace.workspace_index_path(&workspace_id);
-                let index_exists = index_path.exists();
-
-                if index_exists {
-                    status.push_str("✅ **Tantivy Status**: READY\n");
-                    status.push_str("🔍 **Search Capabilities**: Fast text search enabled\n");
-                    status.push_str("⚡ **Performance**: <10ms query response time\n");
-
-                    if detailed {
-                        // Get index directory size
-                        let index_size = Self::calculate_directory_size(&index_path)?;
-                        status.push_str(&format!(
-                            "📁 **Index Details**:\n\
-                            • Location: {}\n\
-                            • Size: {:.2} MB\n\
-                            • Status: Fully indexed and ready\n",
-                            index_path.display(),
-                            index_size / (1024.0 * 1024.0)
-                        ));
-                    }
-                } else {
-                    status.push_str("🔄 **Tantivy Status**: BUILDING\n");
-                    status
-                        .push_str("💡 Background indexing in progress, SQLite search available\n");
-                }
-            }
-            None => {
-                status.push_str("⚠️ **Tantivy Status**: NOT INITIALIZED\n");
-                status.push_str("💡 Search available through SQLite fallback\n");
-            }
+        // SQLite FTS5 search is always available when database exists
+        if workspace.db.is_some() {
+            status.push_str("✅ **SQLite FTS5 Status**: READY\n");
+            status.push_str("🔍 **Search Capabilities**: Fast full-text search enabled\n");
+            status.push_str("⚡ **Performance**: <5ms query response time\n");
+        } else {
+            status.push_str("❌ **Search Status**: NOT AVAILABLE\n");
+            status.push_str("💡 Database not initialized\n");
         }
 
         Ok(status)
@@ -899,20 +849,17 @@ impl ManageWorkspaceTool {
             ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
         let db_ready = workspace.db.is_some();
-        let search_ready =
-            workspace.search.is_some() && workspace.workspace_index_path(&workspace_id).exists();
         let embeddings_ready = workspace.embeddings.is_some()
             && workspace.workspace_vectors_path(&workspace_id).exists();
 
-        let systems_ready = [db_ready, search_ready, embeddings_ready]
+        let systems_ready = [db_ready, embeddings_ready]
             .iter()
             .filter(|&&x| x)
             .count();
 
         let status = match systems_ready {
-            3 => "🟢 **FULLY OPERATIONAL** - All systems ready!",
-            2 => "🟡 **PARTIALLY READY** - Core systems operational",
-            1 => "🟠 **BASIC MODE** - Essential features available",
+            2 => "🟢 **FULLY OPERATIONAL** - All systems ready!",
+            1 => "🟡 **PARTIALLY READY** - Core systems operational",
             0 => "🔴 **INITIALIZING** - Please wait for indexing to complete",
             _ => "❓ **UNKNOWN STATUS**",
         };
@@ -920,13 +867,11 @@ impl ManageWorkspaceTool {
         let mut assessment = format!("{}\n", status);
 
         assessment.push_str(&format!(
-            "📊 **System Readiness**: {}/3 systems ready\n\
-            • SQLite Database: {}\n\
-            • Tantivy Search: {}\n\
+            "📊 **System Readiness**: {}/2 systems ready\n\
+            • SQLite Database (with FTS5 search): {}\n\
             • Embedding System: {}\n\n",
             systems_ready,
             if db_ready { "✅" } else { "🔄" },
-            if search_ready { "✅" } else { "🔄" },
             if embeddings_ready { "✅" } else { "🔄" }
         ));
 
@@ -934,11 +879,11 @@ impl ManageWorkspaceTool {
         if !db_ready {
             assessment.push_str("• Run 'manage_workspace index' to initialize database\n");
         }
-        if db_ready && systems_ready < 3 {
-            assessment.push_str("• Background tasks are building search indexes\n");
-            assessment.push_str("• All features will be available shortly\n");
+        if db_ready && systems_ready < 2 {
+            assessment.push_str("• Background tasks are building embeddings\n");
+            assessment.push_str("• Search is available now, semantic features coming shortly\n");
         }
-        if systems_ready == 3 {
+        if systems_ready == 2 {
             assessment
                 .push_str("• System is fully operational - enjoy lightning-fast development!\n");
         }

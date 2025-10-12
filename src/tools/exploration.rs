@@ -178,71 +178,7 @@ impl FastExploreTool {
         message.push_str("🧠 INTELLIGENT Codebase Overview\n");
         message.push_str("==================================\n");
 
-        // Try using search engine first (fastest path - already indexed!)
-        if let Ok(search_engine) = handler.active_search_engine().await {
-            let search_engine = search_engine.read().await;
-
-            // Use search engine's "*" wildcard to get all symbols efficiently
-            if let Ok(all_results) = search_engine.search("*").await {
-                // Only use search results if we actually got data
-                // (semantic search for "*" returns 0 results since "*" has no semantic meaning)
-                if !all_results.is_empty() {
-                    let total_symbols = all_results.len();
-
-                    // Aggregate by kind and language using in-memory grouping
-                    let mut kind_counts = HashMap::new();
-                    let mut language_counts = HashMap::new();
-                    let mut file_counts = HashMap::new();
-
-                    for result in all_results.iter() {
-                        *kind_counts
-                            .entry(format!("{:?}", result.symbol.kind))
-                            .or_insert(0) += 1;
-                        *language_counts.entry(&result.symbol.language).or_insert(0) += 1;
-                        *file_counts.entry(&result.symbol.file_path).or_insert(0) += 1;
-                    }
-
-                    message.push_str(&format!("📊 Total Symbols: {}\n", total_symbols));
-                    message.push_str(&format!("📁 Total Files: {}\n", file_counts.len()));
-
-                    // Symbol type breakdown
-                    message.push_str("\n🏷️ Symbol Types:\n");
-                    let mut sorted_kinds: Vec<_> = kind_counts.iter().collect();
-                    sorted_kinds.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-                    for (kind, count) in sorted_kinds.iter().take(15) {
-                        message.push_str(&format!("  {}: {}\n", kind, count));
-                    }
-
-                    // Language breakdown
-                    message.push_str("\n💻 Languages:\n");
-                    let mut sorted_langs: Vec<_> = language_counts.iter().collect();
-                    sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-                    for (lang, count) in sorted_langs.iter().take(10) {
-                        message.push_str(&format!("  {}: {} symbols\n", lang, count));
-                    }
-
-                    // Top files (if medium or deep depth)
-                    if matches!(self.depth.as_str(), "medium" | "deep") {
-                        message.push_str("\n📁 Top Files by Symbol Count:\n");
-                        let mut sorted_files: Vec<_> = file_counts.iter().collect();
-                        sorted_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-                        for (file_path, count) in sorted_files.iter().take(10) {
-                            let file_name = std::path::Path::new(file_path)
-                                .file_name()
-                                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
-                                .to_string_lossy();
-                            message.push_str(&format!("  {}: {} symbols\n", file_name, count));
-                        }
-                    }
-
-                    message.push_str("\n🎯 Intelligence: Using search engine indexed data!");
-                    return Ok(message);
-                }
-                // If search returned 0 results, fall through to database path
-            }
-        }
-
-        // Fallback to database if search engine unavailable - use SQL GROUP BY for O(log n) performance
+        // Use SQLite FTS5 for fast codebase statistics
         let workspace = handler
             .get_workspace()
             .await?
@@ -342,33 +278,32 @@ impl FastExploreTool {
         if let Some(focus) = &self.focus {
             message.push_str(&format!("\n🔍 Focused Analysis: '{}'\n", focus));
 
-            // Use search engine to find the symbol
-            if let Ok(search_engine) = handler.active_search_engine().await {
-                let search_engine = search_engine.read().await;
-                if let Ok(results) = search_engine.search(focus).await {
-                    if let Some(target) = results.iter().find(|r| r.symbol.name == *focus) {
-                        let symbol_id = &target.symbol.id;
+            // Use database to find the symbol by name
+            if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
+                if let Some(target) = symbols.first() {
+                    let symbol_id = &target.id;
 
-                        // Get targeted relationship queries for this symbol
-                        let incoming_rels = db_lock
-                            .get_relationships_to_symbol(symbol_id)
-                            .unwrap_or_default();
-                        let outgoing_rels = db_lock
-                            .get_relationships_for_symbol(symbol_id)
-                            .unwrap_or_default();
+                    // Get targeted relationship queries for this symbol
+                    let incoming_rels = db_lock
+                        .get_relationships_to_symbol(symbol_id)
+                        .unwrap_or_default();
+                    let outgoing_rels = db_lock
+                        .get_relationships_for_symbol(symbol_id)
+                        .unwrap_or_default();
 
-                        message.push_str(&format!(
-                            "  ← Incoming: {} references\n",
-                            incoming_rels.len()
-                        ));
-                        message.push_str(&format!(
-                            "  → Outgoing: {} dependencies\n",
-                            outgoing_rels.len()
-                        ));
-                    } else {
-                        message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
-                    }
+                    message.push_str(&format!(
+                        "  ← Incoming: {} references\n",
+                        incoming_rels.len()
+                    ));
+                    message.push_str(&format!(
+                        "  → Outgoing: {} dependencies\n",
+                        outgoing_rels.len()
+                    ));
+                } else {
+                    message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
                 }
+            } else {
+                message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
             }
         } else {
             // Count references for each symbol to find most referenced
@@ -498,22 +433,21 @@ impl FastExploreTool {
         message.push_str("====================================\n");
 
         if let Some(focus) = &self.focus {
-            // Use search engine to find the symbol
-            if let Ok(search_engine) = handler.active_search_engine().await {
-                let search_engine = search_engine.read().await;
-                if let Ok(results) = search_engine.search(focus).await {
-                    if let Some(target) = results.iter().find(|r| r.symbol.name == *focus) {
-                        let workspace = handler
-                            .get_workspace()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-                        let db = workspace
-                            .db
-                            .as_ref()
-                            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-                        let db_lock = db.lock().await;
+            // Get workspace and database first
+            let workspace = handler
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+            let db = workspace
+                .db
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+            let db_lock = db.lock().await;
 
-                        let symbol_id = &target.symbol.id;
+            // Use database to find the symbol by name
+            if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
+                if let Some(target) = symbols.first() {
+                    let symbol_id = &target.id;
 
                         // Targeted queries for this specific symbol
                         let incoming = db_lock
@@ -523,11 +457,11 @@ impl FastExploreTool {
                             .get_relationships_for_symbol(symbol_id)
                             .unwrap_or_default();
 
-                        message.push_str(&format!(
-                            "Tracing: '{}' [{}]\n\n",
-                            focus,
-                            format!("{:?}", target.symbol.kind).to_lowercase()
-                        ));
+                    message.push_str(&format!(
+                        "Tracing: '{}' [{}]\n\n",
+                        focus,
+                        format!("{:?}", target.kind).to_lowercase()
+                    ));
 
                         message
                             .push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
@@ -562,15 +496,14 @@ impl FastExploreTool {
                                 ));
                             }
                         }
-                        if outgoing.len() > 10 {
-                            message.push_str(&format!("  ... and {} more\n", outgoing.len() - 10));
-                        }
-                    } else {
-                        message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
+                    if outgoing.len() > 10 {
+                        message.push_str(&format!("  ... and {} more\n", outgoing.len() - 10));
                     }
                 } else {
-                    message.push_str(&format!("❌ Search failed for '{}'\n", focus));
+                    message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
                 }
+            } else {
+                message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
             }
         } else {
             message.push_str("💡 Use focus parameter to trace a specific symbol\n");
@@ -1104,36 +1037,13 @@ impl FindLogicTool {
     // TIER 1: Ultra-Fast Keyword Search Implementation
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Tier 1: Search using Tantivy index or SQLite FTS5 for ultra-fast keyword matching
+    /// Tier 1: Search using SQLite FTS5 for ultra-fast keyword matching
     async fn search_by_keywords(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
         let mut keyword_results: Vec<Symbol> = Vec::new();
 
-        // Try Tantivy search engine first (fastest path)
-        if let Ok(search_engine) = handler.active_search_engine().await {
-            let search_engine = search_engine.read().await;
-
-            // Search for each keyword and combine results
-            for keyword in &domain_keywords {
-                if let Ok(results) = search_engine.search(keyword).await {
-                    for search_result in results {
-                        let mut symbol = search_result.symbol;
-                        // Initial score based on search relevance
-                        symbol.confidence = Some(search_result.score);
-                        keyword_results.push(symbol);
-                    }
-                }
-            }
-
-            debug!(
-                "🔍 Tantivy keyword search found {} candidates",
-                keyword_results.len()
-            );
-            return Ok(keyword_results);
-        }
-
-        // Fallback to SQLite FTS5 if Tantivy unavailable
-        debug!("🔍 Falling back to SQLite FTS5 keyword search");
+        // Use SQLite FTS5 for keyword search
+        debug!("🔍 Using SQLite FTS5 keyword search");
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
                 let db_lock = db.lock().await;

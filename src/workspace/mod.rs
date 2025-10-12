@@ -3,9 +3,8 @@
 //!
 //! This module manages the .julie workspace folder structure and initialization.
 //! The workspace provides project-local storage for all Julie data including:
-//! - SQLite database (source of truth)
-//! - Tantivy search index
-//! - FastEmbed vectors
+//! - SQLite database (source of truth with FTS5 search)
+//! - FastEmbed vectors for semantic search
 //! - Configuration and caching
 //! - Workspace registry for multi-project indexing
 
@@ -14,10 +13,9 @@ pub mod registry_service;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
+use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
@@ -25,30 +23,13 @@ use crate::watcher::IncrementalIndexer;
 
 // Forward declarations for types we'll implement later
 pub type SqliteDB = crate::database::SymbolDatabase;
-pub type TantivyIndex = crate::search::SearchEngine;
-pub type TantivyWriter = crate::search::SearchIndexWriter;
 pub type EmbeddingStore = crate::embeddings::EmbeddingEngine;
 pub type VectorIndex = crate::embeddings::vector_store::VectorStore;
-
-type SearchInfraWeak = (
-    Weak<RwLock<TantivyIndex>>,
-    Weak<Mutex<TantivyWriter>>,
-);
-
-fn search_infra_cache() -> &'static StdMutex<HashMap<PathBuf, SearchInfraWeak>> {
-    static CACHE: OnceLock<StdMutex<HashMap<PathBuf, SearchInfraWeak>>> = OnceLock::new();
-    CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
-}
-
-fn search_infra_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<StdMutex<()>>>> {
-    static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<StdMutex<()>>>>> = OnceLock::new();
-    LOCKS.get_or_init(|| StdMutex::new(HashMap::new()))
-}
 
 /// The main Julie workspace structure
 ///
 /// Manages all project-local data storage and provides a unified interface
-/// to the four-pillar architecture (SQLite + Tantivy + FastEmbed + HNSW)
+/// to the two-tier architecture (SQLite FTS5 + Semantic/HNSW)
 pub struct JulieWorkspace {
     /// Project root directory where MCP was started
     pub root: PathBuf,
@@ -56,14 +37,8 @@ pub struct JulieWorkspace {
     /// The .julie directory for all workspace data
     pub julie_dir: PathBuf,
 
-    /// Database connection (source of truth)
+    /// Database connection (source of truth with FTS5 search)
     pub db: Option<Arc<Mutex<SqliteDB>>>,
-
-    /// Search index (query accelerator) - READ ONLY
-    pub search: Option<Arc<RwLock<TantivyIndex>>>,
-
-    /// Search index writer (write operations) - SEPARATED to eliminate RwLock contention
-    pub search_writer: Option<Arc<Mutex<TantivyWriter>>>,
 
     /// Embedding store (semantic bridge)
     pub embeddings: Option<Arc<Mutex<EmbeddingStore>>>,
@@ -106,8 +81,6 @@ impl Clone for JulieWorkspace {
             root: self.root.clone(),
             julie_dir: self.julie_dir.clone(),
             db: self.db.clone(),
-            search: self.search.clone(),
-            search_writer: self.search_writer.clone(),
             embeddings: self.embeddings.clone(),
             vector_store: self.vector_store.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
@@ -159,8 +132,6 @@ impl JulieWorkspace {
             root,
             julie_dir,
             db: None,
-            search: None,
-            search_writer: None,
             embeddings: None,
             vector_store: None,
             watcher: None,
@@ -197,8 +168,6 @@ impl JulieWorkspace {
                     root,
                     julie_dir: julie_path,
                     db: None,
-                    search: None,
-                    search_writer: None,
                     embeddings: None,
                     vector_store: None,
                     watcher: None,
@@ -393,9 +362,9 @@ impl JulieWorkspace {
         self.julie_dir.join("indexes")
     }
 
-    /// Get the path to a specific workspace's index directory
+    /// Get the path to a specific workspace's index directory (SQLite database)
     pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path().join(workspace_id).join("tantivy")
+        self.indexes_root_path().join(workspace_id).join("db")
     }
 
     /// Get the path to a specific workspace's vector store
@@ -456,103 +425,6 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Initialize persistent search index
-    pub fn initialize_search_index(&mut self) -> Result<()> {
-        if self.search.is_some() {
-            return Ok(()); // Already initialized
-        }
-
-        if matches!(std::env::var("JULIE_SKIP_SEARCH_INDEX"), Ok(ref v) if v == "1") {
-            info!("Skipping Tantivy search index initialization (env override)");
-            return Ok(());
-        }
-
-        // Compute workspace ID from root path
-        let workspace_id = registry::generate_workspace_id(
-            self.root
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
-        )?;
-
-        let index_path = self.workspace_index_path(&workspace_id);
-        info!(
-            "Initializing Tantivy search index for workspace {} at: {}",
-            workspace_id,
-            index_path.display()
-        );
-
-        // Ensure the Tantivy directory itself exists (not just parent)
-        fs::create_dir_all(&index_path).context(format!(
-            "Failed to create Tantivy index directory: {}",
-            index_path.display()
-        ))?;
-
-        let canonical_index_path = fs::canonicalize(&index_path).unwrap_or(index_path.clone());
-
-        // Serialize creation per index path to prevent competing IndexWriter instances.
-        let creation_lock = {
-            let mut locks = search_infra_lock_cache().lock().unwrap();
-            locks
-                .entry(canonical_index_path.clone())
-                .or_insert_with(|| Arc::new(StdMutex::new(())))
-                .clone()
-        };
-        let _creation_guard = creation_lock.lock().unwrap();
-
-        // Reuse existing Tantivy infrastructure when available to avoid LockBusy errors
-        if let Some((engine_weak, writer_weak)) = {
-            let cache = search_infra_cache().lock().unwrap();
-            cache.get(&canonical_index_path).cloned()
-        } {
-            if let (Some(engine_arc), Some(writer_arc)) =
-                (engine_weak.upgrade(), writer_weak.upgrade())
-            {
-                info!(
-                    "♻️ Reusing cached Tantivy search infrastructure at {}",
-                    canonical_index_path.display()
-                );
-                self.search = Some(engine_arc);
-                self.search_writer = Some(writer_arc);
-                return Ok(());
-            } else {
-                // Clean up stale cache entry and continue with fresh initialization
-                let mut cache = search_infra_cache().lock().unwrap();
-                cache.remove(&canonical_index_path);
-            }
-        }
-
-        let search_engine = TantivyIndex::new(&index_path)?;
-
-        // Create search writer from the same index
-        // CRITICAL: Writer and reader must share the same Index instance
-        let search_writer =
-            TantivyWriter::new(search_engine.index(), search_engine.schema().clone())?;
-
-        let search_engine_arc = Arc::new(RwLock::new(search_engine));
-        let search_writer_arc = Arc::new(Mutex::new(search_writer));
-
-        {
-            let mut cache = search_infra_cache().lock().unwrap();
-            cache.insert(
-                canonical_index_path.clone(),
-                (
-                    Arc::downgrade(&search_engine_arc),
-                    Arc::downgrade(&search_writer_arc),
-                ),
-            );
-        }
-
-        info!(
-            "✅ Cached Tantivy search infrastructure at {}",
-            canonical_index_path.display()
-        );
-
-        self.search = Some(search_engine_arc);
-        self.search_writer = Some(search_writer_arc);
-
-        info!("Search index and writer initialized successfully");
-        Ok(())
-    }
 
     /// Initialize embedding engine
     /// 🔥 CRITICAL FIX: This function is now async because ONNX model loading is blocking
@@ -714,7 +586,7 @@ impl JulieWorkspace {
         }
 
         // Ensure all required components are initialized
-        if self.db.is_none() || self.search.is_none() || self.embeddings.is_none() {
+        if self.db.is_none() || self.embeddings.is_none() {
             return Err(anyhow::anyhow!(
                 "Required components not initialized before file watcher"
             ));
@@ -722,16 +594,12 @@ impl JulieWorkspace {
 
         info!("Initializing file watcher for: {}", self.root.display());
 
-        // Now we can properly import and use IncrementalIndexer
-
         // Create placeholder extractor manager for now
         let extractor_manager = Arc::new(crate::extractors::ExtractorManager::new());
 
         let file_watcher = IncrementalIndexer::new(
             self.root.clone(),
             self.db.as_ref().unwrap().clone(),
-            self.search.as_ref().unwrap().clone(),
-            self.search_writer.as_ref().unwrap().clone(),
             self.embeddings.as_ref().unwrap().clone(),
             extractor_manager,
         )?;
@@ -746,7 +614,6 @@ impl JulieWorkspace {
     /// 🔥 CRITICAL FIX: Now async because initialize_embeddings() is async (ONNX blocking fix)
     pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
-        self.initialize_search_index()?;
         self.initialize_embeddings().await?; // 🚨 Now async to avoid runtime deadlock
                                              // REMOVED: Vector store initialization moved to end of background embedding generation
                                              // HNSW index will be built AFTER embeddings are generated, not at startup

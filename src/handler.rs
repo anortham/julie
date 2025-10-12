@@ -5,29 +5,24 @@ use rust_mcp_sdk::schema::{
     ListToolsResult, RpcError,
 };
 use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
-use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 use crate::embeddings::EmbeddingEngine;
-use crate::search::SearchEngine;
 use crate::tools::JulieTools;
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
-/// CASCADE: Tracks which indexes are ready for search operations
+/// Tracks which indexes are ready for search operations
 ///
 /// This enables progressive enhancement and graceful degradation:
 /// - SQLite FTS5: Available immediately after indexing (~2s)
-/// - Tantivy: Available after background build (~5-10s)
 /// - Semantic (HNSW): Available after embedding generation (~20-30s)
 #[derive(Debug)]
 pub struct IndexingStatus {
     /// SQLite FTS5 full-text search is ready
     pub sqlite_fts_ready: AtomicBool,
-    /// Tantivy advanced search is ready
-    pub tantivy_ready: AtomicBool,
     /// HNSW semantic search is ready
     pub semantic_ready: AtomicBool,
 }
@@ -37,7 +32,6 @@ impl IndexingStatus {
     pub fn new() -> Self {
         Self {
             sqlite_fts_ready: AtomicBool::new(false),
-            tantivy_ready: AtomicBool::new(false),
             semantic_ready: AtomicBool::new(false),
         }
     }
@@ -59,20 +53,11 @@ impl Default for IndexingStatus {
 pub struct JulieServerHandler {
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
-    /// Tantivy-based search engine for fast indexed search (READ-ONLY)
-    pub search_engine: Arc<RwLock<SearchEngine>>,
-    /// Tantivy search writer for indexing operations (WRITE-ONLY, eliminates RwLock contention)
-    pub search_writer: Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
-    /// Cache of reference workspace search engines keyed by workspace ID
-    pub reference_search_engines: Arc<RwLock<HashMap<String, Arc<RwLock<SearchEngine>>>>>,
-    /// Cache of reference workspace search writers keyed by workspace ID
-    pub reference_search_writers:
-        Arc<RwLock<HashMap<String, Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>>>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
     /// Cached embedding engine for semantic search (expensive to initialize)
     pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
-    /// CASCADE: Tracks which indexes are ready for search operations
+    /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
 }
 
@@ -80,26 +65,10 @@ impl JulieServerHandler {
     /// Create a new Julie server handler with all components initialized
     pub async fn new() -> Result<Self> {
         info!("🔧 Initializing Julie server handler");
-
-        // NO MORE IN-MEMORY FALLBACKS - workspace initialization will provide persistent engines
-        debug!(
-            "✓ Julie handler components initialized (awaiting workspace for persistent engines)"
-        );
-
-        // Create in-memory search engine and writer (temporary until workspace overrides)
-        let search_engine = SearchEngine::in_memory().unwrap();
-        let search_writer = crate::search::SearchIndexWriter::new(
-            search_engine.index(),
-            search_engine.schema().clone(),
-        )
-        .unwrap();
+        debug!("✓ Julie handler initialized - workspace initialization will provide storage");
 
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
-            search_engine: Arc::new(RwLock::new(search_engine)),
-            search_writer: Arc::new(tokio::sync::Mutex::new(search_writer)),
-            reference_search_engines: Arc::new(RwLock::new(HashMap::new())),
-            reference_search_writers: Arc::new(RwLock::new(HashMap::new())),
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
@@ -181,119 +150,6 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    /// Get or create the Tantivy search infrastructure for a reference workspace.
-    ///
-    /// Reuses the same SearchEngine/SearchIndexWriter per workspace to avoid
-    /// acquiring multiple Tantivy lockfiles (which would surface as `LockBusy`).
-    pub async fn get_reference_search_infrastructure(
-        &self,
-        workspace_id: &str,
-        index_path: &std::path::Path,
-    ) -> Result<(
-        Arc<RwLock<SearchEngine>>,
-        Arc<tokio::sync::Mutex<crate::search::SearchIndexWriter>>,
-    )> {
-        if let (Some(engine), Some(writer)) = {
-            let engines = self.reference_search_engines.read().await;
-            let writers = self.reference_search_writers.read().await;
-            (
-                engines.get(workspace_id).cloned(),
-                writers.get(workspace_id).cloned(),
-            )
-        } {
-            debug!(
-                "♻️  Reusing cached Tantivy infrastructure for workspace {}",
-                workspace_id
-            );
-            return Ok((engine, writer));
-        }
-
-        // Create index directory before opening search engine
-        std::fs::create_dir_all(index_path).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to create index directory for workspace {}: {}",
-                workspace_id,
-                e
-            )
-        })?;
-
-        // Acquire write locks to insert the infrastructure if it's still missing
-        let mut engines = self.reference_search_engines.write().await;
-        let mut writers = self.reference_search_writers.write().await;
-
-        if let (Some(engine), Some(writer)) = (
-            engines.get(workspace_id).cloned(),
-            writers.get(workspace_id).cloned(),
-        ) {
-            return Ok((engine, writer));
-        }
-
-        debug!(
-            "🆕 Creating Tantivy infrastructure for reference workspace {} at {}",
-            workspace_id,
-            index_path.display()
-        );
-
-        let search_engine = SearchEngine::new(index_path).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to open Tantivy index for workspace {}: {}",
-                workspace_id,
-                e
-            )
-        })?;
-
-        let writer = crate::search::SearchIndexWriter::new(
-            search_engine.index(),
-            search_engine.schema().clone(),
-        )
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to create search writer for workspace {}: {}",
-                workspace_id,
-                e
-            )
-        })?;
-
-        debug!(
-            "✅ Tantivy infrastructure ready for workspace {}; caching for reuse",
-            workspace_id
-        );
-
-        let engine_arc = Arc::new(RwLock::new(search_engine));
-        let writer_arc = Arc::new(tokio::sync::Mutex::new(writer));
-
-        engines.insert(workspace_id.to_string(), engine_arc.clone());
-        writers.insert(workspace_id.to_string(), writer_arc.clone());
-
-        Ok((engine_arc, writer_arc))
-    }
-
-    /// Remove cached Tantivy infrastructure for a reference workspace.
-    pub async fn remove_reference_search_infrastructure(&self, workspace_id: &str) {
-        self.reference_search_engines
-            .write()
-            .await
-            .remove(workspace_id);
-        self.reference_search_writers
-            .write()
-            .await
-            .remove(workspace_id);
-    }
-
-    /// Get the active Tantivy search engine - returns error if workspace not initialized
-    pub async fn active_search_engine(&self) -> Result<Arc<RwLock<SearchEngine>>> {
-        if let Some(workspace) = self.workspace.read().await.as_ref() {
-            if let Some(search) = &workspace.search {
-                return Ok(search.clone());
-            }
-        }
-
-        // Return helpful error instead of panicking
-        Err(anyhow::anyhow!(
-            "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable search functionality."
-        ))
-    }
-
     /// Initialize or load workspace and update components to use persistent storage
     pub async fn initialize_workspace(&self, workspace_path: Option<String>) -> Result<()> {
         self.initialize_workspace_with_force(workspace_path, false)
@@ -369,13 +225,6 @@ impl JulieServerHandler {
                 }
             }
         };
-
-        // Ensure persistent search index is available - NO FALLBACKS ALLOWED
-        if workspace.search.is_some() {
-            info!("✅ Persistent search index initialized and ready for use");
-        } else {
-            return Err(anyhow::anyhow!("CRITICAL: Workspace failed to initialize persistent search index - cannot continue without persistent storage"));
-        }
 
         // Start file watching BEFORE storing workspace (to avoid clone issue)
         if let Err(e) = workspace.start_file_watching().await {

@@ -1,7 +1,7 @@
 // File Watcher & Incremental Indexing System
 //
 // This module provides real-time file monitoring and incremental updates
-// to all three pillars: SQLite database, Tantivy search index, and FastEmbed vectors
+// to both data stores: SQLite database (with FTS5 search) and FastEmbed vectors
 
 use anyhow::{Context, Result};
 use hex;
@@ -10,20 +10,17 @@ use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
-use crate::search::{SearchEngine, SearchIndexWriter};
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<Mutex<SymbolDatabase>>,
-    search_index: Arc<RwLock<SearchEngine>>,
-    search_writer: Arc<Mutex<SearchIndexWriter>>,
     embedding_engine: Arc<Mutex<EmbeddingEngine>>,
     extractor_manager: Arc<ExtractorManager>,
 
@@ -70,8 +67,6 @@ impl IncrementalIndexer {
     pub fn new(
         workspace_root: PathBuf,
         db: Arc<Mutex<SymbolDatabase>>,
-        search_index: Arc<RwLock<SearchEngine>>,
-        search_writer: Arc<Mutex<SearchIndexWriter>>,
         embedding_engine: Arc<Mutex<EmbeddingEngine>>,
         extractor_manager: Arc<ExtractorManager>,
     ) -> Result<Self> {
@@ -81,8 +76,6 @@ impl IncrementalIndexer {
         Ok(Self {
             watcher: None,
             db,
-            search_index,
-            search_writer,
             embedding_engine,
             extractor_manager,
             index_queue: Arc::new(Mutex::new(VecDeque::new())),
@@ -398,21 +391,7 @@ impl IncrementalIndexer {
         db.commit_transaction()?;
         drop(db);
 
-        // 5. Update Tantivy search index using separate writer
-        {
-            let mut search_writer = self.search_writer.lock().await;
-            search_writer.delete_file_symbols(&path_str).await?;
-            search_writer.index_symbols(symbols.clone()).await?;
-            search_writer.commit().await?;
-        }
-
-        // 5a. Reload reader to see new commits (uses tokio::sync::Mutex - proper async await!)
-        {
-            let search = self.search_index.read().await;
-            search.reload_reader().await?;
-        }
-
-        // 6. Update embeddings using mutex-protected engine
+        // 5. Update embeddings using mutex-protected engine
         {
             let mut embedding_engine = self.embedding_engine.lock().await;
             if let Err(e) = embedding_engine
@@ -453,19 +432,6 @@ impl IncrementalIndexer {
         db.delete_symbols_for_file(&path_str)?;
         db.delete_file_record(&path_str)?;
         drop(db);
-
-        // Remove from Tantivy search index using separate writer
-        {
-            let mut search_writer = self.search_writer.lock().await;
-            search_writer.delete_file_symbols(&path_str).await?;
-            search_writer.commit().await?;
-        }
-
-        // Reload reader to see deletions (uses tokio::sync::Mutex - proper async await!)
-        {
-            let search = self.search_index.read().await;
-            search.reload_reader().await?;
-        }
 
         // Remove from embeddings (database will handle the actual deletion)
         if !symbol_ids.is_empty() {

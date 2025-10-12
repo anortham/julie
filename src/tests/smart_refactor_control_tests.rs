@@ -370,9 +370,15 @@ mod smart_refactor_control_tests {
                 println!("🔧 Manually indexing symbols from test file for SmartRefactorTool...");
 
                 // Extract symbols from the test file using ExtractorManager
+                // CRITICAL: Canonicalize path to match file_info (macOS /var vs /private/var)
+                let canonical_test_path = test_file_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| test_file_path.clone());
+                let canonical_test_path_str = canonical_test_path.to_string_lossy().to_string();
+
                 let extractor_manager = crate::extractors::ExtractorManager::new();
                 match extractor_manager
-                    .extract_symbols(&test_file_path.to_string_lossy(), &original_content)
+                    .extract_symbols(&canonical_test_path_str, &original_content)
                 {
                     Ok(symbols) => {
                         println!("📊 Extracted {} symbols from test file", symbols.len());
@@ -427,8 +433,14 @@ mod smart_refactor_control_tests {
                                 let db_lock = db_arc.lock().await;
 
                                 // First, add the file record to satisfy foreign key constraint
+                                // CRITICAL: Canonicalize path to match symbol paths (macOS /var vs /private/var)
+                                let canonical_path = test_file_path
+                                    .canonicalize()
+                                    .unwrap_or_else(|_| test_file_path.clone())
+                                    .to_string_lossy()
+                                    .to_string();
                                 let file_info = crate::database::FileInfo {
-                                    path: test_file_path.to_string_lossy().to_string(),
+                                    path: canonical_path,
                                     language: "typescript".to_string(),
                                     hash: "test-hash".to_string(), // Simple hash for testing
                                     size: original_content.len() as i64,
@@ -470,25 +482,8 @@ mod smart_refactor_control_tests {
                             }
                         }
 
-                        // Step 3: Add symbols to search engine for actual searching
-                        {
-                            let mut search_writer = handler.search_writer.lock().await;
-                            if let Err(e) = search_writer.index_symbols(symbols).await {
-                                println!("⚠️ Warning: Failed to index symbols: {}", e);
-                            } else {
-                                println!(
-                                    "✅ Symbols indexed successfully into in-memory search engine"
-                                );
-                            }
-                        }
-
-                        // Step 3a: Reload reader to see new indexed symbols
-                        {
-                            let mut search_engine = handler.search_engine.write().await;
-                            if let Err(e) = search_engine.reload_reader().await {
-                                println!("⚠️ Warning: Failed to reload search reader: {}", e);
-                            }
-                        }
+                        // Tantivy removed - symbols are now stored only in SQLite database
+                        // No additional search engine indexing needed
                     }
                     Err(e) => {
                         println!("⚠️ Warning: Failed to extract symbols: {}", e);

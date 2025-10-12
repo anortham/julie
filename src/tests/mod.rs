@@ -194,4 +194,5 @@ pub mod workspace_mod_tests; // Tests for workspace module functionality // Test
 pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search
 
 // CASCADE Architecture Integration Tests (Phase 1-4 validation)
-pub mod cascade_integration_tests; // Tests for SQLite → Tantivy → Semantic cascade flow
+// DISABLED: Tantivy removed from CASCADE architecture (now SQLite FTS5 → HNSW Semantic only)
+// pub mod cascade_integration_tests; // Tests for SQLite → Tantivy → Semantic cascade flow

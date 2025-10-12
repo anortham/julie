@@ -80,9 +80,6 @@ harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
-# Search engine
-tantivy = "0.25"
-
 # Embeddings (using FastEmbed for easy model integration)
 fastembed = "5.2"
 

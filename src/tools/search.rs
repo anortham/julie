@@ -111,26 +111,11 @@ impl FastSearchTool {
                 )]));
             }
             SystemReadiness::SqliteOnly { symbol_count } => {
-                // Graceful degradation: Use SQLite fallback
-                warn!("🔄 Search index building... using database search (slower but works!)");
-                return self.fallback_sqlite_search(handler, symbol_count).await;
-            }
-            SystemReadiness::PartiallyReady {
-                tantivy_ready,
-                embeddings_ready,
-                symbol_count,
-            } => {
-                // Show status but proceed with available systems
-                let status_msg = format!(
-                    "🔍 Search {}% ready, embeddings {}% ready ({} symbols available)",
-                    if tantivy_ready { 100 } else { 50 },
-                    if embeddings_ready { 100 } else { 0 },
-                    symbol_count
-                );
-                info!("{}", status_msg);
+                // Graceful degradation: Use SQLite FTS5 for search
+                debug!("🔍 Using SQLite FTS5 search ({} symbols available)", symbol_count);
             }
             SystemReadiness::FullyReady { symbol_count } => {
-                debug!("✅ All systems ready ({} symbols)", symbol_count);
+                debug!("✅ All systems ready ({} symbols, embeddings available)", symbol_count);
             }
         }
 
@@ -192,98 +177,16 @@ impl FastSearchTool {
         // Resolve workspace filtering
         let workspace_filter = self.resolve_workspace_filter(handler).await?;
 
-        // 🔥 NEW: Load the specific workspace's Tantivy index instead of falling back to SQLite
-        // Each workspace now has its own Tantivy index with multi-word AND/OR logic
+        // Use SQLite database for text search
+        // With Tantivy removed, we rely on SQLite FTS5 for fast symbol search
         if let Some(workspace_ids) = workspace_filter {
-            // For now, use the first workspace ID (single workspace search)
-            let workspace_id = &workspace_ids[0];
-            debug!("🚀 Loading Tantivy index for workspace: {}", workspace_id);
-
-            // Load the workspace-specific SearchEngine
-            return self.search_workspace_tantivy(handler, workspace_id).await;
+            debug!("🔍 Using database search with workspace filter: {:?}", workspace_ids);
+            return self.database_search_with_workspace_filter(handler, workspace_ids).await;
         }
 
-        // For "all" workspaces (None), use the primary workspace's Tantivy search engine
-        // Try to use persistent search engine from workspace first
-        let search_results = if let Some(workspace) = handler.get_workspace().await? {
-            if let Some(persistent_search) = &workspace.search {
-                debug!("🚀 Using persistent Tantivy search index");
-                let search_engine = persistent_search.read().await;
-                search_engine.search(&self.query).await.map_err(|e| {
-                    debug!("Persistent search failed: {}", e);
-                    anyhow::anyhow!("Persistent search failed: {}", e)
-                })
-            } else {
-                debug!("⚠️  No persistent search engine, using handler fallback");
-                match handler.active_search_engine().await {
-                    Ok(search_engine) => {
-                        let search_engine = search_engine.read().await;
-                        search_engine.search(&self.query).await.map_err(|e| {
-                            debug!("Handler search failed: {}", e);
-                            anyhow::anyhow!("Handler search failed: {}", e)
-                        })
-                    }
-                    Err(e) => {
-                        debug!("Search engine unavailable: {}", e);
-                        Err(e)
-                    }
-                }
-            }
-        } else {
-            debug!("⚠️  No workspace initialized, using handler fallback");
-            match handler.active_search_engine().await {
-                Ok(search_engine) => {
-                    let search_engine = search_engine.read().await;
-                    search_engine.search(&self.query).await.map_err(|e| {
-                        debug!("Handler search failed: {}", e);
-                        anyhow::anyhow!("Handler search failed: {}", e)
-                    })
-                }
-                Err(e) => {
-                    debug!("Search engine unavailable: {}", e);
-                    Err(e)
-                }
-            }
-        };
-
-        match search_results {
-            Ok(results) => {
-                // Use SearchResult symbols directly - no linear lookup needed!
-                let mut matched_symbols = Vec::new();
-
-                for search_result in results {
-                    // Use the full Symbol from SearchResult directly - no linear lookup needed!
-                    matched_symbols.push(search_result.symbol);
-                }
-
-                // Apply combined scoring: PathRelevanceScorer + ExactMatchBoost for optimal ranking
-                let path_scorer = PathRelevanceScorer::new(&self.query);
-                let exact_match_booster = ExactMatchBoost::new(&self.query);
-                matched_symbols.sort_by(|a, b| {
-                    // Combine path relevance (production vs test) with exact match boost
-                    let path_score_a = path_scorer.calculate_score(&a.file_path);
-                    let exact_boost_a = exact_match_booster.calculate_boost(&a.name);
-                    let combined_score_a = path_score_a * exact_boost_a;
-
-                    let path_score_b = path_scorer.calculate_score(&b.file_path);
-                    let exact_boost_b = exact_match_booster.calculate_boost(&b.name);
-                    let combined_score_b = path_score_b * exact_boost_b;
-
-                    // Sort in descending order (higher combined scores first)
-                    combined_score_b
-                        .partial_cmp(&combined_score_a)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                debug!("🚀 Tantivy search returned {} results (ranked by PathRelevanceScorer + ExactMatchBoost)", matched_symbols.len());
-                Ok(matched_symbols)
-            }
-            Err(_) => {
-                // CASCADE: Fallback to SQLite FTS5 (file content search)
-                warn!("⚠️  Tantivy search failed, using SQLite FTS5 fallback");
-                self.sqlite_fts_search(handler).await
-            }
-        }
+        // For "all" workspaces, use SQLite FTS5 file content search
+        debug!("🔍 Using SQLite FTS5 for cross-workspace search");
+        self.sqlite_fts_search(handler).await
     }
 
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -403,14 +306,9 @@ impl FastSearchTool {
             return Ok(Vec::new());
         }
 
-        // Fetch actual symbols from database
+        // Fetch actual symbols from database (batched query for efficiency)
         let db_lock = db.lock().await;
-        let mut symbols: Vec<Symbol> = Vec::new();
-        for symbol_id in &symbol_ids {
-            if let Some(symbol) = db_lock.get_symbol_by_id(symbol_id)? {
-                symbols.push(symbol);
-            }
-        }
+        let symbols = db_lock.get_symbols_by_ids(&symbol_ids)?;
         drop(db_lock);
 
         // Apply filters (language, file_pattern)
@@ -908,135 +806,6 @@ impl FastSearchTool {
         }
     }
 
-    /// Search a specific workspace's Tantivy index (NEW: per-workspace indexes)
-    /// This enables multi-word AND/OR logic for workspace-filtered searches
-    async fn search_workspace_tantivy(
-        &self,
-        handler: &JulieServerHandler,
-        workspace_id: &str,
-    ) -> Result<Vec<Symbol>> {
-        debug!(
-            "🔍 Searching workspace-specific Tantivy index for workspace: {}",
-            workspace_id
-        );
-        debug!("🔍 [TRACE 1] Starting search_workspace_tantivy");
-
-        // Get the primary workspace to access the per-workspace index
-        debug!("🔍 [TRACE 2] About to call get_workspace()");
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-        debug!("🔍 [TRACE 3] Got workspace successfully");
-
-        // Check if this is the primary workspace - if so, use the already-loaded search engine
-        debug!("🔍 [TRACE 4] Deriving primary workspace ID from root");
-        let primary_workspace_id = crate::workspace::registry::generate_workspace_id(
-            workspace
-                .root
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Invalid workspace path"))?,
-        )?;
-        debug!(
-            "🔍 [TRACE 5] Computed primary workspace ID: {}",
-            primary_workspace_id
-        );
-
-        if workspace_id == primary_workspace_id {
-            // Use the already-loaded primary workspace search engine
-            debug!("✅ Using already-loaded primary workspace Tantivy index");
-            if let Some(search_engine) = &workspace.search {
-                let search_engine_lock = search_engine.read().await;
-                let search_results = search_engine_lock.search(&self.query).await?;
-
-                // Convert SearchResults to Symbols
-                let symbols: Vec<Symbol> = search_results
-                    .into_iter()
-                    .map(|result| result.symbol)
-                    .collect();
-
-                debug!(
-                    "🚀 Workspace Tantivy search returned {} results",
-                    symbols.len()
-                );
-                return Ok(symbols);
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Primary workspace Tantivy index not initialized"
-                ));
-            }
-        }
-
-        // For reference workspaces, dynamically load their Tantivy index
-        debug!(
-            "📂 Loading reference workspace Tantivy index: {}",
-            workspace_id
-        );
-        debug!("🔍 [TRACE 7] About to call get_workspace() for reference workspace");
-
-        // Get the workspace metadata from registry
-        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-        let _workspace_metadata = registry_service
-            .get_workspace(workspace_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found in registry", workspace_id))?;
-        debug!("🔍 [TRACE 8] Got workspace metadata for reference workspace");
-
-        // Build the path to the workspace's Tantivy index
-        // Per-workspace architecture: indexes/{workspace_id}/tantivy/
-        let index_path = workspace
-            .root
-            .join(".julie")
-            .join("indexes")
-            .join(workspace_id)
-            .join("tantivy");
-
-        // Check if the index exists
-        debug!("🔍 [TRACE 9] Checking if index exists at {:?}", index_path);
-        if !index_path.exists() {
-            return Err(anyhow::anyhow!(
-                "Tantivy index not found for workspace '{}' at {:?}. Has it been indexed?",
-                workspace_id,
-                index_path
-            ));
-        }
-        debug!("🔍 [TRACE 10] Index exists, creating SearchEngine");
-
-        // Create a SearchEngine for this workspace's index
-        debug!(
-            "🔧 Creating SearchEngine for reference workspace at {:?}",
-            index_path
-        );
-        let search_engine = crate::search::engine::SearchEngine::new(&index_path)?;
-        debug!("🔍 [TRACE 11] SearchEngine created successfully");
-
-        // Perform the search
-        debug!("🔍 [TRACE 12] About to call search_engine.search()");
-        let search_results = search_engine.search(&self.query).await?;
-        debug!(
-            "🔍 [TRACE 13] Search completed with {} results",
-            search_results.len()
-        );
-
-        // Convert SearchResults to Symbols
-        let symbols: Vec<Symbol> = search_results
-            .into_iter()
-            .map(|result| result.symbol)
-            .collect();
-
-        debug!(
-            "✅ Reference workspace '{}' search returned {} results",
-            workspace_id,
-            symbols.len()
-        );
-
-        // TODO: Future optimization - cache SearchEngine instances for frequently accessed workspaces
-        // Could use an LRU cache in the handler or a static cache with size limits
-        // For now, creating fresh each time is fine - Tantivy index opening is relatively fast
-
-        Ok(symbols)
-    }
-
     /// 🔄 CASCADE FALLBACK: Database search with workspace filtering
     /// Used during the 5-10s window while Tantivy builds in background after indexing
     /// Workspace-aware and provides graceful degradation, but lacks multi-word AND/OR logic
@@ -1235,6 +1004,7 @@ impl FastSearchTool {
         trimmed.to_string()
     }
 
+    #[allow(dead_code)]
     async fn fallback_sqlite_search(
         &self,
         handler: &JulieServerHandler,

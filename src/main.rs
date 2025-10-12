@@ -293,37 +293,11 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
                     return Ok(true);
                 }
 
-                // 🔥 CRITICAL FIX: Also verify Tantivy search index consistency
-                // If SQLite has data but Tantivy is empty, we need to re-index
-                match handler.active_search_engine().await {
-                    Ok(search_engine_arc) => {
-                        let search_engine = search_engine_arc.read().await;
-                        let tantivy_doc_count = search_engine
-                            .get_indexed_document_count()
-                            .await
-                            .unwrap_or(0);
-
-                        if tantivy_doc_count == 0 {
-                            info!("🔍 Database has symbols but Tantivy search index is empty - indexing needed for consistency!");
-                            return Ok(true);
-                        } else {
-                            info!("📊 Database has symbols and Tantivy has {} documents - skipping indexing", tantivy_doc_count);
-                        }
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Failed to check Tantivy consistency: {} - assuming indexing needed",
-                            e
-                        );
-                        return Ok(true);
-                    }
-                }
-
+                // Database has symbols - no indexing needed
                 // TODO: Add more sophisticated checks:
                 // - Compare file modification times with database timestamps
                 // - Check for new files that aren't in the database
                 // - Use Blake3 hashes to detect changes
-                // - Verify SQLite and Tantivy document counts match
 
                 Ok(false)
             }
@@ -396,10 +370,10 @@ async fn update_workspace_statistics(
         (0, 0)
     };
 
-    // Calculate Tantivy index size using per-workspace path
-    let tantivy_path = workspace.workspace_index_path(&workspace_id);
-    let index_size = if tantivy_path.exists() {
-        calculate_dir_size(&tantivy_path)
+    // Calculate index size (SQLite database size)
+    let db_path = workspace.root.join(".julie/indexes").join(&workspace_id).join("db");
+    let index_size = if db_path.exists() {
+        calculate_dir_size(&db_path)
     } else {
         0
     };
