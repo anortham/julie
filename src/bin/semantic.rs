@@ -72,6 +72,21 @@ enum Commands {
         #[arg(long, default_value = "bge-small")]
         model: String,
     },
+
+    /// Generate embedding for a search query
+    Query {
+        /// The search query text
+        #[arg(long)]
+        text: String,
+
+        /// Embedding model name (must match indexed model)
+        #[arg(long, default_value = "bge-small")]
+        model: String,
+
+        /// Output format: json or binary
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
 }
 
 /// Embedding statistics for JSON output
@@ -108,6 +123,9 @@ async fn main() -> Result<()> {
             model,
         } => {
             update_file_embeddings(&file, &symbols_db, &output, write_db, &model).await?;
+        }
+        Commands::Query { text, model, format } => {
+            generate_query_embedding(&text, &model, &format).await?;
         }
     }
 
@@ -410,6 +428,47 @@ async fn update_file_embeddings(
     };
 
     println!("{}", serde_json::to_string_pretty(&stats)?);
+
+    Ok(())
+}
+
+/// Generate embedding for a search query (for query-time semantic search)
+async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Result<()> {
+    // Initialize embedding engine without requiring database
+    let cache_dir = std::env::temp_dir().join("julie-embeddings");
+    std::fs::create_dir_all(&cache_dir)?;
+
+    // Create a temporary dummy database (required by EmbeddingEngine API)
+    // Note: This is a design limitation - the engine requires a DB but query doesn't need one
+    let temp_dir = std::env::temp_dir().join("julie-query-temp");
+    std::fs::create_dir_all(&temp_dir)?;
+    let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
+    let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
+    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(dummy_db));
+
+    // Initialize embedding engine
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+
+    // Generate embedding for query text
+    let embedding = engine.embed_text(text)?;
+
+    // Output based on format
+    match format {
+        "json" => {
+            // Output as JSON array (default, for C# consumption)
+            println!("{}", serde_json::to_string(&embedding)?);
+        }
+        "binary" => {
+            // Output as binary (for future optimization)
+            use std::io::Write;
+            for value in &embedding {
+                std::io::stdout().write_all(&value.to_le_bytes())?;
+            }
+        }
+        _ => {
+            anyhow::bail!("Unknown format '{}'. Supported formats: json, binary", format);
+        }
+    }
 
     Ok(())
 }
