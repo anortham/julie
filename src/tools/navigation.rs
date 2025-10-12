@@ -180,32 +180,8 @@ impl FastGotoTool {
             );
         }
 
-        // Format results
-        let mut message = format!(
-            "🎯 Found {} definition(s) for: '{}'\n\n",
-            definitions.len(),
-            self.symbol
-        );
-
-        for (i, symbol) in definitions.iter().enumerate() {
-            message.push_str(&format!(
-                "{}. {} [{}]\n\
-                📁 {}:{}:{}\n\
-                🏷️ Kind: {:?}\n",
-                i + 1,
-                symbol.name,
-                symbol.language,
-                symbol.file_path,
-                symbol.start_line,
-                symbol.start_column,
-                symbol.kind
-            ));
-
-            if let Some(signature) = &symbol.signature {
-                message.push_str(&format!("   📝 {}", signature));
-            }
-            message.push('\n');
-        }
+        // REFACTOR: Use token-optimized formatting with progressive reduction
+        let message = self.format_optimized_results(&definitions);
 
         self.create_result(
             true,
@@ -411,25 +387,12 @@ impl FastGotoTool {
             }
         }
 
-        // Prioritize results
+        // Prioritize results using shared logic
         exact_matches.sort_by(|a, b| {
-            // First by definition priority (classes > functions > variables)
-            let priority_cmp = self
-                .definition_priority(&a.kind)
-                .cmp(&self.definition_priority(&b.kind));
-            if priority_cmp != std::cmp::Ordering::Equal {
-                return priority_cmp;
-            }
-
-            // Then by context file preference if provided
-            if let Some(context_file) = &self.context_file {
-                let a_in_context = a.file_path.contains(context_file);
-                let b_in_context = b.file_path.contains(context_file);
-                match (a_in_context, b_in_context) {
-                    (true, false) => return std::cmp::Ordering::Less,
-                    (false, true) => return std::cmp::Ordering::Greater,
-                    _ => {}
-                }
+            // Use shared prioritization logic (definition priority + context file preference)
+            let shared_cmp = self.compare_symbols_by_priority_and_context(a, b);
+            if shared_cmp != std::cmp::Ordering::Equal {
+                return shared_cmp;
             }
 
             // Finally by line number if provided (prefer definitions closer to context)
@@ -459,6 +422,39 @@ impl FastGotoTool {
             SymbolKind::Variable | SymbolKind::Constant => 5,
             _ => 10,
         }
+    }
+
+    /// Shared prioritization logic for sorting symbols
+    /// Returns std::cmp::Ordering::Equal if both symbols have equal priority/context,
+    /// allowing caller to add additional tiebreaker criteria
+    fn compare_symbols_by_priority_and_context(
+        &self,
+        a: &Symbol,
+        b: &Symbol,
+    ) -> std::cmp::Ordering {
+        // First by definition priority (classes > functions > variables)
+        let priority_cmp = self
+            .definition_priority(&a.kind)
+            .cmp(&self.definition_priority(&b.kind));
+        if priority_cmp != std::cmp::Ordering::Equal {
+            return priority_cmp;
+        }
+
+        // Then by context file preference if provided
+        // CORRECTNESS FIX: Use exact path comparison instead of contains()
+        // contains() is fragile - "test.rs" would match "contest.rs" (false positive)
+        if let Some(context_file) = &self.context_file {
+            let a_in_context = a.file_path == *context_file || a.file_path.ends_with(context_file);
+            let b_in_context = b.file_path == *context_file || b.file_path.ends_with(context_file);
+            match (a_in_context, b_in_context) {
+                (true, false) => return std::cmp::Ordering::Less,
+                (false, true) => return std::cmp::Ordering::Greater,
+                _ => {}
+            }
+        }
+
+        // Return Equal to allow caller to add final tiebreaker
+        std::cmp::Ordering::Equal
     }
 
     /// Format optimized results with token optimization for FastGotoTool
@@ -665,25 +661,12 @@ impl FastGotoTool {
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
         exact_matches.dedup_by(|a, b| a.id == b.id);
 
-        // Prioritize results
+        // Prioritize results using shared logic
         exact_matches.sort_by(|a, b| {
-            // First by definition priority (classes > functions > variables)
-            let priority_cmp = self
-                .definition_priority(&a.kind)
-                .cmp(&self.definition_priority(&b.kind));
-            if priority_cmp != std::cmp::Ordering::Equal {
-                return priority_cmp;
-            }
-
-            // Then by context file preference if provided
-            if let Some(context_file) = &self.context_file {
-                let a_in_context = a.file_path.contains(context_file);
-                let b_in_context = b.file_path.contains(context_file);
-                match (a_in_context, b_in_context) {
-                    (true, false) => return std::cmp::Ordering::Less,
-                    (false, true) => return std::cmp::Ordering::Greater,
-                    _ => {}
-                }
+            // Use shared prioritization logic (definition priority + context file preference)
+            let shared_cmp = self.compare_symbols_by_priority_and_context(a, b);
+            if shared_cmp != std::cmp::Ordering::Equal {
+                return shared_cmp;
             }
 
             // Finally by file path alphabetically
