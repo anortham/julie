@@ -271,9 +271,10 @@ impl WorkspaceRegistryService {
                     info!("Attempting to restore from backup");
                     match self.try_load_registry_file(&backup_path).await {
                         Ok(registry) => {
-                            // Save restored registry as main file (using save_registry to prevent race condition)
-                            // NOTE: Changed from save_registry_internal to save_registry to ensure proper locking
-                            self.save_registry(registry.clone()).await?;
+                            // Save restored registry as main file (using save_registry_internal - lock already held)
+                            // DEADLOCK FIX: Use save_registry_internal() since load_registry() already holds the lock
+                            // Calling save_registry() would try to acquire the lock again → deadlock
+                            self.save_registry_internal(registry.clone()).await?;
                             info!("Registry restored from backup successfully");
                             Ok(registry)
                         }
@@ -343,6 +344,7 @@ impl WorkspaceRegistryService {
     }
 
     /// Register a new workspace
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn register_workspace(
         &self,
         workspace_path: String,
@@ -352,6 +354,10 @@ impl WorkspaceRegistryService {
             "🐛 register_workspace ENTRY: path={}, type={:?}",
             workspace_path, workspace_type
         );
+
+        // RACE CONDITION FIX: Hold lock for ENTIRE operation to prevent concurrent modifications
+        // Same pattern as update_last_accessed() - lock → load → modify → save_internal
+        let _lock = self.registry_lock.lock().await;
         let mut registry = self.load_registry_locked().await?;
         println!("🐛 register_workspace: Loaded registry");
 
@@ -381,7 +387,8 @@ impl WorkspaceRegistryService {
             "🐛 register_workspace: About to save registry (workspace_id={})",
             workspace.id
         );
-        self.save_registry(registry).await?;
+        // Use save_registry_internal since we already hold the lock
+        self.save_registry_internal(registry).await?;
         println!("🐛 register_workspace: Registry saved successfully");
 
         info!(
@@ -393,14 +400,18 @@ impl WorkspaceRegistryService {
     }
 
     /// Unregister a workspace
+    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn unregister_workspace(&self, workspace_id: &str) -> Result<bool> {
+        // RACE CONDITION FIX: Hold lock for ENTIRE operation
+        let _lock = self.registry_lock.lock().await;
         let mut registry = self.load_registry_locked().await?;
 
         // Check if it's the primary workspace
         if let Some(ref primary) = registry.primary_workspace {
             if primary.id == workspace_id {
                 registry.primary_workspace = None;
-                self.save_registry(registry).await?;
+                // Use save_registry_internal since we already hold the lock
+                self.save_registry_internal(registry).await?;
                 info!("Unregistered primary workspace: {}", workspace_id);
                 return Ok(true);
             }
@@ -408,7 +419,8 @@ impl WorkspaceRegistryService {
 
         // Check reference workspaces
         if registry.reference_workspaces.remove(workspace_id).is_some() {
-            self.save_registry(registry).await?;
+            // Use save_registry_internal since we already hold the lock
+            self.save_registry_internal(registry).await?;
             info!("Unregistered reference workspace: {}", workspace_id);
             Ok(true)
         } else {
@@ -782,7 +794,6 @@ impl WorkspaceRegistryService {
     /// Detect orphaned index directories that don't have registry entries
     pub async fn detect_orphaned_indexes(&self) -> Result<Vec<OrphanedIndexInfo>> {
         let registry = self.load_registry().await?;
-        let mut orphans = Vec::new();
 
         // Get all index directories
         let indexes_dir = self
@@ -792,40 +803,53 @@ impl WorkspaceRegistryService {
             .join("tantivy")
             .join("references");
         if !indexes_dir.exists() {
-            return Ok(orphans);
+            return Ok(Vec::new());
         }
 
-        let entries = std::fs::read_dir(&indexes_dir)?;
-        for entry in entries {
-            let entry = entry?;
-            let dir_name = entry.file_name().to_string_lossy().to_string();
+        //  🚨 CRITICAL: Move blocking filesystem operations to spawn_blocking
+        // std::fs::read_dir() and calculate_dir_size() are synchronous blocking I/O
+        let indexes_dir_clone = indexes_dir.clone();
+        let registry_clone = registry.clone();
 
-            // Skip if this directory has a registry entry
-            if registry.reference_workspaces.contains_key(&dir_name) {
-                continue;
+        let orphans = tokio::task::spawn_blocking(move || {
+            let mut orphans = Vec::new();
+            let entries = std::fs::read_dir(&indexes_dir_clone)?;
+
+            for entry in entries {
+                let entry = entry?;
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+
+                // Skip if this directory has a registry entry
+                if registry_clone.reference_workspaces.contains_key(&dir_name) {
+                    continue;
+                }
+
+                // Check if it's already marked as orphaned
+                if registry_clone.orphaned_indexes.contains_key(&dir_name) {
+                    continue;
+                }
+
+                // Calculate directory size using shared utility function
+                let size = crate::tools::workspace::calculate_dir_size(entry.path())?;
+                let metadata = entry.metadata()?;
+                let last_modified = metadata
+                    .modified()?
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs();
+
+                orphans.push(OrphanedIndexInfo {
+                    directory_name: dir_name,
+                    size_bytes: size,
+                    last_modified,
+                    discovered_at: crate::workspace::registry::current_timestamp(),
+                    reason: crate::workspace::registry::OrphanReason::NoRegistryEntry,
+                });
             }
 
-            // Check if it's already marked as orphaned
-            if registry.orphaned_indexes.contains_key(&dir_name) {
-                continue;
-            }
-
-            // Calculate directory size
-            let size = calculate_directory_size(entry.path())?;
-            let metadata = entry.metadata()?;
-            let last_modified = metadata
-                .modified()?
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs();
-
-            orphans.push(OrphanedIndexInfo {
-                directory_name: dir_name,
-                size_bytes: size,
-                last_modified,
-                discovered_at: crate::workspace::registry::current_timestamp(),
-                reason: crate::workspace::registry::OrphanReason::NoRegistryEntry,
-            });
-        }
+            Ok::<Vec<OrphanedIndexInfo>, anyhow::Error>(orphans)
+        })
+        .await
+        .map_err(|e| anyhow!("Orphan detection task failed: {}", e))??;
 
         info!("Detected {} orphaned index directories", orphans.len());
         Ok(orphans)
@@ -991,24 +1015,8 @@ pub struct ComprehensiveCleanupReport {
     pub orphaned_cleaned: Vec<String>,
 }
 
-/// Calculate the total size of a directory recursively
-fn calculate_directory_size<P: AsRef<std::path::Path>>(path: P) -> Result<u64> {
-    let mut total_size = 0;
-    let entries = std::fs::read_dir(path)?;
-
-    for entry in entries {
-        let entry = entry?;
-        let metadata = entry.metadata()?;
-
-        if metadata.is_dir() {
-            total_size += calculate_directory_size(entry.path())?;
-        } else {
-            total_size += metadata.len();
-        }
-    }
-
-    Ok(total_size)
-}
+// calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
+// Use crate::tools::workspace::calculate_dir_size() instead
 
 #[cfg(test)]
 mod tests {

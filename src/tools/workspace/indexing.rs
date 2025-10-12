@@ -49,8 +49,15 @@ impl ManageWorkspaceTool {
         let mut total_files = 0;
 
         // Use blacklist-based file discovery
+        // 🚨 CRITICAL: File discovery uses std::fs blocking I/O - must run on blocking thread pool
         println!("🐛 [INDEX TRACE C] About to call discover_indexable_files");
-        let all_discovered_files = self.discover_indexable_files(workspace_path)?;
+        let workspace_path_clone = workspace_path.to_path_buf();
+        let tool_clone = self.clone();
+        let all_discovered_files = tokio::task::spawn_blocking(move || {
+            tool_clone.discover_indexable_files(&workspace_path_clone)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("File discovery task failed: {}", e))??;
         println!(
             "🐛 [INDEX TRACE D] discover_indexable_files returned {} files",
             all_discovered_files.len()
@@ -1157,16 +1164,32 @@ async fn generate_embeddings_from_sqlite(
                 cache_dir.display()
             );
 
-            match crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir, db.clone()) {
-                Ok(engine) => {
+            // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
+            // Must run on blocking thread pool to avoid deadlocking the tokio runtime
+            // Same fix as workspace/mod.rs:458
+            let db_clone = db.clone();
+            let cache_dir_clone = cache_dir.clone();
+            match tokio::task::spawn_blocking(move || {
+                crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir_clone, db_clone)
+            })
+            .await
+            {
+                Ok(Ok(engine)) => {
                     *embedding_guard = Some(engine);
                     info!("✅ Embedding engine initialized for background task");
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     error!("❌ Failed to initialize embedding engine: {}", e);
                     return Err(anyhow::anyhow!(
                         "Embedding engine initialization failed: {}",
                         e
+                    ));
+                }
+                Err(join_err) => {
+                    error!("❌ Embedding engine initialization task panicked: {}", join_err);
+                    return Err(anyhow::anyhow!(
+                        "Embedding engine initialization task failed: {}",
+                        join_err
                     ));
                 }
             }

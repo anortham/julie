@@ -5,29 +5,13 @@ use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info, warn};
 
-/// Calculate the total size of a directory recursively
-fn calculate_dir_size(path: &Path) -> u64 {
-    let mut total_size = 0u64;
-
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_file() {
-                    total_size += metadata.len();
-                } else if metadata.is_dir() {
-                    total_size += calculate_dir_size(&entry.path());
-                }
-            }
-        }
-    }
-
-    total_size
-}
+// calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
+// Use crate::tools::workspace::calculate_dir_size() instead
 
 fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
     static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
@@ -191,12 +175,24 @@ impl ManageWorkspaceTool {
                     let registry_service_clone = registry_service.clone();
                     let workspace_id_for_stats = workspace_id.clone();
                     tokio::spawn(async move {
-                        // Calculate actual database index size using per-workspace path
-                        // This is a blocking operation so we do it in background
-                        let index_size = index_path
-                            .metadata()
-                            .map(|_m| calculate_dir_size(&index_path))
-                            .unwrap_or(0);
+                        // 🚨 CRITICAL: Calculate directory size using spawn_blocking
+                        // std::fs operations are synchronous blocking I/O
+                        let index_path_clone = index_path.clone();
+                        let index_size = match tokio::task::spawn_blocking(move || {
+                            crate::tools::workspace::calculate_dir_size(&index_path_clone)
+                        })
+                        .await
+                        {
+                            Ok(Ok(size)) => size,
+                            Ok(Err(e)) => {
+                                warn!("Failed to calculate index size: {}", e);
+                                0
+                            }
+                            Err(e) => {
+                                warn!("Index size calculation task failed: {}", e);
+                                0
+                            }
+                        };
 
                         if let Err(e) = registry_service_clone
                             .update_workspace_statistics(

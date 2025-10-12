@@ -371,9 +371,25 @@ async fn update_workspace_statistics(
     };
 
     // Calculate index size (SQLite database size)
+    // 🚨 CRITICAL: Move blocking filesystem operations to spawn_blocking
     let db_path = workspace.root.join(".julie/indexes").join(&workspace_id).join("db");
     let index_size = if db_path.exists() {
-        calculate_dir_size(&db_path)
+        let db_path_clone = db_path.clone();
+        match tokio::task::spawn_blocking(move || {
+            julie::tools::workspace::calculate_dir_size(&db_path_clone)
+        })
+        .await
+        {
+            Ok(Ok(size)) => size,
+            Ok(Err(e)) => {
+                warn!("Failed to calculate index size: {}", e);
+                0
+            }
+            Err(e) => {
+                warn!("Index size calculation task failed: {}", e);
+                0
+            }
+        }
     } else {
         0
     };
@@ -417,19 +433,5 @@ async fn update_workspace_statistics(
     Ok(())
 }
 
-/// Calculate total size of a directory recursively
-fn calculate_dir_size(path: &std::path::Path) -> u64 {
-    let mut total_size = 0u64;
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_file() {
-                    total_size += metadata.len();
-                } else if metadata.is_dir() {
-                    total_size += calculate_dir_size(&entry.path());
-                }
-            }
-        }
-    }
-    total_size
-}
+// calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
+// Use julie::tools::workspace::calculate_dir_size() instead
