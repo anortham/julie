@@ -124,6 +124,7 @@ tracing-appender = "0.2"
 
 # Pattern matching for file discovery
 glob = "0.3"
+globset = "0.4.16"  # Advanced glob matching with exclusion patterns support
 chrono = { version = "0.4.42", features = ["serde"] }
 
 # CLI-specific dependencies

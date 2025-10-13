@@ -17,17 +17,13 @@ impl ManageWorkspaceTool {
         workspace_path: &Path,
         force_reindex: bool,
     ) -> Result<(usize, usize, usize)> {
-        println!(
-            "🐛 [INDEX_WORKSPACE_FILES ENTRY] Function called for: {:?}",
-            workspace_path
-        );
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
         // Check if this is the primary workspace (current directory)
-        println!("🐛 [INDEX TRACE A] About to get current_dir");
+        debug!("🐛 [INDEX TRACE A] About to get current_dir");
         let current_dir = std::env::current_dir().unwrap_or_default();
         let is_primary_workspace = workspace_path == current_dir;
-        println!(
+        debug!(
             "🐛 [INDEX TRACE B] Got current_dir, is_primary={}",
             is_primary_workspace
         );
@@ -50,7 +46,7 @@ impl ManageWorkspaceTool {
 
         // Use blacklist-based file discovery
         // 🚨 CRITICAL: File discovery uses std::fs blocking I/O - must run on blocking thread pool
-        println!("🐛 [INDEX TRACE C] About to call discover_indexable_files");
+        debug!("🐛 [INDEX TRACE C] About to call discover_indexable_files");
         let workspace_path_clone = workspace_path.to_path_buf();
         let tool_clone = self.clone();
         let all_discovered_files = tokio::task::spawn_blocking(move || {
@@ -58,7 +54,7 @@ impl ManageWorkspaceTool {
         })
         .await
         .map_err(|e| anyhow::anyhow!("File discovery task failed: {}", e))??;
-        println!(
+        debug!(
             "🐛 [INDEX TRACE D] discover_indexable_files returned {} files",
             all_discovered_files.len()
         );
@@ -69,7 +65,7 @@ impl ManageWorkspaceTool {
         );
 
         // 🚀 INCREMENTAL UPDATE: Filter files that need re-indexing based on hash changes
-        println!(
+        debug!(
             "🐛 [INDEX TRACE E] About to filter files, force_reindex={}",
             force_reindex
         );
@@ -78,20 +74,20 @@ impl ManageWorkspaceTool {
                 "Force reindex mode - processing all {} files",
                 all_discovered_files.len()
             );
-            println!("🐛 [INDEX TRACE E1] Using all files (force_reindex=true)");
+            debug!("🐛 [INDEX TRACE E1] Using all files (force_reindex=true)");
             all_discovered_files
         } else {
-            println!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
+            debug!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
             let result = self
                 .filter_changed_files(handler, all_discovered_files, workspace_path)
                 .await?;
-            println!(
+            debug!(
                 "🐛 [INDEX TRACE E3] filter_changed_files returned {} files",
                 result.len()
             );
             result
         };
-        println!(
+        debug!(
             "🐛 [INDEX TRACE F] Files filtered, {} files to index",
             files_to_index.len()
         );
@@ -108,18 +104,18 @@ impl ManageWorkspaceTool {
 
         // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
         // Calling get_workspace() multiple times causes lock contention and deadlocks
-        println!("🐛 [INDEX TRACE G] About to get workspace for ID generation (ONCE)");
+        debug!("🐛 [INDEX TRACE G] About to get workspace for ID generation (ONCE)");
         let workspace = handler
             .get_workspace()
             .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
-        println!("🐛 [INDEX TRACE H] Got workspace successfully (reusing throughout function)");
+        debug!("🐛 [INDEX TRACE H] Got workspace successfully (reusing throughout function)");
 
         // Get workspace ID early for use throughout the function
         // CRITICAL DEADLOCK FIX: Generate workspace ID directly to avoid registry lock contention
         // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
         // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
-        println!("🐛 [INDEX TRACE I] Canonicalizing path");
+        debug!("🐛 [INDEX TRACE I] Canonicalizing path");
         let canonical_path = workspace_path
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.to_path_buf())
@@ -128,14 +124,14 @@ impl ManageWorkspaceTool {
 
         // DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
         // Same pattern as search_workspace_tantivy and filter_changed_files
-        println!(
+        debug!(
             "🐛 [INDEX TRACE J] Generating workspace ID directly from: {}",
             canonical_path
         );
         let workspace_id = match crate::workspace::registry::generate_workspace_id(&canonical_path)
         {
             Ok(id) => {
-                println!("🐛 [INDEX TRACE K] Generated workspace ID: {}", id);
+                debug!("🐛 [INDEX TRACE K] Generated workspace ID: {}", id);
                 id
             }
             Err(e) => {
@@ -146,10 +142,10 @@ impl ManageWorkspaceTool {
                 ));
             }
         };
-        println!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
+        debug!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
         // Tantivy removed - proceeding with SQLite-only indexing
-        println!("🐛 [INDEX TRACE S] About to call process_files_optimized");
+        debug!("🐛 [INDEX TRACE S] About to call process_files_optimized");
         // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
         self.process_files_optimized(
             handler,
@@ -159,7 +155,7 @@ impl ManageWorkspaceTool {
             workspace_id.clone(), // Pass workspace_id to avoid re-lookup
         )
         .await?;
-        println!("🐛 [INDEX TRACE T] process_files_optimized completed");
+        debug!("🐛 [INDEX TRACE T] process_files_optimized completed");
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
@@ -243,7 +239,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         files_to_index: Vec<PathBuf>,
-        _is_primary_workspace: bool,
+        is_primary_workspace: bool,
         total_files: &mut usize,
         workspace_id: String, // Pass workspace_id instead of re-looking it up
     ) -> Result<()> {
@@ -265,6 +261,40 @@ impl ManageWorkspaceTool {
             "🚀 Processing {} languages with optimized parser reuse",
             files_by_language.len()
         );
+
+        // 🔥 CRITICAL FIX: Open correct database for reference vs primary workspaces
+        // Reference workspaces need their own separate database at indexes/{workspace_id}/db/symbols.db
+        // Primary workspace uses the existing handler.get_workspace().db connection
+        let ref_workspace_db = if !is_primary_workspace {
+            // This is a REFERENCE workspace - open its separate database
+            let primary_workspace = handler
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+            let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
+            debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
+
+            // Create the db/ directory if it doesn't exist
+            if let Some(parent_dir) = ref_db_path.parent() {
+                std::fs::create_dir_all(parent_dir)
+                    .map_err(|e| anyhow::anyhow!("Failed to create database directory {}: {}", parent_dir.display(), e))?;
+                debug!("📁 Created database directory: {}", parent_dir.display());
+            }
+
+            // 🚨 CRITICAL: Wrap blocking file I/O in spawn_blocking
+            let ref_db_path_clone = ref_db_path.clone();
+            let db = tokio::task::spawn_blocking(move || {
+                crate::database::SymbolDatabase::new(ref_db_path_clone)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+
+            Some(Arc::new(tokio::sync::Mutex::new(db)))
+        } else {
+            // Primary workspace - will use handler.get_workspace().db (existing connection)
+            None
+        };
 
         // 🔥 COLLECT ALL DATA FIRST for bulk operations
         let mut all_symbols = Vec::new();
@@ -359,85 +389,106 @@ impl ManageWorkspaceTool {
         }
 
         // 🧹 CLEANUP: Remove old data for files being re-processed (incremental updates)
-        if !files_to_clean.is_empty() && !all_symbols.is_empty() {
+        if !files_to_clean.is_empty() {
             debug!(
                 "Cleaning up old data for {} modified files before bulk storage",
                 files_to_clean.len()
             );
 
-            if let Some(workspace) = handler.get_workspace().await? {
-                if let Some(db) = &workspace.db {
-                    let db_lock = db.lock().await;
-
-                    // Use the workspace_id that was passed in (already validated)
-
-                    // Clean up database entries for modified files
-                    for file_path in &files_to_clean {
-                        if let Err(e) =
-                            db_lock.delete_symbols_for_file_in_workspace(file_path, &workspace_id)
-                        {
-                            warn!("Failed to delete old symbols for {}: {}", file_path, e);
-                        }
-                        if let Err(e) =
-                            db_lock.delete_relationships_for_file(file_path, &workspace_id)
-                        {
-                            warn!(
-                                "Failed to delete old relationships for {}: {}",
-                                file_path, e
-                            );
-                        }
-                    }
-
-                    debug!("Cleanup complete for {} files", files_to_clean.len());
+            // Use correct database: reference workspace DB or primary workspace DB
+            let db_to_use = if let Some(ref ref_db) = ref_workspace_db {
+                // Reference workspace - use separate DB
+                Some(ref_db.clone())
+            } else {
+                // Primary workspace - use handler's DB
+                if let Some(workspace) = handler.get_workspace().await? {
+                    workspace.db.clone()
+                } else {
+                    None
                 }
+            };
+
+            if let Some(db) = db_to_use {
+                let db_lock = db.lock().await;
+
+                // Clean up database entries for modified files
+                for file_path in &files_to_clean {
+                    if let Err(e) =
+                        db_lock.delete_symbols_for_file_in_workspace(file_path, &workspace_id)
+                    {
+                        warn!("Failed to delete old symbols for {}: {}", file_path, e);
+                    }
+                    if let Err(e) =
+                        db_lock.delete_relationships_for_file(file_path, &workspace_id)
+                    {
+                        warn!(
+                            "Failed to delete old relationships for {}: {}",
+                            file_path, e
+                        );
+                    }
+                }
+
+                debug!("Cleanup complete for {} files", files_to_clean.len());
+
+                // 🔥 CRITICAL: Explicitly release the database lock before bulk storage!
+                drop(db_lock);
             }
         }
 
         // 🚀 BLAZING-FAST BULK STORAGE: Store everything at once using optimized bulk methods
-        if !all_symbols.is_empty() {
+        // CRITICAL FIX: Store files even if they have 0 symbols (file records are still needed!)
+        if !all_file_infos.is_empty() {
             info!("🚀 Starting blazing-fast bulk storage of {} symbols, {} relationships, {} files...",
                   all_symbols.len(), all_relationships.len(), all_file_infos.len());
 
-            if let Some(workspace) = handler.get_workspace().await? {
-                if let Some(db) = &workspace.db {
-                    let mut db_lock = db.lock().await;
-
-                    // Use the workspace_id that was passed in (already validated and registered)
-
-                    // 🔥 BULK OPERATIONS for maximum speed
-                    let bulk_start = std::time::Instant::now();
-                    // Debug output removed
-
-                    // Bulk store files
-                    if let Err(e) = db_lock.bulk_store_files(&all_file_infos, &workspace_id) {
-                        warn!("Failed to bulk store files: {}", e);
-                    }
-
-                    // Bulk store symbols (with index dropping optimization!)
-                    if let Err(e) = db_lock.bulk_store_symbols(&all_symbols, &workspace_id) {
-                        warn!("Failed to bulk store symbols: {}", e);
-                    }
-
-                    // Bulk store relationships
-                    if let Err(e) =
-                        db_lock.bulk_store_relationships(&all_relationships, &workspace_id)
-                    {
-                        warn!("Failed to bulk store relationships: {}", e);
-                    }
-
-                    let bulk_duration = bulk_start.elapsed();
-                    info!(
-                        "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
-                        bulk_duration.as_secs_f64()
-                    );
-
-                    // Mark SQLite FTS5 as ready
-                    handler
-                        .indexing_status
-                        .sqlite_fts_ready
-                        .store(true, std::sync::atomic::Ordering::Release);
-                    debug!("🔍 SQLite FTS5 search now available");
+            // Use correct database: reference workspace DB or primary workspace DB
+            let db_to_use = if let Some(ref ref_db) = ref_workspace_db {
+                // Reference workspace - use separate DB
+                Some(ref_db.clone())
+            } else {
+                // Primary workspace - use handler's DB
+                if let Some(workspace) = handler.get_workspace().await? {
+                    workspace.db.clone()
+                } else {
+                    None
                 }
+            };
+
+            if let Some(db) = db_to_use {
+                let mut db_lock = db.lock().await;
+
+                // 🔥 BULK OPERATIONS for maximum speed
+                let bulk_start = std::time::Instant::now();
+
+                // Bulk store files
+                if let Err(e) = db_lock.bulk_store_files(&all_file_infos, &workspace_id) {
+                    warn!("Failed to bulk store files: {}", e);
+                }
+
+                // Bulk store symbols (with index dropping optimization!)
+                if let Err(e) = db_lock.bulk_store_symbols(&all_symbols, &workspace_id) {
+                    warn!("Failed to bulk store symbols: {}", e);
+                }
+
+                // Bulk store relationships
+                if let Err(e) =
+                    db_lock.bulk_store_relationships(&all_relationships, &workspace_id)
+                {
+                    warn!("Failed to bulk store relationships: {}", e);
+                }
+
+                let bulk_duration = bulk_start.elapsed();
+                info!(
+                    "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
+                    bulk_duration.as_secs_f64()
+                );
+
+                // Mark SQLite FTS5 as ready
+                handler
+                    .indexing_status
+                    .sqlite_fts_ready
+                    .store(true, std::sync::atomic::Ordering::Release);
+                debug!("🔍 SQLite FTS5 search now available");
             }
         }
 

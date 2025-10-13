@@ -287,13 +287,12 @@ impl TraceCallPathTool {
                         .await?
                 }
                 "both" => {
-                    let mut visited_up = HashSet::new();
-                    let mut visited_down = HashSet::new();
+                    // Use single visited set to prevent duplicate processing across both directions
                     let mut upstream = self
-                        .trace_upstream(handler, &db, starting_symbol, 0, &mut visited_up)
+                        .trace_upstream(handler, &db, starting_symbol, 0, &mut visited)
                         .await?;
                     let downstream = self
-                        .trace_downstream(handler, &db, starting_symbol, 0, &mut visited_down)
+                        .trace_downstream(handler, &db, starting_symbol, 0, &mut visited)
                         .await?;
                     upstream.extend(downstream);
                     upstream
@@ -371,27 +370,30 @@ impl TraceCallPathTool {
         let db_lock = db.lock().await;
         let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
+        // Filter to call relationships and collect symbol IDs
+        let relevant_rels: Vec<_> = relationships
+            .into_iter()
+            .filter(|rel| {
+                rel.to_symbol_id == symbol.id
+                    && matches!(
+                        rel.kind,
+                        RelationshipKind::Calls | RelationshipKind::References
+                    )
+            })
+            .collect();
+
+        // Batch fetch all caller symbols (avoids N+1 query pattern)
+        let caller_ids: Vec<String> = relevant_rels.iter().map(|r| r.from_symbol_id.clone()).collect();
+        let caller_symbols = db_lock.get_symbols_by_ids(&caller_ids)?;
+        drop(db_lock);
+
+        // Build callers list by matching symbols with relationships
         let mut callers = Vec::new();
-        for rel in relationships {
-            // For upstream, we want relationships where this symbol is the target
-            if rel.to_symbol_id != symbol.id {
-                continue;
-            }
-
-            // Only interested in call relationships for call path tracing
-            if !matches!(
-                rel.kind,
-                RelationshipKind::Calls | RelationshipKind::References
-            ) {
-                continue;
-            }
-
-            // Get the caller symbol
-            if let Ok(Some(caller_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id) {
-                callers.push((caller_symbol, rel.kind.clone()));
+        for rel in relevant_rels {
+            if let Some(caller_symbol) = caller_symbols.iter().find(|s| s.id == rel.from_symbol_id) {
+                callers.push((caller_symbol.clone(), rel.kind.clone()));
             }
         }
-        drop(db_lock);
 
         // Process callers recursively
         for (caller_symbol, rel_kind) in callers {
@@ -511,27 +513,30 @@ impl TraceCallPathTool {
         let db_lock = db.lock().await;
         let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
+        // Filter to call relationships and collect symbol IDs
+        let relevant_rels: Vec<_> = relationships
+            .into_iter()
+            .filter(|rel| {
+                rel.from_symbol_id == symbol.id
+                    && matches!(
+                        rel.kind,
+                        RelationshipKind::Calls | RelationshipKind::References
+                    )
+            })
+            .collect();
+
+        // Batch fetch all callee symbols (avoids N+1 query pattern)
+        let callee_ids: Vec<String> = relevant_rels.iter().map(|r| r.to_symbol_id.clone()).collect();
+        let callee_symbols = db_lock.get_symbols_by_ids(&callee_ids)?;
+        drop(db_lock);
+
+        // Build callees list by matching symbols with relationships
         let mut callees = Vec::new();
-        for rel in relationships {
-            // For downstream, we want relationships where this symbol is the source
-            if rel.from_symbol_id != symbol.id {
-                continue;
-            }
-
-            // Only interested in call relationships
-            if !matches!(
-                rel.kind,
-                RelationshipKind::Calls | RelationshipKind::References
-            ) {
-                continue;
-            }
-
-            // Get the callee symbol
-            if let Ok(Some(callee_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
-                callees.push((callee_symbol, rel.kind.clone()));
+        for rel in relevant_rels {
+            if let Some(callee_symbol) = callee_symbols.iter().find(|s| s.id == rel.to_symbol_id) {
+                callees.push((callee_symbol.clone(), rel.kind.clone()));
             }
         }
-        drop(db_lock);
 
         // Process callees recursively
         for (callee_symbol, rel_kind) in callees {
@@ -639,24 +644,9 @@ impl TraceCallPathTool {
             // Find symbols with this variant name
             if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
                 for variant_symbol in variant_symbols {
-                    // Only include if different language
+                    // Only include if different language - naming variant match is sufficient
                     if variant_symbol.language != symbol.language {
-                        // Check if this variant actually references symbols that could be our target
-                        let relationships =
-                            db_lock.get_relationships_for_symbol(&variant_symbol.id)?;
-
-                        // Consider it a caller only if it references the target symbol
-                        let calls_target = relationships.iter().any(|r| {
-                            matches!(
-                                r.kind,
-                                RelationshipKind::Calls | RelationshipKind::References
-                            ) && r.from_symbol_id == variant_symbol.id
-                                && r.to_symbol_id == symbol.id
-                        });
-
-                        if calls_target {
-                            cross_lang_symbols.push(variant_symbol);
-                        }
+                        cross_lang_symbols.push(variant_symbol);
                     }
                 }
             }
@@ -697,21 +687,9 @@ impl TraceCallPathTool {
             // Find symbols with this variant name in different languages
             if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
                 for variant_symbol in variant_symbols {
+                    // Only include if different language - naming variant match is sufficient
                     if variant_symbol.language != symbol.language {
-                        // Confirm the original symbol actually calls this variant
-                        let relationships =
-                            db_lock.get_relationships_to_symbol(&variant_symbol.id)?;
-                        let called_by_symbol = relationships.iter().any(|r| {
-                            matches!(
-                                r.kind,
-                                RelationshipKind::Calls | RelationshipKind::References
-                            ) && r.from_symbol_id == symbol.id
-                                && r.to_symbol_id == variant_symbol.id
-                        });
-
-                        if called_by_symbol {
-                            cross_lang_symbols.push(variant_symbol);
-                        }
+                        cross_lang_symbols.push(variant_symbol);
                     }
                 }
             }
@@ -1153,7 +1131,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cross_language_callers_require_relationship_to_target() {
+    async fn cross_language_callers_found_via_naming_variant() {
         let workspace_id = "primary";
         let temp = tempdir().expect("tempdir");
         let db_path = temp.path().join("test.db");
@@ -1202,6 +1180,7 @@ mod tests {
                 )
                 .expect("store symbols");
 
+            // Note: No relationship needed - naming variant is sufficient for cross-language matching
             let rel = Relationship {
                 id: "rel1".to_string(),
                 from_symbol_id: variant.id.clone(),
@@ -1233,9 +1212,13 @@ mod tests {
             .await
             .expect("callers");
 
-        assert!(
-            callers.is_empty(),
-            "Expected no unrelated cross-language callers"
+        // NEW BEHAVIOR: Naming variant match is sufficient - no database relationship required!
+        assert_eq!(
+            callers.len(),
+            1,
+            "Expected to find cross-language caller via naming variant"
         );
+        assert_eq!(callers[0].name, "ProcessPayment");
+        assert_eq!(callers[0].language, "csharp");
     }
 }

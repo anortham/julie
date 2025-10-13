@@ -125,19 +125,27 @@ impl ManageWorkspaceTool {
 
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
-        // First check if workspace exists and clean up database data
+        // First check if workspace exists and clean up workspace directory
         if let Ok(Some(_workspace_entry)) = registry_service.get_workspace(workspace_id).await {
-            // Clean up database data before removing from registry
-            if let Some(db) = &primary_workspace.db {
-                let db_lock = db.lock().await;
-                match db_lock.delete_workspace_data(workspace_id) {
-                    Ok(stats) => {
-                        info!("Cleaned database data for workspace {}: {} symbols, {} files, {} relationships",
-                              workspace_id, stats.symbols_deleted, stats.files_deleted, stats.relationships_deleted);
+            // Delete entire workspace directory: .julie/indexes/{workspace_id}/
+            // This removes the separate database and all index data for this workspace
+            let workspace_index_path = primary_workspace
+                .root
+                .join(".julie")
+                .join("indexes")
+                .join(workspace_id);
+
+            if workspace_index_path.exists() {
+                match tokio::fs::remove_dir_all(&workspace_index_path).await {
+                    Ok(()) => {
+                        info!(
+                            "Deleted workspace directory for {}: {:?}",
+                            workspace_id, workspace_index_path
+                        );
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to clean database data for workspace {}: {}",
+                            "Failed to delete workspace directory {}: {}",
                             workspace_id, e
                         );
                     }

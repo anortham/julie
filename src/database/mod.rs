@@ -1101,7 +1101,9 @@ impl SymbolDatabase {
 
         // STEP 2: Optimize SQLite for bulk operations (DANGEROUS but FAST!)
         self.conn.execute("PRAGMA synchronous = OFF", [])?; // No disk sync - risky but fast
-        self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // Keep journal in memory (returns result)
+        // NOTE: Don't change journal_mode here - database is already in WAL mode
+        // Changing from WAL to MEMORY requires exclusive access and causes "database is locked" errors
+        // self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // REMOVED: Causes lock conflicts
         self.conn.execute("PRAGMA cache_size = 20000", [])?; // Large cache for bulk ops
 
         // STEP 3: Start transaction for atomic bulk insert
@@ -2100,6 +2102,40 @@ impl SymbolDatabase {
         let mut relationships = Vec::new();
         for row_result in rows {
             relationships.push(row_result?);
+        }
+
+        Ok(relationships)
+    }
+
+    /// Get relationships TO multiple symbols in a single batch query
+    /// PERFORMANCE FIX: Replaces N+1 query pattern with single batch query using SQL IN clause
+    pub fn get_relationships_to_symbols(&self, symbol_ids: &[String]) -> Result<Vec<Relationship>> {
+        if symbol_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build parameterized query with IN clause for batch fetch
+        let placeholders: Vec<String> = (1..=symbol_ids.len()).map(|i| format!("?{}", i)).collect();
+        let query = format!(
+            "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
+             FROM relationships
+             WHERE to_symbol_id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        // Convert Vec<String> to Vec<&dyn ToSql> for params
+        let params: Vec<&dyn rusqlite::ToSql> = symbol_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+
+        let relationship_iter = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
+
+        let mut relationships = Vec::new();
+        for relationship_result in relationship_iter {
+            relationships.push(relationship_result?);
         }
 
         Ok(relationships)
@@ -3151,6 +3187,127 @@ impl SymbolDatabase {
         }
 
         Ok(by_file)
+    }
+
+    /// Get relationship type statistics using SQL aggregation (avoids loading all relationships into memory)
+    /// Returns HashMap<relationship_kind, count> grouped by relationship type
+    /// Used by FastExploreTool's intelligent_dependencies mode
+    pub fn get_relationship_type_statistics(
+        &self,
+        workspace_ids: &[String],
+    ) -> Result<HashMap<String, i64>> {
+        let mut by_kind = HashMap::new();
+
+        // SQL GROUP BY aggregation - counts relationships by kind without loading data into memory
+        if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
+            let query = format!(
+                "SELECT kind, COUNT(*) as count \
+                 FROM relationships \
+                 WHERE workspace_id IN ({}) \
+                 GROUP BY kind",
+                workspace_placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+
+            for row in rows {
+                let (kind, count) = row?;
+                by_kind.insert(kind, count);
+            }
+        } else {
+            // No workspace filter - count all relationships
+            let query = "SELECT kind, COUNT(*) as count \
+                         FROM relationships \
+                         GROUP BY kind";
+
+            let mut stmt = self.conn.prepare(query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+
+            for row in rows {
+                let (kind, count) = row?;
+                by_kind.insert(kind, count);
+            }
+        }
+
+        Ok(by_kind)
+    }
+
+    /// Get most referenced symbols using SQL aggregation (avoids loading all relationships into memory)
+    /// Returns Vec<(symbol_id, reference_count)> sorted by count descending
+    /// Used by FastExploreTool's intelligent_dependencies mode to find heavily referenced symbols
+    pub fn get_most_referenced_symbols(
+        &self,
+        workspace_ids: &[String],
+        limit: usize,
+    ) -> Result<Vec<(String, usize)>> {
+        let mut results = Vec::new();
+
+        // SQL GROUP BY aggregation - counts incoming references per symbol
+        if !workspace_ids.is_empty() {
+            let workspace_placeholders = workspace_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
+            let query = format!(
+                "SELECT to_symbol_id, COUNT(*) as ref_count \
+                 FROM relationships \
+                 WHERE workspace_id IN ({}) \
+                 GROUP BY to_symbol_id \
+                 ORDER BY ref_count DESC \
+                 LIMIT ?",
+                workspace_placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let mut params: Vec<&dyn rusqlite::ToSql> = workspace_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
+            params.push(&limit);
+
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (symbol_id, count) = row?;
+                results.push((symbol_id, count));
+            }
+        } else {
+            // No workspace filter - count all references
+            let query = "SELECT to_symbol_id, COUNT(*) as ref_count \
+                         FROM relationships \
+                         GROUP BY to_symbol_id \
+                         ORDER BY ref_count DESC \
+                         LIMIT ?";
+
+            let mut stmt = self.conn.prepare(query)?;
+            let rows = stmt.query_map([limit], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+            })?;
+
+            for row in rows {
+                let (symbol_id, count) = row?;
+                results.push((symbol_id, count));
+            }
+        }
+
+        Ok(results)
     }
 
     /// Delete all data for a specific workspace (for workspace cleanup)

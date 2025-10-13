@@ -250,21 +250,24 @@ impl FastExploreTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
 
         let mut message = String::new();
         message.push_str("🧠 INTELLIGENT Dependency Analysis\n");
         message.push_str("====================================\n");
 
-        // Get all relationships and aggregate by type
-        let all_relationships = db_lock.get_all_relationships().unwrap_or_default();
-        let mut relationship_counts: HashMap<String, i64> = HashMap::new();
+        // 🚀 CRITICAL FIX: Use SQL aggregation instead of loading ALL relationships into memory
+        // Get the current workspace ID to filter results
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
+        let workspace_ids = vec![workspace_id];
 
-        for rel in all_relationships.iter() {
-            *relationship_counts.entry(rel.kind.to_string()).or_insert(0) += 1;
-        }
+        // Use SQL GROUP BY aggregation - O(1) memory vs O(N) memory for get_all_relationships()
+        let relationship_counts = tokio::task::block_in_place(|| {
+            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            db_lock.get_relationship_type_statistics(&workspace_ids)
+        })?;
 
-        let total_relationships: i64 = all_relationships.len() as i64;
+        let total_relationships: i64 = relationship_counts.values().sum();
         message.push_str(&format!("Total Relationships: {}\n\n", total_relationships));
 
         message.push_str("🏷️ Relationship Types:\n");
@@ -279,6 +282,10 @@ impl FastExploreTool {
             message.push_str(&format!("\n🔍 Focused Analysis: '{}'\n", focus));
 
             // Use database to find the symbol by name
+            let db_lock = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(db.lock())
+            });
+
             if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
                 if let Some(target) = symbols.first() {
                     let symbol_id = &target.id;
@@ -306,20 +313,21 @@ impl FastExploreTool {
                 message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
             }
         } else {
-            // Count references for each symbol to find most referenced
-            let mut reference_counts: HashMap<String, usize> = HashMap::new();
-            for rel in all_relationships.iter() {
-                *reference_counts
-                    .entry(rel.to_symbol_id.clone())
-                    .or_insert(0) += 1;
-            }
-
-            let mut top_refs: Vec<_> = reference_counts.into_iter().collect();
-            top_refs.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+            // 🚀 CRITICAL FIX: Use SQL aggregation to find most referenced symbols
+            // Instead of loading ALL relationships and counting in Rust, use GROUP BY in SQL
+            let top_refs = tokio::task::block_in_place(|| {
+                let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                db_lock.get_most_referenced_symbols(&workspace_ids, 10)
+            })?;
 
             message.push_str("\n🔥 Most Referenced Symbols:\n");
-            for (symbol_id, ref_count) in top_refs.iter().take(10) {
-                if let Ok(Some(symbol)) = db_lock.get_symbol_by_id(symbol_id) {
+            for (symbol_id, ref_count) in top_refs.iter() {
+                let symbol = tokio::task::block_in_place(|| {
+                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    db_lock.get_symbol_by_id(symbol_id)
+                })?;
+
+                if let Some(symbol) = symbol {
                     message.push_str(&format!(
                         "  {} [{}]: {} references\n",
                         symbol.name,
@@ -1361,10 +1369,15 @@ impl FindLogicTool {
         let mut reference_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
 
-        // Count incoming references for each symbol (how many things reference this symbol)
-        for symbol in symbols.iter() {
-            if let Ok(relationships) = db_lock.get_relationships_to_symbol(&symbol.id) {
-                reference_counts.insert(symbol.id.clone(), relationships.len());
+        // 🚀 CRITICAL FIX: Use batched query instead of N+1 individual queries
+        // Collect all symbol IDs for batch query (same fix as FastRefsTool)
+        let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+
+        // Single batched query - O(1) database call instead of O(N)
+        if let Ok(all_relationships) = db_lock.get_relationships_to_symbols(&symbol_ids) {
+            // Count incoming references for each symbol from batched results
+            for relationship in all_relationships {
+                *reference_counts.entry(relationship.to_symbol_id.clone()).or_insert(0) += 1;
             }
         }
 

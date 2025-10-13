@@ -1,10 +1,11 @@
 use anyhow::Result;
+use globset::Glob;
 use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use super::shared::OptimizedResponse;
 use crate::extractors::{Symbol, SymbolKind};
@@ -192,7 +193,11 @@ impl FastSearchTool {
     async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         debug!("🧠 Semantic search mode (using HNSW index)");
 
-        // Get workspace components
+        // Ensure vector store is initialized first (lazy-loads from disk or rebuilds)
+        handler.ensure_vector_store().await?;
+
+        // PERF FIX: Get workspace once after initialization instead of twice
+        // Previous code called get_workspace() before and after ensure_vector_store()
         let workspace = handler
             .get_workspace()
             .await?
@@ -202,15 +207,6 @@ impl FastSearchTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available for semantic search"))?;
-
-        // Ensure vector store is initialized (lazy-loads from disk or rebuilds)
-        handler.ensure_vector_store().await?;
-
-        // Now get the workspace again to access the initialized vector store
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Workspace disappeared after vector store init"))?;
 
         // Check if vector_store is ready
         let vector_store = match workspace.vector_store.as_ref() {
@@ -307,9 +303,12 @@ impl FastSearchTool {
         }
 
         // Fetch actual symbols from database (batched query for efficiency)
-        let db_lock = db.lock().await;
-        let symbols = db_lock.get_symbols_by_ids(&symbol_ids)?;
-        drop(db_lock);
+        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+        let symbols = tokio::task::block_in_place(|| {
+            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            db_lock.get_symbols_by_ids(&symbol_ids)
+        })?;
 
         // Apply filters (language, file_pattern)
         let filtered_symbols: Vec<Symbol> = symbols
@@ -322,19 +321,12 @@ impl FastSearchTool {
                     .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
                     .unwrap_or(true);
 
-                // Apply file pattern filter if specified
+                // CRITICAL FIX: Use proper glob matching instead of contains()
+                // This now correctly handles patterns like "src/**/*.rs", "!**/target/*", etc.
                 let file_match = self
                     .file_pattern
                     .as_ref()
-                    .map(|pattern| {
-                        if let Some(exclusion) = pattern.strip_prefix('!') {
-                            // Exclusion pattern
-                            !symbol.file_path.contains(exclusion)
-                        } else {
-                            // Inclusion pattern
-                            symbol.file_path.contains(pattern)
-                        }
-                    })
+                    .map(|pattern| Self::matches_glob_pattern(&symbol.file_path, pattern))
                     .unwrap_or(true);
 
                 language_match && file_match
@@ -484,19 +476,24 @@ impl FastSearchTool {
 
         let mut confidence: f32 = 0.5; // Base confidence
 
+        // PERF FIX: Allocate lowercase query once instead of in every iteration
+        let query_lowercase = self.query.to_lowercase();
+
         // Exact name matches boost confidence
+        // PERF FIX: Use eq_ignore_ascii_case to avoid allocations on ASCII-only comparisons
         let exact_matches = symbols
             .iter()
-            .filter(|s| s.name.to_lowercase() == self.query.to_lowercase())
+            .filter(|s| s.name.eq_ignore_ascii_case(&self.query))
             .count();
         if exact_matches > 0 {
             confidence += 0.3;
         }
 
         // Partial matches are medium confidence
+        // PERF FIX: Use pre-allocated query_lowercase reference instead of repeated allocations
         let partial_matches = symbols
             .iter()
-            .filter(|s| s.name.to_lowercase().contains(&self.query.to_lowercase()))
+            .filter(|s| s.name.to_lowercase().contains(&query_lowercase))
             .count();
         if partial_matches > exact_matches {
             confidence += 0.2;
@@ -583,9 +580,11 @@ impl FastSearchTool {
             actions.push("Use fast_explore to understand architecture".to_string());
         }
 
+        // PERF FIX: Allocate lowercase query once instead of in every iteration
+        let query_lowercase = self.query.to_lowercase();
         if symbols
             .iter()
-            .any(|s| s.name.to_lowercase().contains(&self.query.to_lowercase()))
+            .any(|s| s.name.to_lowercase().contains(&query_lowercase))
         {
             actions.push("Consider exact name match for precision".to_string());
         }
@@ -754,8 +753,30 @@ impl FastSearchTool {
 
         match workspace_param {
             "all" => {
-                // Search across all workspaces - return None to indicate no filtering
-                Ok(None)
+                // 🔥 CRITICAL FIX: Actually get ALL workspace IDs from registry
+                // Previous implementation returned None, causing search to only query primary workspace
+                if let Some(primary_workspace) = handler.get_workspace().await? {
+                    let registry_service =
+                        WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+                    // Get all registered workspace IDs
+                    let all_workspaces = registry_service.get_all_workspaces().await?;
+                    let workspace_ids: Vec<String> = all_workspaces
+                        .iter()
+                        .map(|entry| entry.id.clone())
+                        .collect();
+
+                    if workspace_ids.is_empty() {
+                        debug!("No workspaces found in registry, returning None");
+                        Ok(None)
+                    } else {
+                        debug!("Resolved 'all' workspaces to {} IDs: {:?}", workspace_ids.len(), workspace_ids);
+                        Ok(Some(workspace_ids))
+                    }
+                } else {
+                    debug!("No primary workspace available for 'all' workspaces resolution");
+                    Ok(None)
+                }
             }
             "primary" => {
                 // Resolve primary workspace ID for precise workspace filtering
@@ -771,12 +792,12 @@ impl FastSearchTool {
                             Ok(Some(vec![workspace_id]))
                         }
                         None => {
-                            debug!("🔍 No primary workspace ID found, using Tantivy search");
+                            debug!("🔍 No primary workspace ID found, using SQLite FTS5 search");
                             Ok(None)
                         }
                     }
                 } else {
-                    debug!("🔍 No workspace available, using Tantivy search");
+                    debug!("🔍 No workspace available, using SQLite FTS5 search");
                     Ok(None)
                 }
             }
@@ -807,7 +828,7 @@ impl FastSearchTool {
     }
 
     /// 🔄 CASCADE FALLBACK: Database search with workspace filtering
-    /// Used during the 5-10s window while Tantivy builds in background after indexing
+    /// Used during the 20-30s window while HNSW semantic index builds in background after indexing
     /// Workspace-aware and provides graceful degradation, but lacks multi-word AND/OR logic
     /// INTENTIONALLY KEPT: Part of CASCADE architecture for instant search availability
     async fn database_search_with_workspace_filter(
@@ -833,33 +854,22 @@ impl FastSearchTool {
         );
 
         // Use the workspace-aware database search with processed query
-        let mut results = {
-            let db_lock = db.lock().await;
-            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))?
-        };
+        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+        let mut results = tokio::task::block_in_place(|| {
+            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
+        })?;
 
         // Apply language filtering if specified
         if let Some(ref language) = self.language {
             results.retain(|symbol| symbol.language.eq_ignore_ascii_case(language));
         }
 
-        // Apply file pattern filtering if specified
+        // CRITICAL FIX: Use proper glob matching instead of flawed split() logic
+        // This now correctly handles patterns like "src/**/*.rs", "!**/target/*", etc.
         if let Some(ref pattern) = self.file_pattern {
-            results.retain(|symbol| {
-                // Simple glob pattern matching - could be enhanced
-                let file_path = &symbol.file_path;
-                if pattern.contains('*') {
-                    let pattern_parts: Vec<&str> = pattern.split('*').collect();
-                    if pattern_parts.len() == 2 {
-                        file_path.starts_with(pattern_parts[0])
-                            && file_path.ends_with(pattern_parts[1])
-                    } else {
-                        file_path.contains(&pattern.replace('*', ""))
-                    }
-                } else {
-                    file_path.contains(pattern)
-                }
-            });
+            results.retain(|symbol| Self::matches_glob_pattern(&symbol.file_path, pattern));
         }
 
         // Apply combined scoring and sorting
@@ -891,7 +901,7 @@ impl FastSearchTool {
         Ok(results)
     }
 
-    /// 🔄 Graceful degradation: SQLite-based search when Tantivy isn't ready
+    /// 🔄 Graceful degradation: SQLite-based search when HNSW semantic search isn't ready
     /// CASCADE: Search using SQLite FTS5 (file content full-text search)
     /// This is the final fallback that always works
     async fn sqlite_fts_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -921,7 +931,7 @@ impl FastSearchTool {
         };
 
         // 🔥 NEW: Apply basic query intelligence even in fallback mode
-        // This improves search quality during the 5-10s window while Tantivy builds
+        // This improves search quality during the 20-30s window while HNSW builds
         let processed_query = self.preprocess_fallback_query(&self.query);
         debug!(
             "📝 Fallback query preprocessed: '{}' -> '{}'",
@@ -929,13 +939,16 @@ impl FastSearchTool {
         );
 
         // Use FTS5 for file content search with processed query
-        let db_lock = db.lock().await;
-        let file_results = db_lock.search_file_content_fts(
-            &processed_query,
-            Some(&workspace_id),
-            self.limit as usize,
-        )?;
-        drop(db_lock);
+        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+        let file_results = tokio::task::block_in_place(|| {
+            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            db_lock.search_file_content_fts(
+                &processed_query,
+                Some(&workspace_id),
+                self.limit as usize,
+            )
+        })?;
 
         // Convert FileSearchResult → Symbol (FILE_CONTENT symbols for consistency)
         let mut symbols = Vec::new();
@@ -979,7 +992,7 @@ impl FastSearchTool {
     }
 
     /// Preprocess query for SQLite FTS5 fallback with basic query intelligence
-    /// This provides some QueryProcessor-like benefits even when Tantivy isn't ready
+    /// This provides some QueryProcessor-like benefits even when HNSW semantic search isn't ready
     pub(crate) fn preprocess_fallback_query(&self, query: &str) -> String {
         let trimmed = query.trim();
 
@@ -1004,95 +1017,35 @@ impl FastSearchTool {
         trimmed.to_string()
     }
 
-    #[allow(dead_code)]
-    async fn fallback_sqlite_search(
-        &self,
-        handler: &JulieServerHandler,
-        symbol_count: i64,
-    ) -> Result<CallToolResult> {
-        info!(
-            "🔄 Using SQLite fallback search ({} symbols available)",
-            symbol_count
-        );
-
-        // Get actual primary workspace ID instead of hardcoded "primary"
-        let workspace = handler.get_workspace().await?;
-        let workspace_ids = if let Some(workspace) = workspace {
-            let registry_service =
-                crate::workspace::registry_service::WorkspaceRegistryService::new(
-                    workspace.root.clone(),
-                );
-            match registry_service.get_primary_workspace_id().await? {
-                Some(workspace_id) => {
-                    debug!("🔍 Using actual primary workspace ID: {}", workspace_id);
-                    vec![workspace_id]
+    /// Helper: Match file path against glob pattern (supports exclusions with !)
+    /// Uses globset crate for proper glob matching instead of fragile string contains()
+    fn matches_glob_pattern(file_path: &str, pattern: &str) -> bool {
+        // Handle exclusion patterns (starting with !)
+        if let Some(exclusion_pattern) = pattern.strip_prefix('!') {
+            // Exclusion: return true if path does NOT match the pattern
+            match Glob::new(exclusion_pattern) {
+                Ok(glob) => {
+                    let matcher = glob.compile_matcher();
+                    !matcher.is_match(file_path)
                 }
-                None => {
-                    debug!("🔍 No primary workspace ID found, falling back to 'primary'");
-                    vec!["primary".to_string()]
+                Err(e) => {
+                    warn!("Invalid exclusion glob pattern '{}': {}", exclusion_pattern, e);
+                    true // On error, don't exclude
                 }
             }
         } else {
-            debug!("🔍 No workspace available, falling back to 'primary'");
-            vec!["primary".to_string()]
-        };
-
-        // Use database search directly
-        let symbols = self
-            .database_search_with_workspace_filter(handler, workspace_ids)
-            .await?;
-
-        if symbols.is_empty() {
-            let message = format!(
-                "🔍 No results found for: '{}' (using database search while index builds)\n\
-                💡 Try a broader search term or wait for search index to complete",
-                self.query
-            );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                message,
-            )]));
-        }
-
-        // Create basic response (without advanced optimizations)
-        let mut response_lines = vec![
-            format!("🔄 Search results (database fallback - index building in background):"),
-            format!("📊 Found {} matches for '{}'", symbols.len(), self.query),
-            String::new(),
-        ];
-
-        for (i, symbol) in symbols.iter().enumerate() {
-            if i >= 20 {
-                // Limit for fallback mode
-                response_lines.push(format!("   ... and {} more results", symbols.len() - i));
-                break;
-            }
-
-            response_lines.push(format!(
-                "{}. {} ({:?}) - {}:{}",
-                i + 1,
-                symbol.name,
-                symbol.kind,
-                symbol.file_path,
-                symbol.start_line
-            ));
-
-            if let Some(signature) = &symbol.signature {
-                response_lines.push(format!("   📝 {}", signature));
+            // Inclusion: return true if path matches the pattern
+            match Glob::new(pattern) {
+                Ok(glob) => {
+                    let matcher = glob.compile_matcher();
+                    matcher.is_match(file_path)
+                }
+                Err(e) => {
+                    warn!("Invalid glob pattern '{}': {}", pattern, e);
+                    false // On error, don't match
+                }
             }
         }
-
-        response_lines.extend(vec![
-            String::new(),
-            "🎯 Suggested actions:".to_string(),
-            "   • Wait for search index to complete for faster results".to_string(),
-            "   • Use fast_goto to jump to specific symbols".to_string(),
-            "   • Try more specific search terms".to_string(),
-        ]);
-
-        let message = response_lines.join("\n");
-        Ok(CallToolResult::text_content(vec![TextContent::from(
-            message,
-        )]))
     }
 }
 

@@ -127,7 +127,13 @@
       "mcp__codesearch__text_search",
       "mcp__codesearch__file_search",
       "mcp__codesearch__goto_definition",
-      "Bash(./target/debug/julie-codesearch:*)"
+      "Bash(./target/debug/julie-codesearch:*)",
+      "mcp__sherpa__checkpoint",
+      "Bash(RUST_LOG=julie::extractors=debug cargo test:*)",
+      "Bash(RUST_LOG=julie::tools::workspace::indexing=debug cargo test:*)",
+      "Bash(RUST_LOG=trace cargo test:*)",
+      "Bash(1)",
+      "Bash(RUST_LOG=warn cargo test:*)"
     ],
     "deny": [],
     "ask": []

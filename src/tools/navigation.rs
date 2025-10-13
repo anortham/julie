@@ -100,9 +100,10 @@ pub struct FastGotoTool {
     /// Example: 142 (line where "UserService" is imported or used)
     #[serde(default)]
     pub line_number: Option<u32>,
-    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
-    /// Examples: "all", "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search only the primary workspace for focused results
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search the primary workspace
+    /// To search a reference workspace, provide its workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }
@@ -197,24 +198,28 @@ impl FastGotoTool {
     async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         debug!("🔍 Finding definitions for: {}", self.symbol);
 
-        // Resolve workspace filtering
+        // Resolve workspace parameter
         let workspace_filter = self.resolve_workspace_filter(handler).await?;
 
-        // If workspace filtering is specified, use database search for precise workspace isolation
-        if let Some(workspace_ids) = workspace_filter {
-            debug!("🎯 Using workspace-filtered database search for goto definition");
-            return self.database_find_definitions(handler, workspace_ids).await;
+        // If reference workspace is specified, open that workspace's DB and search it
+        if let Some(ref_workspace_id) = workspace_filter {
+            debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
+            return self.database_find_definitions_in_reference(handler, ref_workspace_id).await;
         }
 
-        // For "all" workspaces, use SQLite FTS5 for fast symbol lookup
+        // Primary workspace search - use handler.get_workspace().db
         // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
         let mut exact_matches = Vec::new();
 
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
-                exact_matches = db_lock.get_symbols_by_name(&self.symbol)?;
+                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                exact_matches = tokio::task::block_in_place(|| {
+                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    db_lock.get_symbols_by_name(&self.symbol)
+                })?;
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     exact_matches.len()
@@ -229,29 +234,34 @@ impl FastGotoTool {
         if !exact_matches.is_empty() {
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
-                    let mut additional_matches = Vec::new();
+                    // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                    let additional_matches = tokio::task::block_in_place(|| {
+                        let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                        let mut matches = Vec::new();
 
-                    // Query relationships for each matching symbol using indexed query
-                    // Clone exact_matches to avoid borrow checker issues
-                    let symbols_to_check = exact_matches.clone();
-                    for symbol in &symbols_to_check {
-                        if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
-                        {
-                            for relationship in relationships {
-                                // Check if this relationship represents a definition or import
-                                match &relationship.kind {
-                                    crate::extractors::base::RelationshipKind::Imports
-                                    | crate::extractors::base::RelationshipKind::Defines
-                                    | crate::extractors::base::RelationshipKind::Extends => {
-                                        // The symbol itself is the definition we want
-                                        additional_matches.push(symbol.clone());
+                        // Query relationships for each matching symbol using indexed query
+                        // Clone exact_matches to avoid borrow checker issues
+                        let symbols_to_check = exact_matches.clone();
+                        for symbol in &symbols_to_check {
+                            if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
+                            {
+                                for relationship in relationships {
+                                    // Check if this relationship represents a definition or import
+                                    match &relationship.kind {
+                                        crate::extractors::base::RelationshipKind::Imports
+                                        | crate::extractors::base::RelationshipKind::Defines
+                                        | crate::extractors::base::RelationshipKind::Extends => {
+                                            // The symbol itself is the definition we want
+                                            matches.push(symbol.clone());
+                                        }
+                                        _ => {}
                                     }
-                                    _ => {}
                                 }
                             }
                         }
-                    }
+                        matches
+                    });
                     exact_matches.extend(additional_matches);
                 }
             }
@@ -276,27 +286,34 @@ impl FastGotoTool {
             // Uses Julie's Intelligence Layer for smart variant generation
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
-                    let db_lock = db.lock().await;
+                    // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                    let variant_matches = tokio::task::block_in_place(|| {
+                        let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                        let mut matches = Vec::new();
 
-                    // Generate all naming convention variants using shared intelligence module
-                    let variants = generate_naming_variants(&self.symbol);
+                        // Generate all naming convention variants using shared intelligence module
+                        let variants = generate_naming_variants(&self.symbol);
 
-                    for variant in variants {
-                        if variant != self.symbol {
-                            // Avoid duplicate searches
-                            if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                                for symbol in variant_symbols {
-                                    if symbol.name == variant {
-                                        debug!(
-                                            "🎯 Found cross-language match: {} -> {}",
-                                            self.symbol, variant
-                                        );
-                                        exact_matches.push(symbol);
+                        for variant in variants {
+                            if variant != self.symbol {
+                                // Avoid duplicate searches
+                                if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                                    for symbol in variant_symbols {
+                                        if symbol.name == variant {
+                                            debug!(
+                                                "🎯 Found cross-language match: {} -> {}",
+                                                self.symbol, variant
+                                            );
+                                            matches.push(symbol);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
+                        matches
+                    });
+                    exact_matches.extend(variant_matches);
                 }
             }
 
@@ -366,16 +383,22 @@ impl FastGotoTool {
                                         similar_symbols.len()
                                     );
                                     if let Some(db_arc) = &workspace.db {
-                                        let db = db_arc.lock().await;
+                                        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                                        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                                        let symbols = tokio::task::block_in_place(|| {
+                                            let db = tokio::runtime::Handle::current().block_on(db_arc.lock());
 
-                                        // Collect all symbol IDs for batch fetch
-                                        let symbol_ids: Vec<String> = similar_symbols
-                                            .iter()
-                                            .map(|result| result.symbol_id.clone())
-                                            .collect();
+                                            // Collect all symbol IDs for batch fetch
+                                            let symbol_ids: Vec<String> = similar_symbols
+                                                .iter()
+                                                .map(|result| result.symbol_id.clone())
+                                                .collect();
 
-                                        // Single batch query instead of N individual queries
-                                        if let Ok(symbols) = db.get_symbols_by_ids(&symbol_ids) {
+                                            // Single batch query instead of N individual queries
+                                            db.get_symbols_by_ids(&symbol_ids)
+                                        });
+
+                                        if let Ok(symbols) = symbols {
                                             exact_matches.extend(symbols);
                                         }
                                     }
@@ -602,60 +625,66 @@ impl FastGotoTool {
         lines.join("\n")
     }
 
-    /// Find definitions using database search with workspace filtering
-    async fn database_find_definitions(
+    /// Find definitions in a reference workspace by opening its separate database
+    /// 🔥 CRITICAL FIX: Reference workspaces have separate DB files at indexes/{workspace_id}/db/symbols.db
+    /// The old code incorrectly queried primary workspace DB with workspace_id filtering
+    async fn database_find_definitions_in_reference(
         &self,
         handler: &JulieServerHandler,
-        workspace_ids: Vec<String>,
+        ref_workspace_id: String,
     ) -> Result<Vec<Symbol>> {
-        let workspace = handler
+        // Get primary workspace to access workspace_db_path() helper
+        let primary_workspace = handler
             .get_workspace()
             .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-        let db = workspace
-            .db
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        // Get path to reference workspace's separate database file
+        let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
 
-        let db_lock = db.lock().await;
+        debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
 
-        // Find exact matches by name with workspace filtering
-        // PERFORMANCE FIX: Use exact name matching instead of LIKE + client-side filtering
-        let mut exact_matches =
-            db_lock.get_symbols_by_name_and_workspace(&self.symbol, workspace_ids.clone())?;
+        // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
+        // Opening SQLite database involves blocking filesystem operations
+        let ref_db = tokio::task::spawn_blocking(move || {
+            crate::database::SymbolDatabase::new(ref_db_path)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
-        // Strategy 2: Cross-language Intelligence Layer - naming convention variants
-        // This enables workspace-filtered searches to find getUserData -> get_user_data -> GetUserData
-        if exact_matches.is_empty() {
-            debug!(
-                "🌍 Attempting cross-language resolution for '{}' in workspace-filtered search",
-                self.symbol
-            );
+        // Query the reference workspace database (not primary!)
+        let mut exact_matches = tokio::task::block_in_place(|| {
+            // Find exact matches by name
+            let mut matches = ref_db.get_symbols_by_name(&self.symbol)?;
 
-            // Generate all naming convention variants using shared intelligence module
-            let variants = generate_naming_variants(&self.symbol);
+            // Strategy 2: Cross-language Intelligence Layer - naming convention variants
+            if matches.is_empty() {
+                debug!(
+                    "🌍 Attempting cross-language resolution for '{}' in reference workspace",
+                    &self.symbol
+                );
 
-            for variant in variants {
-                if variant != self.symbol {
-                    // Try each variant with workspace filtering
-                    // PERFORMANCE FIX: Use exact name matching instead of LIKE + client-side filtering
-                    if let Ok(variant_matches) =
-                        db_lock.get_symbols_by_name_and_workspace(&variant, workspace_ids.clone())
-                    {
-                        if !variant_matches.is_empty() {
-                            debug!(
-                                "🎯 Found cross-language match: {} -> {} ({} results)",
-                                self.symbol,
-                                variant,
-                                variant_matches.len()
-                            );
-                            exact_matches.extend(variant_matches);
+                // Generate all naming convention variants
+                let variants = generate_naming_variants(&self.symbol);
+
+                for variant in variants {
+                    if variant != self.symbol {
+                        if let Ok(variant_symbols) = ref_db.get_symbols_by_name(&variant) {
+                            if !variant_symbols.is_empty() {
+                                debug!(
+                                    "🎯 Found cross-language match: {} -> {} ({} results)",
+                                    &self.symbol,
+                                    variant,
+                                    variant_symbols.len()
+                                );
+                                matches.extend(variant_symbols);
+                            }
                         }
                     }
                 }
             }
-        }
+            Ok::<Vec<Symbol>, anyhow::Error>(matches)
+        })?;
 
         // Remove duplicates based on symbol id
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
@@ -674,57 +703,39 @@ impl FastGotoTool {
         });
 
         debug!(
-            "🗄️ Database find definitions returned {} results",
+            "✅ Reference workspace search returned {} results",
             exact_matches.len()
         );
         Ok(exact_matches)
     }
 
-    /// Resolve workspace filtering parameter to a list of workspace IDs
+    /// Resolve workspace parameter to specific workspace ID
+    /// Returns None for primary workspace (use handler.get_workspace().db)
+    /// Returns Some(workspace_id) for reference workspaces (need to open separate DB)
     async fn resolve_workspace_filter(
         &self,
         handler: &JulieServerHandler,
-    ) -> Result<Option<Vec<String>>> {
+    ) -> Result<Option<String>> {
         let workspace_param = self.workspace.as_deref().unwrap_or("primary");
 
         match workspace_param {
-            "all" => {
-                // Search across all workspaces - return None to indicate no filtering
+            "primary" => {
+                // Primary workspace - use handler.get_workspace().db (already loaded)
                 Ok(None)
             }
-            "primary" => {
-                // Resolve "primary" to actual primary workspace ID
-                if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service =
-                        WorkspaceRegistryService::new(primary_workspace.root.clone());
-
-                    match registry_service.get_primary_workspace_id().await? {
-                        Some(workspace_id) => Ok(Some(vec![workspace_id])),
-                        None => {
-                            Err(anyhow::anyhow!(
-                                "No primary workspace registered. Initialize workspace first."
-                            ))
-                        }
-                    }
-                } else {
-                    Err(anyhow::anyhow!(
-                        "No primary workspace found. Initialize workspace first."
-                    ))
-                }
-            }
             workspace_id => {
-                // Validate the workspace ID exists
+                // Reference workspace ID - validate it exists in registry
                 if let Some(primary_workspace) = handler.get_workspace().await? {
                     let registry_service =
                         WorkspaceRegistryService::new(primary_workspace.root.clone());
 
                     // Check if it's a valid workspace ID
                     match registry_service.get_workspace(workspace_id).await? {
-                        Some(_) => Ok(Some(vec![workspace_id.to_string()])),
+                        Some(_) => Ok(Some(workspace_id.to_string())),
                         None => {
                             // Invalid workspace ID
                             Err(anyhow::anyhow!(
-                                "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
+                                "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
                                 workspace_id
                             ))
                         }
@@ -773,9 +784,10 @@ pub struct FastRefsTool {
     /// Tip: Start with default, increase if you need comprehensive coverage
     #[serde(default = "default_limit")]
     pub limit: u32,
-    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
-    /// Examples: "all", "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search only the primary workspace for focused results
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search the primary workspace
+    /// To search a reference workspace, provide its workspace ID
     #[serde(default = "default_workspace_refs")]
     pub workspace: Option<String>,
 }
@@ -901,17 +913,28 @@ impl FastRefsTool {
             self.symbol
         );
 
-        // No longer load ALL relationships here - we'll use targeted queries below
-        // This fixes the N+1 query pattern identified in STATUS.md #4
+        // Resolve workspace parameter
+        let workspace_filter = self.resolve_workspace_filter(handler).await?;
 
+        // If reference workspace is specified, open that workspace's DB and search it
+        if let Some(ref_workspace_id) = workspace_filter {
+            debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
+            return self.database_find_references_in_reference(handler, ref_workspace_id).await;
+        }
+
+        // Primary workspace search - use handler.get_workspace().db
         // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
         let mut definitions = Vec::new();
 
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
-                definitions = db_lock.get_symbols_by_name(&self.symbol)?;
+                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                definitions = tokio::task::block_in_place(|| {
+                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    db_lock.get_symbols_by_name(&self.symbol)
+                })?;
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     definitions.len()
@@ -926,25 +949,32 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
+                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                let variant_matches = tokio::task::block_in_place(|| {
+                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    let mut matches = Vec::new();
 
-                for variant in variants {
-                    if variant != self.symbol {
-                        // Avoid duplicate searches
-                        if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                            for symbol in variant_symbols {
-                                // Exact match on variant name
-                                if symbol.name == variant {
-                                    debug!(
-                                        "✨ Found cross-language match: {} (variant: {})",
-                                        symbol.name, variant
-                                    );
-                                    definitions.push(symbol);
+                    for variant in variants {
+                        if variant != self.symbol {
+                            // Avoid duplicate searches
+                            if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                                for symbol in variant_symbols {
+                                    // Exact match on variant name
+                                    if symbol.name == variant {
+                                        debug!(
+                                            "✨ Found cross-language match: {} (variant: {})",
+                                            symbol.name, variant
+                                        );
+                                        matches.push(symbol);
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                    matches
+                });
+                definitions.extend(variant_matches);
             }
         }
 
@@ -959,16 +989,21 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
+                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                let symbol_references = tokio::task::block_in_place(|| {
+                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
 
-                // For each definition, query relationships TO that symbol using indexed query
-                for definition in &definitions {
-                    if let Ok(symbol_references) =
-                        db_lock.get_relationships_to_symbol(&definition.id)
-                    {
-                        // INFLATION FIX: get_relationships_to_symbol already filters for to_symbol_id
-                        references.extend(symbol_references);
-                    }
+                    // MEDIUM PRIORITY FIX: Batch query relationships instead of N+1 pattern
+                    // Collect all definition IDs for single batch query
+                    let definition_ids: Vec<String> = definitions.iter().map(|d| d.id.clone()).collect();
+
+                    // Single batch query instead of N individual queries (O(1) database round-trip vs O(N))
+                    db_lock.get_relationships_to_symbols(&definition_ids)
+                });
+
+                if let Ok(refs) = symbol_references {
+                    references.extend(refs);
                 }
             }
         }
@@ -982,39 +1017,13 @@ impl FastRefsTool {
                         let store_guard = vector_store.read().await;
 
                         if store_guard.has_hnsw_index() {
-                            // Generate embedding for the search symbol
+                            // HIGH PRIORITY FIX: Simplified embedding generation
+                            // Previously created 39-line dummy Symbol just to call embed_symbol()
+                            // Now using direct embed_text() call like FastGotoTool does (line 318)
                             let query_embedding = {
                                 let mut embedding_guard = handler.embedding_engine.write().await;
                                 if let Some(embedding_engine) = embedding_guard.as_mut() {
-                                    let query_symbol = Symbol {
-                                        id: "query".to_string(),
-                                        name: self.symbol.clone(),
-                                        kind: SymbolKind::Function,
-                                        language: "query".to_string(),
-                                        file_path: "query".to_string(),
-                                        start_line: 1,
-                                        start_column: 0,
-                                        end_line: 1,
-                                        end_column: self.symbol.len() as u32,
-                                        start_byte: 0,
-                                        end_byte: self.symbol.len() as u32,
-                                        signature: None,
-                                        doc_comment: None,
-                                        visibility: None,
-                                        parent_id: None,
-                                        metadata: None,
-                                        semantic_group: None,
-                                        confidence: None,
-                                        code_context: None,
-                                    };
-
-                                    let context = crate::embeddings::CodeContext {
-                                        parent_symbol: None,
-                                        surrounding_code: None,
-                                        file_context: Some("".to_string()),
-                                    };
-
-                                    embedding_engine.embed_symbol(&query_symbol, &context).ok()
+                                    embedding_engine.embed_text(&self.symbol).ok()
                                 } else {
                                     None
                                 }
@@ -1034,8 +1043,6 @@ impl FastRefsTool {
                                     drop(store_guard);
 
                                     if let Some(db) = workspace.db.as_ref() {
-                                        let db_lock = db.lock().await;
-
                                         // Build HashSet of existing IDs for O(1) lookups instead of O(n) linear search
                                         // Clone IDs to avoid holding immutable borrows while pushing
                                         let existing_def_ids: std::collections::HashSet<_> =
@@ -1046,15 +1053,23 @@ impl FastRefsTool {
                                                 .map(|r| r.to_symbol_id.clone())
                                                 .collect();
 
-                                        // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
-                                        // Collect all symbol IDs for batch fetch
-                                        let symbol_ids: Vec<String> = hnsw_results
-                                            .iter()
-                                            .map(|result| result.symbol_id.clone())
-                                            .collect();
+                                        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+                                        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+                                        let symbols = tokio::task::block_in_place(|| {
+                                            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
 
-                                        // Single batch query instead of N individual queries
-                                        if let Ok(symbols) = db_lock.get_symbols_by_ids(&symbol_ids) {
+                                            // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
+                                            // Collect all symbol IDs for batch fetch
+                                            let symbol_ids: Vec<String> = hnsw_results
+                                                .iter()
+                                                .map(|result| result.symbol_id.clone())
+                                                .collect();
+
+                                            // Single batch query instead of N individual queries
+                                            db_lock.get_symbols_by_ids(&symbol_ids)
+                                        });
+
+                                        if let Ok(symbols) = symbols {
                                             // Create a map from symbol_id to similarity_score for O(1) lookup
                                             let score_map: std::collections::HashMap<_, _> = hnsw_results
                                                 .iter()
@@ -1069,6 +1084,10 @@ impl FastRefsTool {
                                                 {
                                                     // Get similarity score from map (O(1) lookup)
                                                     if let Some(&similarity_score) = score_map.get(&symbol.id) {
+                                                        // HIGH PRIORITY FIX: Add Symbol to definitions list
+                                                        // Previously only created Relationship - symbol names couldn't be looked up
+                                                        definitions.push(symbol.clone());
+
                                                         // Create metadata HashMap with similarity score
                                                         let mut metadata =
                                                             std::collections::HashMap::new();
@@ -1077,10 +1096,12 @@ impl FastRefsTool {
                                                             serde_json::json!(similarity_score),
                                                         );
 
-                                                        // Convert to Relationship for consistency
+                                                        // MEDIUM PRIORITY FIX: Use proper pseudo-ID for query-based references
+                                                        // from_symbol_id represents the semantic query, not an actual symbol
+                                                        // Format: "semantic_query:{query}" to distinguish from real symbol IDs
                                                         let semantic_ref = Relationship {
                                                             id: format!("semantic_{}", symbol.id),
-                                                            from_symbol_id: self.symbol.clone(),
+                                                            from_symbol_id: format!("semantic_query:{}", self.symbol),
                                                             to_symbol_id: symbol.id.clone(),
                                                             kind: RelationshipKind::References,
                                                             file_path: symbol.file_path.clone(),
@@ -1176,11 +1197,26 @@ impl FastRefsTool {
             }
         }
 
+        // HIGH PRIORITY FIX: Build lookup map from symbol ID to name for O(1) access
+        // This fixes the bug where we showed query string instead of actual symbol names
+        use std::collections::HashMap;
+        let symbol_id_to_name: HashMap<String, String> = symbols
+            .iter()
+            .map(|s| (s.id.clone(), s.name.clone()))
+            .collect();
+
         // Add references
         for relationship in relationships {
+            // HIGH PRIORITY FIX: Look up actual symbol name from relationship's to_symbol_id
+            // Previously showed self.symbol (user's query) - now shows actual referenced symbol
+            let symbol_name = symbol_id_to_name
+                .get(&relationship.to_symbol_id)
+                .cloned()
+                .unwrap_or_else(|| relationship.to_symbol_id.clone());
+
             all_items.push(format!(
                 "🔗 Reference: {} - {}:{} (confidence: {:.2})",
-                self.symbol,
+                symbol_name,
                 relationship.file_path,
                 relationship.line_number,
                 relationship.confidence
@@ -1238,5 +1274,145 @@ impl FastRefsTool {
         }
 
         lines.join("\n")
+    }
+
+    /// Resolve workspace parameter to specific workspace ID
+    /// Returns None for primary workspace (use handler.get_workspace().db)
+    /// Returns Some(workspace_id) for reference workspaces (need to open separate DB)
+    async fn resolve_workspace_filter(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Option<String>> {
+        let workspace_param = self.workspace.as_deref().unwrap_or("primary");
+
+        match workspace_param {
+            "primary" => {
+                // Primary workspace - use handler.get_workspace().db (already loaded)
+                Ok(None)
+            }
+            workspace_id => {
+                // Reference workspace ID - validate it exists in registry
+                if let Some(primary_workspace) = handler.get_workspace().await? {
+                    let registry_service =
+                        WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+                    // Check if it's a valid workspace ID
+                    match registry_service.get_workspace(workspace_id).await? {
+                        Some(_) => Ok(Some(workspace_id.to_string())),
+                        None => {
+                            // Invalid workspace ID
+                            Err(anyhow::anyhow!(
+                                "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
+                                workspace_id
+                            ))
+                        }
+                    }
+                } else {
+                    Err(anyhow::anyhow!(
+                        "No primary workspace found. Initialize workspace first."
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Find references in a reference workspace by opening its separate database
+    /// 🔥 CRITICAL FIX: Reference workspaces have separate DB files at indexes/{workspace_id}/db/symbols.db
+    /// The old code incorrectly queried primary workspace DB with workspace_id filtering
+    async fn database_find_references_in_reference(
+        &self,
+        handler: &JulieServerHandler,
+        ref_workspace_id: String,
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
+        // Get primary workspace to access workspace_db_path() helper
+        let primary_workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        // Get path to reference workspace's separate database file
+        let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
+
+        debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
+
+        // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
+        // Opening SQLite database involves blocking filesystem operations
+        let ref_db = tokio::task::spawn_blocking(move || {
+            crate::database::SymbolDatabase::new(ref_db_path)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+
+        // Query the reference workspace database (not primary!)
+        let (definitions, mut references) = tokio::task::block_in_place(|| {
+            // Strategy 1: Find exact matches by name
+            let mut defs = ref_db.get_symbols_by_name(&self.symbol)?;
+
+            debug!(
+                "⚡ Reference workspace search found {} exact matches",
+                defs.len()
+            );
+
+            // Strategy 2: Cross-language Intelligence Layer - naming convention variants
+            let variants = generate_naming_variants(&self.symbol);
+            debug!("🔍 Cross-language search variants: {:?}", variants);
+
+            for variant in variants {
+                if variant != self.symbol {
+                    if let Ok(variant_symbols) = ref_db.get_symbols_by_name(&variant) {
+                        for symbol in variant_symbols {
+                            if symbol.name == variant {
+                                debug!(
+                                    "✨ Found cross-language match: {} (variant: {})",
+                                    symbol.name, variant
+                                );
+                                defs.push(symbol);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Remove duplicates
+            defs.sort_by(|a, b| a.id.cmp(&b.id));
+            defs.dedup_by(|a, b| a.id == b.id);
+
+            // Strategy 3: Find direct relationships - REFERENCES TO these symbols
+            let mut refs: Vec<Relationship> = Vec::new();
+
+            // Collect all definition IDs for single batch query
+            let definition_ids: Vec<String> = defs.iter().map(|d| d.id.clone()).collect();
+
+            // Single batch query instead of N individual queries
+            if let Ok(symbol_references) = ref_db.get_relationships_to_symbols(&definition_ids) {
+                refs.extend(symbol_references);
+            }
+
+            Ok::<(Vec<Symbol>, Vec<Relationship>), anyhow::Error>((defs, refs))
+        })?;
+
+        // Sort references by confidence and location
+        references.sort_by(|a, b| {
+            let conf_cmp = b
+                .confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal);
+            if conf_cmp != std::cmp::Ordering::Equal {
+                return conf_cmp;
+            }
+            let file_cmp = a.file_path.cmp(&b.file_path);
+            if file_cmp != std::cmp::Ordering::Equal {
+                return file_cmp;
+            }
+            a.line_number.cmp(&b.line_number)
+        });
+
+        debug!(
+            "✅ Reference workspace search: {} definitions, {} references",
+            definitions.len(),
+            references.len()
+        );
+
+        Ok((definitions, references))
     }
 }

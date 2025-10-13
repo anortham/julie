@@ -669,7 +669,7 @@ impl WorkspaceRegistryService {
     /// Comprehensive cleanup with database and search index data removal
     pub async fn cleanup_expired_workspaces_with_data(
         &self,
-        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+        _database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<WorkspaceCleanupReport> {
         let expired = self.get_expired_workspaces().await?;
         let mut report = WorkspaceCleanupReport {
@@ -681,19 +681,25 @@ impl WorkspaceRegistryService {
         };
 
         for workspace in expired {
-            // Remove from database if available
-            if let Some(db) = database {
-                let db_lock = db.lock().await;
-                match db_lock.delete_workspace_data(&workspace.id) {
-                    Ok(stats) => {
-                        report.total_symbols_deleted += stats.symbols_deleted;
-                        report.total_files_deleted += stats.files_deleted;
-                        report.total_relationships_deleted += stats.relationships_deleted;
-                        report.database_stats.push((workspace.id.clone(), stats));
+            // Delete entire workspace directory: .julie/indexes/{workspace_id}/
+            // This removes the separate database and all index data for this workspace
+            let workspace_index_path = self
+                .workspace_path
+                .join(".julie")
+                .join("indexes")
+                .join(&workspace.id);
+
+            if workspace_index_path.exists() {
+                match tokio::fs::remove_dir_all(&workspace_index_path).await {
+                    Ok(()) => {
+                        info!(
+                            "Deleted expired workspace directory: {} ({:?})",
+                            workspace.id, workspace_index_path
+                        );
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to clean database data for workspace {}: {}",
+                            "Failed to delete workspace directory {}: {}",
                             workspace.id, e
                         );
                     }
@@ -721,7 +727,7 @@ impl WorkspaceRegistryService {
     /// Enforce storage size limits using LRU eviction
     pub async fn enforce_size_limits(
         &self,
-        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+        _database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<WorkspaceCleanupReport> {
         let registry = self.load_registry().await?;
         let max_size = registry.config.max_total_size_bytes;
@@ -758,19 +764,25 @@ impl WorkspaceRegistryService {
                 break;
             }
 
-            // Remove database data if available
-            if let Some(db) = database {
-                let db_lock = db.lock().await;
-                match db_lock.delete_workspace_data(&workspace.id) {
-                    Ok(stats) => {
-                        report.total_symbols_deleted += stats.symbols_deleted;
-                        report.total_files_deleted += stats.files_deleted;
-                        report.total_relationships_deleted += stats.relationships_deleted;
-                        report.database_stats.push((workspace.id.clone(), stats));
+            // Delete entire workspace directory: .julie/indexes/{workspace_id}/
+            // This removes the separate database and all index data for this workspace
+            let workspace_index_path = self
+                .workspace_path
+                .join(".julie")
+                .join("indexes")
+                .join(&workspace.id);
+
+            if workspace_index_path.exists() {
+                match tokio::fs::remove_dir_all(&workspace_index_path).await {
+                    Ok(()) => {
+                        info!(
+                            "Deleted LRU workspace directory: {} ({:?})",
+                            workspace.id, workspace_index_path
+                        );
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to clean database data for workspace {}: {}",
+                            "Failed to delete workspace directory {}: {}",
                             workspace.id, e
                         );
                     }
@@ -795,13 +807,11 @@ impl WorkspaceRegistryService {
     pub async fn detect_orphaned_indexes(&self) -> Result<Vec<OrphanedIndexInfo>> {
         let registry = self.load_registry().await?;
 
-        // Get all index directories
+        // Get all index directories (per-workspace architecture: .julie/indexes/{workspace_id}/)
         let indexes_dir = self
             .workspace_path
             .join(".julie")
-            .join("index")
-            .join("tantivy")
-            .join("references");
+            .join("indexes");
         if !indexes_dir.exists() {
             return Ok(Vec::new());
         }
@@ -898,13 +908,11 @@ impl WorkspaceRegistryService {
             .collect();
 
         for orphan_name in orphaned_to_remove {
-            // Remove the physical directory
+            // Remove the physical directory (per-workspace architecture: .julie/indexes/{workspace_id}/)
             let orphan_path = self
                 .workspace_path
                 .join(".julie")
-                .join("index")
-                .join("tantivy")
-                .join("references")
+                .join("indexes")
                 .join(&orphan_name);
             if orphan_path.exists() {
                 match std::fs::remove_dir_all(&orphan_path) {

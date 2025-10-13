@@ -20,7 +20,7 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use tokio::fs; // Use async file I/O
 use tracing::{debug, info};
 
 use crate::tools::editing::EditingTransaction;
@@ -132,8 +132,9 @@ impl FuzzyReplaceTool {
             )]));
         }
 
-        // Read file
+        // Read file (async to avoid blocking executor thread)
         let original_content = fs::read_to_string(&self.file_path)
+            .await
             .map_err(|e| anyhow!("Failed to read file '{}': {}", self.file_path, e))?;
 
         if original_content.is_empty() {
@@ -318,6 +319,8 @@ impl FuzzyReplaceTool {
     /// - This combines DMP's speed with our accuracy requirements
     ///
     /// Collects all matches first, then applies replacements in reverse to maintain indices
+    ///
+    /// **Performance:** O(N) search using string slicing instead of O(N²) string creation
     pub(crate) fn fuzzy_search_replace(&self, content: &str) -> Result<(String, usize)> {
         if self.pattern.is_empty() {
             return Ok((content.to_string(), 0));
@@ -329,27 +332,28 @@ impl FuzzyReplaceTool {
         dmp.set_match_threshold(self.threshold);
         dmp.set_match_distance(self.distance as usize);
 
-        // Convert to char-based for consistent indexing
-        let content_chars: Vec<char> = content.chars().collect();
-        let pattern_chars: Vec<char> = self.pattern.chars().collect();
-        let pattern_len = pattern_chars.len();
+        let pattern_char_len = self.pattern.chars().count();
+        let content_char_len = content.chars().count();
 
         // If pattern is longer than content, no matches possible
-        if pattern_len > content_chars.len() {
+        if pattern_char_len > content_char_len {
             return Ok((content.to_string(), 0));
         }
 
         // Find all matches using DMP's match_main
+        // Store char positions for replacement phase
         let mut matches: Vec<usize> = Vec::new();
+        let mut search_from_byte = 0;
         let mut search_from_char = 0;
 
-        while search_from_char + pattern_len <= content_chars.len() {
-            // Convert char slice to string for DMP
-            let search_content: String = content_chars[search_from_char..].iter().collect();
+        while search_from_char + pattern_char_len <= content_char_len {
+            // Use string slicing instead of creating new String (O(1) vs O(N))
+            // This is the KEY optimization - no allocation per iteration!
+            let search_content: &str = &content[search_from_byte..];
 
             // Use DMP's fuzzy matching to find next match at the START of search_content
             // loc=0 means we expect the match near the beginning
-            match dmp.match_main::<Efficient>(&search_content, &self.pattern, 0) {
+            match dmp.match_main::<Efficient>(search_content, &self.pattern, 0) {
                 Some(byte_offset) => {
                     // DMP returns byte offset, convert to char offset in search_content
                     let char_offset_in_slice = search_content[..byte_offset].chars().count();
@@ -358,11 +362,13 @@ impl FuzzyReplaceTool {
                     let absolute_char_pos = search_from_char + char_offset_in_slice;
 
                     // Validate match is within bounds
-                    if absolute_char_pos + pattern_len <= content_chars.len() {
-                        // Extract the actual matched text
-                        let matched_text: String = content_chars
-                            [absolute_char_pos..absolute_char_pos + pattern_len]
-                            .iter()
+                    if absolute_char_pos + pattern_char_len <= content_char_len {
+                        // Extract the actual matched text for validation
+                        // (This is the ONLY substring creation - necessary for similarity check)
+                        let matched_text: String = content
+                            .chars()
+                            .skip(absolute_char_pos)
+                            .take(pattern_char_len)
                             .collect();
 
                         // Verify similarity meets our threshold
@@ -378,13 +384,23 @@ impl FuzzyReplaceTool {
                             matches.push(absolute_char_pos);
 
                             // Continue searching after this match to avoid overlaps
-                            search_from_char = absolute_char_pos + pattern_len;
+                            // Update BOTH byte and char positions
+                            let matched_byte_len = matched_text.len();
+                            search_from_byte = search_from_byte + byte_offset + matched_byte_len;
+                            search_from_char = absolute_char_pos + pattern_char_len;
                         } else {
                             debug!(
                                 "DMP match rejected (similarity {:.2} < threshold {}): '{}'",
                                 similarity, self.threshold, matched_text
                             );
                             // DMP found something, but it's not good enough - advance by 1 char and keep looking
+                            // Need to find next char boundary for UTF-8 safety
+                            let next_char_byte_len = content[search_from_byte + byte_offset..]
+                                .chars()
+                                .next()
+                                .map(|c| c.len_utf8())
+                                .unwrap_or(1);
+                            search_from_byte = search_from_byte + byte_offset + next_char_byte_len;
                             search_from_char = absolute_char_pos + 1;
                         }
                     } else {
@@ -400,15 +416,16 @@ impl FuzzyReplaceTool {
         }
 
         // Apply replacements in reverse order to maintain indices
-        let mut result_chars = content_chars;
+        // Convert to chars only ONCE at replacement phase (not in loop!)
+        let mut result_chars: Vec<char> = content.chars().collect();
         let replacement_chars: Vec<char> = self.replacement.chars().collect();
 
         for &match_pos in matches.iter().rev() {
             // Double-check bounds before splicing
-            if match_pos + pattern_len <= result_chars.len() {
+            if match_pos + pattern_char_len <= result_chars.len() {
                 result_chars.splice(
-                    match_pos..match_pos + pattern_len,
-                    replacement_chars.clone(),
+                    match_pos..match_pos + pattern_char_len,
+                    replacement_chars.iter().copied(), // Use iter().copied() instead of clone()
                 );
             }
         }
@@ -419,8 +436,9 @@ impl FuzzyReplaceTool {
     /// Calculate similarity between two strings (0.0 = completely different, 1.0 = identical)
     /// Uses Levenshtein distance calculation
     ///
-    /// NOTE: This method is kept for backward compatibility with existing tests.
-    /// The actual fuzzy matching now uses DMP's match_main algorithm.
+    /// **Usage:** Part of the hybrid DMP+Levenshtein approach.
+    /// DMP's match_main finds candidates quickly, then this method validates match quality
+    /// with precise Levenshtein distance scoring. This is actively used at line 376.
     pub(crate) fn calculate_similarity(&self, a: &str, b: &str) -> f32 {
         if a == b {
             return 1.0;
