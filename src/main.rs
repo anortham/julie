@@ -134,9 +134,11 @@ async fn main() -> SdkResult<()> {
     info!("🔍 Performing workspace auto-detection and quick indexing check...");
 
     // Perform auto-indexing with timeout to prevent blocking startup
+    // TIMEOUT: 60s allows ~300 files to index (tested: 290 files took ~15s)
+    // Background embedding generation will continue after indexing completes
     let indexing_start = std::time::Instant::now();
     match tokio::time::timeout(
-        std::time::Duration::from_secs(10), // 10 second timeout
+        std::time::Duration::from_secs(60), // 60 second timeout for large workspaces
         perform_auto_indexing(&handler),
     )
     .await
@@ -153,8 +155,8 @@ async fn main() -> SdkResult<()> {
             eprintln!("Warning: Auto-indexing failed: {}. You can run manual indexing later with the manage_workspace tool.", e);
         }
         Err(_) => {
-            warn!("⏰ Auto-indexing timed out after 10s (server will continue)");
-            eprintln!("Info: Large workspace detected - indexing will continue in background. Use manage_workspace tool to check status.");
+            warn!("⏰ Auto-indexing timed out after 60s (server will continue)");
+            eprintln!("Info: Very large workspace detected - indexing will continue in background. Use manage_workspace tool to check status.");
         }
     }
 

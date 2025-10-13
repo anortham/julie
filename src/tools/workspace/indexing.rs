@@ -203,23 +203,36 @@ impl ManageWorkspaceTool {
                     workspace_id_clone
                 );
                 let task_start = std::time::Instant::now();
-                match generate_embeddings_from_sqlite(
-                    embedding_engine,
-                    workspace_db,
-                    workspace_root,
-                    workspace_id_clone.clone(),
-                    indexing_status_clone,
-                )
-                .await
-                {
-                    Ok(_) => {
+
+                // 🔥 CRITICAL: Add 5-minute timeout to prevent infinite loops
+                // Background embedding should complete in <2min for 10k symbols
+                // If it takes >5min, something is seriously wrong
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(300), // 5 minute timeout
+                    generate_embeddings_from_sqlite(
+                        embedding_engine,
+                        workspace_db,
+                        workspace_root,
+                        workspace_id_clone.clone(),
+                        indexing_status_clone,
+                    )
+                ).await {
+                    Ok(Ok(_)) => {
                         info!("✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
                               task_start.elapsed().as_secs_f64(), workspace_id_clone);
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         error!(
                             "❌ Background embedding generation failed for workspace {}: {}",
                             workspace_id_clone, e
+                        );
+                    }
+                    Err(_) => {
+                        error!(
+                            "⏰ Background embedding generation TIMED OUT after 5min for workspace {}! \
+                             This indicates a serious bug (infinite loop or deadlock). \
+                             Semantic search will not be available. Check logs for details.",
+                            workspace_id_clone
                         );
                     }
                 }
@@ -1254,7 +1267,13 @@ async fn generate_embeddings_from_sqlite(
             // BATCH_SIZE: Tested 256 (76s), 64 (60s), 100 (60s) - no significant difference
             // CPU-based ONNX inference is bottlenecked by model computation, not batch overhead
             const BATCH_SIZE: usize = 100;
+            const MAX_CONSECUTIVE_FAILURES: usize = 5; // Circuit breaker threshold
+            const MAX_TOTAL_FAILURE_RATE: f64 = 0.5; // Abort if >50% of batches fail
+
             let total_batches = symbols.len().div_ceil(BATCH_SIZE);
+            let mut consecutive_failures = 0;
+            let mut total_failures = 0;
+            let mut successful_batches = 0;
 
             for (batch_idx, chunk) in symbols.chunks(BATCH_SIZE).enumerate() {
                 info!(
@@ -1266,6 +1285,10 @@ async fn generate_embeddings_from_sqlite(
 
                 match engine.embed_symbols_batch(chunk) {
                     Ok(batch_embeddings) => {
+                        // Reset consecutive failure counter on success
+                        consecutive_failures = 0;
+                        successful_batches += 1;
+
                         // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
                         {
                             let mut db_guard = db.lock().await;
@@ -1294,12 +1317,50 @@ async fn generate_embeddings_from_sqlite(
                         );
                     }
                     Err(e) => {
+                        consecutive_failures += 1;
+                        total_failures += 1;
+
                         warn!(
-                            "⚠️ Failed to generate embeddings for batch {}: {}",
+                            "⚠️ Failed to generate embeddings for batch {}: {} (consecutive failures: {})",
                             batch_idx + 1,
-                            e
+                            e,
+                            consecutive_failures
                         );
-                        // Continue with next batch rather than failing completely
+
+                        // 🚨 CIRCUIT BREAKER: Stop if too many consecutive failures
+                        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                            error!(
+                                "❌ CIRCUIT BREAKER TRIGGERED: {} consecutive embedding failures. \
+                                 Aborting embedding generation to prevent resource waste. \
+                                 Successfully processed {}/{} batches.",
+                                consecutive_failures,
+                                successful_batches,
+                                batch_idx + 1
+                            );
+                            return Err(anyhow::anyhow!(
+                                "Embedding generation aborted after {} consecutive batch failures",
+                                consecutive_failures
+                            ));
+                        }
+
+                        // 🚨 FAILURE RATE CHECK: Stop if >50% of batches are failing
+                        let batches_processed = batch_idx + 1;
+                        if batches_processed >= 10 { // Only check after reasonable sample size
+                            let failure_rate = total_failures as f64 / batches_processed as f64;
+                            if failure_rate > MAX_TOTAL_FAILURE_RATE {
+                                error!(
+                                    "❌ HIGH FAILURE RATE: {:.1}% of batches failing ({}/{}). \
+                                     Aborting embedding generation. This indicates a systemic issue.",
+                                    failure_rate * 100.0,
+                                    total_failures,
+                                    batches_processed
+                                );
+                                return Err(anyhow::anyhow!(
+                                    "Embedding generation aborted due to high failure rate: {:.1}%",
+                                    failure_rate * 100.0
+                                ));
+                            }
+                        }
                     }
                 }
             }

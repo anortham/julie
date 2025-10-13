@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rust_mcp_sdk::schema::{
     schema_utils::CallToolError, CallToolRequest, CallToolResult, ListToolsRequest,
@@ -11,7 +11,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::embeddings::EmbeddingEngine;
 use crate::tools::JulieTools;
-use crate::workspace::JulieWorkspace;
+use crate::workspace::{JulieWorkspace, WorkspaceConfig};
 use tokio::sync::RwLock;
 
 /// Tracks which indexes are ready for search operations
@@ -83,6 +83,7 @@ impl JulieServerHandler {
     /// Get or initialize the cached embedding engine for semantic operations
     /// This avoids expensive repeated initialization of the ONNX model
     /// Ensure vector store is initialized (lazy initialization for semantic search)
+    /// 🔥 CRITICAL FIX: Wraps blocking HNSW initialization in spawn_blocking to prevent runtime deadlock
     pub async fn ensure_vector_store(&self) -> Result<()> {
         // Fast path: check with read lock first (avoids blocking concurrent searches)
         {
@@ -100,7 +101,40 @@ impl JulieServerHandler {
             // Double-check: another thread might have initialized while we waited for write lock
             if ws.vector_store.is_none() {
                 info!("🔄 Lazy-initializing vector store for semantic search...");
-                ws.initialize_vector_store()?;
+
+                // 🚨 CRITICAL FIX: HNSW loading/building is BLOCKING (12MB disk I/O + CPU computation)
+                // Must run on blocking thread pool to avoid deadlocking the tokio runtime
+                // This operation can take 30-60 seconds and was causing semantic search to hang
+
+                // Clone what we need for the blocking context
+                let root = ws.root.clone();
+                let julie_dir = ws.julie_dir.clone();
+                let db = ws.db.clone();
+
+                // Run initialization on blocking threadpool
+                let vector_store = tokio::task::spawn_blocking(move || {
+                    // Reconstruct minimal workspace for initialization
+                    let mut temp_ws = JulieWorkspace {
+                        root,
+                        julie_dir,
+                        db,
+                        embeddings: None,
+                        vector_store: None,
+                        watcher: None,
+                        config: WorkspaceConfig::default(),
+                    };
+
+                    temp_ws.initialize_vector_store()?;
+
+                    // Extract the initialized vector store
+                    temp_ws.vector_store
+                        .ok_or_else(|| anyhow::anyhow!("Vector store initialization failed"))
+                })
+                .await
+                .context("Vector store initialization task panicked")??;
+
+                ws.vector_store = Some(vector_store);
+                info!("✅ Vector store initialized on blocking threadpool");
             }
         }
         Ok(())
