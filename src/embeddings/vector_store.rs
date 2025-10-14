@@ -4,7 +4,7 @@
 // using HNSW (Hierarchical Navigable Small World) algorithm for fast nearest neighbor search.
 
 use super::SimilarityResult;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use hnsw_rs::prelude::*; // Includes Hnsw, DistCosine, and other distance metrics
                          // use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
 use std::collections::HashMap;
@@ -116,6 +116,35 @@ impl VectorStore {
         results.truncate(limit);
 
         Ok(results)
+    }
+
+    /// Search using HNSW when available, otherwise fall back to brute-force search.
+    /// Returns the similarity results and whether the HNSW index was used.
+    pub fn search_with_fallback(
+        &self,
+        query_vector: &[f32],
+        limit: usize,
+        threshold: f32,
+    ) -> Result<(Vec<SimilarityResult>, bool)> {
+        if self.has_hnsw_index() {
+            match self.search_similar_hnsw(query_vector, limit, threshold) {
+                Ok(results) => return Ok((results, true)),
+                Err(hnsw_err) => {
+                    let fallback = self.search_similar(query_vector, limit, threshold).map_err(
+                        |brute_err| {
+                            anyhow!(
+                                "HNSW search failed ({}), and brute-force fallback also failed ({})",
+                                hnsw_err,
+                                brute_err
+                            )
+                        },
+                    )?;
+                    return Ok((fallback, false));
+                }
+            }
+        }
+
+        Ok((self.search_similar(query_vector, limit, threshold)?, false))
     }
 
     /// Get the number of stored vectors

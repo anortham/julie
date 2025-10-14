@@ -1385,55 +1385,58 @@ async fn generate_embeddings_from_sqlite(
 
     let mut vector_store = crate::embeddings::vector_store::VectorStore::new(384)?;
 
-    {
+    // 🚨 DEADLOCK FIX: Load all embeddings while holding the database lock, then drop it
+    let embeddings_result = {
         let db_lock = db.lock().unwrap();
-        match db_lock.load_all_embeddings("bge-small") {
-            Ok(embeddings) => {
-                let count = embeddings.len();
-                info!("📥 Loading {} embeddings for HNSW", count);
+        db_lock.load_all_embeddings("bge-small")
+    }; // 🔓 Database lock released before HNSW build/save
 
-                for (symbol_id, vector) in embeddings {
-                    if let Err(e) = vector_store.store_vector(symbol_id.clone(), vector) {
-                        warn!("Failed to store vector {}: {}", symbol_id, e);
-                    }
-                }
+    match embeddings_result {
+        Ok(embeddings) => {
+            let count = embeddings.len();
+            info!("📥 Loading {} embeddings for HNSW", count);
 
-                // Build HNSW index
-                match vector_store.build_hnsw_index() {
-                    Ok(_) => {
-                        info!(
-                            "✅ HNSW index built in {:.2}s",
-                            hnsw_start.elapsed().as_secs_f64()
-                        );
-
-                        // Save to disk for lazy loading on next startup
-                        // Use per-workspace vectors path
-                        let vectors_path = if let Some(ref root) = workspace_root {
-                            root.join(".julie")
-                                .join("indexes")
-                                .join(&workspace_id)
-                                .join("vectors")
-                        } else {
-                            // Fallback to current directory if workspace root not available
-                            std::path::PathBuf::from("./.julie/indexes")
-                                .join(&workspace_id)
-                                .join("vectors")
-                        };
-
-                        if let Err(e) = vector_store.save_hnsw_index(&vectors_path) {
-                            warn!("Failed to save HNSW index to disk: {}", e);
-                        } else {
-                            info!("💾 HNSW index saved to {}", vectors_path.display());
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to build HNSW index: {}", e);
-                    }
+            for (symbol_id, vector) in embeddings {
+                if let Err(e) = vector_store.store_vector(symbol_id.clone(), vector) {
+                    warn!("Failed to store vector {}: {}", symbol_id, e);
                 }
             }
-            Err(e) => {
-                warn!("Could not load embeddings for HNSW: {}", e);
+
+            // Build HNSW index without holding DB lock
+            match vector_store.build_hnsw_index() {
+                Ok(_) => {
+                    info!(
+                        "✅ HNSW index built in {:.2}s",
+                        hnsw_start.elapsed().as_secs_f64()
+                    );
+
+                    // Save to disk for lazy loading on next startup
+                    // Use per-workspace vectors path
+                    let vectors_path = if let Some(ref root) = workspace_root {
+                        root.join(".julie")
+                            .join("indexes")
+                            .join(&workspace_id)
+                            .join("vectors")
+                    } else {
+                        // Fallback to current directory if workspace root not available
+                        std::path::PathBuf::from("./.julie/indexes")
+                            .join(&workspace_id)
+                            .join("vectors")
+                    };
+
+                    if let Err(e) = vector_store.save_hnsw_index(&vectors_path) {
+                        warn!("Failed to save HNSW index to disk: {}", e);
+                    } else {
+                        info!("💾 HNSW index saved to {}", vectors_path.display());
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to build HNSW index: {}", e);
+                }
             }
+        }
+        Err(e) => {
+            warn!("Could not load embeddings for HNSW: {}", e);
         }
     }
 

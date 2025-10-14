@@ -193,7 +193,57 @@ mod hnsw_tests {
     }
 
     // ========================================================================
-    // TEST 4: Index Persistence to Disk
+    // TEST 4: Brute-force fallback when HNSW index unavailable
+    // ========================================================================
+
+    #[test]
+    fn test_brute_force_fallback_without_hnsw() -> Result<()> {
+        let mut store = VectorStore::new(3)?;
+        store.store_vector("symbol_a".to_string(), vec![1.0, 0.0, 0.0])?;
+        store.store_vector("symbol_b".to_string(), vec![0.0, 1.0, 0.0])?;
+
+        let (results, used_hnsw) = store.search_with_fallback(&[1.0, 0.0, 0.0], 5, 0.5)?;
+
+        assert!(
+            !used_hnsw,
+            "search_with_fallback should report brute-force when HNSW is unavailable"
+        );
+        assert!(
+            results.iter().any(|r| r.symbol_id == "symbol_a"),
+            "Fallback results should include matching symbol"
+        );
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // TEST 5: HNSW path when index is available
+    // ========================================================================
+
+    #[test]
+    fn test_hnsw_path_with_built_index() -> Result<()> {
+        let mut store = VectorStore::new(3)?;
+        store.store_vector("symbol_a".to_string(), vec![1.0, 0.0, 0.0])?;
+        store.store_vector("symbol_b".to_string(), vec![0.0, 1.0, 0.0])?;
+
+        store.build_hnsw_index()?;
+
+        let (results, used_hnsw) = store.search_with_fallback(&[1.0, 0.0, 0.0], 5, 0.5)?;
+
+        assert!(
+            used_hnsw,
+            "search_with_fallback should report HNSW usage when index is ready"
+        );
+        assert!(
+            results.iter().any(|r| r.symbol_id == "symbol_a"),
+            "Results should include nearest neighbor"
+        );
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // TEST 6: Index Persistence to Disk
     // ========================================================================
 
     #[test]
@@ -229,7 +279,7 @@ mod hnsw_tests {
     }
 
     // ========================================================================
-    // TEST 5: Index Loading from Disk
+    // TEST 7: Index Loading from Disk
     // ========================================================================
 
     #[test]

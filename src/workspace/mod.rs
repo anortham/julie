@@ -480,96 +480,104 @@ impl JulieWorkspace {
         // Create empty vector store (384 dimensions for BGE-Small model)
         let mut store = VectorIndex::new(384)?;
 
-        // ALWAYS load embeddings from database first (needed for vector lookups and id_mapping)
-        if let Some(db) = &self.db {
-            // 🚨 DEADLOCK FIX: Direct lock (no try_lock needed with std::sync::Mutex)
-            match db.lock() {
-                Ok(db_lock) => {
-                    let model_name = "bge-small"; // Match the embedding model from config
+        // 🚀 CRITICAL FIX: Load embeddings and release DB lock BEFORE expensive HNSW build
+        // The old code held database lock for 30-60s during HNSW build, blocking all tools
+        let (embeddings_result, workspace_id) = if let Some(db) = &self.db {
+            // Extract data with minimal lock hold time
+            let result = {
+                // 🚨 DEADLOCK FIX: Direct lock (no try_lock needed with std::sync::Mutex)
+                let db_lock = db.lock().map_err(|_| {
+                    anyhow::anyhow!("Could not acquire database lock during initialization")
+                })?;
+                let model_name = "bge-small"; // Match the embedding model from config
+                db_lock.load_all_embeddings(model_name)
+            }; // 🔓 Database lock released here!
 
-                    match db_lock.load_all_embeddings(model_name) {
-                        Ok(embeddings) => {
-                            let count = embeddings.len();
-                            info!(
-                                "📥 Loading {} embeddings from database into vector store",
-                                count
+            // Compute workspace ID (doesn't need database)
+            let workspace_id = registry::generate_workspace_id(
+                self.root
+                    .to_str()
+                    .ok_or_else(|| anyhow!("Invalid workspace path"))?,
+            )?;
+
+            (result, workspace_id)
+        } else {
+            warn!("Database not initialized. Vector store will start empty.");
+            (Ok(std::collections::HashMap::new()), "default".to_string())
+        };
+
+        // Now process embeddings and build HNSW WITHOUT holding any locks
+        match embeddings_result {
+            Ok(embeddings) => {
+                let count = embeddings.len();
+                if count > 0 {
+                    info!(
+                        "📥 Loading {} embeddings from database into vector store",
+                        count
+                    );
+
+                    // Store each embedding in the vector store
+                    for (symbol_id, vector) in embeddings {
+                        if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
+                            warn!(
+                                "Failed to store embedding for symbol {}: {}",
+                                symbol_id, e
                             );
+                        }
+                    }
 
-                            // Store each embedding in the vector store
-                            for (symbol_id, vector) in embeddings {
-                                if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
-                                    warn!(
-                                        "Failed to store embedding for symbol {}: {}",
-                                        symbol_id, e
-                                    );
-                                }
+                    info!("✅ Loaded {} embeddings into vector store", count);
+
+                    // Now try to load HNSW index from disk (fast path)
+                    let vectors_dir = self.workspace_vectors_path(&workspace_id);
+                    let mut loaded_from_disk = false;
+
+                    if vectors_dir.exists() {
+                        info!("📂 Attempting to load HNSW index from disk...");
+                        match store.load_hnsw_index(&vectors_dir) {
+                            Ok(_) => {
+                                info!("✅ HNSW index loaded from disk - semantic search ready!");
+                                loaded_from_disk = true;
                             }
-
-                            info!("✅ Loaded {} embeddings into vector store", count);
-
-                            // Compute workspace ID for per-workspace vectors path
-                            let workspace_id = registry::generate_workspace_id(
-                                self.root
-                                    .to_str()
-                                    .ok_or_else(|| anyhow!("Invalid workspace path"))?,
-                            )?;
-
-                            // Now try to load HNSW index from disk (fast path)
-                            let vectors_dir = self.workspace_vectors_path(&workspace_id);
-                            let mut loaded_from_disk = false;
-
-                            if vectors_dir.exists() {
-                                info!("📂 Attempting to load HNSW index from disk...");
-                                match store.load_hnsw_index(&vectors_dir) {
-                                    Ok(_) => {
-                                        info!("✅ HNSW index loaded from disk - semantic search ready!");
-                                        loaded_from_disk = true;
-                                    }
-                                    Err(e) => {
-                                        info!(
-                                            "⚠️  Failed to load HNSW from disk: {}. Rebuilding...",
-                                            e
-                                        );
-                                    }
-                                }
-                            }
-
-                            // If disk load failed, build HNSW from embeddings (slower path)
-                            if !loaded_from_disk {
-                                info!("🏗️  Building HNSW index from {} embeddings...", count);
-                                match store.build_hnsw_index() {
-                                    Ok(_) => {
-                                        info!("✅ HNSW index built successfully - semantic search ready!");
-
-                                        // Save HNSW index to disk for faster startup next time
-                                        match store.save_hnsw_index(&vectors_dir) {
-                                            Ok(_) => {
-                                                info!(
-                                                    "💾 HNSW index persisted to disk successfully"
-                                                );
-                                            }
-                                            Err(e) => {
-                                                warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
-                                    }
-                                }
+                            Err(e) => {
+                                info!(
+                                    "⚠️  Failed to load HNSW from disk: {}. Rebuilding...",
+                                    e
+                                );
                             }
                         }
-                        Err(e) => {
-                            warn!("Could not load embeddings from database: {}. Starting with empty store.", e);
+                    }
+
+                    // If disk load failed, build HNSW from embeddings (slower path)
+                    // 🚀 CRITICAL: This 30-60s operation now runs WITHOUT holding database lock!
+                    if !loaded_from_disk {
+                        info!("🏗️  Building HNSW index from {} embeddings...", count);
+                        match store.build_hnsw_index() {
+                            Ok(_) => {
+                                info!("✅ HNSW index built successfully - semantic search ready!");
+
+                                // Save HNSW index to disk for faster startup next time
+                                match store.save_hnsw_index(&vectors_dir) {
+                                    Ok(_) => {
+                                        info!(
+                                            "💾 HNSW index persisted to disk successfully"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
+                            }
                         }
                     }
                 }
-                Err(_) => {
-                    warn!("Could not acquire database lock during initialization. Starting with empty store.");
-                }
             }
-        } else {
-            warn!("Database not initialized. Vector store will start empty.");
+            Err(e) => {
+                warn!("Could not load embeddings from database: {}. Starting with empty store.", e);
+            }
         }
 
         self.vector_store = Some(Arc::new(RwLock::new(store)));

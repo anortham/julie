@@ -586,11 +586,22 @@ async fn search_hnsw(
     let index_path_obj = std::path::Path::new(index_path);
     eprintln!("📂 Loading HNSW index from {}...", index_path);
     let load_start = Instant::now();
-    vector_store.load_hnsw_index(index_path_obj)?;
-    eprintln!(
-        "✅ HNSW index loaded in {:.2}ms",
-        load_start.elapsed().as_secs_f64() * 1000.0
-    );
+    let hnsw_loaded = match vector_store.load_hnsw_index(index_path_obj) {
+        Ok(_) => {
+            eprintln!(
+                "✅ HNSW index loaded in {:.2}ms",
+                load_start.elapsed().as_secs_f64() * 1000.0
+            );
+            true
+        }
+        Err(e) => {
+            eprintln!(
+                "⚠️  Failed to load HNSW index ({}). Falling back to brute-force search.",
+                e
+            );
+            false
+        }
+    };
 
     // 5. Search using HNSW
     eprintln!(
@@ -598,13 +609,21 @@ async fn search_hnsw(
         limit, threshold
     );
     let search_start = Instant::now();
-    let results = vector_store.search_similar_hnsw(&query_vector, limit, threshold)?;
+    let (results, used_hnsw) =
+        vector_store.search_with_fallback(&query_vector, limit, threshold)?;
     let search_time = search_start.elapsed();
 
     eprintln!(
-        "✅ Found {} results in {:.2}ms",
+        "✅ Found {} results in {:.2}ms{}",
         results.len(),
-        search_time.as_secs_f64() * 1000.0
+        search_time.as_secs_f64() * 1000.0,
+        if used_hnsw && hnsw_loaded {
+            ""
+        } else if used_hnsw {
+            " (HNSW rebuilt in-memory)"
+        } else {
+            " (brute-force fallback)"
+        }
     );
 
     // 6. Fetch complete symbol data for results

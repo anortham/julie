@@ -766,7 +766,7 @@ impl TraceCallPathTool {
         };
 
         let store_guard = vector_store.read().await;
-        if !store_guard.has_hnsw_index() {
+        if store_guard.is_empty() {
             return Ok(vec![]);
         }
 
@@ -785,13 +785,32 @@ impl TraceCallPathTool {
         let embedding = embedding_engine.embed_symbol(symbol, &context)?;
         drop(embedding_guard);
 
-        let hnsw_results =
-            store_guard.search_similar_hnsw(&embedding, max_results, self.similarity_threshold)?;
+        let (semantic_results, used_hnsw) =
+            match store_guard.search_with_fallback(&embedding, max_results, self.similarity_threshold)
+            {
+                Ok(results) => results,
+                Err(e) => {
+                    debug!("Semantic neighbor search failed: {}", e);
+                    return Ok(vec![]);
+                }
+            };
         drop(store_guard);
+
+        if used_hnsw {
+            debug!(
+                "🚀 semantic_neighbors used HNSW results ({} matches)",
+                semantic_results.len()
+            );
+        } else {
+            debug!(
+                "⚠️ semantic_neighbors fell back to brute-force ({} matches)",
+                semantic_results.len()
+            );
+        }
 
         let mut matches = Vec::new();
         let db_lock = db_arc.lock().unwrap();
-        for result in hnsw_results {
+        for result in semantic_results {
             if let Ok(Some(candidate)) = db_lock.get_symbol_by_id(&result.symbol_id) {
                 if candidate.id != symbol.id {
                     matches.push((candidate, result.similarity_score));

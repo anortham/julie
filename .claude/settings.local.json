@@ -146,7 +146,8 @@
       "Bash(RUST_LOG=julie::tools::refactoring=debug cargo test:*)",
       "Bash(timeout 60 cargo test:*)",
       "Bash(timeout 30 cargo test:*)",
-      "WebFetch(domain:stackoverflow.com)"
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(RUST_LOG=debug,julie::tools::navigation=trace timeout 5 cargo test:*)"
     ],
     "deny": [],
     "ask": []

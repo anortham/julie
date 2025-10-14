@@ -102,49 +102,64 @@ impl JulieServerHandler {
             }
         } // Drop read lock before acquiring write lock
 
-        // Slow path: acquire write lock only if initialization needed
-        let mut workspace_guard = self.workspace.write().await;
-        if let Some(ref mut ws) = workspace_guard.as_mut() {
-            // Double-check: another thread might have initialized while we waited for write lock
-            if ws.vector_store.is_none() {
+        // 🚀 CRITICAL FIX: Extract data with minimal write lock, then release before long operation
+        // The old code held write lock for 30-60 seconds, blocking ALL workspace access
+        let (root, julie_dir, db) = {
+            let mut workspace_guard = self.workspace.write().await;
+            if let Some(ref mut ws) = workspace_guard.as_mut() {
+                // Double-check: another thread might have initialized while we waited for write lock
+                if ws.vector_store.is_some() {
+                    return Ok(()); // Another thread finished while we waited
+                }
+
                 info!("🔄 Lazy-initializing vector store for semantic search...");
 
-                // 🚨 CRITICAL FIX: HNSW loading/building is BLOCKING (12MB disk I/O + CPU computation)
-                // Must run on blocking thread pool to avoid deadlocking the tokio runtime
-                // This operation can take 30-60 seconds and was causing semantic search to hang
-
-                // Clone what we need for the blocking context
-                let root = ws.root.clone();
-                let julie_dir = ws.julie_dir.clone();
-                let db = ws.db.clone();
-
-                // Run initialization on blocking threadpool
-                let vector_store = tokio::task::spawn_blocking(move || {
-                    // Reconstruct minimal workspace for initialization
-                    let mut temp_ws = JulieWorkspace {
-                        root,
-                        julie_dir,
-                        db,
-                        embeddings: None,
-                        vector_store: None,
-                        watcher: None,
-                        config: WorkspaceConfig::default(),
-                    };
-
-                    temp_ws.initialize_vector_store()?;
-
-                    // Extract the initialized vector store
-                    temp_ws
-                        .vector_store
-                        .ok_or_else(|| anyhow::anyhow!("Vector store initialization failed"))
-                })
-                .await
-                .context("Vector store initialization task panicked")??;
-
-                ws.vector_store = Some(vector_store);
-                info!("✅ Vector store initialized on blocking threadpool");
+                // Clone what we need, then RELEASE the lock
+                (ws.root.clone(), ws.julie_dir.clone(), ws.db.clone())
+            } else {
+                return Err(anyhow::anyhow!("Workspace not initialized"));
             }
-        }
+        }; // 🔓 Write lock released here - other operations can proceed!
+
+        // 🚨 CRITICAL FIX: HNSW loading/building is BLOCKING (12MB disk I/O + CPU computation)
+        // Must run on blocking thread pool to avoid deadlocking the tokio runtime
+        // This operation can take 30-60 seconds but now runs WITHOUT holding workspace lock
+
+        // Run initialization on blocking threadpool (NO LOCK HELD)
+        let vector_store = tokio::task::spawn_blocking(move || {
+            // Reconstruct minimal workspace for initialization
+            let mut temp_ws = JulieWorkspace {
+                root,
+                julie_dir,
+                db,
+                embeddings: None,
+                vector_store: None,
+                watcher: None,
+                config: WorkspaceConfig::default(),
+            };
+
+            temp_ws.initialize_vector_store()?;
+
+            // Extract the initialized vector store
+            temp_ws
+                .vector_store
+                .ok_or_else(|| anyhow::anyhow!("Vector store initialization failed"))
+        })
+        .await
+        .context("Vector store initialization task panicked")??;
+
+        // 🔒 Re-acquire write lock ONLY to store the result (fast operation)
+        {
+            let mut workspace_guard = self.workspace.write().await;
+            if let Some(ref mut ws) = workspace_guard.as_mut() {
+                // Check one more time in case another thread beat us
+                if ws.vector_store.is_none() {
+                    ws.vector_store = Some(vector_store);
+                    info!("✅ Vector store initialized on blocking threadpool");
+                }
+            }
+        } // 🔓 Write lock released immediately
+
         Ok(())
     }
 

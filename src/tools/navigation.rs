@@ -339,54 +339,49 @@ impl FastGotoTool {
         if exact_matches.is_empty() {
             debug!("🧠 Using HNSW semantic search for: {}", self.symbol);
 
-            // Get embedding engine and vector store from workspace
-            if let Ok(()) = handler.ensure_embedding_engine().await {
-                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    // Get embedding for query
-                    let mut embedding_guard = handler.embedding_engine.write().await;
-                    if let Some(embedding_engine) = embedding_guard.as_mut() {
-                        if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
-                            // Access vector store
-                            if let Some(vector_store_arc) = &workspace.vector_store {
-                                let vector_store = vector_store_arc.read().await;
+            // 🚀 PERFORMANCE FIX: Check store state FIRST before acquiring expensive resources
+            // This prevents blocking on embedding generation when HNSW isn't ready anyway
+            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                if let Some(vector_store_arc) = &workspace.vector_store {
+                    // Capture current store state with a short-lived read lock
+                    let has_vectors = {
+                        let store_guard = vector_store_arc.read().await;
+                        !store_guard.is_empty()
+                    };
 
-                                // CASCADE fallback: HNSW (fast) → Brute-force (slower but works)
-                                let similar_symbols = if vector_store.has_hnsw_index() {
-                                    // Fast path: Use HNSW for O(log n) approximate search
-                                    debug!("🚀 Using HNSW index for fast semantic search");
-                                    match vector_store.search_similar_hnsw(
+                    if !has_vectors {
+                        debug!("⚠️ Semantic store empty - skipping embedding search fallback");
+                    } else if let Ok(()) = handler.ensure_embedding_engine().await {
+                        // Get embedding for query
+                        let mut embedding_guard = handler.embedding_engine.write().await;
+                        if let Some(embedding_engine) = embedding_guard.as_mut() {
+                            if let Ok(query_embedding) = embedding_engine.embed_text(&self.symbol) {
+                                let store_guard = vector_store_arc.read().await;
+                                let (similar_symbols, used_hnsw) =
+                                    match store_guard.search_with_fallback(
                                         &query_embedding,
                                         10,
                                         0.7,
                                     ) {
-                                        Ok(results) => {
-                                            debug!(
-                                                "Found {} semantically similar symbols via HNSW",
-                                                results.len()
-                                            );
-                                            results
-                                        }
+                                        Ok(results) => results,
                                         Err(e) => {
-                                            debug!("HNSW search failed: {}, falling back to brute-force", e);
-                                            // Fallback to brute-force if HNSW fails
-                                            vector_store
-                                                .search_similar(&query_embedding, 10, 0.7)
-                                                .unwrap_or_else(|e| {
-                                                    debug!("Brute-force search also failed: {}", e);
-                                                    Vec::new()
-                                                })
+                                            debug!("Semantic search failed: {}", e);
+                                            (Vec::new(), false)
                                         }
-                                    }
+                                    };
+                                drop(store_guard);
+
+                                if used_hnsw {
+                                    debug!(
+                                        "🚀 Using HNSW index for fast semantic search ({} results)",
+                                        similar_symbols.len()
+                                    );
                                 } else {
-                                    // Fallback path: Use brute-force O(n) search when HNSW not available
-                                    debug!("⚠️ HNSW index not available - using brute-force semantic search");
-                                    vector_store
-                                        .search_similar(&query_embedding, 10, 0.7)
-                                        .unwrap_or_else(|e| {
-                                            debug!("Brute-force semantic search failed: {}", e);
-                                            Vec::new()
-                                        })
-                                };
+                                    debug!(
+                                        "⚠️ Using brute-force semantic search ({} results)",
+                                        similar_symbols.len()
+                                    );
+                                }
 
                                 // Get actual symbol data from database for all results
                                 // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
@@ -1041,133 +1036,159 @@ impl FastRefsTool {
 
         // ✨ INTELLIGENCE: Strategy 3 - Semantic similarity matching with strict thresholds
         // Only find HIGHLY similar symbols to prevent false positives
+
+        // 🚀 PERFORMANCE FIX: Check store readiness FIRST before acquiring expensive resources
+        // This prevents blocking on embedding generation when HNSW isn't ready anyway
         if let Ok(()) = handler.ensure_vector_store().await {
-            if let Ok(()) = handler.ensure_embedding_engine().await {
-                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    if let Some(vector_store) = workspace.vector_store.as_ref() {
+            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                if let Some(vector_store) = workspace.vector_store.as_ref() {
+                    let has_vectors = {
                         let store_guard = vector_store.read().await;
+                        !store_guard.is_empty()
+                    };
 
-                        if store_guard.has_hnsw_index() {
-                            // HIGH PRIORITY FIX: Simplified embedding generation
-                            // Previously created 39-line dummy Symbol just to call embed_symbol()
-                            // Now using direct embed_text() call like FastGotoTool does (line 318)
-                            let query_embedding = {
-                                let mut embedding_guard = handler.embedding_engine.write().await;
-                                if let Some(embedding_engine) = embedding_guard.as_mut() {
-                                    embedding_engine.embed_text(&self.symbol).ok()
-                                } else {
-                                    None
-                                }
-                            };
+                    if !has_vectors {
+                        debug!("⚠️ Semantic store empty - skipping embedding similarity search");
+                    } else if let Ok(()) = handler.ensure_embedding_engine().await {
+                        // HIGH PRIORITY FIX: Simplified embedding generation
+                        // Previously created 39-line dummy Symbol just to call embed_symbol()
+                        // Now using direct embed_text() call like FastGotoTool does (line 318)
+                        let query_embedding = {
+                            let mut embedding_guard = handler.embedding_engine.write().await;
+                            if let Some(embedding_engine) = embedding_guard.as_mut() {
+                                embedding_engine.embed_text(&self.symbol).ok()
+                            } else {
+                                None
+                            }
+                        };
 
-                            if let Some(embedding) = query_embedding {
-                                // STRICT threshold: 0.75 = only VERY similar symbols
-                                // This prevents false positives while finding genuine conceptual matches
-                                let similarity_threshold = 0.75;
-                                let max_semantic_matches = 5; // Limit to prevent overwhelming results
+                        if let Some(embedding) = query_embedding {
+                            // STRICT threshold: 0.75 = only VERY similar symbols
+                            // This prevents false positives while finding genuine conceptual matches
+                            let similarity_threshold = 0.75;
+                            let max_semantic_matches = 5; // Limit to prevent overwhelming results
 
-                                if let Ok(hnsw_results) = store_guard.search_similar_hnsw(
+                            let store_guard = vector_store.read().await;
+                            let (semantic_results, used_hnsw) =
+                                match store_guard.search_with_fallback(
                                     &embedding,
                                     max_semantic_matches,
                                     similarity_threshold,
                                 ) {
-                                    drop(store_guard);
+                                    Ok(results) => results,
+                                    Err(e) => {
+                                        debug!("Semantic reference search failed: {}", e);
+                                        (Vec::new(), false)
+                                    }
+                                };
+                            drop(store_guard);
 
-                                    if let Some(db) = workspace.db.as_ref() {
-                                        // Build HashSet of existing IDs for O(1) lookups instead of O(n) linear search
-                                        // Clone IDs to avoid holding immutable borrows while pushing
-                                        let existing_def_ids: std::collections::HashSet<_> =
-                                            definitions.iter().map(|d| d.id.clone()).collect();
-                                        let existing_ref_ids: std::collections::HashSet<_> =
-                                            references
+                            if used_hnsw {
+                                debug!(
+                                    "🚀 Using HNSW index to find semantic references ({} results)",
+                                    semantic_results.len()
+                                );
+                            } else {
+                                debug!(
+                                    "⚠️ Using brute-force semantic search for references ({} results)",
+                                    semantic_results.len()
+                                );
+                            }
+
+                            if !semantic_results.is_empty() {
+                                if let Some(db) = workspace.db.as_ref() {
+                                    // Build HashSet of existing IDs for O(1) lookups instead of O(n) linear search
+                                    // Clone IDs to avoid holding immutable borrows while pushing
+                                    let existing_def_ids: std::collections::HashSet<_> =
+                                        definitions.iter().map(|d| d.id.clone()).collect();
+                                    let existing_ref_ids: std::collections::HashSet<_> =
+                                        references
+                                            .iter()
+                                            .map(|r| r.to_symbol_id.clone())
+                                            .collect();
+
+                                    // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                                    // Collect symbol IDs before moving into spawn_blocking
+                                    let symbol_ids: Vec<String> = semantic_results
+                                        .iter()
+                                        .map(|result| result.symbol_id.clone())
+                                        .collect();
+                                    let db_arc = db.clone();
+
+                                    let symbols = tokio::task::spawn_blocking(move || {
+                                        let db_lock = db_arc.lock().unwrap();
+                                        // Single batch query instead of N individual queries
+                                        db_lock.get_symbols_by_ids(&symbol_ids)
+                                    })
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
+                                    if let Ok(symbols) = symbols {
+                                        // Create a map from symbol_id to similarity_score for O(1) lookup
+                                        let score_map: std::collections::HashMap<_, _> =
+                                            semantic_results
                                                 .iter()
-                                                .map(|r| r.to_symbol_id.clone())
+                                                .map(|r| {
+                                                    (r.symbol_id.clone(), r.similarity_score)
+                                                })
                                                 .collect();
 
-                                        // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
-                                        // Collect symbol IDs before moving into spawn_blocking
-                                        let symbol_ids: Vec<String> = hnsw_results
-                                            .iter()
-                                            .map(|result| result.symbol_id.clone())
-                                            .collect();
-                                        let db_arc = db.clone();
-
-                                        let symbols = tokio::task::spawn_blocking(move || {
-                                            let db_lock = db_arc.lock().unwrap();
-                                            // Single batch query instead of N individual queries
-                                            db_lock.get_symbols_by_ids(&symbol_ids)
-                                        })
-                                        .await
-                                        .map_err(|e| {
-                                            anyhow::anyhow!("spawn_blocking join error: {}", e)
-                                        })?;
-
-                                        if let Ok(symbols) = symbols {
-                                            // Create a map from symbol_id to similarity_score for O(1) lookup
-                                            let score_map: std::collections::HashMap<_, _> =
-                                                hnsw_results
-                                                    .iter()
-                                                    .map(|r| {
-                                                        (r.symbol_id.clone(), r.similarity_score)
-                                                    })
-                                                    .collect();
-
-                                            // Process each symbol with O(1) score lookup
-                                            for symbol in symbols {
-                                                // Skip if already in definitions or references (O(1) HashSet lookup!)
-                                                if !existing_def_ids.contains(&symbol.id)
-                                                    && !existing_ref_ids.contains(&symbol.id)
+                                        // Process each symbol with O(1) score lookup
+                                        for symbol in symbols {
+                                            // Skip if already in definitions or references (O(1) HashSet lookup!)
+                                            if !existing_def_ids.contains(&symbol.id)
+                                                && !existing_ref_ids.contains(&symbol.id)
+                                            {
+                                                // Get similarity score from map (O(1) lookup)
+                                                if let Some(&similarity_score) =
+                                                    score_map.get(&symbol.id)
                                                 {
-                                                    // Get similarity score from map (O(1) lookup)
-                                                    if let Some(&similarity_score) =
-                                                        score_map.get(&symbol.id)
-                                                    {
-                                                        // HIGH PRIORITY FIX: Add Symbol to definitions list
-                                                        // Previously only created Relationship - symbol names couldn't be looked up
-                                                        definitions.push(symbol.clone());
+                                                    // HIGH PRIORITY FIX: Add Symbol to definitions list
+                                                    // Previously only created Relationship - symbol names couldn't be looked up
+                                                    definitions.push(symbol.clone());
 
-                                                        // Create metadata HashMap with similarity score
-                                                        let mut metadata =
-                                                            std::collections::HashMap::new();
+                                                    // Create metadata HashMap with similarity score
+                                                    let mut metadata =
+                                                        std::collections::HashMap::new();
+                                                    metadata.insert(
+                                                        "similarity".to_string(),
+                                                        serde_json::json!(similarity_score),
+                                                    );
+                                                    if !used_hnsw {
                                                         metadata.insert(
-                                                            "similarity".to_string(),
-                                                            serde_json::json!(similarity_score),
+                                                            "search_strategy".to_string(),
+                                                            serde_json::json!("brute-force"),
                                                         );
-
-                                                        // MEDIUM PRIORITY FIX: Use proper pseudo-ID for query-based references
-                                                        // from_symbol_id represents the semantic query, not an actual symbol
-                                                        // Format: "semantic_query:{query}" to distinguish from real symbol IDs
-                                                        let semantic_ref = Relationship {
-                                                            id: format!("semantic_{}", symbol.id),
-                                                            from_symbol_id: format!(
-                                                                "semantic_query:{}",
-                                                                self.symbol
-                                                            ),
-                                                            to_symbol_id: symbol.id.clone(),
-                                                            kind: RelationshipKind::References,
-                                                            file_path: symbol.file_path.clone(),
-                                                            line_number: symbol.start_line,
-                                                            confidence: similarity_score,
-                                                            metadata: Some(metadata),
-                                                        };
-
-                                                        debug!(
-                                                            "✨ Semantic match: {} (similarity: {:.2})",
-                                                            symbol.name, similarity_score
-                                                        );
-                                                        references.push(semantic_ref);
                                                     }
+
+                                                    // MEDIUM PRIORITY FIX: Use proper pseudo-ID for query-based references
+                                                    // from_symbol_id represents the semantic query, not an actual symbol
+                                                    // Format: "semantic_query:{query}" to distinguish from real symbol IDs
+                                                    let semantic_ref = Relationship {
+                                                        id: format!("semantic_{}", symbol.id),
+                                                        from_symbol_id: format!(
+                                                            "semantic_query:{}",
+                                                            self.symbol
+                                                        ),
+                                                        to_symbol_id: symbol.id.clone(),
+                                                        kind: RelationshipKind::References,
+                                                        file_path: symbol.file_path.clone(),
+                                                        line_number: symbol.start_line,
+                                                        confidence: similarity_score,
+                                                        metadata: Some(metadata),
+                                                    };
+
+                                                    debug!(
+                                                        "✨ Semantic match: {} (similarity: {:.2})",
+                                                        symbol.name, similarity_score
+                                                    );
+                                                    references.push(semantic_ref);
                                                 }
                                             }
                                         }
                                     }
-                                } else {
-                                    drop(store_guard);
                                 }
                             }
-                        } else {
-                            drop(store_guard);
-                            debug!("⚠️  HNSW index not available, skipping semantic similarity");
                         }
                     }
                 }

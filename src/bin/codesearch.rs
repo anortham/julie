@@ -146,6 +146,7 @@ struct FileResult {
 fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathBuf>> {
     use walkdir::WalkDir;
 
+    let mut seen = std::collections::HashSet::new();
     let mut files = Vec::new();
 
     for entry in WalkDir::new(dir)
@@ -171,7 +172,11 @@ fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathB
         };
 
         if should_include {
-            files.push(entry.path().to_path_buf());
+            let canonical = std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path().to_path_buf());
+            let canonical_str = canonical.to_string_lossy().to_string();
+            if seen.insert(canonical_str.clone()) {
+                files.push(canonical);
+            }
         }
     }
 
@@ -181,6 +186,11 @@ fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathB
 /// Check if a path should be ignored based on patterns
 fn should_ignore_path(path: &std::path::Path, patterns: &[String]) -> bool {
     let path_str = path.to_string_lossy().replace('\\', "/");
+
+    // Always ignore Julie's own metadata directories
+    if path_str.contains("/.julie/") || path.file_name().map(|n| n == ".julie").unwrap_or(false) {
+        return true;
+    }
 
     for pattern in patterns {
         // Handle glob patterns

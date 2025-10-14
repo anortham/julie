@@ -15,6 +15,7 @@ pub mod edit_lines_tests; // TDD tests for EditLinesTool (surgical line editing 
 pub mod fuzzy_replace_tests; // Comprehensive tests for FuzzyReplaceTool
 pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering tests (TDD) - methods in impl blocks
 pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)
+pub mod lock_contention_tests; // Regression tests for lock contention during indexing (prevents 30s hangs)
 pub mod search_race_condition_tests;
 pub mod smart_read_tests; // Smart Read tests - validate 70-90% token savings
 pub mod syntax_validation_tests; // AST Syntax Fix tests - Week 3 (ValidateSyntax, AutoFixSyntax) // Race condition tests for search during indexing (Heisenbug reproduction)

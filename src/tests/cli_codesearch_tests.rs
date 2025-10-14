@@ -474,7 +474,7 @@ mod error_handling_tests {
 
         // Verify all non-binary files have content stored
         let json_content: String = conn.query_row(
-            "SELECT content FROM files WHERE file_path LIKE '%config.json'",
+            "SELECT content FROM files WHERE path LIKE '%config.json'",
             [],
             |row| row.get(0),
         )?;
@@ -484,7 +484,7 @@ mod error_handling_tests {
         );
 
         let md_content: String = conn.query_row(
-            "SELECT content FROM files WHERE file_path LIKE '%README.md'",
+            "SELECT content FROM files WHERE path LIKE '%README.md'",
             [],
             |row| row.get(0),
         )?;

@@ -400,15 +400,6 @@ impl FastSearchTool {
             }
         };
 
-        // Check if HNSW index is available
-        let store_guard = vector_store.read().await;
-        if !store_guard.has_hnsw_index() {
-            drop(store_guard);
-            warn!("HNSW index not built yet - falling back to text search");
-            return self.text_search(handler).await;
-        }
-        drop(store_guard);
-
         // Ensure embedding engine is initialized for query embedding
         handler.ensure_embedding_engine().await?;
 
@@ -461,21 +452,37 @@ impl FastSearchTool {
         let similarity_threshold = 0.3; // Minimum similarity score
 
         let store_guard = vector_store.read().await;
-        let hnsw_results = store_guard.search_similar_hnsw(
-            &query_embedding,
-            search_limit,
-            similarity_threshold,
-        )?;
+        if store_guard.is_empty() {
+            debug!("⚠️ Semantic vector store empty - falling back to text search");
+            return self.text_search(handler).await;
+        }
+
+        let (semantic_results, used_hnsw) =
+            match store_guard.search_with_fallback(&query_embedding, search_limit, similarity_threshold) {
+                Ok(results) => results,
+                Err(e) => {
+                    warn!("Semantic similarity search failed: {} - falling back to text search", e);
+                    return self.text_search(handler).await;
+                }
+            };
         drop(store_guard);
 
-        debug!(
-            "🔍 HNSW search returned {} candidates (threshold: {})",
-            hnsw_results.len(),
-            similarity_threshold
-        );
+        if used_hnsw {
+            debug!(
+                "🔍 HNSW search returned {} candidates (threshold: {})",
+                semantic_results.len(),
+                similarity_threshold
+            );
+        } else {
+            debug!(
+                "⚠️ Using brute-force semantic search ({} candidates, threshold: {})",
+                semantic_results.len(),
+                similarity_threshold
+            );
+        }
 
-        // Extract symbol IDs from HNSW results
-        let symbol_ids: Vec<String> = hnsw_results
+        // Extract symbol IDs from similarity results
+        let symbol_ids: Vec<String> = semantic_results
             .iter()
             .map(|result| result.symbol_id.clone())
             .collect();

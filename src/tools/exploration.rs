@@ -1305,10 +1305,10 @@ impl FindLogicTool {
             embedding_engine.embed_symbol(&query_symbol, &context)?
         };
 
-        // Search using HNSW for semantic similarity
+        // Search using HNSW (fast) → brute-force fallback (correctness)
         let store_guard = vector_store.read().await;
-        if !store_guard.has_hnsw_index() {
-            debug!("🧠 HNSW index not available");
+        if store_guard.is_empty() {
+            debug!("🧠 Semantic store empty - skipping business logic similarity search");
             return Ok(semantic_matches);
         }
 
@@ -1316,16 +1316,31 @@ impl FindLogicTool {
         let search_limit = (self.max_results * 3) as usize; // Get more candidates for filtering
         let similarity_threshold = 0.2; // Lower threshold for business logic discovery
 
-        let hnsw_results = store_guard.search_similar_hnsw(
-            &query_embedding,
-            search_limit,
-            similarity_threshold,
-        )?;
+        let (semantic_results, used_hnsw) =
+            match store_guard.search_with_fallback(&query_embedding, search_limit, similarity_threshold) {
+                Ok(results) => results,
+                Err(e) => {
+                    debug!("🧠 Semantic similarity search failed: {}", e);
+                    return Ok(semantic_matches);
+                }
+            };
         drop(store_guard);
+
+        if used_hnsw {
+            debug!(
+                "🚀 HNSW search returned {} business-logic candidates",
+                semantic_results.len()
+            );
+        } else {
+            debug!(
+                "⚠️ Using brute-force semantic search ({} candidates)",
+                semantic_results.len()
+            );
+        }
 
         // Fetch actual symbols from database
         let db_lock = db.lock().unwrap();
-        for result in hnsw_results {
+        for result in semantic_results {
             if let Ok(Some(mut symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
                 // Score based on semantic similarity
                 symbol.confidence = Some(result.similarity_score);
