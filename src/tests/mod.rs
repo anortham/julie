@@ -17,6 +17,7 @@ pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering t
 pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)
 pub mod lock_contention_tests; // Regression tests for lock contention during indexing (prevents 30s hangs)
 pub mod search_race_condition_tests;
+pub mod stale_index_detection_tests; // TDD tests for stale index detection (file mtime + new file checks)
 pub mod smart_read_tests; // Smart Read tests - validate 70-90% token savings
 pub mod syntax_validation_tests; // AST Syntax Fix tests - Week 3 (ValidateSyntax, AutoFixSyntax) // Race condition tests for search during indexing (Heisenbug reproduction)
                                  // pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool - DISABLED: uses SafeEditTool

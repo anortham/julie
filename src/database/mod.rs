@@ -2879,6 +2879,21 @@ impl SymbolDatabase {
         Ok(count)
     }
 
+    /// Get all indexed file paths for a workspace (for staleness detection)
+    ///
+    /// Returns a vector of relative file paths that are currently indexed in the database
+    pub fn get_all_indexed_files(&self, workspace_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM files WHERE workspace_id = ?1")?;
+
+        let file_paths: Vec<String> = stmt
+            .query_map(params![workspace_id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+
+        Ok(file_paths)
+    }
+
     /// Check if workspace has any symbols (quick health check)
     pub fn has_symbols_for_workspace(&self, workspace_id: &str) -> Result<bool> {
         let exists: i64 = self.conn.query_row(

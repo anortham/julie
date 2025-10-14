@@ -9,6 +9,7 @@ pub mod extractors;
 pub mod handler;
 pub mod health;
 pub mod language; // Shared language support (tree-sitter configuration)
+pub mod startup; // Startup utilities (indexing checks, staleness detection)
 pub mod tools;
 pub mod tracing;
 pub mod utils;

@@ -211,7 +211,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
         info!("✅ Workspace initialized");
 
         // Check if existing workspace needs indexing
-        check_if_indexing_needed(handler).await?
+        julie::startup::check_if_indexing_needed(handler).await?
     };
 
     if !needs_indexing {
@@ -264,59 +264,8 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
     Ok(())
 }
 
-/// Check if the workspace needs indexing by examining database state
-async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Result<bool> {
-    // Get workspace to check database
-    let workspace = match handler.get_workspace().await? {
-        Some(ws) => ws,
-        None => {
-            debug!("No workspace found - indexing needed");
-            return Ok(true);
-        }
-    };
-
-    // Check if database exists and has symbols
-    if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().unwrap();
-
-        // Check if we have any symbols for the actual primary workspace
-        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-        let primary_workspace_id = match registry_service.get_primary_workspace_id().await? {
-            Some(id) => id,
-            None => {
-                debug!("No primary workspace ID found - indexing needed");
-                return Ok(true);
-            }
-        };
-
-        match db.has_symbols_for_workspace(&primary_workspace_id) {
-            Ok(has_symbols) => {
-                if !has_symbols {
-                    info!("📊 Database is empty - indexing needed");
-                    return Ok(true);
-                }
-
-                // Database has symbols - no indexing needed
-                // TODO: Add more sophisticated checks:
-                // - Compare file modification times with database timestamps
-                // - Check for new files that aren't in the database
-                // - Use Blake3 hashes to detect changes
-
-                Ok(false)
-            }
-            Err(e) => {
-                debug!(
-                    "Error checking database symbols: {} - assuming indexing needed",
-                    e
-                );
-                Ok(true)
-            }
-        }
-    } else {
-        debug!("No database connection - indexing needed");
-        Ok(true)
-    }
-}
+// check_if_indexing_needed() moved to src/startup.rs for testing
+// Use julie::startup::check_if_indexing_needed() instead
 
 /// Update workspace registry statistics with current database state
 /// This ensures the registry stays in sync even when no indexing is performed
