@@ -199,6 +199,8 @@ a+
 
 #[cfg(test)]
 mod identifier_extraction_tests {
+    #![allow(unused_variables)]
+
     use super::*;
     use crate::extractors::base::IdentifierKind;
 

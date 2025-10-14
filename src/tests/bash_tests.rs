@@ -3,6 +3,9 @@
 
 #[cfg(test)]
 mod bash_extractor_tests {
+    #![allow(unused_imports)]
+    #![allow(unused_variables)]
+
     use crate::extractors::base::{IdentifierKind, RelationshipKind, Symbol, SymbolKind};
     use crate::extractors::bash::BashExtractor;
     use tree_sitter::Parser;

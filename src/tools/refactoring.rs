@@ -155,6 +155,7 @@ fn default_empty_json() -> String {
     "{}".to_string()
 }
 
+#[allow(dead_code)]
 impl SmartRefactorTool {
     /// Helper: Create structured result with markdown for dual output
     fn create_result(
@@ -572,7 +573,7 @@ impl SmartRefactorTool {
             }
 
             // Write the final content atomically using EditingTransaction
-            let transaction = EditingTransaction::begin(file_path)?;
+        let transaction = EditingTransaction::begin(&file_path)?;
             transaction.commit(&final_content)?;
         }
 
@@ -1609,42 +1610,78 @@ impl SmartRefactorTool {
         let file_path = params
             .get("file")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: file"))?;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: file"))?
+            .to_string();
 
         let symbol_name = params
             .get("symbol_name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: symbol_name"))?;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: symbol_name"))?
+            .to_string();
 
         let new_body = params
             .get("new_body")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: new_body"))?;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: new_body"))?
+            .to_string();
 
         debug!(
             "🎯 Replace symbol '{}' in file '{}'",
             symbol_name, file_path
         );
 
-        // Step 1: Use fast_search to find the symbol
-        let search_tool = crate::tools::search::FastSearchTool {
-            query: symbol_name.to_string(),
-            mode: "text".to_string(),
-            limit: 10,
-            file_pattern: Some(file_path.to_string()),
-            language: None,
-            workspace: Some("primary".to_string()),
-            output: None,
+        // Canonicalize the target file path to handle macOS /var -> /private/var symlinks
+        let canonical_file_path = std::fs::canonicalize(&file_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| file_path.clone());
+
+        let symbols_in_file = if let Some(workspace) = handler.get_workspace().await? {
+            if let Some(db) = workspace.db.as_ref() {
+                // Query for symbols by name and filter by file path
+                let symbol_name_clone = symbol_name.to_string();
+                let file_path_clone = file_path.clone();
+                let canonical_file_path_clone = canonical_file_path.clone();
+                let db_arc = db.clone();
+                tokio::task::spawn_blocking(move || {
+                    let db_lock = db_arc.lock().unwrap();
+                    match db_lock.get_symbols_by_name(&symbol_name_clone) {
+                        Ok(all_symbols) => {
+                            debug!("Found {} symbols with name '{}'", all_symbols.len(), symbol_name_clone);
+                            // Filter symbols to only those in the target file (compare canonical paths)
+                            let filtered: Vec<_> = all_symbols.into_iter()
+                                .filter(|symbol| {
+                                    // Canonicalize the symbol's file path too for comparison
+                                    let symbol_canonical = std::fs::canonicalize(&symbol.file_path)
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_else(|_| symbol.file_path.clone());
+                                    let matches = symbol_canonical == canonical_file_path_clone;
+                                    debug!("Symbol '{}' in file '{}' (canonical: '{}') matches target '{}' (canonical: '{}'): {}",
+                                          symbol.name, symbol.file_path, symbol_canonical, file_path_clone, canonical_file_path_clone, matches);
+                                    matches
+                                })
+                                .collect();
+                            debug!("After filtering by file path, {} symbols remain", filtered.len());
+                            filtered
+                        }
+                        Err(e) => {
+                            eprintln!("Database error: {}", e);
+                            Vec::new()
+                        }
+                    }
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
         };
 
-        let search_result = search_tool.call_tool(handler).await?;
-        let symbol_locations =
-            self.parse_search_result_for_symbols(&search_result, symbol_name, file_path)?;
-
-        if symbol_locations.is_empty() {
+        if symbols_in_file.is_empty() {
             let message = format!(
                 "🔍 Symbol '{}' not found in file '{}'\n\
-                💡 Check spelling or use fast_search to locate the symbol",
+                💡 Check spelling or use fast_refs to locate the symbol",
                 symbol_name, file_path
             );
             return self.create_result(
@@ -1653,7 +1690,7 @@ impl SmartRefactorTool {
                 vec![],
                 0,
                 vec![
-                    "Use fast_search to locate the symbol".to_string(),
+                    "Use fast_refs to locate the symbol".to_string(),
                     "Check spelling of symbol name".to_string(),
                 ],
                 message,
@@ -1661,13 +1698,35 @@ impl SmartRefactorTool {
             );
         }
 
-        // Step 2: Read the file to find symbol boundaries
-        let file_content = fs::read_to_string(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?;
+        // Step 2: Use symbol information from database to get boundaries
+        // For replace_symbol_body, we expect exactly one symbol match
+        if symbols_in_file.len() != 1 {
+            let message = format!(
+                "🔍 Expected exactly 1 symbol '{}' in file '{}', but found {}\n\
+                💡 Use fast_refs to see all matches",
+                symbol_name, file_path, symbols_in_file.len()
+            );
+            return self.create_result(
+                "replace_symbol_body",
+                false,
+                vec![],
+                0,
+                vec![
+                    "Use fast_refs to see all symbol matches".to_string(),
+                    "Specify a more unique symbol name".to_string(),
+                ],
+                message,
+                None,
+            );
+        }
 
-        // Step 3: Find symbol boundaries using tree-sitter
-        let (start_line, end_line) =
-            self.find_symbol_boundaries(&file_content, symbol_name, file_path)?;
+        let symbol = &symbols_in_file[0];
+        let start_line = symbol.start_line;
+        let end_line = symbol.end_line;
+
+        // Step 3: Read the file content
+        let file_content = fs::read_to_string(&file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?;
 
         debug!(
             "📍 Found symbol '{}' at lines {}-{}",
@@ -1698,10 +1757,10 @@ impl SmartRefactorTool {
 
         // Replace the symbol body
         let new_content =
-            self.replace_symbol_in_file(&file_content, start_line, end_line, new_body)?;
+            self.replace_symbol_in_file(&file_content, start_line, end_line, &new_body)?;
 
         // Write the modified file atomically using EditingTransaction
-        let transaction = EditingTransaction::begin(file_path)?;
+        let transaction = EditingTransaction::begin(&file_path)?;
         transaction.commit(&new_content)?;
 
         let message = format!(

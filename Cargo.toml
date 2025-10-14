@@ -19,10 +19,6 @@ name = "julie-server"
 path = "src/main.rs"
 
 [[bin]]
-name = "julie-extract"
-path = "src/bin/extract.rs"
-
-[[bin]]
 name = "julie-semantic"
 path = "src/bin/semantic.rs"
 

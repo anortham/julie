@@ -496,7 +496,11 @@ mod smart_refactor_control_tests {
                 );
 
                 // Update parameters to use the test file path
-                let absolute_path = test_file_path.to_string_lossy();
+                // CRITICAL: Use canonical path to match how symbols were stored in database
+                let canonical_path_for_params = test_file_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| test_file_path.clone());
+                let absolute_path = canonical_path_for_params.to_string_lossy();
                 params = params.replace("refactor_source.ts", &absolute_path);
                 println!("🔧 Updated SmartRefactorTool params: {}", params);
 

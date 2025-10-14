@@ -10,6 +10,8 @@
 //!
 //! These tests MUST remain in the codebase to prevent regressions.
 
+#![allow(unused_variables)]
+
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;

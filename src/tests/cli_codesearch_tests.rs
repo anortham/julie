@@ -3,6 +3,9 @@
 // These tests verify the CLI interface that CodeSearch MCP server calls.
 // Critical for ensuring cross-platform binary reliability.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 use anyhow::Result;
 use std::path::PathBuf;
 use std::process::Command;

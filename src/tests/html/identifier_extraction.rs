@@ -7,6 +7,8 @@
 //
 // Following the Rust extractor reference implementation pattern
 
+#![allow(unused_imports)]
+
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::html::HTMLExtractor;
 use crate::tests::html::init_parser;

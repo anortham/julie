@@ -7,6 +7,8 @@
 //
 // Following the Rust/C# extractor reference implementation pattern
 
+#![allow(unused_imports)]
+
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::sql::SqlExtractor;
 use crate::tests::sql::init_parser;

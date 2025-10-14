@@ -1386,6 +1386,9 @@ end
 
 #[cfg(test)]
 mod identifier_extraction_tests {
+    #![allow(unused_imports)]
+    #![allow(unused_variables)]
+
     use super::ruby_extractor_tests::create_extractor_and_parse;
     use super::*;
     use crate::extractors::base::IdentifierKind;

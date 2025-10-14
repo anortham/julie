@@ -6,6 +6,8 @@
 
 #[cfg(test)]
 mod workspace_management_token_tests {
+    #![allow(unused_variables)]
+
     use crate::utils::progressive_reduction::ProgressiveReducer;
     use crate::utils::token_estimation::TokenEstimator;
     use crate::workspace::registry::{EmbeddingStatus, WorkspaceEntry, WorkspaceStatus, WorkspaceType};

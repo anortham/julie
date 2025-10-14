@@ -283,7 +283,10 @@ fn process_file(
     use julie::database::calculate_file_hash;
     use julie::extractors::ExtractorManager;
 
-    let path_str = file_path.to_string_lossy().to_string();
+    // Canonicalize path to ensure consistent absolute paths in database
+    let canonical_path = file_path.canonicalize()
+        .unwrap_or_else(|_| file_path.clone());
+    let path_str = canonical_path.to_string_lossy().to_string();
 
     // Get file metadata
     let metadata = std::fs::metadata(file_path)
@@ -307,18 +310,18 @@ fn process_file(
     // Check if file changed
     if let Some(old_hash) = existing_hashes.get(&path_str) {
         if old_hash == &new_hash {
-            // File unchanged, skip
-            return Ok(None);
+            return Ok(None); // Unchanged, skip
         }
     }
+
+    // Detect language
+    let language = detect_language(file_path);
 
     // Extract symbols
     let extractor_manager = ExtractorManager::new();
     let symbols = extractor_manager
         .extract_symbols(&path_str, &content)
         .unwrap_or_default();
-
-    let language = detect_language(file_path);
 
     Ok(Some(FileResult {
         path: path_str,
@@ -640,7 +643,11 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     let mut database =
         SymbolDatabase::new(&db).with_context(|| format!("Failed to open database: {:?}", db))?;
 
-    let path_str = file.to_string_lossy().to_string();
+    // Canonicalize path to ensure consistent absolute paths in database
+    let canonical_file = file.canonicalize()
+        .unwrap_or_else(|_| file.clone());
+    let path_str = canonical_file.to_string_lossy().to_string();
+
     let language = detect_language(&file);
 
     // Get file metadata

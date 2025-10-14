@@ -7,6 +7,8 @@
 //
 // Following the Rust extractor reference implementation pattern
 
+#![allow(unused_imports)]
+
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::css::CSSExtractor;
 use crate::tests::css::init_parser;

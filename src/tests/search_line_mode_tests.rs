@@ -3,6 +3,9 @@
 
 #[cfg(test)]
 mod search_line_mode_tests {
+    #![allow(unused_imports)]
+    #![allow(unused_variables)]
+
     use crate::extractors::{Symbol, SymbolKind};
     use crate::handler::JulieServerHandler;
     use crate::tools::search::FastSearchTool;
@@ -30,6 +33,7 @@ mod search_line_mode_tests {
             .join("\n")
     }
 
+    #[allow(dead_code)]
     fn extract_workspace_id(result: &rust_mcp_sdk::schema::CallToolResult) -> Option<String> {
         let text = extract_text_from_result(result);
         text.lines()

@@ -7,6 +7,8 @@
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_imports)]
+
     use crate::handler::JulieServerHandler;
     use crate::tools::symbols::GetSymbolsTool;
     use anyhow::Result;
