@@ -11,6 +11,7 @@ pub mod auto_fix_syntax_control_tests; // SOURCE/CONTROL tests for AutoFixSyntax
 pub mod auto_fix_syntax_tests; // TDD tests for AutoFixSyntax operation - Week 3 (missing semicolons, braces, etc)
 pub mod cli_codesearch_tests; // CLI integration tests for julie-codesearch (scan/update)
 pub mod cli_semantic_tests; // CLI integration tests for julie-semantic (embed with HNSW)
+pub mod edit_lines_tests; // TDD tests for EditLinesTool (surgical line editing - insert/replace/delete)
 pub mod fuzzy_replace_tests; // Comprehensive tests for FuzzyReplaceTool
 pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering tests (TDD) - methods in impl blocks
 pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)
@@ -187,6 +188,7 @@ pub mod navigation_tools_tests; // Tests for navigation tool token optimization 
 pub mod path_relevance_tests; // Tests for path relevance scoring system
 pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
 pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
+pub mod search_line_mode_tests; // TDD tests for line-level search output (grep-style results)
 pub mod watcher_tests;
 pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
 

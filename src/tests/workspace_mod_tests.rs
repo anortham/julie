@@ -127,3 +127,114 @@ async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
         result_b
     );
 }
+
+#[tokio::test]
+async fn test_manage_workspace_recent_files() {
+    // TDD: RED phase - this test WILL FAIL until we implement the "recent" operation
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    // Initialize workspace
+    let workspace = JulieWorkspace::initialize(workspace_path.clone())
+        .await
+        .unwrap();
+
+    // Get database access
+    let db = workspace.db.as_ref().expect("Database should be initialized");
+    let db_lock = db.lock().unwrap();
+
+    // Insert test files with different timestamps
+    let now = chrono::Utc::now().timestamp();
+    let two_days_ago = now - (2 * 86400); // 2 days in seconds
+    let seven_days_ago = now - (7 * 86400); // 7 days in seconds
+
+    // File modified today (should be included)
+    db_lock.store_file_info(&crate::database::FileInfo {
+        path: "recent_file.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash1".to_string(),
+        size: 100,
+        last_modified: now,
+        last_indexed: now,
+        symbol_count: 5,
+        content: Some("fn main() {}".to_string()),
+    }, "primary").unwrap();
+
+    // File modified 1 day ago (should be included)
+    db_lock.store_file_info(&crate::database::FileInfo {
+        path: "yesterday_file.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash2".to_string(),
+        size: 200,
+        last_modified: two_days_ago + 86400, // 1 day ago
+        last_indexed: now,
+        symbol_count: 3,
+        content: Some("fn test() {}".to_string()),
+    }, "primary").unwrap();
+
+    // File modified 7 days ago (should NOT be included)
+    db_lock.store_file_info(&crate::database::FileInfo {
+        path: "old_file.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash3".to_string(),
+        size: 150,
+        last_modified: seven_days_ago,
+        last_indexed: now,
+        symbol_count: 2,
+        content: Some("fn old() {}".to_string()),
+    }, "primary").unwrap();
+
+    drop(db_lock);
+    drop(workspace);
+
+    // Create handler and initialize it with the workspace
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .await
+        .unwrap();
+
+    let tool = ManageWorkspaceTool {
+        operation: "recent".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: None,
+        name: None,
+        workspace_id: None,
+        expired_only: None,
+        days: Some(2), // Last 2 days
+        max_size_mb: None,
+        detailed: None,
+    };
+
+    // Call the tool (this will FAIL because "recent" operation doesn't exist yet)
+    let result = tool.call_tool(&handler).await;
+
+    assert!(result.is_ok(), "Recent files operation should succeed");
+
+    let call_result = result.unwrap();
+
+    // Extract text from CallToolResult using serde_json pattern
+    let response_text = call_result.content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(!response_text.is_empty(), "Should return results");
+
+    // Should include recent files
+    assert!(response_text.contains("recent_file.rs"), "Should include file modified today");
+    assert!(response_text.contains("yesterday_file.rs"), "Should include file modified yesterday");
+
+    // Should NOT include old files
+    assert!(!response_text.contains("old_file.rs"), "Should NOT include file modified 7 days ago");
+}

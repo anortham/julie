@@ -135,7 +135,15 @@
       "Bash(1)",
       "Bash(RUST_LOG=warn cargo test:*)",
       "mcp__julie__find_logic",
-      "Read(//Users/murphy/.claude/**)"
+      "Read(//Users/murphy/.claude/**)",
+      "Read(//Users/murphy/**)",
+      "Bash(chmod:*)",
+      "Bash(dotnet test:*)",
+      "Bash(RUST_BACKTRACE=1 cargo test:*)",
+      "Bash(timeout 30 cargo test search_line_mode_tests --lib -- --nocapture)",
+      "mcp__julie__edit_lines",
+      "Bash(RUST_LOG=debug cargo test:*)",
+      "Bash(RUST_LOG=julie::tools::refactoring=debug cargo test:*)"
     ],
     "deny": [],
     "ask": []

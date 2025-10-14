@@ -917,4 +917,80 @@ impl ManageWorkspaceTool {
 
         Ok(total_size as f64)
     }
+
+    /// Handle recent command - show recently modified files
+    pub(crate) async fn handle_recent_command(
+        &self,
+        handler: &JulieServerHandler,
+        days: u32,
+    ) -> Result<CallToolResult> {
+        info!("📅 Finding files modified in the last {} days", days);
+
+        let primary_workspace = match handler.get_workspace().await? {
+            Some(ws) => ws,
+            None => {
+                let message = "❌ No primary workspace found. Use 'index' command to create one.";
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
+            }
+        };
+
+        // Get database access
+        let db = primary_workspace.db.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Database not initialized. Run 'index' command first.")
+        })?;
+
+        let db_lock = db.lock().unwrap();
+
+        // Query recent files from database
+        match db_lock.get_recent_files(days, 50) {
+            Ok(files) => {
+                if files.is_empty() {
+                    let message = format!(
+                        "📭 No files found modified in the last {} days.",
+                        days
+                    );
+                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]));
+                }
+
+                let mut output = format!("📅 Files modified in the last {} days:\n\n", days);
+
+                for file in files {
+                    // Calculate how long ago the file was modified
+                    let now = chrono::Utc::now().timestamp();
+                    let hours_ago = (now - file.last_modified) / 3600;
+                    let time_ago = if hours_ago < 24 {
+                        format!("{} hours ago", hours_ago)
+                    } else {
+                        format!("{} days ago", hours_ago / 24)
+                    };
+
+                    output.push_str(&format!(
+                        "📄 **{}**\n\
+                        🕐 Modified: {}\n\
+                        📊 {} symbols | {} bytes\n\
+                        🔤 Language: {}\n\n",
+                        file.path,
+                        time_ago,
+                        file.symbol_count,
+                        file.size,
+                        file.language
+                    ));
+                }
+
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    output,
+                )]))
+            }
+            Err(e) => {
+                let message = format!("❌ Failed to query recent files: {}", e);
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
+            }
+        }
+    }
 }

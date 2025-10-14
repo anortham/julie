@@ -82,7 +82,7 @@ pub enum WorkspaceCommand {
 )]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health", "set_ttl", "set_limit"
+    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health", "set_ttl", "set_limit", "recent"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
@@ -90,6 +90,7 @@ pub struct ManageWorkspaceTool {
     /// Show stats:           {"operation": "stats", "workspace_id": null}
     /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
     /// Clean expired:        {"operation": "clean", "expired_only": true}
+    /// Recent files:         {"operation": "recent", "days": 2}
     pub operation: String,
 
     // Optional parameters used by various operations
@@ -177,8 +178,12 @@ impl ManageWorkspaceTool {
                 self.handle_health_command(handler, self.detailed.unwrap_or(false))
                     .await
             }
+            "recent" => {
+                let days = self.days.unwrap_or(7); // Default to last 7 days
+                self.handle_recent_command(handler, days).await
+            }
             _ => Err(anyhow::anyhow!(
-                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health, set_ttl, set_limit",
+                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health, set_ttl, set_limit, recent",
                 self.operation
             )),
         }

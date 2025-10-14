@@ -368,6 +368,10 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🔍 Trace call path: {:?}", tool);
                 tool.call_tool(self).await
             }
+            JulieTools::EditLinesTool(tool) => {
+                debug!("✂️  Surgical line edit: {:?}", tool);
+                tool.call_tool(self).await
+            }
             JulieTools::FuzzyReplaceTool(tool) => {
                 debug!("🔍 Fuzzy replace: {:?}", tool);
                 tool.call_tool(self).await

@@ -234,7 +234,7 @@ mod smart_refactor_control_tests {
     use super::*;
 
     /// Test that SmartRefactorTool performs exact refactorings without file corruption
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_all_smart_refactor_control_scenarios() -> Result<()> {
         println!("🧪 Starting comprehensive SMART REFACTOR control tests...");
         println!(

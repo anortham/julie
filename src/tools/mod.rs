@@ -6,6 +6,7 @@ pub mod shared;
 
 // Tool modules organized by functionality
 pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
+pub mod edit_lines; // Surgical line editing tool (insert/replace/delete)
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
 pub mod exploration;
 pub mod fuzzy_replace; // DMP fuzzy matching tool
@@ -17,6 +18,7 @@ pub mod trace_call_path; // Cross-language call path tracing
 pub mod workspace;
 
 // Re-export all tools for external use
+pub use edit_lines::EditLinesTool; // Surgical line editing (insert/replace/delete)
 pub use editing::EditingTransaction; // Shared transaction infrastructure
 pub use exploration::{FastExploreTool, FindLogicTool};
 pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
@@ -47,7 +49,8 @@ tool_box!(
         TraceCallPathTool,
         FastExploreTool,
         FindLogicTool,
-        // Fuzzy matching tool (DMP-powered)
+        // Editing tools
+        EditLinesTool,
         FuzzyReplaceTool,
         // Semantic refactoring tool
         SmartRefactorTool,

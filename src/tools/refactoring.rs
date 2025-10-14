@@ -1631,6 +1631,7 @@ impl SmartRefactorTool {
             file_pattern: Some(file_path.to_string()),
             language: None,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         let search_result = search_tool.call_tool(handler).await?;
@@ -2411,22 +2412,34 @@ impl SmartRefactorTool {
         let mut parser = Parser::new();
         parser.set_language(&tree_sitter_lang)?;
 
-        // Parse to find errors
-        let tree = parser
-            .parse(&original_content, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse file"))?;
+        // Apply fixes iteratively until no more errors (max 10 iterations to prevent infinite loops)
+        let mut current_content = original_content.clone();
+        let mut total_fixes = 0;
+        const MAX_ITERATIONS: usize = 10;
 
-        // Apply fixes based on language and error types
-        let fixed_content = self.apply_syntax_fixes(&original_content, &tree, &language)?;
+        for iteration in 0..MAX_ITERATIONS {
+            // Parse to find errors
+            let tree = parser
+                .parse(&current_content, None)
+                .ok_or_else(|| anyhow::anyhow!("Failed to parse file at iteration {}", iteration))?;
 
-        let fixes_count = if fixed_content != original_content {
-            // Count the number of fixes (rough estimate)
-            let original_lines = original_content.lines().count();
-            let fixed_lines = fixed_content.lines().count();
-            original_lines.abs_diff(fixed_lines).max(1)
-        } else {
-            0
-        };
+            // Apply fixes for this iteration
+            let fixed_content = self.apply_syntax_fixes(&current_content, &tree, &language)?;
+
+            if fixed_content == current_content {
+                // No more fixes applied, we're done
+                debug!("✅ No more fixes after {} iterations", iteration);
+                break;
+            }
+
+            // Count this fix
+            total_fixes += 1;
+            debug!("🔧 Applied fix #{} at iteration {}", total_fixes, iteration);
+            current_content = fixed_content;
+        }
+
+        let fixed_content = current_content;
+        let fixes_count = total_fixes;
 
         // Write fixed content if not dry_run
         if !self.dry_run && fixes_count > 0 {
@@ -2539,6 +2552,16 @@ impl SmartRefactorTool {
                 return Ok(fixed);
             }
 
+            // Try end-of-line insertion (for unclosed strings)
+            if delimiter == "\"" || delimiter == "'" {
+                if let Some(fixed) =
+                    self.try_end_of_line_insertion(content, delimiter, &tree_sitter_lang)
+                {
+                    debug!("✅ END-OF-LINE insertion validated successfully!");
+                    return Ok(fixed);
+                }
+            }
+
             if let Some(fixed) =
                 self.try_newline_insertion_strategies(content, delimiter, &tree_sitter_lang)
             {
@@ -2565,8 +2588,8 @@ impl SmartRefactorTool {
 
         // Strategy 1: Insert before `{` on the same line (for cases like `taxRate: number {` → `taxRate: number) {`)
         for (line_idx, line) in lines.iter().enumerate() {
-            // Look for opening braces, brackets that might need the delimiter before them
-            for pattern in &[" {", " [", " }"] {
+            // Look for opening braces, brackets, semicolons that might need the delimiter before them
+            for pattern in &[" {", " [", " }", ";"] {
                 if let Some(pos) = line.find(pattern) {
                     // Create modified version of this line
                     let mut modified_line = line.clone();
@@ -2589,6 +2612,48 @@ impl SmartRefactorTool {
                         return Some(test_content);
                     }
                 }
+            }
+        }
+
+        None
+    }
+
+    /// Try END-OF-LINE insertion strategy (for unclosed strings)
+    /// Appends the missing quote at the end of lines, going backwards from end
+    fn try_end_of_line_insertion(
+        &self,
+        content: &str,
+        delimiter: &str,
+        lang: &tree_sitter::Language,
+    ) -> Option<String> {
+        let lines: Vec<String> = content.lines().map(String::from).collect();
+
+        // Try appending delimiter at end of each line (from end backwards)
+        for (line_idx, line) in lines.iter().enumerate().rev() {
+            // Skip empty lines and comments
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with("#")
+            {
+                continue;
+            }
+
+            // Build test content with delimiter appended at end of line
+            let mut test_lines = lines.clone();
+            test_lines[line_idx] = format!("{}{}", line, delimiter);
+            let test_content = test_lines.join("\n");
+
+            debug!(
+                "  🔍 Trying END-OF-LINE at line {}: appending '{}'",
+                line_idx + 1,
+                delimiter
+            );
+
+            if self.parses_without_errors(&test_content, lang) {
+                debug!("  ✅ Valid! END-OF-LINE at line {}", line_idx + 1);
+                return Some(test_content);
             }
         }
 

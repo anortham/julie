@@ -948,6 +948,44 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Get recently modified files (last N days)
+    pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
+
+        let mut stmt = self.conn.prepare(
+            "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+             FROM files
+             WHERE last_modified >= ?1
+             ORDER BY last_modified DESC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![cutoff_time, limit], |row| {
+            Ok(FileInfo {
+                path: row.get(0)?,
+                language: row.get(1)?,
+                hash: row.get(2)?,
+                size: row.get(3)?,
+                last_modified: row.get(4)?,
+                last_indexed: row.get(5)?,
+                symbol_count: row.get(6)?,
+                content: row.get(7)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    }
+
     /// CASCADE: Search file content using FTS5
     pub fn search_file_content_fts(
         &self,

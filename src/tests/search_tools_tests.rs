@@ -17,6 +17,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         let symbols = vec![Symbol {
@@ -70,6 +71,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         // Create a symbol with more than 10 lines of context
@@ -135,6 +137,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         // Create many symbols with substantial context to trigger token limit
@@ -197,6 +200,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         // Create enough symbols to trigger progressive reduction (not just early termination)
@@ -270,6 +274,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            output: None,
         };
 
         // Test 2: workspace="all" - this works because it routes to Tantivy
@@ -280,6 +285,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("all".to_string()),
+            output: None,
         };
 
         // Note: This test documents the bug but doesn't actually test the routing logic

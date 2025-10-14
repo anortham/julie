@@ -71,6 +71,16 @@ pub struct FastSearchTool {
     /// Default: "primary" - search only the primary workspace for focused results
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Output format: "symbols" (default), "lines" (grep-style)
+    ///
+    /// Examples:
+    ///   output="symbols" → Returns symbol definitions (classes, functions)
+    ///   output="lines" → Returns every line matching query (like grep)
+    ///
+    /// Use "lines" mode when you need comprehensive occurrence lists with line numbers.
+    /// Perfect for finding ALL TODO comments, all usages of a pattern, etc.
+    #[serde(default = "default_output")]
+    pub output: Option<String>,
 }
 
 fn default_limit() -> u32 {
@@ -81,6 +91,9 @@ fn default_text() -> String {
 }
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
+}
+fn default_output() -> Option<String> {
+    Some("symbols".to_string())
 }
 
 impl FastSearchTool {
@@ -118,6 +131,12 @@ impl FastSearchTool {
             SystemReadiness::FullyReady { symbol_count } => {
                 debug!("✅ All systems ready ({} symbols, embeddings available)", symbol_count);
             }
+        }
+
+        // Check output format - if "lines" mode, use FTS5 directly for line-level results
+        if self.output.as_deref() == Some("lines") {
+            debug!("📄 Line-level output mode requested");
+            return self.line_mode_search(handler).await;
         }
 
         // Perform search based on mode
@@ -172,6 +191,114 @@ impl FastSearchTool {
             CallToolResult::text_content(vec![TextContent::from(markdown)])
                 .with_structured_content(structured_map),
         )
+    }
+
+    /// Line-level search mode (grep-style output with line numbers)
+    /// Returns every line matching the query with file:line_number:line_content format
+    async fn line_mode_search(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        debug!("📄 Line-level search for: '{}'", self.query);
+
+        // Get workspace and database
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized for line search"))?;
+
+        let db = workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available for line search"))?;
+
+        // Get workspace ID for filtering
+        let workspace_id = {
+            let registry_service =
+                crate::workspace::registry_service::WorkspaceRegistryService::new(
+                    workspace.root.clone(),
+                );
+            registry_service
+                .get_primary_workspace_id()
+                .await?
+                .unwrap_or_else(|| "primary".to_string())
+        };
+
+        // Use FTS5 to find matching files
+        let file_results = tokio::task::block_in_place(|| {
+            let db_lock = db.lock().unwrap();
+            db_lock.search_file_content_fts(&self.query, Some(&workspace_id), self.limit as usize * 5) // Get more files than limit to find enough lines
+        })?;
+
+        if file_results.is_empty() {
+            let message = format!(
+                "🔍 No lines found matching: '{}'\n\
+                💡 Try a broader search term or different query",
+                self.query
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
+        // For each matching file, find all lines containing the query
+        let mut all_line_matches = Vec::new();
+        let query_lowercase = self.query.to_lowercase();
+
+        for file_result in file_results {
+            // Get full file content
+            let content = tokio::task::block_in_place(|| {
+                let db_lock = db.lock().unwrap();
+                db_lock.get_file_content(&file_result.path)
+            })?;
+
+            if let Some(content) = content {
+                // Parse line by line
+                for (line_num, line) in content.lines().enumerate() {
+                    let line_number = line_num + 1; // 1-indexed line numbers
+
+                    // Check if line contains the query (case-insensitive)
+                    if line.to_lowercase().contains(&query_lowercase) {
+                        all_line_matches.push((
+                            file_result.path.clone(),
+                            line_number,
+                            line.to_string(),
+                        ));
+
+                        // Early termination if we have enough results
+                        if all_line_matches.len() >= self.limit as usize {
+                            break;
+                        }
+                    }
+                }
+
+                // Early termination if we have enough results
+                if all_line_matches.len() >= self.limit as usize {
+                    break;
+                }
+            }
+        }
+
+        // Truncate to limit
+        if all_line_matches.len() > self.limit as usize {
+            all_line_matches.truncate(self.limit as usize);
+        }
+
+        // Format as grep-style output
+        let mut lines = vec![format!(
+            "📄 Line-level search: '{}' (found {} lines)",
+            self.query,
+            all_line_matches.len()
+        )];
+        lines.push(String::new());
+
+        for (file_path, line_number, line_content) in &all_line_matches {
+            // Format: file:line_number:line_content
+            lines.push(format!("{}:{}:{}", file_path, line_number, line_content));
+        }
+
+        let response_text = lines.join("\n");
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            response_text,
+        )]))
     }
 
     async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -1105,6 +1232,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1123,6 +1251,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1141,6 +1270,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1159,6 +1289,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1177,6 +1308,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1195,6 +1327,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
@@ -1213,6 +1346,7 @@ mod tests {
             file_pattern: None,
             limit: 15,
             workspace: None,
+            output: None,
         };
 
         assert_eq!(
