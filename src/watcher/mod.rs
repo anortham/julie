@@ -8,9 +8,9 @@ use hex;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex as TokioMutex};
 use tracing::{debug, error, info, warn};
 
 use crate::database::SymbolDatabase;
@@ -20,12 +20,12 @@ use crate::extractors::ExtractorManager;
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
-    db: Arc<Mutex<SymbolDatabase>>,
-    embedding_engine: Arc<Mutex<EmbeddingEngine>>,
+    db: Arc<StdMutex<SymbolDatabase>>,
+    embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
     extractor_manager: Arc<ExtractorManager>,
 
     // Processing queues
-    index_queue: Arc<Mutex<VecDeque<FileChangeEvent>>>,
+    index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
 
     // File filters
     supported_extensions: HashSet<String>,
@@ -66,8 +66,8 @@ impl IncrementalIndexer {
     /// Create a new incremental indexer for the given workspace
     pub fn new(
         workspace_root: PathBuf,
-        db: Arc<Mutex<SymbolDatabase>>,
-        embedding_engine: Arc<Mutex<EmbeddingEngine>>,
+        db: Arc<StdMutex<SymbolDatabase>>,
+        embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
         extractor_manager: Arc<ExtractorManager>,
     ) -> Result<Self> {
         let supported_extensions = Self::build_supported_extensions();
@@ -78,7 +78,7 @@ impl IncrementalIndexer {
             db,
             embedding_engine,
             extractor_manager,
-            index_queue: Arc::new(Mutex::new(VecDeque::new())),
+            index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             supported_extensions,
             ignore_patterns,
             workspace_root,
@@ -147,7 +147,7 @@ impl IncrementalIndexer {
     async fn process_file_system_event_static(
         supported_extensions: &HashSet<String>,
         ignore_patterns: &[glob::Pattern],
-        index_queue: Arc<Mutex<VecDeque<FileChangeEvent>>>,
+        index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
         event: Event,
     ) -> Result<()> {
         debug!("Processing file system event: {:?}", event);
@@ -231,7 +231,7 @@ impl IncrementalIndexer {
 
     /// Static version of queue_file_change for thread safety
     async fn queue_file_change_static(
-        index_queue: Arc<Mutex<VecDeque<FileChangeEvent>>>,
+        index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
         event: FileChangeEvent,
     ) {
         debug!("Queueing file change: {:?}", event);
@@ -307,7 +307,7 @@ impl IncrementalIndexer {
 
         // 2. Check if file actually changed using Blake3
         let path_str = path.to_string_lossy();
-        let db = self.db.lock().await;
+        let db = self.db.lock().unwrap();
         if let Some(old_hash_str) = db.get_file_hash(&path_str)? {
             let new_hash_str = hex::encode(new_hash.as_bytes());
             if new_hash_str == old_hash_str {
@@ -345,7 +345,7 @@ impl IncrementalIndexer {
         );
 
         // 4. Update SQLite database (transactionally) with enhanced safeguards
-        let mut db = self.db.lock().await;
+        let mut db = self.db.lock().unwrap();
 
         // Get existing symbols for comparison
         let existing_symbols = db.get_symbols_for_file(&path_str)?;
@@ -393,7 +393,7 @@ impl IncrementalIndexer {
 
         // 5. Update embeddings using mutex-protected engine
         {
-            let mut embedding_engine = self.embedding_engine.lock().await;
+            let mut embedding_engine = self.embedding_engine.lock().unwrap();
             if let Err(e) = embedding_engine
                 .upsert_file_embeddings(path_str.as_ref(), &symbols)
                 .await
@@ -420,7 +420,7 @@ impl IncrementalIndexer {
 
         // Get symbol IDs before deleting (needed for embedding cleanup)
         let symbol_ids: Vec<String> = {
-            let db = self.db.lock().await;
+            let db = self.db.lock().unwrap();
             db.get_symbols_for_file(&path_str)?
                 .into_iter()
                 .map(|s| s.id)
@@ -428,14 +428,14 @@ impl IncrementalIndexer {
         };
 
         // Remove from SQLite database
-        let db = self.db.lock().await;
+        let db = self.db.lock().unwrap();
         db.delete_symbols_for_file(&path_str)?;
         db.delete_file_record(&path_str)?;
         drop(db);
 
         // Remove from embeddings (database will handle the actual deletion)
         if !symbol_ids.is_empty() {
-            let mut embedding_engine = self.embedding_engine.lock().await;
+            let mut embedding_engine = self.embedding_engine.lock().unwrap();
             if let Err(e) = embedding_engine
                 .remove_embeddings_for_symbols(&symbol_ids)
                 .await

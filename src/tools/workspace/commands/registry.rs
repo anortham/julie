@@ -718,7 +718,7 @@ impl ManageWorkspaceTool {
 
         match &workspace.db {
             Some(db_arc) => {
-                let db = db_arc.lock().await;
+                let db = db_arc.lock().unwrap();
 
                 // Get database statistics
                 match db.get_stats() {
@@ -801,7 +801,7 @@ impl ManageWorkspaceTool {
 
         match &workspace.embeddings {
             Some(embedding_arc) => {
-                let _embeddings = embedding_arc.lock().await;
+                let _embeddings = embedding_arc.lock().unwrap();
 
                 // Compute workspace ID for per-workspace path
                 use crate::workspace::registry as ws_registry;

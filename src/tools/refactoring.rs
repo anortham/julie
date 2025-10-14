@@ -652,7 +652,7 @@ impl SmartRefactorTool {
         let db = workspace.db.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
 
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         // Search for symbols by name in the specific file
         let symbols = db_lock.find_symbols_by_name(old_name)?;

@@ -133,7 +133,9 @@
       "Bash(RUST_LOG=julie::tools::workspace::indexing=debug cargo test:*)",
       "Bash(RUST_LOG=trace cargo test:*)",
       "Bash(1)",
-      "Bash(RUST_LOG=warn cargo test:*)"
+      "Bash(RUST_LOG=warn cargo test:*)",
+      "mcp__julie__find_logic",
+      "Read(//Users/murphy/.claude/**)"
     ],
     "deny": [],
     "ask": []

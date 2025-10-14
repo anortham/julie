@@ -8,8 +8,7 @@ use crate::extractors::base::Symbol;
 use anyhow::Result;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub mod cross_language;
 pub mod vector_store;
@@ -188,7 +187,7 @@ impl EmbeddingEngine {
         // Generate embeddings for all symbols in one batch call
         match self.model.embed(batch_texts, None) {
             Ok(batch_embeddings) => {
-                let db_guard = self.db.lock().await;
+                let db_guard = self.db.lock().unwrap();
 
                 // Persist all embeddings directly to database
                 for (embedding, (symbol, _context)) in
@@ -233,7 +232,7 @@ impl EmbeddingEngine {
                     let context = CodeContext::from_symbol(symbol);
                     match self.embed_symbol(symbol, &context) {
                         Ok(embedding) => {
-                            let db_guard = self.db.lock().await;
+                            let db_guard = self.db.lock().unwrap();
                             let vector_id = &symbol.id;
 
                             if let Err(e) = db_guard.store_embedding_vector(
@@ -281,7 +280,7 @@ impl EmbeddingEngine {
             return Ok(());
         }
 
-        let db_guard = self.db.lock().await;
+        let db_guard = self.db.lock().unwrap();
 
         for symbol_id in symbol_ids {
             if let Err(e) = db_guard.delete_embeddings_for_symbol(symbol_id) {
@@ -295,7 +294,7 @@ impl EmbeddingEngine {
 
     /// Retrieve an embedding vector from the database
     pub async fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
-        let db_guard = self.db.lock().await;
+        let db_guard = self.db.lock().unwrap();
         db_guard.get_embedding_for_symbol(symbol_id, &self.model_name)
     }
 
@@ -360,9 +359,8 @@ mod tests {
     use super::*;
     use crate::database::SymbolDatabase;
     use crate::extractors::base::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
-    use tokio::sync::Mutex;
 
     // Helper: Create a test database for embedding tests
     fn create_test_db() -> Arc<Mutex<SymbolDatabase>> {

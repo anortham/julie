@@ -669,7 +669,7 @@ impl WorkspaceRegistryService {
     /// Comprehensive cleanup with database and search index data removal
     pub async fn cleanup_expired_workspaces_with_data(
         &self,
-        _database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+        _database: Option<&std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<WorkspaceCleanupReport> {
         let expired = self.get_expired_workspaces().await?;
         let mut report = WorkspaceCleanupReport {
@@ -727,7 +727,7 @@ impl WorkspaceRegistryService {
     /// Enforce storage size limits using LRU eviction
     pub async fn enforce_size_limits(
         &self,
-        _database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+        _database: Option<&std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<WorkspaceCleanupReport> {
         let registry = self.load_registry().await?;
         let max_size = registry.config.max_total_size_bytes;
@@ -943,7 +943,7 @@ impl WorkspaceRegistryService {
     /// Comprehensive cleanup: TTL + Size Limits + Orphans
     pub async fn comprehensive_cleanup(
         &self,
-        database: Option<&std::sync::Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+        database: Option<&std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<ComprehensiveCleanupReport> {
         let mut report = ComprehensiveCleanupReport::default();
 

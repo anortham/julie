@@ -187,7 +187,7 @@ impl FastExploreTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         // Get the current workspace ID to filter results
         let workspace_id =
@@ -263,7 +263,7 @@ impl FastExploreTool {
 
         // Use SQL GROUP BY aggregation - O(1) memory vs O(N) memory for get_all_relationships()
         let relationship_counts = tokio::task::block_in_place(|| {
-            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            let db_lock = db.lock().unwrap();
             db_lock.get_relationship_type_statistics(&workspace_ids)
         })?;
 
@@ -283,7 +283,7 @@ impl FastExploreTool {
 
             // Use database to find the symbol by name
             let db_lock = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(db.lock())
+                db.lock().unwrap()
             });
 
             if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
@@ -316,14 +316,14 @@ impl FastExploreTool {
             // 🚀 CRITICAL FIX: Use SQL aggregation to find most referenced symbols
             // Instead of loading ALL relationships and counting in Rust, use GROUP BY in SQL
             let top_refs = tokio::task::block_in_place(|| {
-                let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                let db_lock = db.lock().unwrap();
                 db_lock.get_most_referenced_symbols(&workspace_ids, 10)
             })?;
 
             message.push_str("\n🔥 Most Referenced Symbols:\n");
             for (symbol_id, ref_count) in top_refs.iter() {
                 let symbol = tokio::task::block_in_place(|| {
-                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    let db_lock = db.lock().unwrap();
                     db_lock.get_symbol_by_id(symbol_id)
                 })?;
 
@@ -356,7 +356,7 @@ impl FastExploreTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         let mut message = String::new();
         message.push_str("🧠 INTELLIGENT Complexity Hotspots\n");
@@ -450,7 +450,7 @@ impl FastExploreTool {
                 .db
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-            let db_lock = db.lock().await;
+            let db_lock = db.lock().unwrap();
 
             // Use database to find the symbol by name
             if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
@@ -1054,7 +1054,7 @@ impl FindLogicTool {
         debug!("🔍 Using SQLite FTS5 keyword search");
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().await;
+                let db_lock = db.lock().unwrap();
 
                 // Search by each keyword using indexed database queries
                 for keyword in &domain_keywords {
@@ -1096,7 +1096,7 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         // Pattern 1: Find Service/Controller/Handler classes
         let architectural_patterns = vec![
@@ -1329,7 +1329,7 @@ impl FindLogicTool {
         drop(store_guard);
 
         // Fetch actual symbols from database
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
         for result in hnsw_results {
             if let Ok(Some(mut symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
                 // Score based on semantic similarity
@@ -1363,7 +1363,7 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         // Build a reference count map for all symbols
         let mut reference_counts: std::collections::HashMap<String, usize> =
@@ -1495,7 +1495,7 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         let business_symbol_ids: std::collections::HashSet<String> =
             business_symbols.iter().map(|s| s.id.clone()).collect();

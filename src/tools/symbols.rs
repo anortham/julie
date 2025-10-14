@@ -125,7 +125,7 @@ impl GetSymbolsTool {
 
         // Query symbols for this file using normalized path
         let symbols = {
-            let db_lock = db.lock().await;
+            let db_lock = db.lock().unwrap();
             db_lock
                 .get_symbols_for_file(&absolute_path)
                 .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?

@@ -206,7 +206,7 @@ async fn generate_embeddings(
     let cache_dir = std::env::temp_dir().join("julie-embeddings");
     std::fs::create_dir_all(&cache_dir)?;
 
-    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
+    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(db));
     let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
@@ -270,7 +270,7 @@ async fn generate_embeddings(
         let db_write_start = Instant::now();
 
         // Get database connection back from Arc<Mutex<>>
-        let mut db = db_arc.lock().await;
+        let mut db = db_arc.lock().unwrap();
 
         // Convert VectorStore's HashMap to Vec for bulk_store_embeddings
         // We need to access the internal vectors HashMap - add a getter method
@@ -372,7 +372,7 @@ async fn update_file_embeddings(
     let cache_dir = std::env::temp_dir().join("julie-embeddings");
     std::fs::create_dir_all(&cache_dir)?;
 
-    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
+    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(db));
     let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
@@ -420,7 +420,7 @@ async fn update_file_embeddings(
         let db_write_start = Instant::now();
 
         // Get database connection (Arc is cloned, so engine still has its reference)
-        let mut db = db_arc.lock().await;
+        let mut db = db_arc.lock().unwrap();
 
         // Store only the new embeddings for this file
         db.bulk_store_embeddings(&embeddings, engine.dimensions(), model)?;
@@ -474,7 +474,7 @@ async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Resu
     std::fs::create_dir_all(&temp_dir)?;
     let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
     let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
-    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(dummy_db));
+    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
 
     // Initialize embedding engine
     let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
@@ -523,7 +523,7 @@ async fn search_hnsw(
     std::fs::create_dir_all(&temp_dir)?;
     let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
     let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
-    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(dummy_db));
+    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
 
     let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
 

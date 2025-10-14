@@ -430,7 +430,7 @@ mod smart_refactor_control_tests {
                         // Step 2: Add file record and symbols to database to satisfy health checker
                         if let Some(workspace) = handler.get_workspace().await? {
                             if let Some(db_arc) = &workspace.db {
-                                let db_lock = db_arc.lock().await;
+                                let db_lock = db_arc.lock().unwrap();
 
                                 // First, add the file record to satisfy foreign key constraint
                                 // CRITICAL: Canonicalize path to match symbol paths (macOS /var vs /private/var)

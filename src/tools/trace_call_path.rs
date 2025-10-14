@@ -14,8 +14,7 @@ use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
@@ -227,10 +226,11 @@ impl TraceCallPathTool {
             .ok_or_else(|| anyhow!("No database available"))?
             .clone();
 
-        // Find the starting symbol(s)
-        let db_lock = db.lock().await;
-        let mut starting_symbols = db_lock.get_symbols_by_name(&self.symbol)?;
-        drop(db_lock);
+        // Find the starting symbol(s) - wrap in block to ensure mutex guard is dropped
+        let mut starting_symbols = {
+            let db_lock = db.lock().unwrap();
+            db_lock.get_symbols_by_name(&self.symbol)?
+        }; // Guard dropped here automatically
 
         if starting_symbols.is_empty() {
             let message = format!(
@@ -367,33 +367,37 @@ impl TraceCallPathTool {
             "Finding direct callers for: {} (id: {})",
             symbol.name, symbol.id
         );
-        let db_lock = db.lock().await;
-        let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
-        // Filter to call relationships and collect symbol IDs
-        let relevant_rels: Vec<_> = relationships
-            .into_iter()
-            .filter(|rel| {
-                rel.to_symbol_id == symbol.id
-                    && matches!(
-                        rel.kind,
-                        RelationshipKind::Calls | RelationshipKind::References
-                    )
-            })
-            .collect();
+        // Build callers list - wrap in block to ensure mutex guard is dropped before .await
+        let callers = {
+            let db_lock = db.lock().unwrap();
+            let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
-        // Batch fetch all caller symbols (avoids N+1 query pattern)
-        let caller_ids: Vec<String> = relevant_rels.iter().map(|r| r.from_symbol_id.clone()).collect();
-        let caller_symbols = db_lock.get_symbols_by_ids(&caller_ids)?;
-        drop(db_lock);
+            // Filter to call relationships and collect symbol IDs
+            let relevant_rels: Vec<_> = relationships
+                .into_iter()
+                .filter(|rel| {
+                    rel.to_symbol_id == symbol.id
+                        && matches!(
+                            rel.kind,
+                            RelationshipKind::Calls | RelationshipKind::References
+                        )
+                })
+                .collect();
 
-        // Build callers list by matching symbols with relationships
-        let mut callers = Vec::new();
-        for rel in relevant_rels {
-            if let Some(caller_symbol) = caller_symbols.iter().find(|s| s.id == rel.from_symbol_id) {
-                callers.push((caller_symbol.clone(), rel.kind.clone()));
+            // Batch fetch all caller symbols (avoids N+1 query pattern)
+            let caller_ids: Vec<String> = relevant_rels.iter().map(|r| r.from_symbol_id.clone()).collect();
+            let caller_symbols = db_lock.get_symbols_by_ids(&caller_ids)?;
+
+            // Build callers list by matching symbols with relationships
+            let mut result = Vec::new();
+            for rel in relevant_rels {
+                if let Some(caller_symbol) = caller_symbols.iter().find(|s| s.id == rel.from_symbol_id) {
+                    result.push((caller_symbol.clone(), rel.kind.clone()));
+                }
             }
-        }
+            result
+        }; // Guard dropped here automatically
 
         // Process callers recursively
         for (caller_symbol, rel_kind) in callers {
@@ -510,33 +514,37 @@ impl TraceCallPathTool {
             "Finding direct callees for: {} (id: {})",
             symbol.name, symbol.id
         );
-        let db_lock = db.lock().await;
-        let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
-        // Filter to call relationships and collect symbol IDs
-        let relevant_rels: Vec<_> = relationships
-            .into_iter()
-            .filter(|rel| {
-                rel.from_symbol_id == symbol.id
-                    && matches!(
-                        rel.kind,
-                        RelationshipKind::Calls | RelationshipKind::References
-                    )
-            })
-            .collect();
+        // Build callees list - wrap in block to ensure mutex guard is dropped before .await
+        let callees = {
+            let db_lock = db.lock().unwrap();
+            let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
-        // Batch fetch all callee symbols (avoids N+1 query pattern)
-        let callee_ids: Vec<String> = relevant_rels.iter().map(|r| r.to_symbol_id.clone()).collect();
-        let callee_symbols = db_lock.get_symbols_by_ids(&callee_ids)?;
-        drop(db_lock);
+            // Filter to call relationships and collect symbol IDs
+            let relevant_rels: Vec<_> = relationships
+                .into_iter()
+                .filter(|rel| {
+                    rel.from_symbol_id == symbol.id
+                        && matches!(
+                            rel.kind,
+                            RelationshipKind::Calls | RelationshipKind::References
+                        )
+                })
+                .collect();
 
-        // Build callees list by matching symbols with relationships
-        let mut callees = Vec::new();
-        for rel in relevant_rels {
-            if let Some(callee_symbol) = callee_symbols.iter().find(|s| s.id == rel.to_symbol_id) {
-                callees.push((callee_symbol.clone(), rel.kind.clone()));
+            // Batch fetch all callee symbols (avoids N+1 query pattern)
+            let callee_ids: Vec<String> = relevant_rels.iter().map(|r| r.to_symbol_id.clone()).collect();
+            let callee_symbols = db_lock.get_symbols_by_ids(&callee_ids)?;
+
+            // Build callees list by matching symbols with relationships
+            let mut result = Vec::new();
+            for rel in relevant_rels {
+                if let Some(callee_symbol) = callee_symbols.iter().find(|s| s.id == rel.to_symbol_id) {
+                    result.push((callee_symbol.clone(), rel.kind.clone()));
+                }
             }
-        }
+            result
+        }; // Guard dropped here automatically
 
         // Process callees recursively
         for (callee_symbol, rel_kind) in callees {
@@ -634,7 +642,7 @@ impl TraceCallPathTool {
         );
 
         let mut cross_lang_symbols = Vec::new();
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         for variant in variants {
             if variant == symbol.name {
@@ -677,7 +685,7 @@ impl TraceCallPathTool {
         );
 
         let mut cross_lang_symbols = Vec::new();
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         for variant in variants {
             if variant == symbol.name {
@@ -772,7 +780,7 @@ impl TraceCallPathTool {
         drop(store_guard);
 
         let mut matches = Vec::new();
-        let db_lock = db_arc.lock().await;
+        let db_lock = db_arc.lock().unwrap();
         for result in hnsw_results {
             if let Ok(Some(candidate)) = db_lock.get_symbol_by_id(&result.symbol_id) {
                 if candidate.id != symbol.id {
@@ -801,7 +809,7 @@ impl TraceCallPathTool {
         }
 
         let mut matches = Vec::new();
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         for (candidate, similarity) in candidates {
             if candidate.language == symbol.language {
@@ -845,7 +853,7 @@ impl TraceCallPathTool {
         }
 
         let mut matches = Vec::new();
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
 
         for (candidate, similarity) in candidates {
             if candidate.language == symbol.language {
@@ -1102,9 +1110,8 @@ mod tests {
     use super::*;
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
-    use tokio::sync::Mutex;
 
     fn make_symbol(id: &str, name: &str, language: &str, file_path: &str) -> Symbol {
         Symbol {
@@ -1143,7 +1150,7 @@ mod tests {
         let other = make_symbol("other", "helper", "csharp", "Payment.cs");
 
         {
-            let db_guard = db.lock().await;
+            let db_guard = db.lock().unwrap();
             let file_target = FileInfo {
                 path: target.file_path.clone(),
                 language: target.language.clone(),

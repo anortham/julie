@@ -136,7 +136,7 @@ impl HealthChecker {
 
         // Database status
         if let Some(db) = &workspace.db {
-            let db_lock = db.lock().await;
+            let db_lock = db.lock().unwrap();
             match db_lock.get_stats() {
                 Ok(stats) => {
                     report.push_str(&format!(

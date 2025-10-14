@@ -306,7 +306,7 @@ impl FastSearchTool {
         // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
         // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
         let symbols = tokio::task::block_in_place(|| {
-            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            let db_lock = db.lock().unwrap();
             db_lock.get_symbols_by_ids(&symbol_ids)
         })?;
 
@@ -857,7 +857,7 @@ impl FastSearchTool {
         // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
         // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
         let mut results = tokio::task::block_in_place(|| {
-            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            let db_lock = db.lock().unwrap();
             db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
         })?;
 
@@ -942,7 +942,7 @@ impl FastSearchTool {
         // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
         // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
         let file_results = tokio::task::block_in_place(|| {
-            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+            let db_lock = db.lock().unwrap();
             db_lock.search_file_content_fts(
                 &processed_query,
                 Some(&workspace_id),
@@ -991,30 +991,73 @@ impl FastSearchTool {
         Ok(symbols)
     }
 
-    /// Preprocess query for SQLite FTS5 fallback with basic query intelligence
-    /// This provides some QueryProcessor-like benefits even when HNSW semantic search isn't ready
+    /// 🔥 Enhanced query preprocessor for SQLite FTS5 with full operator support
+    /// Transforms user-friendly queries into FTS5 syntax for better search results
+    ///
+    /// Supported transformations:
+    /// - Multi-word → AND operator (implicit boolean)
+    /// - "-term" → NOT term (exclusion)
+    /// - "quoted phrase" → preserved (exact match)
+    /// - term1 OR term2 → pass-through (explicit OR)
+    /// - term* → pass-through (prefix wildcard)
+    /// - Existing AND/OR/NOT → pass-through
     pub(crate) fn preprocess_fallback_query(&self, query: &str) -> String {
         let trimmed = query.trim();
 
-        // If already quoted, keep as-is for exact match
+        // If already quoted, keep as-is for exact phrase match
         if (trimmed.starts_with('"') && trimmed.ends_with('"'))
             || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
         {
             return trimmed.to_string();
         }
 
-        // Multi-word queries: Convert to FTS5 AND syntax for better precision
-        if trimmed.contains(' ') {
-            let words: Vec<&str> = trimmed.split_whitespace().collect();
-            if words.len() > 1 {
-                // FTS5 AND syntax: word1 AND word2 AND word3
-                // This is better than raw "word1 word2" which FTS5 treats as phrase
-                return words.join(" AND ");
-            }
+        // If query contains FTS5 operators already (AND, OR, NOT, NEAR), pass through
+        let has_operators = trimmed.contains(" AND ")
+            || trimmed.contains(" OR ")
+            || trimmed.contains(" NOT ")
+            || trimmed.contains("NEAR(");
+        if has_operators {
+            return trimmed.to_string();
         }
 
-        // Single word or already processed: return as-is
-        trimmed.to_string()
+        // If query contains wildcard (*), pass through
+        if trimmed.contains('*') {
+            return trimmed.to_string();
+        }
+
+        // Process word-by-word to handle exclusions (-term)
+        let words: Vec<&str> = trimmed.split_whitespace().collect();
+
+        if words.len() == 1 {
+            // Single word - check for exclusion prefix
+            let word = words[0];
+            if word.starts_with('-') && word.len() > 1 {
+                // Exclusion only doesn't make sense, return as-is
+                return word.to_string();
+            }
+            return word.to_string();
+        }
+
+        // Multi-word query: process each word and join correctly
+        // FTS5 syntax: "term1 term2" = implicit AND
+        // FTS5 syntax: "term1 NOT term2" = term1 but exclude term2
+        let processed_words: Vec<String> = words
+            .iter()
+            .map(|word| {
+                if word.starts_with('-') && word.len() > 1 {
+                    // Exclusion: -term → NOT term
+                    format!("NOT {}", &word[1..])
+                } else {
+                    // Regular term
+                    word.to_string()
+                }
+            })
+            .collect();
+
+        // Join with spaces - FTS5 interprets adjacent terms as implicit AND
+        // "term1 term2" = both required
+        // "term1 NOT term2" = term1 but exclude term2
+        processed_words.join(" ")
     }
 
     /// Helper: Match file path against glob pattern (supports exclusions with !)
@@ -1066,8 +1109,8 @@ mod tests {
 
         assert_eq!(
             tool.preprocess_fallback_query("user authentication"),
-            "user AND authentication",
-            "Multi-word queries should use FTS5 AND syntax"
+            "user authentication",
+            "Multi-word queries should use implicit AND (space-separated)"
         );
     }
 
@@ -1104,6 +1147,78 @@ mod tests {
             tool.preprocess_fallback_query("\"exact match\""),
             "\"exact match\"",
             "Quoted queries should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_exclusion() {
+        let tool = FastSearchTool {
+            query: "user -password".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("user -password"),
+            "user NOT password",
+            "Exclusion syntax (-term) should convert to NOT (space-separated)"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_wildcard() {
+        let tool = FastSearchTool {
+            query: "getUser*".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("getUser*"),
+            "getUser*",
+            "Wildcard queries should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_explicit_or() {
+        let tool = FastSearchTool {
+            query: "getUserData OR fetchUserData".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("getUserData OR fetchUserData"),
+            "getUserData OR fetchUserData",
+            "Explicit OR operators should pass through"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_fallback_query_explicit_and() {
+        let tool = FastSearchTool {
+            query: "user AND authentication".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 15,
+            workspace: None,
+        };
+
+        assert_eq!(
+            tool.preprocess_fallback_query("user AND authentication"),
+            "user AND authentication",
+            "Explicit AND operators should pass through"
         );
     }
 }

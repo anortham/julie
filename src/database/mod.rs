@@ -543,6 +543,66 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created symbols table and indexes");
+
+        // CASCADE: Create FTS5 table and triggers for symbols
+        self.create_symbols_fts_table()?;
+        self.create_symbols_fts_triggers()?;
+
+        Ok(())
+    }
+
+    /// CASCADE: Create FTS5 virtual table for full-text search on symbols
+    /// Indexes name, signature, doc_comment, and code_context for fast relevance-ranked search
+    fn create_symbols_fts_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+                name,
+                signature,
+                doc_comment,
+                code_context,
+                tokenize='porter unicode61',
+                content='symbols',
+                content_rowid='rowid'
+            )",
+            [],
+        )?;
+        debug!("Created symbols_fts virtual table with porter unicode61 tokenizer");
+        Ok(())
+    }
+
+    /// CASCADE: Create triggers to keep symbols_fts in sync with symbols table
+    fn create_symbols_fts_triggers(&self) -> Result<()> {
+        // Trigger for INSERT
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
+                INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
+                VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
+            END",
+            [],
+        )?;
+
+        // Trigger for DELETE
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
+                DELETE FROM symbols_fts WHERE rowid = old.rowid;
+            END",
+            [],
+        )?;
+
+        // Trigger for UPDATE
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
+                UPDATE symbols_fts
+                SET name = new.name,
+                    signature = new.signature,
+                    doc_comment = new.doc_comment,
+                    code_context = new.code_context
+                WHERE rowid = old.rowid;
+            END",
+            [],
+        )?;
+
+        debug!("Created symbols_fts synchronization triggers");
         Ok(())
     }
 
@@ -1779,7 +1839,9 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
-    /// Find symbols by name pattern with workspace filtering
+    /// 🔥 CASCADE FTS5: Find symbols using full-text search with BM25 ranking
+    /// Replaces slow LIKE queries with fast FTS5 MATCH queries
+    /// Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
     pub fn find_symbols_by_pattern(
         &self,
         pattern: &str,
@@ -1797,28 +1859,32 @@ impl SymbolDatabase {
                 .collect::<Vec<_>>()
                 .join(",");
 
+            // 🔥 FTS5 MATCH with BM25 ranking and workspace filtering
+            // Prioritize exact name matches with 10x weight, then signature (5x), doc_comment (2x), code_context (1x)
             let query = format!(
-                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                        parent_id, metadata, semantic_group, confidence, workspace_id
-                 FROM symbols
-                 WHERE name LIKE ?1 AND workspace_id IN ({})
-                 ORDER BY workspace_id, language, file_path",
+                "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
+                        s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
+                        s.parent_id, s.metadata, s.semantic_group, s.confidence, s.workspace_id
+                 FROM symbols s
+                 INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
+                 WHERE symbols_fts MATCH ?1 AND s.workspace_id IN ({})
+                 ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)",
                 placeholders
             );
 
-            let mut params = vec![format!("%{}%", pattern)];
+            let mut params = vec![pattern.to_string()];
             params.extend(ws_ids);
             (query, params)
         } else {
-            // No workspace filter - search all
-            let query = "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                               end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                               parent_id, metadata, semantic_group, confidence, workspace_id
-                         FROM symbols
-                         WHERE name LIKE ?1
-                         ORDER BY workspace_id, language, file_path".to_string();
-            (query, vec![format!("%{}%", pattern)])
+            // 🔥 FTS5 MATCH with BM25 ranking - no workspace filter
+            let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
+                               s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
+                               s.parent_id, s.metadata, s.semantic_group, s.confidence, s.workspace_id
+                         FROM symbols s
+                         INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
+                         WHERE symbols_fts MATCH ?1
+                         ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)".to_string();
+            (query, vec![pattern.to_string()])
         };
 
         let mut stmt = self.conn.prepare(&query)?;
@@ -1838,7 +1904,7 @@ impl SymbolDatabase {
         }
 
         debug!(
-            "Found {} symbols matching pattern '{}' with workspace filter",
+            "🔍 FTS5: Found {} symbols matching '{}' (BM25 ranked)",
             symbols.len(),
             pattern
         );

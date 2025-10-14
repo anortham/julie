@@ -214,12 +214,17 @@ impl FastGotoTool {
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                exact_matches = tokio::task::block_in_place(|| {
-                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
-                    db_lock.get_symbols_by_name(&self.symbol)
-                })?;
+                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                let symbol = self.symbol.clone();
+                let db_arc = db.clone();
+
+                exact_matches = tokio::task::spawn_blocking(move || {
+                    let db_lock = db_arc.lock().unwrap();
+                    db_lock.get_symbols_by_name(&symbol)
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     exact_matches.len()
@@ -234,15 +239,15 @@ impl FastGotoTool {
         if !exact_matches.is_empty() {
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
-                    // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                    let additional_matches = tokio::task::block_in_place(|| {
-                        let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                    let symbols_to_check = exact_matches.clone();
+                    let db_arc = db.clone();
+
+                    let additional_matches = tokio::task::spawn_blocking(move || {
+                        let db_lock = db_arc.lock().unwrap();
                         let mut matches = Vec::new();
 
                         // Query relationships for each matching symbol using indexed query
-                        // Clone exact_matches to avoid borrow checker issues
-                        let symbols_to_check = exact_matches.clone();
                         for symbol in &symbols_to_check {
                             if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
                             {
@@ -261,7 +266,10 @@ impl FastGotoTool {
                             }
                         }
                         matches
-                    });
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
                     exact_matches.extend(additional_matches);
                 }
             }
@@ -286,33 +294,38 @@ impl FastGotoTool {
             // Uses Julie's Intelligence Layer for smart variant generation
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
-                    // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                    let variant_matches = tokio::task::block_in_place(|| {
-                        let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                    // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                    let symbol = self.symbol.clone();
+                    let db_arc = db.clone();
+
+                    let variant_matches = tokio::task::spawn_blocking(move || {
+                        let db_lock = db_arc.lock().unwrap();
                         let mut matches = Vec::new();
 
                         // Generate all naming convention variants using shared intelligence module
-                        let variants = generate_naming_variants(&self.symbol);
+                        let variants = generate_naming_variants(&symbol);
 
                         for variant in variants {
-                            if variant != self.symbol {
+                            if variant != symbol {
                                 // Avoid duplicate searches
                                 if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                                    for symbol in variant_symbols {
-                                        if symbol.name == variant {
+                                    for s in variant_symbols {
+                                        if s.name == variant {
                                             debug!(
                                                 "🎯 Found cross-language match: {} -> {}",
-                                                self.symbol, variant
+                                                symbol, variant
                                             );
-                                            matches.push(symbol);
+                                            matches.push(s);
                                         }
                                     }
                                 }
                             }
                         }
                         matches
-                    });
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
                     exact_matches.extend(variant_matches);
                 }
             }
@@ -383,20 +396,20 @@ impl FastGotoTool {
                                         similar_symbols.len()
                                     );
                                     if let Some(db_arc) = &workspace.db {
-                                        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                                        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                                        let symbols = tokio::task::block_in_place(|| {
-                                            let db = tokio::runtime::Handle::current().block_on(db_arc.lock());
+                                        // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                                        let symbol_ids: Vec<String> = similar_symbols
+                                            .iter()
+                                            .map(|result| result.symbol_id.clone())
+                                            .collect();
+                                        let db_clone = db_arc.clone();
 
-                                            // Collect all symbol IDs for batch fetch
-                                            let symbol_ids: Vec<String> = similar_symbols
-                                                .iter()
-                                                .map(|result| result.symbol_id.clone())
-                                                .collect();
-
+                                        let symbols = tokio::task::spawn_blocking(move || {
+                                            let db = db_clone.lock().unwrap();
                                             // Single batch query instead of N individual queries
                                             db.get_symbols_by_ids(&symbol_ids)
-                                        });
+                                        })
+                                        .await
+                                        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
 
                                         if let Ok(symbols) = symbols {
                                             exact_matches.extend(symbols);
@@ -653,7 +666,8 @@ impl FastGotoTool {
         .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
         // Query the reference workspace database (not primary!)
-        let mut exact_matches = tokio::task::block_in_place(|| {
+        // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
+        let mut exact_matches = {
             // Find exact matches by name
             let mut matches = ref_db.get_symbols_by_name(&self.symbol)?;
 
@@ -684,7 +698,7 @@ impl FastGotoTool {
                 }
             }
             Ok::<Vec<Symbol>, anyhow::Error>(matches)
-        })?;
+        }?;
 
         // Remove duplicates based on symbol id
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
@@ -929,12 +943,17 @@ impl FastRefsTool {
         // Use SQLite FTS5 for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                definitions = tokio::task::block_in_place(|| {
-                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
-                    db_lock.get_symbols_by_name(&self.symbol)
-                })?;
+                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                let symbol = self.symbol.clone();
+                let db_arc = db.clone();
+
+                definitions = tokio::task::spawn_blocking(move || {
+                    let db_lock = db_arc.lock().unwrap();
+                    db_lock.get_symbols_by_name(&symbol)
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
                 debug!(
                     "⚡ SQLite FTS5 found {} exact matches",
                     definitions.len()
@@ -949,31 +968,36 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                let variant_matches = tokio::task::block_in_place(|| {
-                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                let symbol = self.symbol.clone();
+                let db_arc = db.clone();
+
+                let variant_matches = tokio::task::spawn_blocking(move || {
+                    let db_lock = db_arc.lock().unwrap();
                     let mut matches = Vec::new();
 
                     for variant in variants {
-                        if variant != self.symbol {
+                        if variant != symbol {
                             // Avoid duplicate searches
                             if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                                for symbol in variant_symbols {
+                                for s in variant_symbols {
                                     // Exact match on variant name
-                                    if symbol.name == variant {
+                                    if s.name == variant {
                                         debug!(
                                             "✨ Found cross-language match: {} (variant: {})",
-                                            symbol.name, variant
+                                            s.name, variant
                                         );
-                                        matches.push(symbol);
+                                        matches.push(s);
                                     }
                                 }
                             }
                         }
                     }
                     matches
-                });
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
                 definitions.extend(variant_matches);
             }
         }
@@ -989,18 +1013,21 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                let symbol_references = tokio::task::block_in_place(|| {
-                    let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                // std::sync::Mutex can be locked directly without async runtime
+                // spawn_blocking prevents blocking the tokio runtime during database I/O
 
-                    // MEDIUM PRIORITY FIX: Batch query relationships instead of N+1 pattern
-                    // Collect all definition IDs for single batch query
-                    let definition_ids: Vec<String> = definitions.iter().map(|d| d.id.clone()).collect();
+                // Collect definition IDs before moving into spawn_blocking
+                let definition_ids: Vec<String> = definitions.iter().map(|d| d.id.clone()).collect();
+                let db_arc = db.clone();
 
-                    // Single batch query instead of N individual queries (O(1) database round-trip vs O(N))
+                let symbol_references = tokio::task::spawn_blocking(move || {
+                    let db_lock = db_arc.lock().unwrap();
+                    // Single batch query instead of N individual queries
                     db_lock.get_relationships_to_symbols(&definition_ids)
-                });
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
 
                 if let Ok(refs) = symbol_references {
                     references.extend(refs);
@@ -1053,21 +1080,21 @@ impl FastRefsTool {
                                                 .map(|r| r.to_symbol_id.clone())
                                                 .collect();
 
-                                        // 🚨 CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-                                        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-                                        let symbols = tokio::task::block_in_place(|| {
-                                            let db_lock = tokio::runtime::Handle::current().block_on(db.lock());
+                                        // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                                        // Collect symbol IDs before moving into spawn_blocking
+                                        let symbol_ids: Vec<String> = hnsw_results
+                                            .iter()
+                                            .map(|result| result.symbol_id.clone())
+                                            .collect();
+                                        let db_arc = db.clone();
 
-                                            // PERFORMANCE FIX: Batch fetch symbols instead of N+1 queries
-                                            // Collect all symbol IDs for batch fetch
-                                            let symbol_ids: Vec<String> = hnsw_results
-                                                .iter()
-                                                .map(|result| result.symbol_id.clone())
-                                                .collect();
-
+                                        let symbols = tokio::task::spawn_blocking(move || {
+                                            let db_lock = db_arc.lock().unwrap();
                                             // Single batch query instead of N individual queries
                                             db_lock.get_symbols_by_ids(&symbol_ids)
-                                        });
+                                        })
+                                        .await
+                                        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
 
                                         if let Ok(symbols) = symbols {
                                             // Create a map from symbol_id to similarity_score for O(1) lookup
@@ -1344,7 +1371,8 @@ impl FastRefsTool {
         .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
         // Query the reference workspace database (not primary!)
-        let (definitions, mut references) = tokio::task::block_in_place(|| {
+        // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
+        let (definitions, mut references) = {
             // Strategy 1: Find exact matches by name
             let mut defs = ref_db.get_symbols_by_name(&self.symbol)?;
 
@@ -1389,7 +1417,7 @@ impl FastRefsTool {
             }
 
             Ok::<(Vec<Symbol>, Vec<Relationship>), anyhow::Error>((defs, refs))
-        })?;
+        }?;
 
         // Sort references by confidence and location
         references.sort_by(|a, b| {

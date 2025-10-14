@@ -276,7 +276,7 @@ async fn check_if_indexing_needed(handler: &JulieServerHandler) -> anyhow::Resul
 
     // Check if database exists and has symbols
     if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().await;
+        let db = db_arc.lock().unwrap();
 
         // Check if we have any symbols for the actual primary workspace
         let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
@@ -362,7 +362,7 @@ async fn update_workspace_statistics(
 
     // Count symbols and files in database
     let (symbol_count, file_count) = if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().await;
+        let db = db_arc.lock().unwrap();
         let symbols = db
             .get_symbol_count_for_workspace(&workspace_id)
             .unwrap_or(0) as usize;
@@ -404,7 +404,7 @@ async fn update_workspace_statistics(
 
     // Reconcile embedding status - fix registry if embeddings exist but status is wrong
     let embedding_count = if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().await;
+        let db = db_arc.lock().unwrap();
         db.count_embeddings(&workspace_id).unwrap_or(0)
     } else {
         0

@@ -97,7 +97,7 @@ pub const MAX_USERS: usize = 100;
         .await?
         .expect("Workspace should exist");
     let db = workspace.db.as_ref().expect("DB should exist");
-    let db_lock = db.lock().await;
+    let db_lock = db.lock().unwrap();
     let all_symbols = db_lock.get_all_symbols().expect("Should get symbols");
     println!("DEBUG: Found {} symbols in database", all_symbols.len());
     if let Some(first_symbol) = all_symbols.first() {

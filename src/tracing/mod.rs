@@ -3,8 +3,7 @@ use crate::embeddings::EmbeddingEngine;
 use crate::extractors::Symbol;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 /// The revolutionary cross-language tracing engine

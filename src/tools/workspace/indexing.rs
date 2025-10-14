@@ -160,7 +160,7 @@ impl ManageWorkspaceTool {
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
         let (total_symbols, total_relationships) = if let Some(db_arc) = &workspace.db {
-            let db = db_arc.lock().await;
+            let db = db_arc.lock().unwrap();
             let symbols_count = db
                 .get_symbol_count_for_workspace(&workspace_id)
                 .unwrap_or(0);
@@ -303,7 +303,7 @@ impl ManageWorkspaceTool {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
-            Some(Arc::new(tokio::sync::Mutex::new(db)))
+            Some(Arc::new(std::sync::Mutex::new(db)))
         } else {
             // Primary workspace - will use handler.get_workspace().db (existing connection)
             None
@@ -422,7 +422,7 @@ impl ManageWorkspaceTool {
             };
 
             if let Some(db) = db_to_use {
-                let db_lock = db.lock().await;
+                let db_lock = db.lock().unwrap();
 
                 // Clean up database entries for modified files
                 for file_path in &files_to_clean {
@@ -468,7 +468,7 @@ impl ManageWorkspaceTool {
             };
 
             if let Some(db) = db_to_use {
-                let mut db_lock = db.lock().await;
+                let mut db_lock = db.lock().unwrap();
 
                 // 🔥 BULK OPERATIONS for maximum speed
                 let bulk_start = std::time::Instant::now();
@@ -904,7 +904,7 @@ impl ManageWorkspaceTool {
         // Get database to check existing file hashes
         let existing_file_hashes = if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = &workspace.db {
-                let db_lock = db.lock().await;
+                let db_lock = db.lock().unwrap();
                 match db_lock.get_file_hashes_for_workspace(&workspace_id) {
                     Ok(hashes) => hashes,
                     Err(e) => {
@@ -977,7 +977,7 @@ impl ManageWorkspaceTool {
                         // Check if it has symbols (should be 0 for files without parsers)
                         if let Some(workspace) = handler.get_workspace().await? {
                             if let Some(db) = &workspace.db {
-                                let db_lock = db.lock().await;
+                                let db_lock = db.lock().unwrap();
                                 let symbol_count =
                                     db_lock.get_file_symbol_count(&file_path_str).unwrap_or(0);
                                 drop(db_lock);
@@ -1069,7 +1069,7 @@ impl ManageWorkspaceTool {
         // Delete orphaned entries
         let mut cleaned_count = 0;
         {
-            let db_lock = db.lock().await;
+            let db_lock = db.lock().unwrap();
 
             for file_path in &orphaned_files {
                 // Delete relationships first (referential integrity)
@@ -1152,7 +1152,7 @@ impl ManageWorkspaceTool {
 /// This runs asynchronously to provide fast indexing response times
 async fn generate_embeddings_from_sqlite(
     embedding_engine: Arc<tokio::sync::RwLock<Option<crate::embeddings::EmbeddingEngine>>>,
-    workspace_db: Option<Arc<tokio::sync::Mutex<crate::database::SymbolDatabase>>>,
+    workspace_db: Option<Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
     workspace_root: Option<std::path::PathBuf>,
     workspace_id: String,
     indexing_status: Arc<crate::handler::IndexingStatus>,
@@ -1193,7 +1193,7 @@ async fn generate_embeddings_from_sqlite(
     // Read symbols from SQLite
     info!("🐛 About to acquire database lock for reading symbols...");
     let symbols = {
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
         info!("🐛 Database lock acquired successfully!");
         db_lock
             .get_symbols_for_workspace(&workspace_id)
@@ -1291,7 +1291,7 @@ async fn generate_embeddings_from_sqlite(
 
                         // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
                         {
-                            let mut db_guard = db.lock().await;
+                            let mut db_guard = db.lock().unwrap();
                             let model_name = engine.model_name();
                             let dimensions = engine.dimensions();
 
@@ -1382,7 +1382,7 @@ async fn generate_embeddings_from_sqlite(
     let mut vector_store = crate::embeddings::vector_store::VectorStore::new(384)?;
 
     {
-        let db_lock = db.lock().await;
+        let db_lock = db.lock().unwrap();
         match db_lock.load_all_embeddings("bge-small") {
             Ok(embeddings) => {
                 let count = embeddings.len();

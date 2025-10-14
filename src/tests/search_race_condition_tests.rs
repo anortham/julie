@@ -342,7 +342,7 @@ pub fn embedding_vector_semantic() {}
             .expect("Database should be initialized")
             .clone();
 
-        let db_guard = db.lock().await; // Hold DB mutex to simulate concurrent DB usage
+        let db_guard = db.lock().unwrap(); // Hold DB mutex to simulate concurrent DB usage
 
         let fast_search_tool = FastSearchTool {
             query: "diff-match-patch dmp".to_string(),

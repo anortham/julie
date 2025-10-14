@@ -59,6 +59,12 @@ pub struct JulieServerHandler {
     pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
+    /// 🔒 CRITICAL FIX: Serializes tool execution to prevent stdout interleaving
+    /// The rust-mcp-sdk's StdioTransport doesn't synchronize writes to stdout.
+    /// When multiple tool calls complete concurrently, their JSON responses can
+    /// interleave on stdout, causing client parsing errors.
+    /// This mutex ensures only one tool writes its response at a time.
+    tool_execution_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl JulieServerHandler {
@@ -72,6 +78,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
+            tool_execution_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -328,6 +335,11 @@ impl ServerHandler for JulieServerHandler {
                 format!("Invalid tool parameters: {}", e),
             ))
         })?;
+
+        // 🔒 CRITICAL FIX: Acquire lock to serialize tool execution and prevent stdout interleaving
+        // This ensures only one tool writes its JSON response at a time, preventing corruption
+        // when the rust-mcp-sdk's StdioTransport writes multiple responses concurrently.
+        let _execution_guard = self.tool_execution_lock.lock().await;
 
         // Execute the requested tool
         let result = match &tool_params {

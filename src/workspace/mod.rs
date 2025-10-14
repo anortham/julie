@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock; // Only RwLock needs to be async (for vector_store)
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
@@ -38,10 +38,14 @@ pub struct JulieWorkspace {
     pub julie_dir: PathBuf,
 
     /// Database connection (source of truth with FTS5 search)
-    pub db: Option<Arc<Mutex<SqliteDB>>>,
+    /// 🚨 DEADLOCK FIX: Using std::sync::Mutex (not tokio::sync::Mutex)
+    /// Database is accessed from spawn_blocking, so sync Mutex is correct
+    pub db: Option<Arc<std::sync::Mutex<SqliteDB>>>,
 
     /// Embedding store (semantic bridge)
-    pub embeddings: Option<Arc<Mutex<EmbeddingStore>>>,
+    /// 🚨 DEADLOCK FIX: Using std::sync::Mutex (not tokio::sync::Mutex)
+    /// Embedding operations run in spawn_blocking, so sync Mutex is correct
+    pub embeddings: Option<Arc<std::sync::Mutex<EmbeddingStore>>>,
 
     /// Vector store with HNSW index (fast similarity search)
     pub vector_store: Option<Arc<RwLock<VectorIndex>>>,
@@ -419,7 +423,7 @@ impl JulieWorkspace {
         }
 
         let database = SqliteDB::new(&db_path)?;
-        self.db = Some(Arc::new(Mutex::new(database)));
+        self.db = Some(Arc::new(std::sync::Mutex::new(database)));
 
         info!("Database initialized successfully");
         Ok(())
@@ -459,7 +463,7 @@ impl JulieWorkspace {
                 .await
                 .context("Embedding engine initialization task failed")??;
 
-        self.embeddings = Some(Arc::new(Mutex::new(embedding_engine)));
+        self.embeddings = Some(Arc::new(std::sync::Mutex::new(embedding_engine)));
 
         info!("Embedding engine initialized successfully");
         Ok(())
@@ -479,8 +483,8 @@ impl JulieWorkspace {
 
         // ALWAYS load embeddings from database first (needed for vector lookups and id_mapping)
         if let Some(db) = &self.db {
-            // Use blocking lock since this is a synchronous initialization function
-            match db.try_lock() {
+            // 🚨 DEADLOCK FIX: Direct lock (no try_lock needed with std::sync::Mutex)
+            match db.lock() {
                 Ok(db_lock) => {
                     let model_name = "bge-small"; // Match the embedding model from config
 

@@ -93,7 +93,7 @@ impl ManageWorkspaceTool {
                             WorkspaceRegistryService::new(workspace.root.clone());
                         match registry_service.get_primary_workspace_id().await {
                             Ok(Some(workspace_id)) => {
-                                let db_lock = db.lock().await;
+                                let db_lock = db.lock().unwrap();
                                 // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
                                 db_lock
                                     .count_symbols_for_workspace(&workspace_id)
@@ -101,7 +101,7 @@ impl ManageWorkspaceTool {
                             }
                             _ => {
                                 // Fallback: if no workspace ID, count all symbols
-                                let db_lock = db.lock().await;
+                                let db_lock = db.lock().unwrap();
                                 db_lock.get_all_symbols().unwrap_or_default().len()
                             }
                         }
