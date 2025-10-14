@@ -18,6 +18,7 @@ use tracing::{debug, info, warn};
 
 use crate::extractors::base::Visibility;
 use crate::handler::JulieServerHandler;
+use crate::utils::context_truncation::ContextTruncator;
 use crate::utils::token_estimation::TokenEstimator;
 
 fn default_max_depth() -> u32 {
@@ -390,6 +391,7 @@ impl GetSymbolsTool {
 
     /// Extract complete symbol body from file content (Smart Read core logic)
     /// Uses tree-sitter-validated line boundaries for clean extraction
+    /// Now with smart truncation to preserve structure while limiting tokens
     fn extract_symbol_body(
         &self,
         content: &str,
@@ -433,7 +435,14 @@ impl GetSymbolsTool {
             })
             .collect();
 
-        Some(clean_body.join("\n"))
+        // Apply smart truncation if body is large (>50 lines)
+        // This preserves structure while limiting token usage
+        if clean_body.len() > 50 {
+            let truncator = ContextTruncator::new();
+            Some(truncator.smart_truncate(&clean_body, 40)) // Limit to ~40 lines, preserving structure
+        } else {
+            Some(clean_body.join("\n"))
+        }
     }
 }
 

@@ -1,7 +1,8 @@
-//! AST Syntax Validation Tests - Week 3 Implementation
+//! AST Syntax Validation Tests
 //!
-//! Tests for ValidateSyntax and AutoFixSyntax operations in SmartRefactorTool.
-//! These tests define the contract and expected behavior through TDD methodology.
+//! Tests for ValidateSyntax operation in SmartRefactorTool.
+//! ValidateSyntax reports syntax errors detected by tree-sitter parsers.
+//! The agent is responsible for applying fixes based on the error reports.
 
 #[cfg(test)]
 mod tests {
@@ -136,137 +137,6 @@ fn main() {
         Ok(())
     }
 
-    // ============================================================================
-    // CONTRACT DEFINITION - AutoFixSyntax Operation
-    // ============================================================================
-
-    /// Test 6: AutoFixSyntax adds missing semicolon
-    #[tokio::test]
-    async fn test_auto_fix_missing_semicolon() -> Result<()> {
-        // Given: Code with missing semicolon
-        let code = r#"
-fn main() {
-    let x = 42
-    println!("x = {}", x);
-}
-        "#;
-
-        // When: AutoFixSyntax is called
-        // Expected result:
-        // - success: true
-        // - fixed_content: "fn main() {\n    let x = 42;\n    println!(\"x = {}\", x);\n}\n"
-        // - fixes_applied: true
-        // - fix_count: 1
-        // - fixes: ["Added missing semicolon at line 3"]
-        // - remaining_errors: []
-
-        // TODO: Implement
-        Ok(())
-    }
-
-    /// Test 7: AutoFixSyntax adds missing closing brace
-    #[tokio::test]
-    async fn test_auto_fix_missing_closing_brace() -> Result<()> {
-        // Given: Code with missing closing brace
-        let code = r#"
-function test() {
-    const x = 42;
-// Missing }
-        "#;
-
-        // When: AutoFixSyntax is called
-        // Expected result:
-        // - success: true
-        // - fixes_applied: true
-        // - fix_count: 1
-        // - fixes: ["Added missing '}' at line 4"]
-        // - remaining_errors: []
-
-        // TODO: Implement
-        Ok(())
-    }
-
-    /// Test 8: AutoFixSyntax handles multiple errors
-    #[tokio::test]
-    async fn test_auto_fix_multiple_errors() -> Result<()> {
-        // Given: Code with multiple fixable errors
-        let code = r#"
-fn main() {
-    let x = 42
-    let y = 10
-    println!("{}", x + y)
-}
-        "#;
-
-        // When: AutoFixSyntax is called
-        // Expected result:
-        // - success: true
-        // - fixes_applied: true
-        // - fix_count: 3 (three missing semicolons)
-        // - fixes: [
-        //     "Added missing semicolon at line 3",
-        //     "Added missing semicolon at line 4",
-        //     "Added missing semicolon at line 5"
-        //   ]
-
-        // TODO: Implement
-        Ok(())
-    }
-
-    /// Test 9: AutoFixSyntax reports unfixable errors
-    #[tokio::test]
-    async fn test_auto_fix_with_unfixable_errors() -> Result<()> {
-        // Given: Code with unfixable semantic error
-        let code = r#"
-fn main() {
-    undefined_function();  // Can't auto-fix unknown function
-}
-        "#;
-
-        // When: AutoFixSyntax is called with mode="safe"
-        // Expected result:
-        // - success: true
-        // - fixes_applied: false
-        // - fix_count: 0
-        // - remaining_errors: [
-        //     {
-        //       line: 3,
-        //       message: "unknown function 'undefined_function'",
-        //       severity: "error"
-        //     }
-        //   ]
-
-        // Note: Safe mode doesn't fix semantic errors, only syntax
-        // TODO: Implement
-        Ok(())
-    }
-
-    /// Test 10: AutoFixSyntax preserves formatting
-    #[tokio::test]
-    async fn test_auto_fix_preserves_formatting() -> Result<()> {
-        // Given: Code with indentation and comments
-        let code = r#"
-fn process_data() {
-    // This is a comment
-    let items = vec![1, 2, 3]  // Missing semicolon
-
-    // More comments
-    for item in items {
-        println!("{}", item)  // Another missing semicolon
-    }
-}
-        "#;
-
-        // When: AutoFixSyntax is called
-        // Expected result:
-        // - Semicolons added
-        // - Comments preserved in same positions
-        // - Indentation unchanged
-        // - Blank lines preserved
-
-        // TODO: Implement
-        Ok(())
-    }
 
     // ============================================================================
     // EDGE CASES AND ERROR HANDLING
@@ -294,34 +164,6 @@ fn process_data() {
         Ok(())
     }
 
-    /// Test 13: AutoFixSyntax in dry_run mode doesn't modify files
-    #[tokio::test]
-    async fn test_auto_fix_dry_run_no_modification() -> Result<()> {
-        // Given: Code with errors and dry_run: true
-        // When: AutoFixSyntax is called
-        // Expected:
-        // - success: true
-        // - fixes_applied: false (dry run)
-        // - fixes: ["WOULD add semicolon at line 3"]
-        // - File unchanged
-
-        // TODO: Implement
-        Ok(())
-    }
-
-    /// Test 14: AutoFixSyntax creates backup before fixing
-    #[tokio::test]
-    async fn test_auto_fix_creates_backup() -> Result<()> {
-        // Given: Code with errors
-        // When: AutoFixSyntax is called (not dry run)
-        // Expected:
-        // - Original file backed up to .backup
-        // - Can restore if needed
-        // - Metadata includes backup location
-
-        // TODO: Implement (may use EditingTransaction)
-        Ok(())
-    }
 
     // ============================================================================
     // INTEGRATION WITH EXISTING TOOLS
@@ -338,15 +180,16 @@ fn process_data() {
         Ok(())
     }
 
-    /// Test 16: AutoFixSyntax suggested as next_action after validation
+    /// Test 16: ValidateSyntax suggests that agent should fix errors
     #[tokio::test]
-    async fn test_validate_suggests_auto_fix() -> Result<()> {
+    async fn test_validate_suggests_agent_fixes() -> Result<()> {
         // Given: File with fixable errors
         // When: ValidateSyntax is called
-        // Expected: next_actions includes:
-        //   "Run smart_refactor operation=auto_fix_syntax to fix 3 errors automatically"
+        // Expected: next_actions includes helpful guidance:
+        //   "Review syntax errors and apply fixes using appropriate tools"
+        //   "Common fixes: add missing semicolons, close braces, fix indentation"
 
-        // This enables agent tool chaining workflow
+        // Agent uses error reports to intelligently apply fixes
         // TODO: Implement
         Ok(())
     }

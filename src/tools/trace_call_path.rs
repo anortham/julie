@@ -22,6 +22,7 @@ use crate::embeddings::CodeContext;
 use crate::extractors::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
+use crate::utils::progressive_reduction::ProgressiveReducer;
 use crate::utils::token_estimation::TokenEstimator;
 
 /// Structured result from trace_call_path operation
@@ -910,7 +911,7 @@ impl TraceCallPathTool {
         Ok(matches)
     }
 
-    /// Format multiple call trees for display
+    /// Format multiple call trees for display with progressive reduction
     fn format_call_trees(&self, trees: &[(Symbol, Vec<CallPathNode>)]) -> Result<String> {
         let mut output = String::new();
 
@@ -932,9 +933,13 @@ impl TraceCallPathTool {
             return Ok(output);
         }
 
-        // Display each tree
-        for (i, (root_symbol, nodes)) in trees.iter().enumerate() {
-            if trees.len() > 1 {
+        // Apply progressive reduction if we have too many nodes
+        // This prevents token explosion from wide call graphs
+        let optimized_trees = self.apply_call_breadth_optimization(trees)?;
+
+        // Display each tree (using optimized version)
+        for (i, (root_symbol, nodes)) in optimized_trees.iter().enumerate() {
+            if optimized_trees.len() > 1 {
                 output.push_str(&format!(
                     "\n### Starting from: {}:{}\n\n",
                     root_symbol.file_path, root_symbol.start_line
@@ -1113,7 +1118,59 @@ impl TraceCallPathTool {
             .unwrap_or(0)
     }
 
-    /// Optimize response for token limits
+    /// Apply progressive reduction to call breadth (nodes per level)
+    /// This prevents token explosion from wide call graphs by intelligently
+    /// reducing the number of nodes at each level while preserving important paths
+    fn apply_call_breadth_optimization(
+        &self,
+        trees: &[(Symbol, Vec<CallPathNode>)],
+    ) -> Result<Vec<(Symbol, Vec<CallPathNode>)>> {
+        let reducer = ProgressiveReducer::new();
+        let token_estimator = TokenEstimator::new();
+
+        // Target: 15000 tokens for call trees (allowing some headroom for headers)
+        let target_tokens = 15000;
+
+        // Estimate current token usage
+        let estimate_trees = |tree_subset: &[(Symbol, Vec<CallPathNode>)]| {
+            // Quick estimate based on node count and average path string length
+            let total_nodes: usize = tree_subset.iter().map(|(_, nodes)| self.count_nodes(nodes)).sum();
+            // Average node representation: ~100 characters (file path + name + metadata)
+            // Use a sample formatted node to get accurate token count
+            let sample_node = format!("  • path/to/file.rs:42 `function_name` [calls] (rust)\n");
+            let tokens_per_node = token_estimator.estimate_string(&sample_node);
+            total_nodes * tokens_per_node
+        };
+
+        let current_tokens = estimate_trees(trees);
+
+        // If under target, return as-is
+        if current_tokens <= target_tokens {
+            return Ok(trees.to_vec());
+        }
+
+        debug!(
+            "Call breadth optimization: {} tokens -> target {}",
+            current_tokens, target_tokens
+        );
+
+        // Apply reduction - convert to vector for reduction
+        let tree_vec: Vec<(Symbol, Vec<CallPathNode>)> = trees.to_vec();
+        let optimized = reducer.reduce(&tree_vec, target_tokens, estimate_trees);
+
+        // If we reduced trees, add a notice that some were omitted
+        if optimized.len() < trees.len() {
+            debug!(
+                "Reduced call trees from {} to {} to fit token budget",
+                trees.len(),
+                optimized.len()
+            );
+        }
+
+        Ok(optimized)
+    }
+
+    /// Optimize response for token limits (fallback for final string truncation)
     fn optimize_response(&self, response: &str) -> String {
         let estimator = TokenEstimator::new();
         let tokens = estimator.estimate_string(response);

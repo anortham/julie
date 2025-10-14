@@ -111,10 +111,9 @@ pub enum RefactorOperation {
     InlineVariable,
     /// Inline a function by replacing calls with function body
     InlineFunction,
-    /// Validate syntax using tree-sitter error detection (Week 3 - AST Syntax Fix)
+    /// Validate syntax using tree-sitter error detection
+    /// Reports errors but doesn't attempt automatic fixes - agent handles corrections
     ValidateSyntax,
-    /// Auto-fix common syntax errors (Week 3 - AST Syntax Fix)
-    AutoFixSyntax,
 }
 
 /// Smart refactoring tool for semantic code transformations

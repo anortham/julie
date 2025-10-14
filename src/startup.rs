@@ -7,9 +7,9 @@ use crate::handler::JulieServerHandler;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Check if the workspace needs indexing by examining database state
 ///

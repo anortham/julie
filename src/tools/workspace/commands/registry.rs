@@ -1,5 +1,7 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::utils::progressive_reduction::ProgressiveReducer;
+use crate::utils::token_estimation::TokenEstimator;
 use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
@@ -214,9 +216,67 @@ impl ManageWorkspaceTool {
                     )]));
                 }
 
+                // Apply token optimization using ProgressiveReducer
+                let token_estimator = TokenEstimator::new();
+                let reducer = ProgressiveReducer::new();
+
+                // Target 10000 tokens for workspace listings
+                let target_tokens = 10000;
+
+                // Create a token estimation function that formats a workspace entry
+                let estimate_workspaces = |ws_subset: &[crate::workspace::registry::WorkspaceEntry]| {
+                    let mut test_output = String::from("📋 Registered Workspaces:\n\n");
+                    for workspace in ws_subset {
+                        let status = if workspace.is_expired() {
+                            "⏰ EXPIRED"
+                        } else if !workspace.path_exists() {
+                            "❌ MISSING"
+                        } else {
+                            "✅ ACTIVE"
+                        };
+
+                        let expires = match workspace.expires_at {
+                            Some(exp_time) => {
+                                let now = crate::workspace::registry::current_timestamp();
+                                if exp_time > now {
+                                    let days_left = (exp_time - now) / (24 * 60 * 60);
+                                    format!("in {} days", days_left)
+                                } else {
+                                    "expired".to_string()
+                                }
+                            }
+                            None => "never".to_string(),
+                        };
+
+                        test_output.push_str(&format!(
+                            "🏷️ **{}** ({})\n\
+                            📁 Path: {}\n\
+                            🔍 Type: {:?}\n\
+                            📊 Files: {} | Symbols: {} | Size: {:.1} KB\n\
+                            ⏰ Expires: {}\n\
+                            📅 Status: {}\n\n",
+                            workspace.display_name,
+                            workspace.id,
+                            workspace.original_path,
+                            workspace.workspace_type,
+                            workspace.file_count,
+                            workspace.symbol_count,
+                            workspace.index_size_bytes as f64 / 1024.0,
+                            expires,
+                            status
+                        ));
+                    }
+                    token_estimator.estimate_string(&test_output)
+                };
+
+                // Reduce workspaces if needed to fit token limit
+                let total_count = workspaces.len();
+                let optimized_workspaces = reducer.reduce(&workspaces, target_tokens, estimate_workspaces);
+                let shown_count = optimized_workspaces.len();
+
                 let mut output = String::from("📋 Registered Workspaces:\n\n");
 
-                for workspace in workspaces {
+                for workspace in &optimized_workspaces {
                     let status = if workspace.is_expired() {
                         "⏰ EXPIRED"
                     } else if !workspace.path_exists() {
@@ -254,6 +314,15 @@ impl ManageWorkspaceTool {
                         workspace.index_size_bytes as f64 / 1024.0,
                         expires,
                         status
+                    ));
+                }
+
+                // Add truncation notice if results were reduced
+                if shown_count < total_count {
+                    output.push_str(&format!(
+                        "📊 Showing {} of {} total workspaces (token limit applied)\n\
+                        💡 Use workspace stats to see details for specific workspaces\n",
+                        shown_count, total_count
                     ));
                 }
 
@@ -957,9 +1026,44 @@ impl ManageWorkspaceTool {
                     )]));
                 }
 
+                // Apply token optimization using ProgressiveReducer
+                let token_estimator = TokenEstimator::new();
+                let reducer = ProgressiveReducer::new();
+
+                // Target 12000 tokens for recent file listings (slightly higher than workspace list)
+                let target_tokens = 12000;
+
+                // Create a token estimation function that formats file entries
+                let estimate_files = |file_subset: &[crate::database::FileInfo]| {
+                    let mut test_output = format!("📅 Files modified in the last {} days:\n\n", days);
+                    for file in file_subset {
+                        let now = chrono::Utc::now().timestamp();
+                        let hours_ago = (now - file.last_modified) / 3600;
+                        let time_ago = if hours_ago < 24 {
+                            format!("{} hours ago", hours_ago)
+                        } else {
+                            format!("{} days ago", hours_ago / 24)
+                        };
+
+                        test_output.push_str(&format!(
+                            "📄 **{}**\n\
+                            🕐 Modified: {}\n\
+                            📊 {} symbols | {} bytes\n\
+                            🔤 Language: {}\n\n",
+                            file.path, time_ago, file.symbol_count, file.size, file.language
+                        ));
+                    }
+                    token_estimator.estimate_string(&test_output)
+                };
+
+                // Reduce files if needed to fit token limit
+                let total_count = files.len();
+                let optimized_files = reducer.reduce(&files, target_tokens, estimate_files);
+                let shown_count = optimized_files.len();
+
                 let mut output = format!("📅 Files modified in the last {} days:\n\n", days);
 
-                for file in files {
+                for file in &optimized_files {
                     // Calculate how long ago the file was modified
                     let now = chrono::Utc::now().timestamp();
                     let hours_ago = (now - file.last_modified) / 3600;
@@ -975,6 +1079,15 @@ impl ManageWorkspaceTool {
                         📊 {} symbols | {} bytes\n\
                         🔤 Language: {}\n\n",
                         file.path, time_ago, file.symbol_count, file.size, file.language
+                    ));
+                }
+
+                // Add truncation notice if results were reduced
+                if shown_count < total_count {
+                    output.push_str(&format!(
+                        "📊 Showing {} of {} recently modified files (token limit applied)\n\
+                        💡 Adjust the 'limit' parameter to control result count\n",
+                        shown_count, total_count
                     ));
                 }
 

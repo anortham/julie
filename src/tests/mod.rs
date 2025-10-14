@@ -7,8 +7,6 @@
 // pub mod editing_safety_tests; // CRITICAL safety tests for editing tools - DISABLED: uses SafeEditTool
 // pub mod editing_tests; // DISABLED: uses SafeEditTool
 // pub mod fast_edit_search_replace_tests; // DISABLED: uses SafeEditTool
-pub mod auto_fix_syntax_control_tests; // SOURCE/CONTROL tests for AutoFixSyntax - comprehensive edge cases
-pub mod auto_fix_syntax_tests; // TDD tests for AutoFixSyntax operation - Week 3 (missing semicolons, braces, etc)
 pub mod cli_codesearch_tests; // CLI integration tests for julie-codesearch (scan/update)
 pub mod cli_semantic_tests; // CLI integration tests for julie-semantic (embed with HNSW)
 pub mod edit_lines_tests; // TDD tests for EditLinesTool (surgical line editing - insert/replace/delete)
@@ -19,7 +17,7 @@ pub mod lock_contention_tests; // Regression tests for lock contention during in
 pub mod search_race_condition_tests;
 pub mod stale_index_detection_tests; // TDD tests for stale index detection (file mtime + new file checks)
 pub mod smart_read_tests; // Smart Read tests - validate 70-90% token savings
-pub mod syntax_validation_tests; // AST Syntax Fix tests - Week 3 (ValidateSyntax, AutoFixSyntax) // Race condition tests for search during indexing (Heisenbug reproduction)
+pub mod syntax_validation_tests; // AST Syntax validation tests (ValidateSyntax - reports errors for agent to fix)
                                  // pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool - DISABLED: uses SafeEditTool
                                  // pub mod line_edit_tests; // DISABLED: uses SafeEditTool
 pub mod refactoring_tests; // Smart refactoring tool tests
@@ -193,7 +191,9 @@ pub mod search_line_mode_tests; // TDD tests for line-level search output (grep-
 pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
 pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
 pub mod watcher_tests;
+pub mod workspace_management_token_tests; // Tests for ManageWorkspaceTool token optimization (list & recent commands)
 pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
+pub mod get_symbols_token_tests; // Tests for GetSymbolsTool Smart Read token optimization (body truncation)
 
 // HNSW Vector Store Tests (TDD for semantic search infrastructure)
 pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search

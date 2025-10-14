@@ -967,6 +967,39 @@ impl FindLogicTool {
         self.apply_path_intelligence(&mut candidates);
 
         // ═══════════════════════════════════════════════════════════════════
+        // OPTIMIZATION: Cap Candidates Before Expensive Tier 5 Graph Analysis
+        // ═══════════════════════════════════════════════════════════════════
+        // Combined strategy: Filter by threshold + hard cap to prevent N-to-M explosion
+        let original_count = candidates.len();
+
+        // Strategy 1: Early filter by min_business_score (user-controlled)
+        candidates.retain(|s| s.confidence.unwrap_or(0.0) >= self.min_business_score);
+        debug!(
+            "🔍 Filtered {} → {} candidates above threshold {:.1}",
+            original_count,
+            candidates.len(),
+            self.min_business_score
+        );
+
+        // Strategy 2: Hard cap at 100 for graph analysis (prevents pathological cases)
+        const MAX_GRAPH_ANALYSIS_CANDIDATES: usize = 100;
+        if candidates.len() > MAX_GRAPH_ANALYSIS_CANDIDATES {
+            // Sort by score before truncating to keep best candidates
+            candidates.sort_by(|a, b| {
+                let score_a = a.confidence.unwrap_or(0.0);
+                let score_b = b.confidence.unwrap_or(0.0);
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            candidates.truncate(MAX_GRAPH_ANALYSIS_CANDIDATES);
+            debug!(
+                "⚡ Capped to {} top candidates for graph analysis (performance protection)",
+                MAX_GRAPH_ANALYSIS_CANDIDATES
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
         // TIER 4: Semantic HNSW Business Concept Matching - AI-Powered
         // ═══════════════════════════════════════════════════════════════════
         debug!("🧠 Tier 4: Semantic HNSW concept matching");
