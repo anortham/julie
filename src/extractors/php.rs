@@ -4,7 +4,8 @@
 // Will be fully implemented in GREEN phase following Miller's exact logic
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -1068,7 +1069,8 @@ impl PhpExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1078,11 +1080,7 @@ impl PhpExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1094,11 +1092,7 @@ impl PhpExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Direct function calls: print_r(), array_map()
             "function_call_expression" => {
@@ -1136,7 +1130,9 @@ impl PhpExtractor {
             "member_access_expression" => {
                 // Skip if parent is a call expression (handled above)
                 if let Some(parent) = node.parent() {
-                    if parent.kind() == "function_call_expression" || parent.kind() == "member_call_expression" {
+                    if parent.kind() == "function_call_expression"
+                        || parent.kind() == "member_call_expression"
+                    {
                         return; // Skip - handled by call expressions
                     }
                 }

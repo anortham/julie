@@ -106,67 +106,27 @@ impl WorkspaceRegistryService {
 
     /// Save the registry to disk with atomic operations
     pub async fn save_registry(&self, registry: WorkspaceRegistry) -> Result<()> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static CALL_ID: AtomicU64 = AtomicU64::new(0);
-        let call_id = CALL_ID.fetch_add(1, Ordering::SeqCst);
-
-        println!(
-            "🐛 [CALL {}] save_registry() ENTRY - acquiring lock...",
-            call_id
-        );
         let _lock = self.registry_lock.lock().await;
-        println!(
-            "🐛 [CALL {}] save_registry() - lock acquired, calling save_registry_internal",
-            call_id
-        );
-        let result = self.save_registry_internal(registry).await;
-        println!(
-            "🐛 [CALL {}] save_registry() - save_registry_internal returned, releasing lock",
-            call_id
-        );
-        result
+        self.save_registry_internal(registry).await
     }
 
     /// Internal save function that assumes lock is already held
     /// Used by both save_registry() and load_registry_from_disk() to prevent deadlock
     async fn save_registry_internal(&self, mut registry: WorkspaceRegistry) -> Result<()> {
-        // Get caller information using backtrace
-        let caller = std::panic::Location::caller();
-        println!(
-            "🐛 save_registry_internal() ENTRY - called from {}:{}:{}",
-            caller.file(),
-            caller.line(),
-            caller.column()
-        );
         // Update metadata
         registry.last_updated = current_timestamp();
         self.update_registry_statistics(&mut registry).await?;
 
-        // Ensure .julie directory exists (avoid redundant create_dir_all calls)
+        // Ensure .julie directory exists
         let julie_dir = self.workspace_path.join(".julie");
-        println!(
-            "🐛 save_registry: workspace_path = {:?}",
-            self.workspace_path
-        );
-        println!(
-            "🐛 save_registry: julie_dir = {:?}, exists = {}",
-            julie_dir,
-            julie_dir.exists()
-        );
         if !julie_dir.exists() {
-            println!("🐛 save_registry: Creating julie_dir");
             fs::create_dir_all(&julie_dir).await?;
-            println!("🐛 save_registry: julie_dir created successfully");
         }
 
         // Atomic write with temp file
         let registry_path = self.registry_path();
         let temp_path =
             registry_path.with_file_name(format!("workspace_registry.{}.tmp", Uuid::new_v4()));
-        println!(
-            "🐛 save_registry: registry_path = {:?}, temp_path = {:?}",
-            registry_path, temp_path
-        );
 
         let json = serde_json::to_string_pretty(&registry)
             .map_err(|e| anyhow!("Failed to serialize registry: {}", e))?;
@@ -174,48 +134,14 @@ impl WorkspaceRegistryService {
         fs::write(&temp_path, &json)
             .await
             .map_err(|e| anyhow!("Failed to write temp registry file: {}", e))?;
-        println!("🐛 save_registry: temp file written, checking existence...");
-        println!(
-            "🐛 save_registry: temp_path exists = {}",
-            temp_path.exists()
-        );
-        println!(
-            "🐛 save_registry: registry_path exists = {}",
-            registry_path.exists()
-        );
 
         // Atomic rename
-        println!(
-            "🐛 save_registry: About to rename {} -> {}",
-            temp_path.display(),
-            registry_path.display()
-        );
-        match fs::rename(&temp_path, &registry_path).await {
-            Ok(_) => {
-                println!("🐛 save_registry: Rename succeeded!");
+        if let Err(e) = fs::rename(&temp_path, &registry_path).await {
+            // Attempt cleanup of unique temp file before returning error
+            if temp_path.exists() {
+                let _ = std::fs::remove_file(&temp_path);
             }
-            Err(e) => {
-                println!("🐛 save_registry: Rename FAILED: {}", e);
-                println!(
-                    "🐛 save_registry: After failure - temp_path exists = {}",
-                    temp_path.exists()
-                );
-                println!(
-                    "🐛 save_registry: After failure - registry_path exists = {}",
-                    registry_path.exists()
-                );
-                println!(
-                    "🐛 save_registry: After failure - julie_dir exists = {}",
-                    julie_dir.exists()
-                );
-
-                // Attempt cleanup of unique temp file before returning error
-                if temp_path.exists() {
-                    let _ = std::fs::remove_file(&temp_path);
-                }
-
-                return Err(anyhow!("Failed to rename temp registry file: {}", e));
-            }
+            return Err(anyhow!("Failed to rename temp registry file: {}", e));
         }
 
         // 🐛 VALIDATION: Verify the written file is valid JSON (catches corruption bugs)
@@ -350,16 +276,10 @@ impl WorkspaceRegistryService {
         workspace_path: String,
         workspace_type: WorkspaceType,
     ) -> Result<WorkspaceEntry> {
-        println!(
-            "🐛 register_workspace ENTRY: path={}, type={:?}",
-            workspace_path, workspace_type
-        );
-
         // RACE CONDITION FIX: Hold lock for ENTIRE operation to prevent concurrent modifications
         // Same pattern as update_last_accessed() - lock → load → modify → save_internal
         let _lock = self.registry_lock.lock().await;
         let mut registry = self.load_registry_locked().await?;
-        println!("🐛 register_workspace: Loaded registry");
 
         // Create new workspace entry
         let workspace =
@@ -383,13 +303,8 @@ impl WorkspaceRegistryService {
             }
         }
 
-        println!(
-            "🐛 register_workspace: About to save registry (workspace_id={})",
-            workspace.id
-        );
         // Use save_registry_internal since we already hold the lock
         self.save_registry_internal(registry).await?;
-        println!("🐛 register_workspace: Registry saved successfully");
 
         info!(
             "Registered new workspace: {} (type: {:?}, id: {})",
@@ -808,10 +723,7 @@ impl WorkspaceRegistryService {
         let registry = self.load_registry().await?;
 
         // Get all index directories (per-workspace architecture: .julie/indexes/{workspace_id}/)
-        let indexes_dir = self
-            .workspace_path
-            .join(".julie")
-            .join("indexes");
+        let indexes_dir = self.workspace_path.join(".julie").join("indexes");
         if !indexes_dir.exists() {
             return Ok(Vec::new());
         }

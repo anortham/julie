@@ -90,7 +90,7 @@ pub struct ManageWorkspaceTool {
     /// Show stats:           {"operation": "stats", "workspace_id": null}
     /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
     /// Clean expired:        {"operation": "clean", "expired_only": true}
-    /// Recent files:         {"operation": "recent", "days": 2}
+    /// Recent files:         {"operation": "recent", "days": 2, "limit": 20}
     pub operation: String,
 
     // Optional parameters used by various operations
@@ -125,11 +125,23 @@ pub struct ManageWorkspaceTool {
     /// Include detailed diagnostics (used by: health)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detailed: Option<bool>,
+
+    /// Maximum number of results to return (used by: recent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
 }
 
 impl ManageWorkspaceTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🏗️ Managing workspace with operation: {}", self.operation);
+
+        #[cfg(test)]
+        {
+            assert!(
+                handler.tool_lock_is_free(),
+                "tool execution lock should remain free while executing tool logic"
+            );
+        }
 
         match self.operation.as_str() {
             "index" => {
@@ -180,7 +192,8 @@ impl ManageWorkspaceTool {
             }
             "recent" => {
                 let days = self.days.unwrap_or(7); // Default to last 7 days
-                self.handle_recent_command(handler, days).await
+                let limit = self.limit.unwrap_or(50);
+                self.handle_recent_command(handler, days, limit).await
             }
             _ => Err(anyhow::anyhow!(
                 "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health, set_ttl, set_limit, recent",

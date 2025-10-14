@@ -246,6 +246,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
         days: None,
         max_size_mb: None,
         detailed: None,
+        limit: None,
     };
 
     // Perform the indexing
@@ -374,7 +375,11 @@ async fn update_workspace_statistics(
 
     // Calculate index size (SQLite database size)
     // 🚨 CRITICAL: Move blocking filesystem operations to spawn_blocking
-    let db_path = workspace.root.join(".julie/indexes").join(&workspace_id).join("db");
+    let db_path = workspace
+        .root
+        .join(".julie/indexes")
+        .join(&workspace_id)
+        .join("db");
     let index_size = if db_path.exists() {
         let db_path_clone = db_path.clone();
         match tokio::task::spawn_blocking(move || {

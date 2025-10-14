@@ -1620,11 +1620,8 @@ func Calculate() int {
 "#;
 
             let tree = init_parser(go_code, "go");
-            let mut extractor = GoExtractor::new(
-                "go".to_string(),
-                "test.go".to_string(),
-                go_code.to_string(),
-            );
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
 
             // Extract symbols first
             let symbols = extractor.extract_symbols(&tree);
@@ -1683,11 +1680,8 @@ func PrintInfo(u *User) {
 "#;
 
             let tree = init_parser(go_code, "go");
-            let mut extractor = GoExtractor::new(
-                "go".to_string(),
-                "test.go".to_string(),
-                go_code.to_string(),
-            );
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1729,11 +1723,8 @@ func Helper() {
 "#;
 
             let tree = init_parser(go_code, "go");
-            let mut extractor = GoExtractor::new(
-                "go".to_string(),
-                "test.go".to_string(),
-                go_code.to_string(),
-            );
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1778,11 +1769,8 @@ func Execute() {
 "#;
 
             let tree = init_parser(go_code, "go");
-            let mut extractor = GoExtractor::new(
-                "go".to_string(),
-                "test.go".to_string(),
-                go_code.to_string(),
-            );
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1812,11 +1800,8 @@ func Process() {
 "#;
 
             let tree = init_parser(go_code, "go");
-            let mut extractor = GoExtractor::new(
-                "go".to_string(),
-                "test.go".to_string(),
-                go_code.to_string(),
-            );
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);

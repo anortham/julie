@@ -32,6 +32,7 @@ mod tests {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -102,6 +103,7 @@ mod tests {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -164,6 +166,7 @@ mod tests {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -218,6 +221,7 @@ mod tests {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 

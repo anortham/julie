@@ -687,7 +687,7 @@ def process_users(users: List[User]) -> List[str]:
 #[cfg(test)]
 mod identifier_extraction {
     use super::python_extractor_tests::create_extractor_and_parse;
-    use crate::extractors::base::{IdentifierKind};
+    use crate::extractors::base::IdentifierKind;
 
     #[test]
     fn test_extract_function_calls() {

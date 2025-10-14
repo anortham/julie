@@ -1016,7 +1016,8 @@ impl RegexExtractor {
                     if let Some(end_pos) = content_after.find('>') {
                         let group_name = content_after[3..end_pos].to_string();
                         if !group_name.is_empty() {
-                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
 
                             self.base.create_identifier(
                                 &node,

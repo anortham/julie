@@ -1,5 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use serde_json;
 use std::collections::HashMap;
@@ -1595,7 +1596,8 @@ impl SwiftExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1605,11 +1607,7 @@ impl SwiftExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1621,11 +1619,7 @@ impl SwiftExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Function/method calls: foo(), bar.baz()
             "call_expression" => {
@@ -1648,7 +1642,8 @@ impl SwiftExtractor {
                     } else if child.kind() == "navigation_expression" {
                         // For member access calls, extract the rightmost identifier (the method name)
                         if let Some((name_node, name)) = self.extract_rightmost_identifier(&child) {
-                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
 
                             self.base.create_identifier(
                                 &name_node,

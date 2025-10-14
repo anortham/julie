@@ -88,7 +88,10 @@ async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
     std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
 
-    let workspace_path = std::env::current_dir().unwrap().to_string_lossy().to_string();
+    let workspace_path = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
 
     let run_index = |path: String| async move {
         let handler = JulieServerHandler::new().await.unwrap();
@@ -102,10 +105,10 @@ async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
 
-        tool
-            .call_tool(&handler)
+        tool.call_tool(&handler)
             .await
             .map_err(|err| err.to_string())
     };
@@ -143,7 +146,10 @@ async fn test_manage_workspace_recent_files() {
         .unwrap();
 
     // Get database access
-    let db = workspace.db.as_ref().expect("Database should be initialized");
+    let db = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db_lock = db.lock().unwrap();
 
     // Insert test files with different timestamps
@@ -152,40 +158,72 @@ async fn test_manage_workspace_recent_files() {
     let seven_days_ago = now - (7 * 86400); // 7 days in seconds
 
     // File modified today (should be included)
-    db_lock.store_file_info(&crate::database::FileInfo {
-        path: "recent_file.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash1".to_string(),
-        size: 100,
-        last_modified: now,
-        last_indexed: now,
-        symbol_count: 5,
-        content: Some("fn main() {}".to_string()),
-    }, "primary").unwrap();
+    db_lock
+        .store_file_info(
+            &crate::database::FileInfo {
+                path: "recent_file.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "hash1".to_string(),
+                size: 100,
+                last_modified: now,
+                last_indexed: now,
+                symbol_count: 5,
+                content: Some("fn main() {}".to_string()),
+            },
+            "primary",
+        )
+        .unwrap();
 
     // File modified 1 day ago (should be included)
-    db_lock.store_file_info(&crate::database::FileInfo {
-        path: "yesterday_file.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash2".to_string(),
-        size: 200,
-        last_modified: two_days_ago + 86400, // 1 day ago
-        last_indexed: now,
-        symbol_count: 3,
-        content: Some("fn test() {}".to_string()),
-    }, "primary").unwrap();
+    db_lock
+        .store_file_info(
+            &crate::database::FileInfo {
+                path: "yesterday_file.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "hash2".to_string(),
+                size: 200,
+                last_modified: two_days_ago + 86400, // 1 day ago
+                last_indexed: now,
+                symbol_count: 3,
+                content: Some("fn test() {}".to_string()),
+            },
+            "primary",
+        )
+        .unwrap();
 
     // File modified 7 days ago (should NOT be included)
-    db_lock.store_file_info(&crate::database::FileInfo {
-        path: "old_file.rs".to_string(),
-        language: "rust".to_string(),
-        hash: "hash3".to_string(),
-        size: 150,
-        last_modified: seven_days_ago,
-        last_indexed: now,
-        symbol_count: 2,
-        content: Some("fn old() {}".to_string()),
-    }, "primary").unwrap();
+    db_lock
+        .store_file_info(
+            &crate::database::FileInfo {
+                path: "old_file.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "hash3".to_string(),
+                size: 150,
+                last_modified: seven_days_ago,
+                last_indexed: now,
+                symbol_count: 2,
+                content: Some("fn old() {}".to_string()),
+            },
+            "primary",
+        )
+        .unwrap();
+
+    // File from another workspace (should be excluded)
+    db_lock
+        .store_file_info(
+            &crate::database::FileInfo {
+                path: "other_workspace.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "hash4".to_string(),
+                size: 175,
+                last_modified: now,
+                last_indexed: now,
+                symbol_count: 4,
+                content: Some("fn external() {}".to_string()),
+            },
+            "secondary",
+        )
+        .unwrap();
 
     drop(db_lock);
     drop(workspace);
@@ -207,6 +245,7 @@ async fn test_manage_workspace_recent_files() {
         days: Some(2), // Last 2 days
         max_size_mb: None,
         detailed: None,
+        limit: None,
     };
 
     // Call the tool (this will FAIL because "recent" operation doesn't exist yet)
@@ -217,7 +256,8 @@ async fn test_manage_workspace_recent_files() {
     let call_result = result.unwrap();
 
     // Extract text from CallToolResult using serde_json pattern
-    let response_text = call_result.content
+    let response_text = call_result
+        .content
         .iter()
         .filter_map(|content_block| {
             serde_json::to_value(content_block).ok().and_then(|json| {
@@ -232,9 +272,103 @@ async fn test_manage_workspace_recent_files() {
     assert!(!response_text.is_empty(), "Should return results");
 
     // Should include recent files
-    assert!(response_text.contains("recent_file.rs"), "Should include file modified today");
-    assert!(response_text.contains("yesterday_file.rs"), "Should include file modified yesterday");
+    assert!(
+        response_text.contains("recent_file.rs"),
+        "Should include file modified today"
+    );
+    assert!(
+        response_text.contains("yesterday_file.rs"),
+        "Should include file modified yesterday"
+    );
 
     // Should NOT include old files
-    assert!(!response_text.contains("old_file.rs"), "Should NOT include file modified 7 days ago");
+    assert!(
+        !response_text.contains("old_file.rs"),
+        "Should NOT include file modified 7 days ago"
+    );
+    assert!(
+        !response_text.contains("other_workspace.rs"),
+        "Should NOT include files from other workspaces"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_recent_files_respects_limit() {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    let workspace = JulieWorkspace::initialize(workspace_path.clone())
+        .await
+        .unwrap();
+
+    let db = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
+    let db_lock = db.lock().unwrap();
+
+    let now = chrono::Utc::now().timestamp();
+    for idx in 0..5 {
+        db_lock
+            .store_file_info(
+                &crate::database::FileInfo {
+                    path: format!("file_{}.rs", idx),
+                    language: "rust".to_string(),
+                    hash: format!("hash{}", idx),
+                    size: 100 + idx as i64,
+                    last_modified: now - (idx as i64 * 3600),
+                    last_indexed: now,
+                    symbol_count: 1,
+                    content: Some("fn demo() {}".to_string()),
+                },
+                "primary",
+            )
+            .unwrap();
+    }
+
+    drop(db_lock);
+    drop(workspace);
+
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .await
+        .unwrap();
+
+    let tool = ManageWorkspaceTool {
+        operation: "recent".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: None,
+        name: None,
+        workspace_id: None,
+        expired_only: None,
+        days: Some(7),
+        max_size_mb: None,
+        detailed: None,
+        limit: Some(2),
+    };
+
+    let result = tool.call_tool(&handler).await.expect("recent files");
+    let response_text = result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let occurrences = response_text.matches("📄 **file_").count();
+    assert_eq!(
+        occurrences, 2,
+        "Expected output to be limited to two files, got: {}",
+        response_text
+    );
 }

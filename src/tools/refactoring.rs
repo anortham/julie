@@ -646,10 +646,14 @@ impl SmartRefactorTool {
         handler: &JulieServerHandler,
     ) -> Result<Vec<(u32, u32)>> {
         // Get workspace and database
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
 
-        let db = workspace.db.as_ref()
+        let db = workspace
+            .db
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
 
         let db_lock = db.lock().unwrap();
@@ -1779,13 +1783,13 @@ impl SmartRefactorTool {
                         if i + 1 < lines.len() {
                             let next_line = lines[i + 1];
                             if next_line.contains(symbol_name) {
-                                println!(
+                                debug!(
                                     "✅ Found matching symbol '{}' in target file at line {}",
                                     symbol_name, line_num
                                 );
                                 locations.push(file_line);
                             } else {
-                                println!(
+                                debug!(
                                     "🔍 Next line doesn't contain symbol '{}': '{}'",
                                     symbol_name, next_line
                                 );
@@ -1803,7 +1807,6 @@ impl SmartRefactorTool {
     fn extract_file_location(&self, line: &str) -> Option<(String, u32)> {
         // Julie's search format: "📁 /path/to/file.ts:30-40"
         // Remove the 📁 emoji and whitespace first
-        println!("🔍 extract_file_location input: '{}'", line);
 
         // More robust emoji removal - find the first non-emoji, non-whitespace character
         let cleaned_line = line.trim();
@@ -1812,7 +1815,6 @@ impl SmartRefactorTool {
             .unwrap_or(cleaned_line);
         let cleaned_line = cleaned_line.trim();
 
-        println!("🔍 extract_file_location cleaned: '{}'", cleaned_line);
 
         if let Some(colon_pos) = cleaned_line.rfind(':') {
             let file_part = &cleaned_line[..colon_pos];
@@ -2419,9 +2421,9 @@ impl SmartRefactorTool {
 
         for iteration in 0..MAX_ITERATIONS {
             // Parse to find errors
-            let tree = parser
-                .parse(&current_content, None)
-                .ok_or_else(|| anyhow::anyhow!("Failed to parse file at iteration {}", iteration))?;
+            let tree = parser.parse(&current_content, None).ok_or_else(|| {
+                anyhow::anyhow!("Failed to parse file at iteration {}", iteration)
+            })?;
 
             // Apply fixes for this iteration
             let fixed_content = self.apply_syntax_fixes(&current_content, &tree, &language)?;

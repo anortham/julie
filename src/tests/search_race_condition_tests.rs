@@ -229,6 +229,7 @@ pub fn helper_function() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -243,7 +244,7 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
-            output: None,
+                output: None,
             };
 
             let fast_search_query_b = FastSearchTool {
@@ -253,7 +254,7 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
-            output: None,
+                output: None,
             };
 
             let get_symbols_main = GetSymbolsTool {
@@ -333,6 +334,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -430,6 +432,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         println!("🐛 TEST TRACE 5: Calling index_tool.call_tool");
         let index_result = timeout(Duration::from_secs(90), index_tool.call_tool(&handler)).await;
@@ -453,6 +456,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         println!("🐛 TEST TRACE 7: Calling add_tool.call_tool");
         let add_result = add_tool.call_tool(&handler).await?;
@@ -561,6 +565,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_primary.call_tool(&handler).await?;
 
@@ -575,6 +580,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         let add_result = add_tool.call_tool(&handler).await?;
 
@@ -605,6 +611,7 @@ pub fn embedding_vector_semantic() {}
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
 
         // Use timeout to surface hangs caused by LockBusy deadlocks

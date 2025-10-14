@@ -1225,19 +1225,13 @@ fn getY(point: Point) f32 {
             .iter()
             .filter(|id| id.name == "x" && id.kind == IdentifierKind::MemberAccess)
             .count();
-        assert!(
-            x_access > 0,
-            "Should extract 'x' member access identifier"
-        );
+        assert!(x_access > 0, "Should extract 'x' member access identifier");
 
         let y_access = identifiers
             .iter()
             .filter(|id| id.name == "y" && id.kind == IdentifierKind::MemberAccess)
             .count();
-        assert!(
-            y_access > 0,
-            "Should extract 'y' member access identifier"
-        );
+        assert!(y_access > 0, "Should extract 'y' member access identifier");
     }
 
     #[test]

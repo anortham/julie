@@ -102,14 +102,8 @@ pub struct ConfidenceScore {
 }
 
 impl CrossLanguageTracer {
-    pub fn new(
-        db: Arc<Mutex<SymbolDatabase>>,
-        embeddings: Arc<EmbeddingEngine>,
-    ) -> Self {
-        Self {
-            db,
-            embeddings,
-        }
+    pub fn new(db: Arc<Mutex<SymbolDatabase>>, embeddings: Arc<EmbeddingEngine>) -> Self {
+        Self { db, embeddings }
     }
 
     /// The killer feature: trace data flow from one symbol through the entire stack

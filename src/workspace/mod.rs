@@ -429,7 +429,6 @@ impl JulieWorkspace {
         Ok(())
     }
 
-
     /// Initialize embedding engine
     /// 🔥 CRITICAL FIX: This function is now async because ONNX model loading is blocking
     /// We must use spawn_blocking to avoid blocking the tokio runtime

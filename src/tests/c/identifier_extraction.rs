@@ -34,11 +34,8 @@ int calculate() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor = CExtractor::new(
-            "c".to_string(),
-            "test.c".to_string(),
-            c_code.to_string(),
-        );
+        let mut extractor =
+            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
 
         // Extract symbols first
         let symbols = extractor.extract_symbols(&tree);
@@ -97,11 +94,8 @@ void print_point(Point* p) {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor = CExtractor::new(
-            "c".to_string(),
-            "test.c".to_string(),
-            c_code.to_string(),
-        );
+        let mut extractor =
+            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -111,19 +105,13 @@ void print_point(Point* p) {
             .iter()
             .filter(|id| id.name == "x" && id.kind == IdentifierKind::MemberAccess)
             .count();
-        assert!(
-            x_access > 0,
-            "Should extract 'x' member access identifier"
-        );
+        assert!(x_access > 0, "Should extract 'x' member access identifier");
 
         let y_access = identifiers
             .iter()
             .filter(|id| id.name == "y" && id.kind == IdentifierKind::MemberAccess)
             .count();
-        assert!(
-            y_access > 0,
-            "Should extract 'y' member access identifier"
-        );
+        assert!(y_access > 0, "Should extract 'y' member access identifier");
     }
 
     #[test]
@@ -143,11 +131,8 @@ void process() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor = CExtractor::new(
-            "c".to_string(),
-            "test.c".to_string(),
-            c_code.to_string(),
-        );
+        let mut extractor =
+            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -191,11 +176,8 @@ void execute(User* user) {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor = CExtractor::new(
-            "c".to_string(),
-            "test.c".to_string(),
-            c_code.to_string(),
-        );
+        let mut extractor =
+            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -226,11 +208,8 @@ void run() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor = CExtractor::new(
-            "c".to_string(),
-            "test.c".to_string(),
-            c_code.to_string(),
-        );
+        let mut extractor =
+            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);

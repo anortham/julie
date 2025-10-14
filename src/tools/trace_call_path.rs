@@ -386,13 +386,18 @@ impl TraceCallPathTool {
                 .collect();
 
             // Batch fetch all caller symbols (avoids N+1 query pattern)
-            let caller_ids: Vec<String> = relevant_rels.iter().map(|r| r.from_symbol_id.clone()).collect();
+            let caller_ids: Vec<String> = relevant_rels
+                .iter()
+                .map(|r| r.from_symbol_id.clone())
+                .collect();
             let caller_symbols = db_lock.get_symbols_by_ids(&caller_ids)?;
 
             // Build callers list by matching symbols with relationships
             let mut result = Vec::new();
             for rel in relevant_rels {
-                if let Some(caller_symbol) = caller_symbols.iter().find(|s| s.id == rel.from_symbol_id) {
+                if let Some(caller_symbol) =
+                    caller_symbols.iter().find(|s| s.id == rel.from_symbol_id)
+                {
                     result.push((caller_symbol.clone(), rel.kind.clone()));
                 }
             }
@@ -533,13 +538,18 @@ impl TraceCallPathTool {
                 .collect();
 
             // Batch fetch all callee symbols (avoids N+1 query pattern)
-            let callee_ids: Vec<String> = relevant_rels.iter().map(|r| r.to_symbol_id.clone()).collect();
+            let callee_ids: Vec<String> = relevant_rels
+                .iter()
+                .map(|r| r.to_symbol_id.clone())
+                .collect();
             let callee_symbols = db_lock.get_symbols_by_ids(&callee_ids)?;
 
             // Build callees list by matching symbols with relationships
             let mut result = Vec::new();
             for rel in relevant_rels {
-                if let Some(callee_symbol) = callee_symbols.iter().find(|s| s.id == rel.to_symbol_id) {
+                if let Some(callee_symbol) =
+                    callee_symbols.iter().find(|s| s.id == rel.to_symbol_id)
+                {
                     result.push((callee_symbol.clone(), rel.kind.clone()));
                 }
             }

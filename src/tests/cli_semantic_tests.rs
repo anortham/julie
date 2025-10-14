@@ -28,9 +28,7 @@ fn run_embed(
     limit: Option<usize>,
 ) -> Result<std::process::Output> {
     let mut cmd = Command::new(get_binary_path());
-    cmd.arg("embed")
-        .arg("--symbols-db")
-        .arg(symbols_db);
+    cmd.arg("embed").arg("--symbols-db").arg(symbols_db);
 
     if let Some(output) = output_dir {
         cmd.arg("--output").arg(output);
@@ -108,9 +106,18 @@ mod embed_tests {
 
         // Parse JSON output
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("success"), "Output should contain success field");
-        assert!(stdout.contains("embeddings_generated"), "Output should contain embedding count");
-        assert!(stdout.contains("dimensions"), "Output should contain dimensions");
+        assert!(
+            stdout.contains("success"),
+            "Output should contain success field"
+        );
+        assert!(
+            stdout.contains("embeddings_generated"),
+            "Output should contain embedding count"
+        );
+        assert!(
+            stdout.contains("dimensions"),
+            "Output should contain dimensions"
+        );
 
         // Should indicate some embeddings were generated (at least a few)
         assert!(
@@ -215,11 +222,15 @@ mod embed_tests {
         let output = run_embed(&db_path, None, None)?;
 
         // Should succeed but with 0 embeddings
-        assert!(output.status.success(), "Embed should handle empty database gracefully");
+        assert!(
+            output.status.success(),
+            "Embed should handle empty database gracefully"
+        );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            stdout.contains("\"symbols_processed\": 0") || stdout.contains("\"symbols_processed\":0"),
+            stdout.contains("\"symbols_processed\": 0")
+                || stdout.contains("\"symbols_processed\":0"),
             "Should indicate 0 symbols processed"
         );
 
@@ -260,7 +271,10 @@ mod embed_tests {
 
         let output = run_embed(&db_path, Some(&vectors_dir), Some(10))?;
 
-        assert!(output.status.success(), "Embed should create nested directories");
+        assert!(
+            output.status.success(),
+            "Embed should create nested directories"
+        );
         assert!(vectors_dir.exists(), "Nested directory should be created");
 
         Ok(())

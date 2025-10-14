@@ -3,12 +3,16 @@
 
 #[cfg(test)]
 mod search_line_mode_tests {
+    use crate::extractors::{Symbol, SymbolKind};
     use crate::handler::JulieServerHandler;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
+    use chrono::Utc;
     use std::fs;
+    use std::sync::atomic::Ordering;
     use tempfile::TempDir;
+    use tokio::time::{sleep, Duration};
 
     /// Extract text from CallToolResult safely
     fn extract_text_from_result(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
@@ -26,11 +30,30 @@ mod search_line_mode_tests {
             .join("\n")
     }
 
+    fn extract_workspace_id(result: &rust_mcp_sdk::schema::CallToolResult) -> Option<String> {
+        let text = extract_text_from_result(result);
+        text.lines()
+            .find(|line| line.contains("Workspace ID:"))
+            .and_then(|line| line.split(':').nth(1))
+            .map(|id| id.trim().to_string())
+    }
+
+    async fn mark_index_ready(handler: &JulieServerHandler) {
+        handler
+            .indexing_status
+            .sqlite_fts_ready
+            .store(true, Ordering::Relaxed);
+        handler
+            .indexing_status
+            .semantic_ready
+            .store(true, Ordering::Relaxed);
+        *handler.is_indexed.write().await = true;
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_basic() -> Result<()> {
-        // TDD RED: This test WILL FAIL because line mode doesn't exist yet
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -61,7 +84,6 @@ fn processPayment() {
             .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
             .await?;
 
-        // Index the workspace
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
             path: Some(workspace_path.to_string_lossy().to_string()),
@@ -72,13 +94,13 @@ fn processPayment() {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
-        // Wait for indexing
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(500)).await;
+        mark_index_ready(&handler).await;
 
-        // Search for TODO comments with line mode
         let search_tool = FastSearchTool {
             query: "TODO".to_string(),
             mode: "text".to_string(),
@@ -86,13 +108,12 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            output: Some("lines".to_string()), // NEW PARAMETER
+            output: Some("lines".to_string()),
         };
 
         let result = search_tool.call_tool(&handler).await?;
         let response_text = extract_text_from_result(&result);
 
-        // Should find both TODO lines
         assert!(
             response_text.contains("TODO: implement authentication"),
             "Should find first TODO comment"
@@ -101,17 +122,179 @@ fn processPayment() {
             response_text.contains("TODO: add validation"),
             "Should find second TODO comment"
         );
-
-        // Should include line numbers
         assert!(
             response_text.contains("Line 1") || response_text.contains(":1:"),
-            "Should include line number for first TODO"
+            "Should include line numbers"
         );
-
-        // Should NOT include processPayment line (doesn't contain TODO)
         assert!(
             !response_text.contains("Processing payment"),
-            "Should NOT include lines without TODO"
+            "Should NOT include unrelated lines"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path().to_path_buf();
+
+        let src_dir = workspace_path.join("src");
+        fs::create_dir_all(&src_dir)?;
+
+        // Create two files with distinct content
+        let file1 = src_dir.join("module_a.rs");
+        fs::write(
+            &file1,
+            "fn function_alpha() { println!(\"alpha_marker\"); }\n",
+        )?;
+
+        let file2 = src_dir.join("module_b.rs");
+        fs::write(
+            &file2,
+            "fn function_beta() { println!(\"beta_marker\"); }\n",
+        )?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+            limit: None,
+        };
+        index_tool.call_tool(&handler).await?;
+        sleep(Duration::from_millis(500)).await;
+        mark_index_ready(&handler).await;
+
+        // Test 1: Search primary workspace explicitly - should find results
+        let search_primary = FastSearchTool {
+            query: "alpha_marker".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("primary".to_string()),
+            output: Some("lines".to_string()),
+        };
+
+        let result = search_primary.call_tool(&handler).await?;
+        let response_text = extract_text_from_result(&result);
+
+        assert!(
+            response_text.contains("alpha_marker"),
+            "Primary workspace search should find content: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("module_a.rs"),
+            "Primary workspace search should show correct file: {}",
+            response_text
+        );
+
+        // Test 2: Search with invalid workspace ID - should return error
+        let search_invalid = FastSearchTool {
+            query: "alpha_marker".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("nonexistent_workspace_id".to_string()),
+            output: Some("lines".to_string()),
+        };
+
+        let result = search_invalid.call_tool(&handler).await;
+        assert!(
+            result.is_err(),
+            "Searching non-existent workspace should return error"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fast_search_line_mode_handles_exclusion_queries() -> Result<()> {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path().to_path_buf();
+
+        let src_dir = workspace_path.join("src");
+        fs::create_dir_all(&src_dir)?;
+
+        let test_file = src_dir.join("filters.rs");
+        fs::write(
+            &test_file,
+            r#"// user profile data
+// user password secret
+// user preferences dashboard
+"#,
+        )?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            expired_only: None,
+            days: None,
+            max_size_mb: None,
+            detailed: None,
+            limit: None,
+        };
+        index_tool.call_tool(&handler).await?;
+        sleep(Duration::from_millis(500)).await;
+        mark_index_ready(&handler).await;
+
+        let search_tool = FastSearchTool {
+            query: "user -password".to_string(),
+            mode: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("primary".to_string()),
+            output: Some("lines".to_string()),
+        };
+
+        let result = search_tool.call_tool(&handler).await?;
+        let response_text = extract_text_from_result(&result);
+
+        // Verify correct lines are included
+        assert!(
+            response_text.contains("user profile data"),
+            "Should include line without excluded term: {}",
+            response_text
+        );
+        assert!(
+            response_text.contains("user preferences dashboard"),
+            "Should include other matching line: {}",
+            response_text
+        );
+
+        // Verify excluded line is NOT in results (check line content, not header)
+        assert!(
+            !response_text.contains("user password secret"),
+            "Should exclude lines containing the forbidden term: {}",
+            response_text
         );
 
         Ok(())
@@ -119,7 +302,6 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_symbols_mode_default() -> Result<()> {
-        // TDD: Verify that default mode still returns symbols, not lines
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
         std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -153,12 +335,13 @@ fn processPayment() {
             days: None,
             max_size_mb: None,
             detailed: None,
+            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(500)).await;
+        mark_index_ready(&handler).await;
 
-        // Search WITHOUT output parameter (should default to symbols)
         let search_tool = FastSearchTool {
             query: "getUserData".to_string(),
             mode: "text".to_string(),
@@ -166,13 +349,12 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            output: None, // Default should be symbols mode
+            output: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
         let response_text = extract_text_from_result(&result);
 
-        // Should return symbol-level results (function definition)
         assert!(
             response_text.contains("getUserData"),
             "Should find function symbol"

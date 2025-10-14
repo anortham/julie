@@ -14,7 +14,6 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
-        println!("🐛 handle_add_command ENTRY: path={}", path);
         info!("➕ Adding reference workspace: {}", path);
 
         // Get primary workspace for registry service
@@ -860,10 +859,7 @@ impl ManageWorkspaceTool {
         let embeddings_ready = workspace.embeddings.is_some()
             && workspace.workspace_vectors_path(&workspace_id).exists();
 
-        let systems_ready = [db_ready, embeddings_ready]
-            .iter()
-            .filter(|&&x| x)
-            .count();
+        let systems_ready = [db_ready, embeddings_ready].iter().filter(|&&x| x).count();
 
         let status = match systems_ready {
             2 => "🟢 **FULLY OPERATIONAL** - All systems ready!",
@@ -923,6 +919,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         days: u32,
+        limit: u32,
     ) -> Result<CallToolResult> {
         info!("📅 Finding files modified in the last {} days", days);
 
@@ -936,6 +933,13 @@ impl ManageWorkspaceTool {
             }
         };
 
+        // Resolve primary workspace ID for workspace-scoped query
+        let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+        let workspace_id = registry_service
+            .get_primary_workspace_id()
+            .await?
+            .unwrap_or_else(|| "primary".to_string());
+
         // Get database access
         let db = primary_workspace.db.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Database not initialized. Run 'index' command first.")
@@ -944,13 +948,10 @@ impl ManageWorkspaceTool {
         let db_lock = db.lock().unwrap();
 
         // Query recent files from database
-        match db_lock.get_recent_files(days, 50) {
+        match db_lock.get_recent_files(Some(&workspace_id), days, limit as usize) {
             Ok(files) => {
                 if files.is_empty() {
-                    let message = format!(
-                        "📭 No files found modified in the last {} days.",
-                        days
-                    );
+                    let message = format!("📭 No files found modified in the last {} days.", days);
                     return Ok(CallToolResult::text_content(vec![TextContent::from(
                         message,
                     )]));
@@ -973,11 +974,7 @@ impl ManageWorkspaceTool {
                         🕐 Modified: {}\n\
                         📊 {} symbols | {} bytes\n\
                         🔤 Language: {}\n\n",
-                        file.path,
-                        time_ago,
-                        file.symbol_count,
-                        file.size,
-                        file.language
+                        file.path, time_ago, file.symbol_count, file.size, file.language
                     ));
                 }
 

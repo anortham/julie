@@ -1221,8 +1221,7 @@ fn run() {
 
             // Verify they have different line numbers
             assert_ne!(
-                process_calls[0].start_line,
-                process_calls[1].start_line,
+                process_calls[0].start_line, process_calls[1].start_line,
                 "Duplicate calls should be on different lines"
             );
         }

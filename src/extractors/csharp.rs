@@ -14,7 +14,8 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -1498,7 +1499,8 @@ impl CSharpExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1508,11 +1510,7 @@ impl CSharpExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1524,11 +1522,7 @@ impl CSharpExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Function/method calls: foo(), bar.Baz()
             "invocation_expression" => {
@@ -1551,7 +1545,8 @@ impl CSharpExtractor {
                         // For member access, extract the rightmost identifier (the method name)
                         if let Some(name_node) = child.child_by_field_name("name") {
                             let name = self.base.get_node_text(&name_node);
-                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
 
                             self.base.create_identifier(
                                 &name_node,

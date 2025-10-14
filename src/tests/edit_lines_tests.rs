@@ -51,8 +51,8 @@ mod edit_lines_tests {
         let expected_content = load_control_file("line_edit_insert_import.py")?;
 
         // Operation: Insert "import logging" at line 6 (after docstring)
-        use crate::tools::edit_lines::EditLinesTool;
         use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -81,8 +81,8 @@ mod edit_lines_tests {
         let expected_content = load_control_file("line_edit_delete_comment.py")?;
 
         // Operation: Delete line 15 ("# Test data" comment)
-        use crate::tools::edit_lines::EditLinesTool;
         use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -90,7 +90,7 @@ mod edit_lines_tests {
             file_path: test_file.to_string_lossy().to_string(),
             operation: "delete".to_string(),
             start_line: 15,
-            end_line: Some(15),  // Delete single line
+            end_line: Some(15), // Delete single line
             content: None,
             dry_run: false,
         };
@@ -116,8 +116,8 @@ mod edit_lines_tests {
         total += num
     return total / len(numbers) if numbers else 0"#;
 
-        use crate::tools::edit_lines::EditLinesTool;
         use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -125,7 +125,7 @@ mod edit_lines_tests {
             file_path: test_file.to_string_lossy().to_string(),
             operation: "replace".to_string(),
             start_line: 7,
-            end_line: Some(12),  // Replace lines 7-12 inclusive
+            end_line: Some(12), // Replace lines 7-12 inclusive
             content: Some(replacement_content.to_string()),
             dry_run: false,
         };
@@ -137,14 +137,94 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    async fn test_edit_lines_relative_path_uses_workspace_root() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let relative_path = test_file
+            .file_name()
+            .expect("filename")
+            .to_string_lossy()
+            .to_string();
+
+        let expected_content = load_control_file("line_edit_insert_import.py")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        let edit_tool = EditLinesTool {
+            file_path: relative_path,
+            operation: "insert".to_string(),
+            start_line: 6,
+            end_line: None,
+            content: Some("import logging".to_string()),
+            dry_run: false,
+        };
+
+        edit_tool.call_tool(&handler).await?;
+        verify_exact_match(&test_file, &expected_content)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_edit_lines_preserves_crlf_line_endings() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("windows_file.rs");
+        let original_content = "fn main() {\r\n    println!(\"hello\");\r\n}\r\n";
+        fs::write(&file_path, original_content)?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        let edit_tool = EditLinesTool {
+            file_path: "windows_file.rs".to_string(),
+            operation: "insert".to_string(),
+            start_line: 2,
+            end_line: None,
+            content: Some("    // inserted comment".to_string()),
+            dry_run: false,
+        };
+
+        edit_tool.call_tool(&handler).await?;
+
+        let contents = String::from_utf8(fs::read(&file_path)?)?;
+        assert!(
+            contents.contains("\r\n"),
+            "file should contain CRLF line endings: {}",
+            contents
+        );
+        assert!(
+            !contents.replace("\r\n", "").contains('\n'),
+            "no bare LF newlines should remain: {}",
+            contents
+        );
+        assert!(
+            contents.contains("// inserted comment"),
+            "inserted line should be present: {}",
+            contents
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_edit_lines_dry_run() -> Result<()> {
         // TDD RED: Verify dry_run doesn't modify file
 
         let (_temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
         let original_content = fs::read_to_string(&test_file)?;
 
-        use crate::tools::edit_lines::EditLinesTool;
         use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -154,14 +234,17 @@ mod edit_lines_tests {
             start_line: 6,
             end_line: None,
             content: Some("import logging".to_string()),
-            dry_run: true,  // DRY RUN - should NOT modify file
+            dry_run: true, // DRY RUN - should NOT modify file
         };
 
         edit_tool.call_tool(&handler).await?;
 
         // Verify: File content unchanged
         let after_content = fs::read_to_string(&test_file)?;
-        assert_eq!(original_content, after_content, "dry_run should not modify file");
+        assert_eq!(
+            original_content, after_content,
+            "dry_run should not modify file"
+        );
 
         Ok(())
     }

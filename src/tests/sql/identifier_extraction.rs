@@ -52,7 +52,6 @@ END
         // NOW extract identifiers (this will FAIL until we implement it)
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
-
         // Verify we found the function calls
         let sum_call = identifiers.iter().find(|id| id.name == "SUM");
         assert!(
@@ -168,14 +167,16 @@ END
 
         // We can still verify the extraction worked
         let procedure = symbols.iter().find(|s| s.name == "ProcessOrder");
-        assert!(procedure.is_some(), "Should extract ProcessOrder procedure symbol");
+        assert!(
+            procedure.is_some(),
+            "Should extract ProcessOrder procedure symbol"
+        );
 
         // If containing symbol IS set (it might be in some SQL dialects), verify it's correct
         if let Some(containing_id) = &sum_call.containing_symbol_id {
             if let Some(procedure) = procedure {
                 assert_eq!(
-                    containing_id,
-                    &procedure.id,
+                    containing_id, &procedure.id,
                     "If containing symbol is set, it should be the ProcessOrder procedure"
                 );
             }

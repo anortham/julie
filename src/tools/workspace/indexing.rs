@@ -215,8 +215,10 @@ impl ManageWorkspaceTool {
                         workspace_root,
                         workspace_id_clone.clone(),
                         indexing_status_clone,
-                    )
-                ).await {
+                    ),
+                )
+                .await
+                {
                     Ok(Ok(_)) => {
                         info!("✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
                               task_start.elapsed().as_secs_f64(), workspace_id_clone);
@@ -286,12 +288,20 @@ impl ManageWorkspaceTool {
                 .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
             let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
-            debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
+            debug!(
+                "🗄️ Opening reference workspace DB: {}",
+                ref_db_path.display()
+            );
 
             // Create the db/ directory if it doesn't exist
             if let Some(parent_dir) = ref_db_path.parent() {
-                std::fs::create_dir_all(parent_dir)
-                    .map_err(|e| anyhow::anyhow!("Failed to create database directory {}: {}", parent_dir.display(), e))?;
+                std::fs::create_dir_all(parent_dir).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to create database directory {}: {}",
+                        parent_dir.display(),
+                        e
+                    )
+                })?;
                 debug!("📁 Created database directory: {}", parent_dir.display());
             }
 
@@ -431,8 +441,7 @@ impl ManageWorkspaceTool {
                     {
                         warn!("Failed to delete old symbols for {}: {}", file_path, e);
                     }
-                    if let Err(e) =
-                        db_lock.delete_relationships_for_file(file_path, &workspace_id)
+                    if let Err(e) = db_lock.delete_relationships_for_file(file_path, &workspace_id)
                     {
                         warn!(
                             "Failed to delete old relationships for {}: {}",
@@ -484,8 +493,7 @@ impl ManageWorkspaceTool {
                 }
 
                 // Bulk store relationships
-                if let Err(e) =
-                    db_lock.bulk_store_relationships(&all_relationships, &workspace_id)
+                if let Err(e) = db_lock.bulk_store_relationships(&all_relationships, &workspace_id)
                 {
                     warn!("Failed to bulk store relationships: {}", e);
                 }
@@ -515,11 +523,7 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         language: &str,
         parser: &mut Parser,
-    ) -> Result<(
-        Vec<Symbol>,
-        Vec<Relationship>,
-        crate::database::FileInfo,
-    )> {
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
         // Read file content for symbol extraction
         let content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
@@ -1121,11 +1125,7 @@ impl ManageWorkspaceTool {
         &self,
         file_path: &Path,
         language: &str,
-    ) -> Result<(
-        Vec<Symbol>,
-        Vec<Relationship>,
-        crate::database::FileInfo,
-    )> {
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
         trace!(
             "Processing file without parser: {:?} (language: {})",
             file_path,
@@ -1250,7 +1250,10 @@ async fn generate_embeddings_from_sqlite(
                     ));
                 }
                 Err(join_err) => {
-                    error!("❌ Embedding engine initialization task panicked: {}", join_err);
+                    error!(
+                        "❌ Embedding engine initialization task panicked: {}",
+                        join_err
+                    );
                     return Err(anyhow::anyhow!(
                         "Embedding engine initialization task failed: {}",
                         join_err
@@ -1345,7 +1348,8 @@ async fn generate_embeddings_from_sqlite(
 
                         // 🚨 FAILURE RATE CHECK: Stop if >50% of batches are failing
                         let batches_processed = batch_idx + 1;
-                        if batches_processed >= 10 { // Only check after reasonable sample size
+                        if batches_processed >= 10 {
+                            // Only check after reasonable sample size
                             let failure_rate = total_failures as f64 / batches_processed as f64;
                             if failure_rate > MAX_TOTAL_FAILURE_RATE {
                                 error!(

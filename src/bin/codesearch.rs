@@ -97,7 +97,9 @@ fn init_logging(log_path: Option<&PathBuf>) -> Result<()> {
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
         let file_appender = tracing_appender::rolling::never(
-            log_file.parent().unwrap_or_else(|| std::path::Path::new(".")),
+            log_file
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(".")),
             log_file
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -106,10 +108,7 @@ fn init_logging(log_path: Option<&PathBuf>) -> Result<()> {
 
         tracing_subscriber::fmt()
             .with_env_filter(env_filter)
-            .with_writer(
-                file_appender
-                    .and(std::io::stderr.with_max_level(tracing::Level::WARN)),
-            )
+            .with_writer(file_appender.and(std::io::stderr.with_max_level(tracing::Level::WARN)))
             .init();
 
         eprintln!("📝 Debug logging enabled: {:?}", log_file);
@@ -338,8 +337,8 @@ fn scan_directory(
     info!("💾 Database: {:?}", db);
 
     // Open/create database
-    let mut database = SymbolDatabase::new(&db)
-        .with_context(|| format!("Failed to open database: {:?}", db))?;
+    let mut database =
+        SymbolDatabase::new(&db).with_context(|| format!("Failed to open database: {:?}", db))?;
 
     // Configure ignore patterns (use only what's passed via --ignore parameter)
     // No built-in defaults - caller controls all ignore patterns for single source of truth
@@ -353,17 +352,17 @@ fn scan_directory(
     }
 
     // Use directory path as workspace ID
-    let workspace_id = dir
-        .to_string_lossy()
-        .to_string()
-        .replace('\\', "/"); // Normalize path separators
+    let workspace_id = dir.to_string_lossy().to_string().replace('\\', "/"); // Normalize path separators
 
     // Get existing file hashes for change detection
     eprintln!("📊 Loading existing file hashes...");
     let existing_hashes = database
         .get_file_hashes_for_workspace(&workspace_id)
         .unwrap_or_default();
-    eprintln!("📊 Found {} existing files in database", existing_hashes.len());
+    eprintln!(
+        "📊 Found {} existing files in database",
+        existing_hashes.len()
+    );
 
     // Discover all files
     eprintln!("🔍 Discovering files...");
@@ -428,7 +427,10 @@ fn scan_directory(
 
     // Store file metadata and symbols
     if !results.is_empty() {
-        eprintln!("💾 Storing {} files and symbols in database...", results.len());
+        eprintln!(
+            "💾 Storing {} files and symbols in database...",
+            results.len()
+        );
 
         // Store file metadata
         for result in &results {
@@ -455,7 +457,10 @@ fn scan_directory(
 
         // Load all symbols for identifier resolution context
         let all_extracted_symbols = database.get_all_symbols()?;
-        eprintln!("📚 Loaded {} symbols for identifier extraction", all_extracted_symbols.len());
+        eprintln!(
+            "📚 Loaded {} symbols for identifier extraction",
+            all_extracted_symbols.len()
+        );
 
         // Extract identifiers from files in parallel (ALL supported languages)
         let all_identifiers = Arc::new(Mutex::new(Vec::new()));
@@ -475,7 +480,11 @@ fn scan_directory(
             };
 
             // Extract identifiers using ExtractorManager (language-aware)
-            match extractor_manager.extract_identifiers(&file_path_str, &content, &all_extracted_symbols) {
+            match extractor_manager.extract_identifiers(
+                &file_path_str,
+                &content,
+                &all_extracted_symbols,
+            ) {
                 Ok(identifiers) => {
                     if !identifiers.is_empty() {
                         if let Ok(mut all_ids) = all_identifiers.lock() {
@@ -491,7 +500,10 @@ fn scan_directory(
                     }
                 }
                 Err(e) => {
-                    debug!("⚠️  Error extracting identifiers from {:?}: {}", file_path, e);
+                    debug!(
+                        "⚠️  Error extracting identifiers from {:?}: {}",
+                        file_path, e
+                    );
                 }
             }
         });
@@ -503,9 +515,15 @@ fn scan_directory(
             .map_err(|e| anyhow::anyhow!("Lock error: {:?}", e))?;
 
         if !identifiers.is_empty() {
-            eprintln!("💾 Writing {} identifiers to database...", identifiers.len());
+            eprintln!(
+                "💾 Writing {} identifiers to database...",
+                identifiers.len()
+            );
             database.bulk_store_identifiers(&identifiers, &workspace_id)?;
-            eprintln!("✅ Phase 2 complete: {} identifiers extracted and stored", identifiers.len());
+            eprintln!(
+                "✅ Phase 2 complete: {} identifiers extracted and stored",
+                identifiers.len()
+            );
         } else {
             eprintln!("ℹ️  No identifiers extracted");
         }
@@ -530,7 +548,11 @@ fn scan_directory(
             };
 
             // Extract relationships using ExtractorManager (language-aware)
-            match extractor_manager.extract_relationships(&file_path_str, &content, &all_extracted_symbols) {
+            match extractor_manager.extract_relationships(
+                &file_path_str,
+                &content,
+                &all_extracted_symbols,
+            ) {
                 Ok(relationships) => {
                     if !relationships.is_empty() {
                         if let Ok(mut all_rels) = all_relationships.lock() {
@@ -546,7 +568,10 @@ fn scan_directory(
                     }
                 }
                 Err(e) => {
-                    debug!("⚠️  Error extracting relationships from {:?}: {}", file_path, e);
+                    debug!(
+                        "⚠️  Error extracting relationships from {:?}: {}",
+                        file_path, e
+                    );
                 }
             }
         });
@@ -558,9 +583,15 @@ fn scan_directory(
             .map_err(|e| anyhow::anyhow!("Lock error: {:?}", e))?;
 
         if !relationships.is_empty() {
-            eprintln!("💾 Writing {} relationships to database...", relationships.len());
+            eprintln!(
+                "💾 Writing {} relationships to database...",
+                relationships.len()
+            );
             database.bulk_store_relationships(&relationships, &workspace_id)?;
-            eprintln!("✅ Phase 3 complete: {} relationships extracted and stored", relationships.len());
+            eprintln!(
+                "✅ Phase 3 complete: {} relationships extracted and stored",
+                relationships.len()
+            );
         } else {
             eprintln!("ℹ️  No relationships extracted");
         }
@@ -596,15 +627,15 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     }
 
     // Open database
-    let mut database = SymbolDatabase::new(&db)
-        .with_context(|| format!("Failed to open database: {:?}", db))?;
+    let mut database =
+        SymbolDatabase::new(&db).with_context(|| format!("Failed to open database: {:?}", db))?;
 
     let path_str = file.to_string_lossy().to_string();
     let language = detect_language(&file);
 
     // Get file metadata
-    let metadata = std::fs::metadata(&file)
-        .with_context(|| format!("Failed to get metadata: {:?}", file))?;
+    let metadata =
+        std::fs::metadata(&file).with_context(|| format!("Failed to get metadata: {:?}", file))?;
 
     let size = metadata.len();
     let last_modified = metadata
@@ -626,7 +657,10 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     if let Some(old_hash) = &existing_hash {
         if old_hash == &new_hash {
             let elapsed = start.elapsed();
-            eprintln!("⏭️  File unchanged, skipped in {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+            eprintln!(
+                "⏭️  File unchanged, skipped in {:.2}ms",
+                elapsed.as_secs_f64() * 1000.0
+            );
             return Ok(());
         }
     }
@@ -670,9 +704,17 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     }
 
     let elapsed = start.elapsed();
-    let action = if existing_hash.is_some() { "Updated" } else { "Added" };
-    eprintln!("✅ {} in {:.2}ms ({} symbols)", action, elapsed.as_secs_f64() * 1000.0, symbols.len());
+    let action = if existing_hash.is_some() {
+        "Updated"
+    } else {
+        "Added"
+    };
+    eprintln!(
+        "✅ {} in {:.2}ms ({} symbols)",
+        action,
+        elapsed.as_secs_f64() * 1000.0,
+        symbols.len()
+    );
 
     Ok(())
 }
-

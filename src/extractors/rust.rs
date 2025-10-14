@@ -1,6 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
-    SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};

@@ -429,7 +429,8 @@ impl ExtractorManager {
             .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
 
         // Extract identifiers using the appropriate extractor
-        let identifiers = self.extract_identifiers_for_language(file_path, content, language, &tree, symbols)?;
+        let identifiers =
+            self.extract_identifiers_for_language(file_path, content, language, &tree, symbols)?;
 
         tracing::debug!(
             "Extracted {} identifiers from {} file: {}",
@@ -670,7 +671,6 @@ impl ExtractorManager {
             // ========================================================================
             // All 25 languages now have identifier extraction implemented!
             // ========================================================================
-
             _ => {
                 tracing::debug!(
                     "No identifier extraction available for language: {} (file: {})",

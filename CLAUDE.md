@@ -141,6 +141,58 @@ When implementing new features, the agent should say:
 7. **Single Binary**: Deploy anywhere, no runtime required
 8. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement to Semantic
 
+### 🔴 CRITICAL: Single-Workspace Search Policy (Non-Negotiable)
+
+**Search operations ALWAYS target ONE workspace at a time. No exceptions.**
+
+#### The Rule
+- **Search tools** (fast_search, fast_goto, fast_refs, etc.) → Search **ONE workspace only**
+- **Default**: Primary workspace
+- **Optional**: Specific reference workspace ID
+- **FORBIDDEN**: "all workspaces" option - rejected as unnecessary complexity
+
+#### Why Single-Workspace Only?
+1. **Simplicity**: Reduces code complexity and potential bugs
+2. **Performance**: No need to coordinate multi-workspace searches
+3. **User Intent**: Users typically know which workspace they're searching
+4. **Clarity**: Clear scope reduces confusion about search results
+
+#### What About Multi-Workspace Operations?
+- **Management tools** (ManageWorkspaceTool) → CAN list/view/manage all workspaces
+- **Workspace registry** → MUST track all workspaces for management
+- **Stats/Health checks** → CAN report on all workspaces
+
+**The distinction:**
+- **Search/Navigation** → Single workspace (where's this code?)
+- **Management/Administration** → All workspaces (what do I have?)
+
+#### Implementation Pattern
+```rust
+// ✅ CORRECT: Single workspace search
+match workspace_param {
+    "primary" | None => search_primary_workspace(),
+    workspace_id => {
+        validate_workspace_exists(workspace_id)?;
+        search_reference_workspace(workspace_id)
+    }
+}
+
+// ❌ WRONG: Multi-workspace search with loop
+"all" => {
+    for workspace_id in all_workspace_ids {
+        search_workspace(workspace_id)?; // DON'T DO THIS
+    }
+}
+```
+
+#### Tool Documentation Requirements
+All search/navigation tools MUST document:
+- "Workspace filter (optional): 'primary' (default) or specific workspace ID"
+- NO mention of "all workspaces" option
+- Clear error message if "all" is attempted
+
+**This is an architectural decision. Do not implement multi-workspace search without explicit approval.**
+
 ### Module Structure
 ```
 src/

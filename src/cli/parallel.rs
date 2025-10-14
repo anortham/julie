@@ -125,7 +125,10 @@ impl ParallelExtractor {
                 db_lock.get_all_symbols()?
             };
 
-            eprintln!("📚 Loaded {} symbols for identifier extraction", all_extracted_symbols.len());
+            eprintln!(
+                "📚 Loaded {} symbols for identifier extraction",
+                all_extracted_symbols.len()
+            );
 
             // Extract identifiers in parallel batches
             let all_identifiers = Arc::new(Mutex::new(Vec::new()));
@@ -163,12 +166,18 @@ impl ParallelExtractor {
                 .map_err(|e| anyhow!("Lock error: {:?}", e))?;
 
             if !identifiers.is_empty() {
-                eprintln!("💾 Writing {} identifiers to database...", identifiers.len());
+                eprintln!(
+                    "💾 Writing {} identifiers to database...",
+                    identifiers.len()
+                );
                 let mut db_lock = db.lock().map_err(|e| anyhow!("Lock error: {:?}", e))?;
                 db_lock.bulk_store_identifiers(&identifiers, "cli-extraction")?;
             }
 
-            eprintln!("✅ Phase 2 complete: {} identifiers extracted and stored", identifiers.len());
+            eprintln!(
+                "✅ Phase 2 complete: {} identifiers extracted and stored",
+                identifiers.len()
+            );
         }
 
         // 5. Finalize

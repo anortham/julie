@@ -66,9 +66,10 @@ pub struct FastSearchTool {
     /// Tip: Start with default, increase if you need more results
     #[serde(default = "default_limit")]
     pub limit: u32,
-    /// Workspace filter (optional): "all" (search all workspaces), "primary" (primary only), or workspace ID
-    /// Examples: "all", "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search only the primary workspace for focused results
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "reference-workspace_abc123"
+    /// Default: "primary" - search the primary workspace
+    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Output format: "symbols" (default), "lines" (grep-style)
@@ -119,17 +120,29 @@ impl FastSearchTool {
 
         match readiness {
             SystemReadiness::NotReady => {
-                let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+                if self.output.as_deref() == Some("lines") {
+                    debug!(
+                        "Line-mode search requested before readiness; attempting SQLite fallback"
+                    );
+                } else {
+                    let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
+                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]));
+                }
             }
             SystemReadiness::SqliteOnly { symbol_count } => {
                 // Graceful degradation: Use SQLite FTS5 for search
-                debug!("🔍 Using SQLite FTS5 search ({} symbols available)", symbol_count);
+                debug!(
+                    "🔍 Using SQLite FTS5 search ({} symbols available)",
+                    symbol_count
+                );
             }
             SystemReadiness::FullyReady { symbol_count } => {
-                debug!("✅ All systems ready ({} symbols, embeddings available)", symbol_count);
+                debug!(
+                    "✅ All systems ready ({} symbols, embeddings available)",
+                    symbol_count
+                );
             }
         }
 
@@ -209,25 +222,105 @@ impl FastSearchTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available for line search"))?;
 
-        // Get workspace ID for filtering
-        let workspace_id = {
-            let registry_service =
-                crate::workspace::registry_service::WorkspaceRegistryService::new(
-                    workspace.root.clone(),
-                );
-            registry_service
-                .get_primary_workspace_id()
-                .await?
-                .unwrap_or_else(|| "primary".to_string())
+        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
+            workspace.root.clone(),
+        );
+
+        let primary_workspace_id = registry_service
+            .get_primary_workspace_id()
+            .await?
+            .unwrap_or_else(|| "primary".to_string());
+
+        // Determine which workspace to search (singular)
+        let target_workspace_id = match self.resolve_workspace_filter(handler).await? {
+            Some(ids) if !ids.is_empty() => ids.into_iter().next().unwrap(),
+            _ => primary_workspace_id.clone(),
         };
 
-        // Use FTS5 to find matching files
-        let file_results = tokio::task::block_in_place(|| {
-            let db_lock = db.lock().unwrap();
-            db_lock.search_file_content_fts(&self.query, Some(&workspace_id), self.limit as usize * 5) // Get more files than limit to find enough lines
-        })?;
+        let processed_query = self.preprocess_fallback_query(&self.query);
+        let match_strategy = Self::line_match_strategy(&self.query);
+        let base_limit = self.limit.max(1) as usize;
+        let fetch_limit = base_limit.saturating_mul(5);
 
-        if file_results.is_empty() {
+        // Search the single target workspace
+        let all_line_matches: Vec<LineMatch> = if target_workspace_id == primary_workspace_id {
+            // Search primary workspace using shared connection
+            tokio::task::block_in_place(|| -> Result<Vec<LineMatch>> {
+                let db_lock = db.lock().unwrap();
+                let file_results = db_lock.search_file_content_fts(
+                    &processed_query,
+                    Some(&primary_workspace_id),
+                    fetch_limit,
+                )?;
+
+                let mut matches = Vec::new();
+                for file_result in file_results {
+                    if matches.len() >= base_limit {
+                        break;
+                    }
+
+                    if let Some(content) = db_lock
+                        .get_file_content(&file_result.path, Some(&primary_workspace_id))?
+                    {
+                        collect_line_matches(
+                            &mut matches,
+                            &content,
+                            &file_result.path,
+                            &primary_workspace_id,
+                            &match_strategy,
+                            base_limit,
+                        );
+                    }
+                }
+
+                Ok(matches)
+            })?
+        } else {
+            // Search reference workspace with isolated connection
+            let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
+            let query_clone = processed_query.clone();
+            let strategy = match_strategy.clone();
+            let workspace_id_clone = target_workspace_id.clone();
+
+            tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
+                if !ref_db_path.exists() {
+                    return Ok(Vec::new());
+                }
+
+                let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+                let file_results = ref_db.search_file_content_fts(
+                    &query_clone,
+                    Some(&workspace_id_clone),
+                    fetch_limit,
+                )?;
+
+                let mut matches = Vec::new();
+                for file_result in file_results {
+                    if matches.len() >= base_limit {
+                        break;
+                    }
+
+                    if let Some(content) = ref_db
+                        .get_file_content(&file_result.path, Some(&workspace_id_clone))?
+                    {
+                        collect_line_matches(
+                            &mut matches,
+                            &content,
+                            &file_result.path,
+                            &workspace_id_clone,
+                            &strategy,
+                            base_limit,
+                        );
+                    }
+                }
+
+                Ok(matches)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to spawn reference workspace search: {}", e))??
+        };
+
+        if all_line_matches.is_empty() {
             let message = format!(
                 "🔍 No lines found matching: '{}'\n\
                 💡 Try a broader search term or different query",
@@ -238,66 +331,24 @@ impl FastSearchTool {
             )]));
         }
 
-        // For each matching file, find all lines containing the query
-        let mut all_line_matches = Vec::new();
-        let query_lowercase = self.query.to_lowercase();
-
-        for file_result in file_results {
-            // Get full file content
-            let content = tokio::task::block_in_place(|| {
-                let db_lock = db.lock().unwrap();
-                db_lock.get_file_content(&file_result.path)
-            })?;
-
-            if let Some(content) = content {
-                // Parse line by line
-                for (line_num, line) in content.lines().enumerate() {
-                    let line_number = line_num + 1; // 1-indexed line numbers
-
-                    // Check if line contains the query (case-insensitive)
-                    if line.to_lowercase().contains(&query_lowercase) {
-                        all_line_matches.push((
-                            file_result.path.clone(),
-                            line_number,
-                            line.to_string(),
-                        ));
-
-                        // Early termination if we have enough results
-                        if all_line_matches.len() >= self.limit as usize {
-                            break;
-                        }
-                    }
-                }
-
-                // Early termination if we have enough results
-                if all_line_matches.len() >= self.limit as usize {
-                    break;
-                }
-            }
-        }
-
-        // Truncate to limit
-        if all_line_matches.len() > self.limit as usize {
-            all_line_matches.truncate(self.limit as usize);
-        }
-
-        // Format as grep-style output
+        // Format results (single workspace search)
         let mut lines = vec![format!(
-            "📄 Line-level search: '{}' (found {} lines)",
+            "📄 Line-level search in [{}]: '{}' (found {} lines)",
+            target_workspace_id,
             self.query,
             all_line_matches.len()
         )];
         lines.push(String::new());
 
-        for (file_path, line_number, line_content) in &all_line_matches {
-            // Format: file:line_number:line_content
-            lines.push(format!("{}:{}:{}", file_path, line_number, line_content));
+        for entry in &all_line_matches {
+            lines.push(format!(
+                "{}:{}:{}",
+                entry.file_path, entry.line_number, entry.line_content
+            ));
         }
 
-        let response_text = lines.join("\n");
-
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            response_text,
+            lines.join("\n"),
         )]))
     }
 
@@ -308,8 +359,13 @@ impl FastSearchTool {
         // Use SQLite database for text search
         // With Tantivy removed, we rely on SQLite FTS5 for fast symbol search
         if let Some(workspace_ids) = workspace_filter {
-            debug!("🔍 Using database search with workspace filter: {:?}", workspace_ids);
-            return self.database_search_with_workspace_filter(handler, workspace_ids).await;
+            debug!(
+                "🔍 Using database search with workspace filter: {:?}",
+                workspace_ids
+            );
+            return self
+                .database_search_with_workspace_filter(handler, workspace_ids)
+                .await;
         }
 
         // For "all" workspaces, use SQLite FTS5 file content search
@@ -880,30 +936,13 @@ impl FastSearchTool {
 
         match workspace_param {
             "all" => {
-                // 🔥 CRITICAL FIX: Actually get ALL workspace IDs from registry
-                // Previous implementation returned None, causing search to only query primary workspace
-                if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service =
-                        WorkspaceRegistryService::new(primary_workspace.root.clone());
-
-                    // Get all registered workspace IDs
-                    let all_workspaces = registry_service.get_all_workspaces().await?;
-                    let workspace_ids: Vec<String> = all_workspaces
-                        .iter()
-                        .map(|entry| entry.id.clone())
-                        .collect();
-
-                    if workspace_ids.is_empty() {
-                        debug!("No workspaces found in registry, returning None");
-                        Ok(None)
-                    } else {
-                        debug!("Resolved 'all' workspaces to {} IDs: {:?}", workspace_ids.len(), workspace_ids);
-                        Ok(Some(workspace_ids))
-                    }
-                } else {
-                    debug!("No primary workspace available for 'all' workspaces resolution");
-                    Ok(None)
-                }
+                // Multi-workspace search is not supported - architectural decision
+                // Use ManageWorkspaceTool for listing/managing multiple workspaces
+                Err(anyhow::anyhow!(
+                    "Searching all workspaces is not supported. Search one workspace at a time.\n\
+                     Use 'primary' (default) or specify a specific workspace ID.\n\
+                     To list available workspaces, use ManageWorkspaceTool with operation='list'."
+                ))
             }
             "primary" => {
                 // Resolve primary workspace ID for precise workspace filtering
@@ -1118,73 +1157,51 @@ impl FastSearchTool {
         Ok(symbols)
     }
 
-    /// 🔥 Enhanced query preprocessor for SQLite FTS5 with full operator support
-    /// Transforms user-friendly queries into FTS5 syntax for better search results
+    /// 🔥 FTS5 Query Preprocessor - Extract positive terms only, filter exclusions in application
     ///
-    /// Supported transformations:
-    /// - Multi-word → AND operator (implicit boolean)
-    /// - "-term" → NOT term (exclusion)
-    /// - "quoted phrase" → preserved (exact match)
-    /// - term1 OR term2 → pass-through (explicit OR)
-    /// - term* → pass-through (prefix wildcard)
-    /// - Existing AND/OR/NOT → pass-through
+    /// **CRITICAL ARCHITECTURAL DECISION**:
+    /// FTS5 searches at FILE level, not LINE level. When a file contains both "user" and "password",
+    /// the query `user NOT password` returns ZERO files (file contains both terms).
+    ///
+    /// **Correct approach for line-level search**:
+    /// 1. FTS5 query: Only positive terms ("user") → finds files containing "user"
+    /// 2. Application filtering: `line_match_strategy` excludes lines containing "password"
+    ///
+    /// This is NOT a hack - this is the ONLY correct way to do line-level exclusion with file-level FTS5.
     pub(crate) fn preprocess_fallback_query(&self, query: &str) -> String {
         let trimmed = query.trim();
 
-        // If already quoted, keep as-is for exact phrase match
+        // If already quoted, pass through as-is
         if (trimmed.starts_with('"') && trimmed.ends_with('"'))
             || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
         {
             return trimmed.to_string();
         }
 
-        // If query contains FTS5 operators already (AND, OR, NOT, NEAR), pass through
-        let has_operators = trimmed.contains(" AND ")
-            || trimmed.contains(" OR ")
-            || trimmed.contains(" NOT ")
-            || trimmed.contains("NEAR(");
-        if has_operators {
+        // If query contains explicit FTS5 operators, pass through
+        if trimmed.contains(" NOT ") || trimmed.contains(" AND ") || trimmed.contains(" OR ") {
             return trimmed.to_string();
         }
 
-        // If query contains wildcard (*), pass through
+        // If query contains wildcard, pass through
         if trimmed.contains('*') {
             return trimmed.to_string();
         }
 
-        // Process word-by-word to handle exclusions (-term)
+        // Extract ONLY positive terms for FTS5 file-level search
+        // Exclusions handled by line_match_strategy after retrieving file content
         let words: Vec<&str> = trimmed.split_whitespace().collect();
-
-        if words.len() == 1 {
-            // Single word - check for exclusion prefix
-            let word = words[0];
-            if word.starts_with('-') && word.len() > 1 {
-                // Exclusion only doesn't make sense, return as-is
-                return word.to_string();
-            }
-            return word.to_string();
-        }
-
-        // Multi-word query: process each word and join correctly
-        // FTS5 syntax: "term1 term2" = implicit AND
-        // FTS5 syntax: "term1 NOT term2" = term1 but exclude term2
-        let processed_words: Vec<String> = words
-            .iter()
-            .map(|word| {
-                if word.starts_with('-') && word.len() > 1 {
-                    // Exclusion: -term → NOT term
-                    format!("NOT {}", &word[1..])
-                } else {
-                    // Regular term
-                    word.to_string()
-                }
-            })
+        let positive_terms: Vec<&str> = words
+            .into_iter()
+            .filter(|w| !w.starts_with('-') || w.len() == 1)
             .collect();
 
-        // Join with spaces - FTS5 interprets adjacent terms as implicit AND
-        // "term1 term2" = both required
-        // "term1 NOT term2" = term1 but exclude term2
-        processed_words.join(" ")
+        if positive_terms.is_empty() {
+            // No positive terms - return original (FTS5 will handle error)
+            return trimmed.to_string();
+        }
+
+        positive_terms.join(" ")
     }
 
     /// Helper: Match file path against glob pattern (supports exclusions with !)
@@ -1199,7 +1216,10 @@ impl FastSearchTool {
                     !matcher.is_match(file_path)
                 }
                 Err(e) => {
-                    warn!("Invalid exclusion glob pattern '{}': {}", exclusion_pattern, e);
+                    warn!(
+                        "Invalid exclusion glob pattern '{}': {}",
+                        exclusion_pattern, e
+                    );
                     true // On error, don't exclude
                 }
             }
@@ -1217,6 +1237,93 @@ impl FastSearchTool {
             }
         }
     }
+
+    fn line_match_strategy(query: &str) -> LineMatchStrategy {
+        let trimmed = query.trim();
+
+        if trimmed.is_empty()
+            || trimmed.contains('"')
+            || trimmed.contains('\'')
+            || trimmed.contains('*')
+            || trimmed.contains(" AND ")
+            || trimmed.contains(" OR ")
+            || trimmed.contains(" NOT ")
+        {
+            return LineMatchStrategy::Substring(trimmed.to_lowercase());
+        }
+
+        let mut required = Vec::new();
+        let mut excluded = Vec::new();
+
+        for token in trimmed.split_whitespace() {
+            if token.starts_with('-') && token.len() > 1 {
+                excluded.push(token[1..].to_lowercase());
+            } else if !token.is_empty() {
+                required.push(token.to_lowercase());
+            }
+        }
+
+        if required.is_empty() && excluded.is_empty() {
+            LineMatchStrategy::Substring(trimmed.to_lowercase())
+        } else {
+            LineMatchStrategy::Tokens { required, excluded }
+        }
+    }
+
+    fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
+        let line_lower = line.to_lowercase();
+
+        match strategy {
+            LineMatchStrategy::Substring(pattern) => {
+                !pattern.is_empty() && line_lower.contains(pattern)
+            }
+            LineMatchStrategy::Tokens { required, excluded } => {
+                let required_ok =
+                    required.is_empty() || required.iter().all(|token| line_lower.contains(token));
+                let excluded_ok = excluded.iter().all(|token| !line_lower.contains(token));
+                required_ok && excluded_ok
+            }
+        }
+    }
+}
+
+fn collect_line_matches(
+    destination: &mut Vec<LineMatch>,
+    content: &str,
+    file_path: &str,
+    _workspace_id: &str,
+    strategy: &LineMatchStrategy,
+    max_results: usize,
+) {
+    for (line_idx, line) in content.lines().enumerate() {
+        if FastSearchTool::line_matches(strategy, line) {
+            destination.push(LineMatch {
+                file_path: file_path.to_string(),
+                line_number: line_idx + 1,
+                line_content: line.trim_end_matches('\r').to_string(),
+            });
+
+            if destination.len() >= max_results {
+                break;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LineMatch {
+    file_path: String,
+    line_number: usize,
+    line_content: String,
+}
+
+#[derive(Debug, Clone)]
+enum LineMatchStrategy {
+    Substring(String),
+    Tokens {
+        required: Vec<String>,
+        excluded: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -1294,8 +1401,8 @@ mod tests {
 
         assert_eq!(
             tool.preprocess_fallback_query("user -password"),
-            "user NOT password",
-            "Exclusion syntax (-term) should convert to NOT (space-separated)"
+            "user",
+            "Extract only positive terms for FTS5 (file-level search), exclusions handled by line_match_strategy (line-level filtering)"
         );
     }
 

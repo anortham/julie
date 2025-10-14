@@ -1386,9 +1386,9 @@ end
 
 #[cfg(test)]
 mod identifier_extraction_tests {
+    use super::ruby_extractor_tests::create_extractor_and_parse;
     use super::*;
     use crate::extractors::base::IdentifierKind;
-    use super::ruby_extractor_tests::create_extractor_and_parse;
 
     #[test]
     fn test_extract_function_calls() {

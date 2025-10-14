@@ -204,7 +204,10 @@ mod identifier_extraction_tests {
 
     fn extract_identifiers(
         code: &str,
-    ) -> (Vec<crate::extractors::base::Symbol>, Vec<crate::extractors::base::Identifier>) {
+    ) -> (
+        Vec<crate::extractors::base::Symbol>,
+        Vec<crate::extractors::base::Identifier>,
+    ) {
         let tree = init_parser(code, "regex");
         let mut extractor = RegexExtractor::new(
             "regex".to_string(),

@@ -78,6 +78,7 @@ pub const MAX_USERS: usize = 100;
         days: None,
         max_size_mb: None,
         detailed: None,
+        limit: None,
     };
     let index_result = index_tool.call_tool(&handler).await?;
     println!(
@@ -177,6 +178,7 @@ pub fn process_data(input: &str) -> String {
         days: None,
         max_size_mb: None,
         detailed: None,
+        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -236,6 +238,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
         days: None,
         max_size_mb: None,
         detailed: None,
+        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 

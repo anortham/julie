@@ -2,7 +2,8 @@
 // Handles PowerShell-specific constructs for Windows/Azure DevOps
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1293,7 +1294,8 @@ impl PowerShellExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1303,11 +1305,7 @@ impl PowerShellExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1319,11 +1317,7 @@ impl PowerShellExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // PowerShell commands and cmdlet calls: Get-Process, Write-Host, etc.
             "command" | "command_expression" => {
@@ -1364,7 +1358,8 @@ impl PowerShellExtractor {
                         if let Some(last_dot_pos) = text.rfind('.') {
                             if last_dot_pos + 1 < text.len() {
                                 let method_name = &text[last_dot_pos + 1..];
-                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                                let containing_symbol_id =
+                                    self.find_containing_symbol_id(node, symbol_map);
 
                                 self.base.create_identifier(
                                     &child,
@@ -1400,7 +1395,8 @@ impl PowerShellExtractor {
                         for name_child in child.children(&mut name_cursor) {
                             if name_child.kind() == "simple_name" {
                                 let member_name = self.base.get_node_text(&name_child);
-                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                                let containing_symbol_id =
+                                    self.find_containing_symbol_id(node, symbol_map);
 
                                 self.base.create_identifier(
                                     &name_child,

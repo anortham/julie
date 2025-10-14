@@ -1,5 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1240,11 +1241,7 @@ impl ZigExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Function calls: calculate(), obj.method()
             "call_expression" => {
@@ -1261,7 +1258,9 @@ impl ZigExtractor {
                     );
                 }
                 // Check for field_expression (method calls like obj.method())
-                else if let Some(field_expr) = self.base.find_child_by_type(&node, "field_expression") {
+                else if let Some(field_expr) =
+                    self.base.find_child_by_type(&node, "field_expression")
+                {
                     // Extract the rightmost identifier (the method name)
                     let mut cursor = field_expr.walk();
                     let identifiers: Vec<Node> = field_expr

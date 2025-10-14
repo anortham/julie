@@ -186,9 +186,10 @@ pub mod exploration_tools_tests; // Tests for exploration tool token optimizatio
 pub mod find_logic_tests; // Tests for FindLogicTool token optimization
 pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
 pub mod path_relevance_tests; // Tests for path relevance scoring system
+pub mod reference_workspace_tests; // End-to-end tests for reference workspace indexing and search
+pub mod search_line_mode_tests; // TDD tests for line-level search output (grep-style results)
 pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
 pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
-pub mod search_line_mode_tests; // TDD tests for line-level search output (grep-style results)
 pub mod watcher_tests;
 pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
 

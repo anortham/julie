@@ -7,7 +7,8 @@
 // Test parity: All Miller test cases must pass
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1483,7 +1484,8 @@ impl DartExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1493,11 +1495,7 @@ impl DartExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1509,11 +1507,7 @@ impl DartExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // In Dart, both function calls and member access use "member_access" nodes
             // The difference is whether the selector contains an argument_part (function call)
@@ -1524,11 +1518,13 @@ impl DartExtractor {
                     let name = self.base.get_node_text(&id_node);
 
                     // Check if the selector has an argument_part (indicates function call)
-                    let is_call = if let Some(selector_node) = self.find_child_by_type(&node, "selector") {
-                        self.find_child_by_type(&selector_node, "argument_part").is_some()
-                    } else {
-                        false
-                    };
+                    let is_call =
+                        if let Some(selector_node) = self.find_child_by_type(&node, "selector") {
+                            self.find_child_by_type(&selector_node, "argument_part")
+                                .is_some()
+                        } else {
+                            false
+                        };
 
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
                     let kind = if is_call {
@@ -1537,12 +1533,8 @@ impl DartExtractor {
                         IdentifierKind::MemberAccess
                     };
 
-                    self.base.create_identifier(
-                        &id_node,
-                        name,
-                        kind,
-                        containing_symbol_id,
-                    );
+                    self.base
+                        .create_identifier(&id_node, name, kind, containing_symbol_id);
                 }
             }
 

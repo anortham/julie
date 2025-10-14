@@ -337,7 +337,7 @@ impl SymbolDatabase {
         self.create_workspaces_table()?;
         self.create_files_table()?;
         self.create_symbols_table()?;
-        self.create_identifiers_table()?;  // Reference tracking
+        self.create_identifiers_table()?; // Reference tracking
         self.create_relationships_table()?;
         self.create_embeddings_table()?;
 
@@ -916,17 +916,34 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Get file content from database
-    pub fn get_file_content(&self, path: &str) -> Result<Option<String>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT content FROM files WHERE path = ?1")?;
+    pub fn get_file_content(
+        &self,
+        path: &str,
+        workspace_id: Option<&str>,
+    ) -> Result<Option<String>> {
+        match workspace_id {
+            Some(ws_id) => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT content FROM files WHERE path = ?1 AND workspace_id = ?2")?;
 
-        let result = stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0));
+                match stmt.query_row(params![path, ws_id], |row| row.get::<_, Option<String>>(0)) {
+                    Ok(content) => Ok(content),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(anyhow!("Database error: {}", e)),
+                }
+            }
+            None => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT content FROM files WHERE path = ?1")?;
 
-        match result {
-            Ok(content) => Ok(content),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(anyhow!("Database error: {}", e)),
+                match stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0)) {
+                    Ok(content) => Ok(content),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(anyhow!("Database error: {}", e)),
+                }
+            }
         }
     }
 
@@ -949,7 +966,12 @@ impl SymbolDatabase {
     }
 
     /// Get recently modified files (last N days)
-    pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
+    pub fn get_recent_files(
+        &self,
+        workspace_id: Option<&str>,
+        days: u32,
+        limit: usize,
+    ) -> Result<Vec<FileInfo>> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -957,30 +979,58 @@ impl SymbolDatabase {
 
         let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
 
-        let mut stmt = self.conn.prepare(
-            "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
-             FROM files
-             WHERE last_modified >= ?1
-             ORDER BY last_modified DESC
-             LIMIT ?2",
-        )?;
-
-        let rows = stmt.query_map(params![cutoff_time, limit], |row| {
-            Ok(FileInfo {
-                path: row.get(0)?,
-                language: row.get(1)?,
-                hash: row.get(2)?,
-                size: row.get(3)?,
-                last_modified: row.get(4)?,
-                last_indexed: row.get(5)?,
-                symbol_count: row.get(6)?,
-                content: row.get(7)?,
-            })
-        })?;
-
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+
+        if let Some(ws_id) = workspace_id {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+                 FROM files
+                 WHERE workspace_id = ?1 AND last_modified >= ?2
+                 ORDER BY last_modified DESC
+                 LIMIT ?3",
+            )?;
+
+            let rows = stmt.query_map(params![ws_id, cutoff_time, limit], |row| {
+                Ok(FileInfo {
+                    path: row.get(0)?,
+                    language: row.get(1)?,
+                    hash: row.get(2)?,
+                    size: row.get(3)?,
+                    last_modified: row.get(4)?,
+                    last_indexed: row.get(5)?,
+                    symbol_count: row.get(6)?,
+                    content: row.get(7)?,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+                 FROM files
+                 WHERE last_modified >= ?1
+                 ORDER BY last_modified DESC
+                 LIMIT ?2",
+            )?;
+
+            let rows = stmt.query_map(params![cutoff_time, limit], |row| {
+                Ok(FileInfo {
+                    path: row.get(0)?,
+                    language: row.get(1)?,
+                    hash: row.get(2)?,
+                    size: row.get(3)?,
+                    last_modified: row.get(4)?,
+                    last_indexed: row.get(5)?,
+                    symbol_count: row.get(6)?,
+                    content: row.get(7)?,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
         }
 
         Ok(results)
@@ -1199,9 +1249,9 @@ impl SymbolDatabase {
 
         // STEP 2: Optimize SQLite for bulk operations (DANGEROUS but FAST!)
         self.conn.execute("PRAGMA synchronous = OFF", [])?; // No disk sync - risky but fast
-        // NOTE: Don't change journal_mode here - database is already in WAL mode
-        // Changing from WAL to MEMORY requires exclusive access and causes "database is locked" errors
-        // self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // REMOVED: Causes lock conflicts
+                                                            // NOTE: Don't change journal_mode here - database is already in WAL mode
+                                                            // Changing from WAL to MEMORY requires exclusive access and causes "database is locked" errors
+                                                            // self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // REMOVED: Causes lock conflicts
         self.conn.execute("PRAGMA cache_size = 20000", [])?; // Large cache for bulk ops
 
         // STEP 3: Start transaction for atomic bulk insert
@@ -1482,7 +1532,11 @@ impl SymbolDatabase {
     /// unresolved (target_symbol_id = NULL) and resolved on-demand during queries.
     ///
     /// Performance optimized like bulk_store_symbols: drop indexes, batch insert, rebuild indexes.
-    pub fn bulk_store_identifiers(&mut self, identifiers: &[crate::extractors::Identifier], workspace_id: &str) -> Result<()> {
+    pub fn bulk_store_identifiers(
+        &mut self,
+        identifiers: &[crate::extractors::Identifier],
+        workspace_id: &str,
+    ) -> Result<()> {
         if identifiers.is_empty() {
             return Ok(());
         }
@@ -1843,7 +1897,8 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(&query)?;
 
         // Convert Vec<String> to Vec<&dyn ToSql> for params!
-        let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
 
         let symbol_iter = stmt.query_map(&params[..], |row| self.row_to_symbol(row))?;
 
@@ -4291,7 +4346,9 @@ mod tests {
         )
         .unwrap();
 
-        let content = db.get_file_content("test.md").unwrap();
+        let content = db
+            .get_file_content("test.md", Some("test_workspace"))
+            .unwrap();
         assert_eq!(content, Some("# Test\nThis is test content".to_string()));
     }
 

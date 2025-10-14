@@ -76,11 +76,8 @@ mod scan_tests {
 
         // Verify database has content
         let conn = rusqlite::Connection::open(&db_path)?;
-        let symbol_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM symbols",
-            [],
-            |row| row.get(0),
-        )?;
+        let symbol_count: i32 =
+            conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         assert!(symbol_count > 0, "No symbols were extracted");
 
@@ -148,11 +145,7 @@ pub fn create_user(name: &str) -> User {
 
         // Database should exist but be empty
         let conn = rusqlite::Connection::open(&db_path)?;
-        let file_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i32 = conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
         assert_eq!(file_count, 0, "Empty directory should have no files");
 
@@ -180,7 +173,10 @@ pub fn create_user(name: &str) -> User {
             |row| row.get(0),
         )?;
 
-        assert_eq!(stored_content, file_content, "File content not stored correctly");
+        assert_eq!(
+            stored_content, file_content,
+            "File content not stored correctly"
+        );
 
         Ok(())
     }
@@ -365,10 +361,7 @@ mod error_handling_tests {
         let output = run_scan(&invalid_dir, &db_path)?;
 
         // Should fail gracefully
-        assert!(
-            !output.status.success(),
-            "Should fail on invalid directory"
-        );
+        assert!(!output.status.success(), "Should fail on invalid directory");
 
         Ok(())
     }
@@ -446,11 +439,7 @@ mod error_handling_tests {
 
         // Should have 5 files (code.cs, script.js, config.json, README.md, data.xml)
         // Excludes binary.exe
-        let file_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i32 = conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 5, "Should index all 5 non-binary files");
 
         // Verify code files have symbols
@@ -489,14 +478,20 @@ mod error_handling_tests {
             [],
             |row| row.get(0),
         )?;
-        assert!(json_content.contains("version"), "JSON content should be stored");
+        assert!(
+            json_content.contains("version"),
+            "JSON content should be stored"
+        );
 
         let md_content: String = conn.query_row(
             "SELECT content FROM files WHERE file_path LIKE '%README.md'",
             [],
             |row| row.get(0),
         )?;
-        assert!(md_content.contains("Test Project"), "Markdown content should be stored");
+        assert!(
+            md_content.contains("Test Project"),
+            "Markdown content should be stored"
+        );
 
         Ok(())
     }

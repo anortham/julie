@@ -1308,7 +1308,8 @@ impl JavaScriptExtractor {
                         "member_expression" => {
                             // Member call: object.method()
                             // Extract the rightmost identifier (the method name)
-                            if let Some(property_node) = function_node.child_by_field_name("property")
+                            if let Some(property_node) =
+                                function_node.child_by_field_name("property")
                             {
                                 let name = self.base.get_node_text(&property_node);
                                 let containing_symbol_id =

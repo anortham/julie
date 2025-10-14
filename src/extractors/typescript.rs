@@ -173,7 +173,9 @@ impl TypeScriptExtractor {
         // This keeps the full body span but uses name position for ID consistency
         if let Some(name_node) = node.child_by_field_name("name") {
             let start_pos = name_node.start_position();
-            let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+            let new_id =
+                self.base
+                    .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
 
             // Update ID in symbol and symbol_map
             let old_id = symbol.id.clone();
@@ -185,7 +187,11 @@ impl TypeScriptExtractor {
                 if parent.kind() == "variable_declarator" {
                     if let Some(var_name_node) = parent.child_by_field_name("name") {
                         let start_pos = var_name_node.start_position();
-                        let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+                        let new_id = self.base.generate_id(
+                            &name,
+                            start_pos.row as u32,
+                            start_pos.column as u32,
+                        );
 
                         let old_id = symbol.id.clone();
                         symbol.id = new_id.clone();
@@ -225,7 +231,7 @@ impl TypeScriptExtractor {
 
         use crate::extractors::base::SymbolOptions;
         self.base.create_symbol(
-            &node,  // Use the whole class node for correct start/end positions
+            &node, // Use the whole class node for correct start/end positions
             name,
             SymbolKind::Class,
             SymbolOptions {
@@ -320,7 +326,9 @@ impl TypeScriptExtractor {
         // Regenerate ID using method name position (not body start)
         if let Some(name_node) = node.child_by_field_name("name") {
             let start_pos = name_node.start_position();
-            let new_id = self.base.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+            let new_id =
+                self.base
+                    .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
 
             let old_id = symbol.id.clone();
             symbol.id = new_id.clone();
@@ -482,18 +490,15 @@ impl TypeScriptExtractor {
                         ),
                     ];
 
-                    for candidate in candidates { 
+                    for candidate in candidates {
                         if self.base.symbol_map.contains_key(&candidate) {
                             return Some(candidate);
                         }
                     }
 
-                    if let Some((id, _symbol)) = self
-                        .base
-                        .symbol_map
-                        .iter()
-                        .find(|(_, symbol)| symbol.name == class_name && symbol.kind == SymbolKind::Class)
-                    {
+                    if let Some((id, _symbol)) = self.base.symbol_map.iter().find(|(_, symbol)| {
+                        symbol.name == class_name && symbol.kind == SymbolKind::Class
+                    }) {
                         return Some(id.clone());
                     }
                 }
@@ -516,9 +521,9 @@ impl TypeScriptExtractor {
         symbol.start_byte = span_node.start_byte() as u32;
         symbol.end_byte = span_node.end_byte() as u32;
 
-        let new_id = self
-            .base
-            .generate_id(&symbol.name, start_pos.row as u32, start_pos.column as u32);
+        let new_id =
+            self.base
+                .generate_id(&symbol.name, start_pos.row as u32, start_pos.column as u32);
         symbol.id = new_id.clone();
 
         self.base.symbol_map.remove(&original_id);

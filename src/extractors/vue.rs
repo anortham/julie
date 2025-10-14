@@ -595,12 +595,22 @@ impl VueExtractor {
         start_line_offset: usize,
     ) {
         // Extract identifier from this node if applicable
-        self.extract_identifier_from_node_with_content(node, symbol_map, script_content, start_line_offset);
+        self.extract_identifier_from_node_with_content(
+            node,
+            symbol_map,
+            script_content,
+            start_line_offset,
+        );
 
         // Recursively walk children
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.walk_tree_for_identifiers_with_content(child, symbol_map, script_content, start_line_offset);
+            self.walk_tree_for_identifiers_with_content(
+                child,
+                symbol_map,
+                script_content,
+                start_line_offset,
+            );
         }
     }
 
@@ -622,7 +632,8 @@ impl VueExtractor {
                     match function_node.kind() {
                         "identifier" => {
                             // Simple function call: foo()
-                            let name = self.get_node_text_from_content(&function_node, script_content);
+                            let name =
+                                self.get_node_text_from_content(&function_node, script_content);
                             let containing_symbol_id =
                                 self.find_containing_symbol_id(node, symbol_map);
 
@@ -637,9 +648,11 @@ impl VueExtractor {
                         "member_expression" => {
                             // Method call: obj.method()
                             // Extract the rightmost identifier (the method name)
-                            if let Some(property_node) = function_node.child_by_field_name("property")
+                            if let Some(property_node) =
+                                function_node.child_by_field_name("property")
                             {
-                                let name = self.get_node_text_from_content(&property_node, script_content);
+                                let name =
+                                    self.get_node_text_from_content(&property_node, script_content);
                                 let containing_symbol_id =
                                     self.find_containing_symbol_id(node, symbol_map);
 
@@ -717,12 +730,9 @@ impl VueExtractor {
                     self.base.content = section.content.clone();
 
                     // Create identifier with script content
-                    let mut identifier = self.base.create_identifier(
-                        node,
-                        name,
-                        kind,
-                        containing_symbol_id,
-                    );
+                    let mut identifier =
+                        self.base
+                            .create_identifier(node, name, kind, containing_symbol_id);
 
                     // Adjust line numbers for the script section offset
                     identifier.start_line += line_offset as u32;

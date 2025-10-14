@@ -4,7 +4,8 @@
 // Original: /Users/murphy/Source/miller/src/extractors/html-extractor.ts
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use regex::Regex;
 use std::collections::HashMap;
@@ -1057,7 +1058,8 @@ impl HTMLExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1067,11 +1069,7 @@ impl HTMLExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1083,15 +1081,12 @@ impl HTMLExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // HTML attributes: onclick, data-action (as "calls"), id, class (as "member access")
             "attribute" => {
-                if let (Some(attr_name), Some(attr_value)) = self.extract_attribute_name_value(node) {
+                if let (Some(attr_name), Some(attr_value)) = self.extract_attribute_name_value(node)
+                {
                     // Event handlers and data-action attributes are "calls"
                     if attr_name.starts_with("on") || attr_name.starts_with("data-action") {
                         let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
@@ -1108,7 +1103,8 @@ impl HTMLExtractor {
                         // For class, split by spaces and extract each class name
                         if attr_name == "class" {
                             for class_name in attr_value.split_whitespace() {
-                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                                let containing_symbol_id =
+                                    self.find_containing_symbol_id(node, symbol_map);
 
                                 self.base.create_identifier(
                                     &node,
@@ -1119,7 +1115,8 @@ impl HTMLExtractor {
                             }
                         } else {
                             // id attribute
-                            let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                            let containing_symbol_id =
+                                self.find_containing_symbol_id(node, symbol_map);
 
                             self.base.create_identifier(
                                 &node,

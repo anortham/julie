@@ -8,8 +8,8 @@
 // Following the Rust/C# extractor reference implementation pattern
 
 use crate::extractors::base::IdentifierKind;
-use crate::tests::lua::init_parser;
 use crate::extractors::lua::LuaExtractor;
+use crate::tests::lua::init_parser;
 
 #[cfg(test)]
 mod identifier_extraction_tests {

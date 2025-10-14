@@ -143,7 +143,10 @@
       "Bash(timeout 30 cargo test search_line_mode_tests --lib -- --nocapture)",
       "mcp__julie__edit_lines",
       "Bash(RUST_LOG=debug cargo test:*)",
-      "Bash(RUST_LOG=julie::tools::refactoring=debug cargo test:*)"
+      "Bash(RUST_LOG=julie::tools::refactoring=debug cargo test:*)",
+      "Bash(timeout 60 cargo test:*)",
+      "Bash(timeout 30 cargo test:*)",
+      "WebFetch(domain:stackoverflow.com)"
     ],
     "deny": [],
     "ask": []

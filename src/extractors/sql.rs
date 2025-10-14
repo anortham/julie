@@ -1,6 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
-    SymbolKind, SymbolOptions,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions,
 };
 use regex::Regex;
 use serde_json::Value;
@@ -2261,7 +2261,9 @@ impl SqlExtractor {
             // Function calls with invocation nodes (when parser recognizes them correctly)
             "invocation" => {
                 // Look for identifier or object_reference containing identifier
-                let name_node = if let Some(obj_ref) = self.base.find_child_by_type(&node, "object_reference") {
+                let name_node = if let Some(obj_ref) =
+                    self.base.find_child_by_type(&node, "object_reference")
+                {
                     self.base.find_child_by_type(&obj_ref, "identifier")
                 } else {
                     self.base.find_child_by_type(&node, "identifier")

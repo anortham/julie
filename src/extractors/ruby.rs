@@ -1,5 +1,6 @@
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    SymbolOptions, Visibility,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -1230,7 +1231,8 @@ impl RubyExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -1240,11 +1242,7 @@ impl RubyExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -1257,11 +1255,7 @@ impl RubyExtractor {
 
     /// Extract identifier from a single node based on its kind
     /// Ruby-specific: "call" nodes are used for both function calls and member access
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Ruby uses "call" for both function calls and member access
             // The difference is whether there's a receiver field
@@ -1289,7 +1283,8 @@ impl RubyExtractor {
                         let mut cursor = node.walk();
                         for child in node.children(&mut cursor) {
                             if child.kind() == "identifier" {
-                                let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                                let containing_symbol_id =
+                                    self.find_containing_symbol_id(node, symbol_map);
 
                                 self.base.create_identifier(
                                     &child,

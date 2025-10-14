@@ -915,9 +915,9 @@ function Get-ProcessInfo {
                 "Should extract 'FileName' from chained member access"
             );
 
-            let product_version_access = identifiers.iter().find(|id| {
-                id.name == "ProductVersion" && id.kind == IdentifierKind::MemberAccess
-            });
+            let product_version_access = identifiers
+                .iter()
+                .find(|id| id.name == "ProductVersion" && id.kind == IdentifierKind::MemberAccess);
             assert!(
                 product_version_access.is_some(),
                 "Should extract 'ProductVersion' from deeply chained member access"

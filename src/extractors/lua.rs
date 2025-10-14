@@ -925,11 +925,7 @@ impl LuaExtractor {
     }
 
     /// Recursively walk tree extracting identifiers from each node
-    fn walk_tree_for_identifiers(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -941,11 +937,7 @@ impl LuaExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    fn extract_identifier_from_node(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         match node.kind() {
             // Function calls: foo(), require("module")
             "function_call" => {
@@ -962,7 +954,8 @@ impl LuaExtractor {
                     );
                 }
                 // If no direct identifier, check for dot_index_expression (like math.sqrt())
-                else if let Some(dot_index) = self.find_child_by_type(node, "dot_index_expression")
+                else if let Some(dot_index) =
+                    self.find_child_by_type(node, "dot_index_expression")
                 {
                     // Extract the rightmost identifier (the method name)
                     if let Some(_method_node) = self.find_child_by_type(dot_index, "identifier") {
@@ -1016,7 +1009,8 @@ impl LuaExtractor {
                 // Only extract if it's NOT part of a function_call or method_index_expression
                 // (we handle those in the cases above)
                 if let Some(parent) = node.parent() {
-                    if parent.kind() == "function_call" || parent.kind() == "method_index_expression"
+                    if parent.kind() == "function_call"
+                        || parent.kind() == "method_index_expression"
                     {
                         return; // Skip - handled by function/method call
                     }

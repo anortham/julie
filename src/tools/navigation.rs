@@ -204,7 +204,9 @@ impl FastGotoTool {
         // If reference workspace is specified, open that workspace's DB and search it
         if let Some(ref_workspace_id) = workspace_filter {
             debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
-            return self.database_find_definitions_in_reference(handler, ref_workspace_id).await;
+            return self
+                .database_find_definitions_in_reference(handler, ref_workspace_id)
+                .await;
         }
 
         // Primary workspace search - use handler.get_workspace().db
@@ -225,10 +227,7 @@ impl FastGotoTool {
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
-                debug!(
-                    "⚡ SQLite FTS5 found {} exact matches",
-                    exact_matches.len()
-                );
+                debug!("⚡ SQLite FTS5 found {} exact matches", exact_matches.len());
             }
         }
 
@@ -249,7 +248,8 @@ impl FastGotoTool {
 
                         // Query relationships for each matching symbol using indexed query
                         for symbol in &symbols_to_check {
-                            if let Ok(relationships) = db_lock.get_relationships_for_symbol(&symbol.id)
+                            if let Ok(relationships) =
+                                db_lock.get_relationships_for_symbol(&symbol.id)
                             {
                                 for relationship in relationships {
                                     // Check if this relationship represents a definition or import
@@ -409,7 +409,9 @@ impl FastGotoTool {
                                             db.get_symbols_by_ids(&symbol_ids)
                                         })
                                         .await
-                                        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+                                        .map_err(|e| {
+                                            anyhow::anyhow!("spawn_blocking join error: {}", e)
+                                        })?;
 
                                         if let Ok(symbols) = symbols {
                                             exact_matches.extend(symbols);
@@ -655,15 +657,17 @@ impl FastGotoTool {
         // Get path to reference workspace's separate database file
         let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
 
-        debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
+        debug!(
+            "🗄️ Opening reference workspace DB: {}",
+            ref_db_path.display()
+        );
 
         // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
         // Opening SQLite database involves blocking filesystem operations
-        let ref_db = tokio::task::spawn_blocking(move || {
-            crate::database::SymbolDatabase::new(ref_db_path)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+        let ref_db =
+            tokio::task::spawn_blocking(move || crate::database::SymbolDatabase::new(ref_db_path))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
         // Query the reference workspace database (not primary!)
         // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
@@ -933,7 +937,9 @@ impl FastRefsTool {
         // If reference workspace is specified, open that workspace's DB and search it
         if let Some(ref_workspace_id) = workspace_filter {
             debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
-            return self.database_find_references_in_reference(handler, ref_workspace_id).await;
+            return self
+                .database_find_references_in_reference(handler, ref_workspace_id)
+                .await;
         }
 
         // Primary workspace search - use handler.get_workspace().db
@@ -954,10 +960,7 @@ impl FastRefsTool {
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
-                debug!(
-                    "⚡ SQLite FTS5 found {} exact matches",
-                    definitions.len()
-                );
+                debug!("⚡ SQLite FTS5 found {} exact matches", definitions.len());
             }
         }
 
@@ -1018,7 +1021,8 @@ impl FastRefsTool {
                 // spawn_blocking prevents blocking the tokio runtime during database I/O
 
                 // Collect definition IDs before moving into spawn_blocking
-                let definition_ids: Vec<String> = definitions.iter().map(|d| d.id.clone()).collect();
+                let definition_ids: Vec<String> =
+                    definitions.iter().map(|d| d.id.clone()).collect();
                 let db_arc = db.clone();
 
                 let symbol_references = tokio::task::spawn_blocking(move || {
@@ -1094,14 +1098,19 @@ impl FastRefsTool {
                                             db_lock.get_symbols_by_ids(&symbol_ids)
                                         })
                                         .await
-                                        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+                                        .map_err(|e| {
+                                            anyhow::anyhow!("spawn_blocking join error: {}", e)
+                                        })?;
 
                                         if let Ok(symbols) = symbols {
                                             // Create a map from symbol_id to similarity_score for O(1) lookup
-                                            let score_map: std::collections::HashMap<_, _> = hnsw_results
-                                                .iter()
-                                                .map(|r| (r.symbol_id.clone(), r.similarity_score))
-                                                .collect();
+                                            let score_map: std::collections::HashMap<_, _> =
+                                                hnsw_results
+                                                    .iter()
+                                                    .map(|r| {
+                                                        (r.symbol_id.clone(), r.similarity_score)
+                                                    })
+                                                    .collect();
 
                                             // Process each symbol with O(1) score lookup
                                             for symbol in symbols {
@@ -1110,7 +1119,9 @@ impl FastRefsTool {
                                                     && !existing_ref_ids.contains(&symbol.id)
                                                 {
                                                     // Get similarity score from map (O(1) lookup)
-                                                    if let Some(&similarity_score) = score_map.get(&symbol.id) {
+                                                    if let Some(&similarity_score) =
+                                                        score_map.get(&symbol.id)
+                                                    {
                                                         // HIGH PRIORITY FIX: Add Symbol to definitions list
                                                         // Previously only created Relationship - symbol names couldn't be looked up
                                                         definitions.push(symbol.clone());
@@ -1128,7 +1139,10 @@ impl FastRefsTool {
                                                         // Format: "semantic_query:{query}" to distinguish from real symbol IDs
                                                         let semantic_ref = Relationship {
                                                             id: format!("semantic_{}", symbol.id),
-                                                            from_symbol_id: format!("semantic_query:{}", self.symbol),
+                                                            from_symbol_id: format!(
+                                                                "semantic_query:{}",
+                                                                self.symbol
+                                                            ),
                                                             to_symbol_id: symbol.id.clone(),
                                                             kind: RelationshipKind::References,
                                                             file_path: symbol.file_path.clone(),
@@ -1360,15 +1374,17 @@ impl FastRefsTool {
         // Get path to reference workspace's separate database file
         let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
 
-        debug!("🗄️ Opening reference workspace DB: {}", ref_db_path.display());
+        debug!(
+            "🗄️ Opening reference workspace DB: {}",
+            ref_db_path.display()
+        );
 
         // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
         // Opening SQLite database involves blocking filesystem operations
-        let ref_db = tokio::task::spawn_blocking(move || {
-            crate::database::SymbolDatabase::new(ref_db_path)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+        let ref_db =
+            tokio::task::spawn_blocking(move || crate::database::SymbolDatabase::new(ref_db_path))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
         // Query the reference workspace database (not primary!)
         // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly

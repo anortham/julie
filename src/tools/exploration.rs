@@ -282,9 +282,7 @@ impl FastExploreTool {
             message.push_str(&format!("\n🔍 Focused Analysis: '{}'\n", focus));
 
             // Use database to find the symbol by name
-            let db_lock = tokio::task::block_in_place(|| {
-                db.lock().unwrap()
-            });
+            let db_lock = tokio::task::block_in_place(|| db.lock().unwrap());
 
             if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
                 if let Some(target) = symbols.first() {
@@ -457,13 +455,13 @@ impl FastExploreTool {
                 if let Some(target) = symbols.first() {
                     let symbol_id = &target.id;
 
-                        // Targeted queries for this specific symbol
-                        let incoming = db_lock
-                            .get_relationships_to_symbol(symbol_id)
-                            .unwrap_or_default();
-                        let outgoing = db_lock
-                            .get_relationships_for_symbol(symbol_id)
-                            .unwrap_or_default();
+                    // Targeted queries for this specific symbol
+                    let incoming = db_lock
+                        .get_relationships_to_symbol(symbol_id)
+                        .unwrap_or_default();
+                    let outgoing = db_lock
+                        .get_relationships_for_symbol(symbol_id)
+                        .unwrap_or_default();
 
                     message.push_str(&format!(
                         "Tracing: '{}' [{}]\n\n",
@@ -471,39 +469,36 @@ impl FastExploreTool {
                         format!("{:?}", target.kind).to_lowercase()
                     ));
 
-                        message
-                            .push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
-                        for (i, rel) in incoming.iter().take(10).enumerate() {
-                            if let Ok(Some(from_symbol)) =
-                                db_lock.get_symbol_by_id(&rel.from_symbol_id)
-                            {
-                                message.push_str(&format!(
-                                    "  {}. {} {} this symbol\n",
-                                    i + 1,
-                                    from_symbol.name,
-                                    rel.kind
-                                ));
-                            }
+                    message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
+                    for (i, rel) in incoming.iter().take(10).enumerate() {
+                        if let Ok(Some(from_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id)
+                        {
+                            message.push_str(&format!(
+                                "  {}. {} {} this symbol\n",
+                                i + 1,
+                                from_symbol.name,
+                                rel.kind
+                            ));
                         }
-                        if incoming.len() > 10 {
-                            message.push_str(&format!("  ... and {} more\n", incoming.len() - 10));
-                        }
+                    }
+                    if incoming.len() > 10 {
+                        message.push_str(&format!("  ... and {} more\n", incoming.len() - 10));
+                    }
 
-                        message.push_str(&format!(
-                            "\n→ Outgoing ({} relationships):\n",
-                            outgoing.len()
-                        ));
-                        for (i, rel) in outgoing.iter().take(10).enumerate() {
-                            if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id)
-                            {
-                                message.push_str(&format!(
-                                    "  {}. This symbol {} {}\n",
-                                    i + 1,
-                                    rel.kind,
-                                    to_symbol.name
-                                ));
-                            }
+                    message.push_str(&format!(
+                        "\n→ Outgoing ({} relationships):\n",
+                        outgoing.len()
+                    ));
+                    for (i, rel) in outgoing.iter().take(10).enumerate() {
+                        if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
+                            message.push_str(&format!(
+                                "  {}. This symbol {} {}\n",
+                                i + 1,
+                                rel.kind,
+                                to_symbol.name
+                            ));
                         }
+                    }
                     if outgoing.len() > 10 {
                         message.push_str(&format!("  ... and {} more\n", outgoing.len() - 10));
                     }
@@ -1377,7 +1372,9 @@ impl FindLogicTool {
         if let Ok(all_relationships) = db_lock.get_relationships_to_symbols(&symbol_ids) {
             // Count incoming references for each symbol from batched results
             for relationship in all_relationships {
-                *reference_counts.entry(relationship.to_symbol_id.clone()).or_insert(0) += 1;
+                *reference_counts
+                    .entry(relationship.to_symbol_id.clone())
+                    .or_insert(0) += 1;
             }
         }
 

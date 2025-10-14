@@ -4,7 +4,7 @@
 // to ensure consistent behavior across the entire Julie system.
 
 use crate::handler::JulieServerHandler;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tracing::debug;
 
 /// System readiness levels for graceful degradation
@@ -35,56 +35,68 @@ impl HealthChecker {
             None => return Ok(SystemReadiness::NotReady),
         };
 
-        let db = match &workspace.db {
-            Some(db_arc) => db_arc,
-            None => return Ok(SystemReadiness::NotReady),
-        };
+        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
+            workspace.root.clone(),
+        );
 
-        // Step 2: Determine which workspace to check
-        // If workspace_id provided, use it; otherwise get primary workspace ID
-        let target_workspace_id = if let Some(id) = workspace_id {
-            id.to_string()
-        } else {
-            // Get the actual primary workspace ID from registry
-            let registry_service =
-                crate::workspace::registry_service::WorkspaceRegistryService::new(
-                    workspace.root.clone(),
-                );
-            match registry_service.get_primary_workspace_id().await? {
-                Some(id) => id,
+        let primary_workspace_id = registry_service
+            .get_primary_workspace_id()
+            .await?
+            .unwrap_or_else(|| "primary".to_string());
+
+        let target_workspace_id = workspace_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| primary_workspace_id.clone());
+
+        if target_workspace_id == primary_workspace_id {
+            let db = match &workspace.db {
+                Some(db_arc) => db_arc,
                 None => return Ok(SystemReadiness::NotReady),
+            };
+
+            let symbol_count = match db.try_lock() {
+                Ok(db_lock) => db_lock
+                    .get_symbol_count_for_workspace(&target_workspace_id)
+                    .unwrap_or(0),
+                Err(_busy) => {
+                    debug!(
+                        "Primary symbol database busy during readiness check; assuming data present"
+                    );
+                    1
+                }
+            };
+
+            if symbol_count == 0 {
+                return Ok(SystemReadiness::NotReady);
             }
-        };
 
-        // Step 3: Get symbol count from database using target workspace ID
-        let symbol_count = match db.try_lock() {
-            Ok(db_lock) => db_lock
-                .get_symbol_count_for_workspace(&target_workspace_id)
-                .unwrap_or(0),
-            Err(_busy) => {
-                debug!("Symbol database busy during readiness check; assuming symbols available");
-                1
+            let embeddings_ready = workspace.embeddings.is_some()
+                && Self::has_embedding_files(
+                    &workspace.workspace_vectors_path(&target_workspace_id),
+                );
+
+            if embeddings_ready {
+                Ok(SystemReadiness::FullyReady { symbol_count })
+            } else {
+                Ok(SystemReadiness::SqliteOnly { symbol_count })
             }
-        };
-
-        if symbol_count == 0 {
-            return Ok(SystemReadiness::NotReady);
-        }
-
-        // Use the target workspace ID for per-workspace paths
-        let workspace_id_for_paths = target_workspace_id.clone();
-
-        // Step 4: Check embedding system status
-        let embeddings_ready = workspace.embeddings.is_some()
-            && Self::has_embedding_files(
-                &workspace.workspace_vectors_path(&workspace_id_for_paths),
-            );
-
-        // Step 5: Determine overall readiness level
-        // With Tantivy removed, we only have SQLite FTS5 + optional embeddings
-        if embeddings_ready {
-            Ok(SystemReadiness::FullyReady { symbol_count })
         } else {
+            let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
+            if !ref_db_path.exists() {
+                return Ok(SystemReadiness::NotReady);
+            }
+
+            let symbol_count = tokio::task::spawn_blocking(move || -> Result<i64> {
+                let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+                ref_db.get_symbol_count_for_workspace(&target_workspace_id)
+            })
+            .await
+            .map_err(|e| anyhow!("Failed to open reference workspace database: {}", e))??;
+
+            if symbol_count == 0 {
+                return Ok(SystemReadiness::NotReady);
+            }
+
             Ok(SystemReadiness::SqliteOnly { symbol_count })
         }
     }
@@ -96,7 +108,6 @@ impl HealthChecker {
             _ => Ok(true), // SQLite or better is sufficient for search
         }
     }
-
 
     /// Quick check: Are embeddings available for semantic search?
     pub async fn are_embeddings_ready(handler: &JulieServerHandler) -> Result<bool> {

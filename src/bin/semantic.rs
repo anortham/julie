@@ -8,8 +8,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use julie::database::SymbolDatabase;
-use julie::embeddings::EmbeddingEngine;
 use julie::embeddings::vector_store::VectorStore;
+use julie::embeddings::EmbeddingEngine;
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -140,7 +140,15 @@ async fn main() -> Result<()> {
             batch_size,
             limit,
         } => {
-            generate_embeddings(&symbols_db, output.as_deref(), write_db, &model, batch_size, limit).await?;
+            generate_embeddings(
+                &symbols_db,
+                output.as_deref(),
+                write_db,
+                &model,
+                batch_size,
+                limit,
+            )
+            .await?;
         }
         Commands::Update {
             file,
@@ -151,10 +159,21 @@ async fn main() -> Result<()> {
         } => {
             update_file_embeddings(&file, &symbols_db, &output, write_db, &model).await?;
         }
-        Commands::Query { text, model, format } => {
+        Commands::Query {
+            text,
+            model,
+            format,
+        } => {
             generate_query_embedding(&text, &model, &format).await?;
         }
-        Commands::Search { text, index, symbols_db, model, limit, threshold } => {
+        Commands::Search {
+            text,
+            index,
+            symbols_db,
+            model,
+            limit,
+            threshold,
+        } => {
             search_hnsw(&text, &index, &symbols_db, &model, limit, threshold).await?;
         }
     }
@@ -274,10 +293,8 @@ async fn generate_embeddings(
 
         // Convert VectorStore's HashMap to Vec for bulk_store_embeddings
         // We need to access the internal vectors HashMap - add a getter method
-        let all_embeddings: Vec<(String, Vec<f32>)> = vector_store
-            .get_all_vectors()
-            .into_iter()
-            .collect();
+        let all_embeddings: Vec<(String, Vec<f32>)> =
+            vector_store.get_all_vectors().into_iter().collect();
 
         // Store in database using the existing bulk method
         db.bulk_store_embeddings(&all_embeddings, engine.dimensions(), model)?;
@@ -341,7 +358,8 @@ async fn update_file_embeddings(
 
     // Resolve file path to absolute (database stores absolute paths)
     let absolute_path = std::fs::canonicalize(file_path)?;
-    let absolute_path_str = absolute_path.to_str()
+    let absolute_path_str = absolute_path
+        .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path"))?;
 
     eprintln!("🔄 Updating embeddings for {}...", absolute_path_str);
@@ -388,7 +406,10 @@ async fn update_file_embeddings(
     eprintln!("📂 Loading existing HNSW index from {}...", output_dir);
     let load_start = Instant::now();
     vector_store.load_hnsw_index(index_path)?;
-    eprintln!("✅ Index loaded in {:.2}ms", load_start.elapsed().as_secs_f64() * 1000.0);
+    eprintln!(
+        "✅ Index loaded in {:.2}ms",
+        load_start.elapsed().as_secs_f64() * 1000.0
+    );
 
     // 4. Remove old vectors for this file's symbols
     eprintln!("🗑️  Removing old vectors for {} symbols...", symbols.len());
@@ -438,13 +459,19 @@ async fn update_file_embeddings(
     eprintln!("🏗️  Rebuilding HNSW index...");
     let rebuild_start = Instant::now();
     vector_store.build_hnsw_index()?;
-    eprintln!("✅ Index rebuilt in {:.2}s", rebuild_start.elapsed().as_secs_f64());
+    eprintln!(
+        "✅ Index rebuilt in {:.2}s",
+        rebuild_start.elapsed().as_secs_f64()
+    );
 
     // 8. Save updated index
     eprintln!("💾 Saving updated index...");
     let save_start = Instant::now();
     vector_store.save_hnsw_index(index_path)?;
-    eprintln!("✅ Index saved in {:.2}s", save_start.elapsed().as_secs_f64());
+    eprintln!(
+        "✅ Index saved in {:.2}s",
+        save_start.elapsed().as_secs_f64()
+    );
 
     // Output JSON statistics
     let avg_time_ms = (embed_time.as_secs_f64() * 1000.0) / symbols.len() as f64;
@@ -496,7 +523,10 @@ async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Resu
             }
         }
         _ => {
-            anyhow::bail!("Unknown format '{}'. Supported formats: json, binary", format);
+            anyhow::bail!(
+                "Unknown format '{}'. Supported formats: json, binary",
+                format
+            );
         }
     }
 
@@ -563,7 +593,10 @@ async fn search_hnsw(
     );
 
     // 5. Search using HNSW
-    eprintln!("🔍 Searching for top {} results (threshold: {})...", limit, threshold);
+    eprintln!(
+        "🔍 Searching for top {} results (threshold: {})...",
+        limit, threshold
+    );
     let search_start = Instant::now();
     let results = vector_store.search_similar_hnsw(&query_vector, limit, threshold)?;
     let search_time = search_start.elapsed();
@@ -576,7 +609,10 @@ async fn search_hnsw(
 
     // 6. Fetch complete symbol data for results
     let symbol_ids: Vec<String> = results.iter().map(|r| r.symbol_id.clone()).collect();
-    eprintln!("📥 Fetching {} symbol records from database...", symbol_ids.len());
+    eprintln!(
+        "📥 Fetching {} symbol records from database...",
+        symbol_ids.len()
+    );
     let fetch_start = Instant::now();
     let symbols = db.get_symbols_by_ids(&symbol_ids)?;
     eprintln!(
