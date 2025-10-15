@@ -226,7 +226,37 @@ impl ManageWorkspaceTool {
             // Clone necessary references for background task
             // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
             let embedding_engine = handler.embedding_engine.clone();
-            let workspace_db = workspace.db.clone();
+
+            // 🔴 CRITICAL FIX: Pass correct database for reference vs primary workspaces!
+            // Reference workspaces need their own database, not the primary's
+            let workspace_db = if is_primary_workspace {
+                // Primary workspace - use handler's database
+                workspace.db.clone()
+            } else {
+                // Reference workspace - open its separate database for embedding generation
+                let ref_db_path = workspace.workspace_db_path(&workspace_id);
+                if ref_db_path.exists() {
+                    match tokio::task::spawn_blocking(move || {
+                        crate::database::SymbolDatabase::new(ref_db_path)
+                    })
+                    .await
+                    {
+                        Ok(Ok(db)) => Some(Arc::new(std::sync::Mutex::new(db))),
+                        Ok(Err(e)) => {
+                            warn!("Failed to open reference workspace DB for embeddings: {}", e);
+                            None
+                        }
+                        Err(e) => {
+                            warn!("Reference workspace DB open task failed for embeddings: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    warn!("Reference workspace database not found for embeddings");
+                    None
+                }
+            };
+
             let workspace_root = Some(workspace.root.clone());
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();
