@@ -1985,8 +1985,17 @@ impl SymbolDatabase {
             let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
             format!("\"{}\"", escaped)
         } else {
-            // Simple term - no special characters, pass through
-            trimmed.to_string()
+            // 🔥 FIX: Multi-word queries should use OR, not implicit AND
+            // "refresh workspace embedding" → "refresh OR workspace OR embedding"
+            // This makes search more forgiving and user-friendly
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() > 1 {
+                // Multi-word query without operators - use OR for flexibility
+                words.join(" OR ")
+            } else {
+                // Single word - pass through as-is
+                trimmed.to_string()
+            }
         }
     }
 
