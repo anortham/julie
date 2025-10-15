@@ -10,6 +10,7 @@
 pub mod cli_codesearch_tests; // CLI integration tests for julie-codesearch (scan/update)
 pub mod cli_semantic_tests; // CLI integration tests for julie-semantic (embed with HNSW)
 pub mod edit_lines_tests; // TDD tests for EditLinesTool (surgical line editing - insert/replace/delete)
+pub mod fts5_sanitization_tests; // TDD tests for FTS5 query sanitization (fixes special character bugs)
 pub mod fuzzy_replace_tests; // Comprehensive tests for FuzzyReplaceTool
 pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering tests (TDD) - methods in impl blocks
 pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)

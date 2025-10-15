@@ -1932,6 +1932,63 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// 🔒 FTS5 Query Sanitization - Escape special characters that cause syntax errors
+    ///
+    /// FTS5 has several special characters that trigger specific behaviors:
+    /// - `#` - Column specifier (e.g., `name:#term`)
+    /// - `@` - Auxiliary function calls
+    /// - `^` - Initial token match
+    /// - `:` - Can be interpreted as column separator
+    /// - `[` `]` - Special meaning in some contexts
+    ///
+    /// Strategy:
+    /// 1. If query is already quoted → pass through as-is (user knows what they want)
+    /// 2. If query contains intentional operators (AND, OR, NOT, *, ") → pass through
+    /// 3. If query contains special characters → quote the entire query as a phrase
+    /// 4. Otherwise → pass through as-is (simple term search)
+    fn sanitize_fts5_query(query: &str) -> String {
+        let trimmed = query.trim();
+
+        // Empty queries pass through (will return no results anyway)
+        if trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+
+        // Already quoted - user explicitly wants phrase search
+        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        {
+            return trimmed.to_string();
+        }
+
+        // Contains explicit FTS5 operators - pass through (user knows FTS5 syntax)
+        if trimmed.contains(" AND ") || trimmed.contains(" OR ") || trimmed.contains(" NOT ") {
+            return trimmed.to_string();
+        }
+
+        // Contains intentional wildcards - pass through
+        if trimmed.contains('*') {
+            return trimmed.to_string();
+        }
+
+        // FTS5 special characters that need escaping
+        // Note: + is not officially documented as special, but causes "syntax error near +" in practice
+        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', ':', '+', '/', '\\'];
+
+        // Check if query contains any special characters
+        let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
+
+        if has_special {
+            // Quote the entire query to treat it as a literal phrase
+            // Use double quotes and escape any internal double quotes
+            let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
+            format!("\"{}\"", escaped)
+        } else {
+            // Simple term - no special characters, pass through
+            trimmed.to_string()
+        }
+    }
+
     /// 🔥 CASCADE FTS5: Find symbols using full-text search with BM25 ranking
     /// Replaces slow LIKE queries with fast FTS5 MATCH queries
     /// Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
@@ -1940,6 +1997,12 @@ impl SymbolDatabase {
         pattern: &str,
         workspace_ids: Option<Vec<String>>,
     ) -> Result<Vec<Symbol>> {
+        // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
+        let sanitized_pattern = Self::sanitize_fts5_query(pattern);
+        debug!(
+            "🔍 FTS5 query sanitization: '{}' -> '{}'",
+            pattern, sanitized_pattern
+        );
         let (query, params) = if let Some(ws_ids) = workspace_ids {
             if ws_ids.is_empty() {
                 return Ok(Vec::new());
@@ -1965,7 +2028,7 @@ impl SymbolDatabase {
                 placeholders
             );
 
-            let mut params = vec![pattern.to_string()];
+            let mut params = vec![sanitized_pattern.clone()];
             params.extend(ws_ids);
             (query, params)
         } else {
@@ -1977,7 +2040,7 @@ impl SymbolDatabase {
                          INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
                          WHERE symbols_fts MATCH ?1
                          ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)".to_string();
-            (query, vec![pattern.to_string()])
+            (query, vec![sanitized_pattern])
         };
 
         let mut stmt = self.conn.prepare(&query)?;
