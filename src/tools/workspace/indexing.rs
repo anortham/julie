@@ -1272,168 +1272,195 @@ async fn generate_embeddings_from_sqlite(
 
     info!("🧠 Generating embeddings for {} symbols...", symbols.len());
 
-    // Initialize embedding engine if needed
+    // 🔥 CRITICAL FIX: Initialize embedding engine with write lock, then release immediately
+    // This allows multiple workspaces to generate embeddings in parallel
     {
-        let mut embedding_guard = embedding_engine.write().await;
-        if embedding_guard.is_none() {
-            info!("🔧 Initializing embedding engine for background generation...");
+        // Fast path: check with read lock first
+        let needs_init = {
+            let read_guard = embedding_engine.read().await;
+            read_guard.is_none()
+        };
 
-            // 🔧 FIX: Use workspace .julie/cache directory instead of polluting CWD
-            let cache_dir = if let Some(ref root) = workspace_root {
-                root.join(".julie").join("cache").join("embeddings")
-            } else {
-                // Fallback to temp directory if workspace root not available
-                std::env::temp_dir().join("julie_cache").join("embeddings")
-            };
+        if needs_init {
+            // Slow path: acquire write lock only for initialization
+            let mut write_guard = embedding_engine.write().await;
 
-            std::fs::create_dir_all(&cache_dir)?;
-            info!(
-                "📁 Using embedding cache directory: {}",
-                cache_dir.display()
-            );
+            // Double-check: another task might have initialized while we waited
+            if write_guard.is_none() {
+                info!("🔧 Initializing embedding engine for background generation...");
 
-            // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
-            // Must run on blocking thread pool to avoid deadlocking the tokio runtime
-            // Same fix as workspace/mod.rs:458
-            let db_clone = db.clone();
-            let cache_dir_clone = cache_dir.clone();
-            match tokio::task::spawn_blocking(move || {
-                crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir_clone, db_clone)
-            })
-            .await
-            {
-                Ok(Ok(engine)) => {
-                    *embedding_guard = Some(engine);
-                    info!("✅ Embedding engine initialized for background task");
-                }
-                Ok(Err(e)) => {
-                    error!("❌ Failed to initialize embedding engine: {}", e);
-                    return Err(anyhow::anyhow!(
-                        "Embedding engine initialization failed: {}",
-                        e
-                    ));
-                }
-                Err(join_err) => {
-                    error!(
-                        "❌ Embedding engine initialization task panicked: {}",
-                        join_err
-                    );
-                    return Err(anyhow::anyhow!(
-                        "Embedding engine initialization task failed: {}",
-                        join_err
-                    ));
-                }
-            }
-        }
-    }
+                // 🔧 FIX: Use workspace .julie/cache directory instead of polluting CWD
+                let cache_dir = if let Some(ref root) = workspace_root {
+                    root.join(".julie").join("cache").join("embeddings")
+                } else {
+                    // Fallback to temp directory if workspace root not available
+                    std::env::temp_dir().join("julie_cache").join("embeddings")
+                };
 
-    // Generate embeddings in batches
-    {
-        let mut embedding_guard = embedding_engine.write().await;
-        if let Some(ref mut engine) = embedding_guard.as_mut() {
-            // BATCH_SIZE: Tested 256 (76s), 64 (60s), 100 (60s) - no significant difference
-            // CPU-based ONNX inference is bottlenecked by model computation, not batch overhead
-            const BATCH_SIZE: usize = 100;
-            const MAX_CONSECUTIVE_FAILURES: usize = 5; // Circuit breaker threshold
-            const MAX_TOTAL_FAILURE_RATE: f64 = 0.5; // Abort if >50% of batches fail
-
-            let total_batches = symbols.len().div_ceil(BATCH_SIZE);
-            let mut consecutive_failures = 0;
-            let mut total_failures = 0;
-            let mut successful_batches = 0;
-
-            for (batch_idx, chunk) in symbols.chunks(BATCH_SIZE).enumerate() {
+                std::fs::create_dir_all(&cache_dir)?;
                 info!(
-                    "🔄 Processing embedding batch {}/{} ({} symbols)",
-                    batch_idx + 1,
-                    total_batches,
-                    chunk.len()
+                    "📁 Using embedding cache directory: {}",
+                    cache_dir.display()
                 );
 
-                match engine.embed_symbols_batch(chunk) {
-                    Ok(batch_embeddings) => {
-                        // Reset consecutive failure counter on success
-                        consecutive_failures = 0;
-                        successful_batches += 1;
-
-                        // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
-                        {
-                            let mut db_guard = db.lock().unwrap();
-                            let model_name = engine.model_name();
-                            let dimensions = engine.dimensions();
-
-                            // Use bulk insert instead of individual inserts
-                            if let Err(e) = db_guard.bulk_store_embeddings(
-                                &batch_embeddings,
-                                dimensions,
-                                model_name,
-                            ) {
-                                warn!(
-                                    "Failed to bulk store embeddings for batch {}: {}",
-                                    batch_idx + 1,
-                                    e
-                                );
-                            }
-                        }
-
-                        debug!(
-                            "✅ Generated and stored embeddings for batch {}/{} ({} embeddings)",
-                            batch_idx + 1,
-                            total_batches,
-                            batch_embeddings.len()
-                        );
+                // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
+                // Must run on blocking thread pool to avoid deadlocking the tokio runtime
+                // Same fix as workspace/mod.rs:458
+                let db_clone = db.clone();
+                let cache_dir_clone = cache_dir.clone();
+                match tokio::task::spawn_blocking(move || {
+                    crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir_clone, db_clone)
+                })
+                .await
+                {
+                    Ok(Ok(engine)) => {
+                        *write_guard = Some(engine);
+                        info!("✅ Embedding engine initialized for background task");
                     }
-                    Err(e) => {
-                        consecutive_failures += 1;
-                        total_failures += 1;
-
-                        warn!(
-                            "⚠️ Failed to generate embeddings for batch {}: {} (consecutive failures: {})",
-                            batch_idx + 1,
-                            e,
-                            consecutive_failures
+                    Ok(Err(e)) => {
+                        error!("❌ Failed to initialize embedding engine: {}", e);
+                        return Err(anyhow::anyhow!(
+                            "Embedding engine initialization failed: {}",
+                            e
+                        ));
+                    }
+                    Err(join_err) => {
+                        error!(
+                            "❌ Embedding engine initialization task panicked: {}",
+                            join_err
                         );
-
-                        // 🚨 CIRCUIT BREAKER: Stop if too many consecutive failures
-                        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
-                            error!(
-                                "❌ CIRCUIT BREAKER TRIGGERED: {} consecutive embedding failures. \
-                                 Aborting embedding generation to prevent resource waste. \
-                                 Successfully processed {}/{} batches.",
-                                consecutive_failures,
-                                successful_batches,
-                                batch_idx + 1
-                            );
-                            return Err(anyhow::anyhow!(
-                                "Embedding generation aborted after {} consecutive batch failures",
-                                consecutive_failures
-                            ));
-                        }
-
-                        // 🚨 FAILURE RATE CHECK: Stop if >50% of batches are failing
-                        let batches_processed = batch_idx + 1;
-                        if batches_processed >= 10 {
-                            // Only check after reasonable sample size
-                            let failure_rate = total_failures as f64 / batches_processed as f64;
-                            if failure_rate > MAX_TOTAL_FAILURE_RATE {
-                                error!(
-                                    "❌ HIGH FAILURE RATE: {:.1}% of batches failing ({}/{}). \
-                                     Aborting embedding generation. This indicates a systemic issue.",
-                                    failure_rate * 100.0,
-                                    total_failures,
-                                    batches_processed
-                                );
-                                return Err(anyhow::anyhow!(
-                                    "Embedding generation aborted due to high failure rate: {:.1}%",
-                                    failure_rate * 100.0
-                                ));
-                            }
-                        }
+                        return Err(anyhow::anyhow!(
+                            "Embedding engine initialization task failed: {}",
+                            join_err
+                        ));
                     }
                 }
             }
-        } else {
-            return Err(anyhow::anyhow!("Embedding engine not available"));
+        } // 🔓 Write lock released here - other workspaces can now proceed!
+    }
+
+    // 🚀 INTERLEAVED PARALLEL EMBEDDING GENERATION: Acquire write lock per batch
+    // This allows multiple workspaces to interleave their batch processing for better parallelism
+    // BATCH_SIZE: Tested 256 (76s), 64 (60s), 100 (60s) - no significant difference
+    // CPU-based ONNX inference is bottlenecked by model computation, not batch overhead
+    const BATCH_SIZE: usize = 100;
+    const MAX_CONSECUTIVE_FAILURES: usize = 5; // Circuit breaker threshold
+    const MAX_TOTAL_FAILURE_RATE: f64 = 0.5; // Abort if >50% of batches fail
+
+    let total_batches = symbols.len().div_ceil(BATCH_SIZE);
+    let mut consecutive_failures = 0;
+    let mut total_failures = 0;
+    let mut successful_batches = 0;
+
+    for (batch_idx, chunk) in symbols.chunks(BATCH_SIZE).enumerate() {
+        info!(
+            "🔄 Processing embedding batch {}/{} ({} symbols)",
+            batch_idx + 1,
+            total_batches,
+            chunk.len()
+        );
+
+        // 🔓 CRITICAL: Acquire write lock ONLY for this batch, then release
+        // This allows other workspaces to interleave their batches for parallel execution
+        let batch_result = {
+            let mut embedding_guard = embedding_engine.write().await;
+            if let Some(ref mut engine) = embedding_guard.as_mut() {
+                // Generate embeddings for this batch with write lock held
+                match engine.embed_symbols_batch(chunk) {
+                    Ok(batch_embeddings) => {
+                        let model_name = engine.model_name();
+                        let dimensions = engine.dimensions();
+                        Some(Ok((batch_embeddings, model_name.to_string(), dimensions)))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            } else {
+                None
+            }
+        }; // 🔓 Write lock released here - other workspaces can now process their batches!
+
+        // Process the batch result without holding the embedding engine lock
+        match batch_result {
+            Some(Ok((batch_embeddings, model_name, dimensions))) => {
+                // Reset consecutive failure counter on success
+                consecutive_failures = 0;
+                successful_batches += 1;
+
+                // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
+                {
+                    let mut db_guard = db.lock().unwrap();
+
+                    // Use bulk insert instead of individual inserts
+                    if let Err(e) = db_guard.bulk_store_embeddings(
+                        &batch_embeddings,
+                        dimensions,
+                        &model_name,
+                    ) {
+                        warn!(
+                            "Failed to bulk store embeddings for batch {}: {}",
+                            batch_idx + 1,
+                            e
+                        );
+                    }
+                }
+
+                debug!(
+                    "✅ Generated and stored embeddings for batch {}/{} ({} embeddings)",
+                    batch_idx + 1,
+                    total_batches,
+                    batch_embeddings.len()
+                );
+            }
+            Some(Err(e)) => {
+                consecutive_failures += 1;
+                total_failures += 1;
+
+                warn!(
+                    "⚠️ Failed to generate embeddings for batch {}: {} (consecutive failures: {})",
+                    batch_idx + 1,
+                    e,
+                    consecutive_failures
+                );
+
+                // 🚨 CIRCUIT BREAKER: Stop if too many consecutive failures
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                    error!(
+                        "❌ CIRCUIT BREAKER TRIGGERED: {} consecutive embedding failures. \
+                         Aborting embedding generation to prevent resource waste. \
+                         Successfully processed {}/{} batches.",
+                        consecutive_failures,
+                        successful_batches,
+                        batch_idx + 1
+                    );
+                    return Err(anyhow::anyhow!(
+                        "Embedding generation aborted after {} consecutive batch failures",
+                        consecutive_failures
+                    ));
+                }
+
+                // 🚨 FAILURE RATE CHECK: Stop if >50% of batches are failing
+                let batches_processed = batch_idx + 1;
+                if batches_processed >= 10 {
+                    // Only check after reasonable sample size
+                    let failure_rate = total_failures as f64 / batches_processed as f64;
+                    if failure_rate > MAX_TOTAL_FAILURE_RATE {
+                        error!(
+                            "❌ HIGH FAILURE RATE: {:.1}% of batches failing ({}/{}). \
+                             Aborting embedding generation. This indicates a systemic issue.",
+                            failure_rate * 100.0,
+                            total_failures,
+                            batches_processed
+                        );
+                        return Err(anyhow::anyhow!(
+                            "Embedding generation aborted due to high failure rate: {:.1}%",
+                            failure_rate * 100.0
+                        ));
+                    }
+                }
+            }
+            None => {
+                return Err(anyhow::anyhow!("Embedding engine not available"));
+            }
         }
     }
 
