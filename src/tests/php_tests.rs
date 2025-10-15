@@ -1601,4 +1601,687 @@ class Test {
             "Duplicate calls should have different line numbers"
         );
     }
+
+    #[test]
+    fn test_php_malformed_syntax() {
+        let php_code = r#"<?php
+class Test {
+    public function method() {
+        // Missing closing brace
+        if (true) {
+            echo "test";
+        // Missing closing parenthesis and brace
+        function broken( {
+            return "broken";
+        }
+    }
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Should handle malformed PHP gracefully
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_php_unicode_and_special_chars() {
+        let php_code = r#"<?php
+class Café {
+    public function método() {
+        $variable = "tëst";
+        $emoji = "🚀";
+        return $variable . $emoji;
+    }
+}
+
+function función_ñ() {
+    return "español";
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Should handle Unicode characters in identifiers
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_php_heredoc_and_nowdoc() {
+        let php_code = r#"<?php
+class Template {
+    public function getHeredoc(): string {
+        return <<<HTML
+<div class="content">
+    <h1>Title</h1>
+    <p>Content with "quotes" and 'apostrophes'</p>
+</div>
+HTML;
+    }
+
+    public function getNowdoc(): string {
+        return <<<'SQL'
+SELECT * FROM users
+WHERE active = 1
+AND name LIKE '%test%'
+SQL;
+    }
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Should handle heredoc and nowdoc syntax
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_php_dynamic_features() {
+        let php_code = r#"<?php
+class Dynamic {
+    public function __call($method, $args) {
+        return "Called: $method";
+    }
+
+    public static function __callStatic($method, $args) {
+        return "Static called: $method";
+    }
+
+    public function __get($property) {
+        return "Getting: $property";
+    }
+
+    public function __set($property, $value) {
+        $this->$property = $value;
+    }
+}
+
+function variable_function() {
+    return "variable function result";
+}
+
+$func = 'variable_function';
+$result = $func();
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Should handle dynamic PHP features
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_extract_namespace_usage_and_aliasing() {
+        let php_code = r#"<?php
+
+namespace App\Services;
+
+use App\Models\User;
+use App\Contracts\UserRepositoryInterface as UserRepo;
+use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Model as EloquentModel;
+use function App\Helpers\formatDate;
+use const App\Config\DEFAULT_TIMEOUT;
+
+class UserService
+{
+    private UserRepo $repository;
+    private EloquentModel $model;
+
+    public function __construct(UserRepo $repository)
+    {
+        $this->repository = $repository;
+        $this->model = new EloquentModel();
+    }
+
+    public function findUser(int $id): ?User
+    {
+        return $this->repository->find($id);
+    }
+
+    public function getAllUsers(): Collection
+    {
+        return $this->repository->all();
+    }
+
+    public function formatUserDate(User $user): string
+    {
+        return formatDate($user->created_at);
+    }
+
+    public function getTimeout(): int
+    {
+        return DEFAULT_TIMEOUT;
+    }
+}
+
+namespace App\Controllers;
+
+use App\Services\UserService;
+use App\Models\User;
+
+class UserController
+{
+    private UserService $service;
+
+    public function __construct(UserService $service)
+    {
+        $this->service = $service;
+    }
+
+    public function show(int $id): ?User
+    {
+        return $this->service->findUser($id);
+    }
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // First namespace
+        let app_services = symbols.iter().find(|s| s.name == "App\\Services");
+        assert!(app_services.is_some());
+        assert_eq!(app_services.unwrap().kind, SymbolKind::Namespace);
+
+        // Second namespace
+        let app_controllers = symbols.iter().find(|s| s.name == "App\\Controllers");
+        assert!(app_controllers.is_some());
+        assert_eq!(app_controllers.unwrap().kind, SymbolKind::Namespace);
+
+        // Use statements with aliases
+        let user_repo = symbols.iter().find(|s| s.name == "App\\Contracts\\UserRepositoryInterface");
+        assert!(user_repo.is_some());
+        assert_eq!(user_repo.unwrap().kind, SymbolKind::Import);
+
+        let eloquent_model = symbols.iter().find(|s| s.name == "Illuminate\\Database\\Eloquent\\Model");
+        assert!(eloquent_model.is_some());
+        assert_eq!(eloquent_model.unwrap().kind, SymbolKind::Import);
+
+        // Function import
+        let format_date = symbols.iter().find(|s| s.name == "App\\Helpers\\formatDate");
+        assert!(format_date.is_some());
+        assert_eq!(format_date.unwrap().kind, SymbolKind::Import);
+
+        // Const import
+        let default_timeout = symbols.iter().find(|s| s.name == "App\\Config\\DEFAULT_TIMEOUT");
+        assert!(default_timeout.is_some());
+        assert_eq!(default_timeout.unwrap().kind, SymbolKind::Import);
+
+        // Classes in namespaces
+        let user_service = symbols.iter().find(|s| s.name == "UserService");
+        assert!(user_service.is_some());
+        assert_eq!(user_service.unwrap().kind, SymbolKind::Class);
+
+        let user_controller = symbols.iter().find(|s| s.name == "UserController");
+        assert!(user_controller.is_some());
+        assert_eq!(user_controller.unwrap().kind, SymbolKind::Class);
+
+        // Verify namespace-qualified types in signatures
+        let find_user = symbols
+            .iter()
+            .find(|s| s.name == "findUser" && s.parent_id.as_ref() == user_service.map(|us| &us.id));
+        assert!(find_user.is_some());
+        assert!(find_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("findUser(int $id): ?User"));
+    }
+
+    #[test]
+    fn test_extract_trait_usage_and_conflicts() {
+        let php_code = r#"<?php
+
+trait Loggable
+{
+    protected array $logs = [];
+
+    public function log(string $message): void
+    {
+        $this->logs[] = $message;
+    }
+
+    public function getLogs(): array
+    {
+        return $this->logs;
+    }
+}
+
+trait Timestampable
+{
+    protected ?\DateTime $createdAt = null;
+    protected ?\DateTime $updatedAt = null;
+
+    public function touch(): void
+    {
+        $this->updatedAt = new \DateTime();
+    }
+
+    public function getCreatedAt(): ?\DateTime
+    {
+        return $this->createdAt;
+    }
+
+    public function setCreatedAt(\DateTime $createdAt): self
+    {
+        $this->createdAt = $createdAt;
+        return $this;
+    }
+}
+
+trait Cacheable
+{
+    private static array $cache = [];
+    private string $cacheKey;
+
+    public function getCacheKey(): string
+    {
+        return $this->cacheKey ??= static::class . ':' . $this->getId();
+    }
+
+    public function cache(): void
+    {
+        self::$cache[$this->getCacheKey()] = $this;
+    }
+
+    public static function getFromCache(string $key): ?static
+    {
+        return self::$cache[$key] ?? null;
+    }
+
+    abstract public function getId(): int|string;
+}
+
+class User
+{
+    use Loggable, Timestampable, Cacheable {
+        Loggable::log insteadof Timestampable;
+        Timestampable::touch as protected touchTimestamp;
+        Cacheable::getCacheKey as protected;
+    }
+
+    private int $id;
+    private string $name;
+    private string $email;
+
+    public function __construct(int $id, string $name, string $email)
+    {
+        $this->id = $id;
+        $this->name = $name;
+        $this->email = $email;
+        $this->createdAt = new \DateTime();
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function save(): void
+    {
+        $this->log("Saving user: {$this->name}");
+        $this->touchTimestamp();
+        $this->cache();
+    }
+
+    public function load(): ?self
+    {
+        return self::getFromCache("User:{$this->id}");
+    }
+}
+
+class Product
+{
+    use Timestampable;
+
+    private int $id;
+    private string $name;
+    private float $price;
+
+    public function __construct(int $id, string $name, float $price)
+    {
+        $this->id = $id;
+        $this->name = $name;
+        $this->price = $price;
+        $this->createdAt = new \DateTime();
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function updatePrice(float $newPrice): void
+    {
+        $this->price = $newPrice;
+        $this->touch();
+    }
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Traits
+        let loggable = symbols.iter().find(|s| s.name == "Loggable");
+        assert!(loggable.is_some());
+        assert_eq!(loggable.unwrap().kind, SymbolKind::Trait);
+
+        let timestampable = symbols.iter().find(|s| s.name == "Timestampable");
+        assert!(timestampable.is_some());
+        assert_eq!(timestampable.unwrap().kind, SymbolKind::Trait);
+
+        let cacheable = symbols.iter().find(|s| s.name == "Cacheable");
+        assert!(cacheable.is_some());
+        assert_eq!(cacheable.unwrap().kind, SymbolKind::Trait);
+
+        // Class using multiple traits with conflict resolution
+        let user = symbols.iter().find(|s| s.name == "User");
+        assert!(user.is_some());
+        assert!(user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("use Loggable, Timestampable, Cacheable"));
+
+        // Verify trait methods are defined in traits themselves
+        let trait_log_method = symbols
+            .iter()
+            .find(|s| s.name == "log" && s.parent_id.as_ref() == loggable.map(|l| &l.id));
+        assert!(trait_log_method.is_some());
+
+        let trait_touch_method = symbols
+            .iter()
+            .find(|s| s.name == "touch" && s.parent_id.as_ref() == timestampable.map(|t| &t.id));
+        assert!(trait_touch_method.is_some());
+
+        // Abstract method implementation in User class (required by Cacheable trait)
+        let get_id = symbols
+            .iter()
+            .find(|s| s.name == "getId" && s.parent_id.as_ref() == user.map(|u| &u.id));
+        assert!(get_id.is_some());
+        assert!(get_id
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("getId(): int"));
+
+        // Class using single trait
+        let product = symbols.iter().find(|s| s.name == "Product");
+        assert!(product.is_some());
+        assert!(product
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("use Timestampable"));
+    }
+
+    #[test]
+    fn test_extract_php8_attributes_and_annotations() {
+        let php_code = r#"<?php
+
+#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+class Route
+{
+    public function __construct(
+        public string $path,
+        public array $methods = ['GET'],
+        public ?string $name = null
+    ) {}
+}
+
+#[Attribute(Attribute::TARGET_PROPERTY)]
+class Validate
+{
+    public function __construct(
+        public array $rules = [],
+        public ?string $message = null,
+        public bool $required = true
+    ) {}
+}
+
+#[Attribute(Attribute::TARGET_METHOD)]
+class Deprecated
+{
+    public function __construct(
+        public string $message = 'This method is deprecated',
+        public ?string $since = null
+    ) {}
+}
+
+#[Attribute(Attribute::TARGET_CLASS)]
+class ApiResource
+{
+    public function __construct(
+        public string $version = 'v1',
+        public bool $deprecated = false,
+        public array $scopes = []
+    ) {}
+}
+
+#[ApiResource(version: 'v2', scopes: ['read', 'write', 'delete'])]
+class UserController
+{
+    #[Validate(['required', 'integer', 'min:1'])]
+    private int $userId;
+
+    #[Validate(['required', 'string', 'max:255'])]
+    private string $name;
+
+    #[Validate(['required', 'email:rfc,dns'])]
+    private string $email;
+
+    public function __construct()
+    {
+        // Constructor
+    }
+
+    #[Route('/users', ['GET'])]
+    public function index(): array
+    {
+        return [];
+    }
+
+    #[Route('/users', ['POST'])]
+    #[Validate(['name' => 'required|string', 'email' => 'required|email'])]
+    public function store(array $data): User
+    {
+        return new User($data['name'], $data['email']);
+    }
+
+    #[Route('/users/{id}', ['GET'])]
+    public function show(#[Validate(['integer', 'min:1'])] int $id): ?User
+    {
+        return null;
+    }
+
+    #[Route('/users/{id}', ['PUT'])]
+    #[Deprecated('Use update() instead', since: '2.0')]
+    public function edit(int $id, array $data): User
+    {
+        return new User('name', 'email');
+    }
+
+    #[Route('/users/{id}', ['PATCH'])]
+    public function update(int $id, array $data): User
+    {
+        return new User('name', 'email');
+    }
+
+    #[Route('/users/{id}', ['DELETE'])]
+    public function destroy(int $id): bool
+    {
+        return true;
+    }
+}
+
+class User
+{
+    public function __construct(
+        public string $name,
+        public string $email
+    ) {}
+}
+
+#[Attribute(Attribute::TARGET_ALL)]
+class Metadata
+{
+    public function __construct(public array $data = []) {}
+}
+
+#[Metadata(['author' => 'John Doe', 'version' => '1.0'])]
+class Configuration
+{
+    #[Metadata(['description' => 'Database host'])]
+    public string $host;
+
+    #[Metadata(['description' => 'Database port', 'default' => 3306])]
+    public int $port;
+
+    public function __construct()
+    {
+        $this->host = 'localhost';
+        $this->port = 3306;
+    }
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // Attribute classes
+        let route_attr = symbols.iter().find(|s| s.name == "Route");
+        assert!(route_attr.is_some());
+        assert!(route_attr
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]"));
+
+        let validate_attr = symbols.iter().find(|s| s.name == "Validate");
+        assert!(validate_attr.is_some());
+        assert!(validate_attr
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Attribute(Attribute::TARGET_PROPERTY)]"));
+
+        let deprecated_attr = symbols.iter().find(|s| s.name == "Deprecated");
+        assert!(deprecated_attr.is_some());
+        assert!(deprecated_attr
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Attribute(Attribute::TARGET_METHOD)]"));
+
+        let api_resource_attr = symbols.iter().find(|s| s.name == "ApiResource");
+        assert!(api_resource_attr.is_some());
+        assert!(api_resource_attr
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Attribute(Attribute::TARGET_CLASS)]"));
+
+        // Class with attributes
+        let user_controller = symbols.iter().find(|s| s.name == "UserController");
+        assert!(user_controller.is_some());
+        assert!(user_controller
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[ApiResource(version: 'v2', scopes: ['read', 'write', 'delete'])]"));
+
+        // Properties with attributes
+        let user_id = symbols.iter().find(|s| s.name == "userId");
+        assert!(user_id.is_some());
+        assert!(user_id
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Validate(['required', 'integer', 'min:1'])]"));
+
+        let name_prop = symbols.iter().find(|s| s.name == "name");
+        assert!(name_prop.is_some());
+        assert!(name_prop
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Validate(['required', 'string', 'max:255'])]"));
+
+        // Methods with attributes
+        let index_method = symbols.iter().find(|s| s.name == "index");
+        assert!(index_method.is_some());
+        assert!(index_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Route('/users', ['GET'])]"));
+
+        let store_method = symbols.iter().find(|s| s.name == "store");
+        assert!(store_method.is_some());
+        assert!(store_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Route('/users', ['POST'])]"));
+        assert!(store_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Validate(['name' => 'required|string', 'email' => 'required|email'])]"));
+
+        let edit_method = symbols.iter().find(|s| s.name == "edit");
+        assert!(edit_method.is_some());
+        assert!(edit_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Deprecated('Use update() instead', since: '2.0')]"));
+
+        // Parameter attributes (PHP 8)
+        let show_method = symbols.iter().find(|s| s.name == "show");
+        assert!(show_method.is_some());
+        assert!(show_method
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Validate(['integer', 'min:1'])] int $id"));
+
+        // Multiple attributes on same target
+        let metadata_attr = symbols.iter().find(|s| s.name == "Metadata");
+        assert!(metadata_attr.is_some());
+        assert!(metadata_attr
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Attribute(Attribute::TARGET_ALL)]"));
+
+        let configuration = symbols.iter().find(|s| s.name == "Configuration");
+        assert!(configuration.is_some());
+        assert!(configuration
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("#[Metadata(['author' => 'John Doe', 'version' => '1.0'])]"));
+    }
 }

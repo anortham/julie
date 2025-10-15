@@ -544,4 +544,100 @@ export default {
             "Duplicate calls should have different line numbers"
         );
     }
+
+    #[test]
+    fn test_vue_malformed_template() {
+        let vue_code = r#"
+<template>
+  <div>
+    <h1>Unclosed heading
+    <p>Missing closing tags
+    <span>Nested unclosed
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'MalformedTemplate'
+}
+</script>
+"#;
+
+        let mut extractor = VueExtractor::new("vue".to_string(), "malformed.vue".to_string(), vue_code.to_string());
+        let symbols = extractor.extract_symbols(None);
+
+        // Should handle malformed templates gracefully
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_vue_empty_sections() {
+        let vue_code = r#"
+<template>
+</template>
+
+<script>
+</script>
+
+<style>
+</style>
+"#;
+
+        let mut extractor = VueExtractor::new("vue".to_string(), "empty.vue".to_string(), vue_code.to_string());
+        let symbols = extractor.extract_symbols(None);
+
+        // Should handle empty sections
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_vue_missing_sections() {
+        let vue_code = r#"
+<script>
+export default {
+  name: 'MinimalComponent'
+}
+</script>
+"#;
+
+        let mut extractor = VueExtractor::new("vue".to_string(), "minimal.vue".to_string(), vue_code.to_string());
+        let symbols = extractor.extract_symbols(None);
+
+        // Should handle missing template and style sections
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_vue_complex_script_typescript() {
+        let vue_code = r#"
+<template>
+  <div>{{ message }}</div>
+</template>
+
+<script lang="ts">
+import { defineComponent } from 'vue';
+
+interface Props {
+  message: string;
+}
+
+export default defineComponent<Props>({
+  props: {
+    message: String
+  },
+  setup(props: Props) {
+    return {
+      message: props.message
+    };
+  }
+});
+</script>
+"#;
+
+        let mut extractor = VueExtractor::new("vue".to_string(), "typescript.vue".to_string(), vue_code.to_string());
+        let symbols = extractor.extract_symbols(None);
+
+        // Should handle TypeScript in Vue components
+        assert!(!symbols.is_empty());
+    }
 }

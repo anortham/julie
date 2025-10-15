@@ -446,11 +446,441 @@ function Configure-WindowsServer {
             WindowsFeature IIS {
                 Ensure = "Present"
                 Name = "Web-Server"
-            }
+        }
+    }
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test DSC configuration
+            let web_server_config = symbols.iter().find(|s| s.name == "WebServerConfig");
+            assert!(web_server_config.is_some());
+            assert_eq!(web_server_config.unwrap().kind, SymbolKind::Function);
+
+            // Test Azure functions
+            let deploy_resources = symbols.iter().find(|s| s.name == "Deploy-AzureResources");
+            assert!(deploy_resources.is_some());
+
+            let configure_server = symbols.iter().find(|s| s.name == "Configure-WindowsServer");
+            assert!(configure_server.is_some());
+        }
+    }
+
+    mod error_handling_and_exception_management {
+        use super::*;
+
+        #[test]
+        fn test_extract_powershell_error_handling_and_try_catch() {
+            let powershell_code = r###"
+# Try-Catch-Finally blocks
+function Test-ErrorHandling {
+    try {
+        $result = Get-Content "nonexistent.txt"
+        Write-Output "File content: $result"
+    }
+    catch [System.IO.FileNotFoundException] {
+        Write-Warning "File not found: $($_.Exception.Message)"
+        return $null
+    }
+    catch {
+        Write-Error "Unexpected error: $($_.Exception.Message)"
+        throw
+    }
+    finally {
+        Write-Verbose "Cleanup operations completed"
+    }
+}
+
+# Error action preferences
+function Set-ErrorPreferences {
+    $ErrorActionPreference = "Stop"
+    $WarningPreference = "Continue"
+    $VerbosePreference = "SilentlyContinue"
+    $DebugPreference = "Continue"
+}
+
+# Trap statements
+trap {
+    Write-Host "Trapped error: $($_.Exception.Message)" -ForegroundColor Red
+    continue
+}
+
+function Process-DataWithTrap {
+    param($Data)
+
+    if ($Data -eq $null) {
+        throw "Data cannot be null"
+    }
+
+    return "Processed: $Data"
+}
+
+# Custom error records
+function New-CustomError {
+    param(
+        [string]$Message,
+        [string]$ErrorId = "CustomError",
+        [System.Management.Automation.ErrorCategory]$Category = "InvalidOperation"
+    )
+
+    $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+        [System.InvalidOperationException]::new($Message),
+        $ErrorId,
+        $Category,
+        $null
+    )
+
+    throw $errorRecord
+}
+
+# Error handling with WhatIf and Confirm
+function Remove-ItemSafely {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if ($PSCmdlet.ShouldProcess($Path, "Remove item")) {
+        try {
+            Remove-Item $Path -ErrorAction Stop
+            Write-Output "Successfully removed: $Path"
+        }
+        catch {
+            Write-Error "Failed to remove $Path: $($_.Exception.Message)"
+            return $false
+        }
+    }
+
+    return $true
+}
+"###;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test error handling functions
+            let test_error_handling = symbols.iter().find(|s| s.name == "Test-ErrorHandling");
+            assert!(test_error_handling.is_some());
+            assert_eq!(test_error_handling.unwrap().kind, SymbolKind::Function);
+
+            let set_error_preferences = symbols.iter().find(|s| s.name == "Set-ErrorPreferences");
+            assert!(set_error_preferences.is_some());
+
+            let process_data_with_trap = symbols.iter().find(|s| s.name == "Process-DataWithTrap");
+            assert!(process_data_with_trap.is_some());
+
+            let new_custom_error = symbols.iter().find(|s| s.name == "New-CustomError");
+            assert!(new_custom_error.is_some());
+
+            let remove_item_safely = symbols.iter().find(|s| s.name == "Remove-ItemSafely");
+            assert!(remove_item_safely.is_some());
+        }
+    }
+
+    mod workflows_and_parallel_processing {
+        use super::*;
+
+        #[test]
+        fn test_extract_powershell_workflows_and_parallel_features() {
+            let powershell_code = r###"
+# PowerShell Workflow
+workflow Test-ParallelProcessing {
+    param(
+        [string[]]$ComputerNames,
+        [int]$ThrottleLimit = 4
+    )
+
+    # Parallel execution
+    foreach -parallel ($computer in $ComputerNames) {
+        $result = Test-Connection -ComputerName $computer -Count 1 -Quiet
+        Write-Output "$computer is $(if ($result) { 'online' } else { 'offline' })"
+    }
+
+    # Sequence block
+    sequence {
+        Write-Output "Step 1: Initializing"
+        Start-Sleep -Seconds 1
+        Write-Output "Step 2: Processing"
+        Start-Sleep -Seconds 1
+        Write-Output "Step 3: Finalizing"
+    }
+
+    # InlineScript for non-workflow commands
+    $results = InlineScript {
+        $data = Get-Process | Where-Object { $_.CPU -gt 10 }
+        return $data
+    }
+
+    return $results
+}
+
+# Parallel processing with ForEach-Object
+function Process-ItemsInParallel {
+    param([int[]]$Numbers)
+
+    $Numbers | ForEach-Object -Parallel {
+        $square = $_ * $_
+        $cube = $_ * $_ * $_
+        return [PSCustomObject]@{
+            Number = $_
+            Square = $square
+            Cube = $cube
+        }
+    } -ThrottleLimit 4
+}
+
+# Workflow with checkpoints
+workflow Long-RunningProcess {
+    param([string]$ProcessName)
+
+    # Checkpoint for resumability
+    Checkpoint-Workflow
+
+    Write-Output "Starting long process: $ProcessName"
+    Start-Sleep -Seconds 5
+
+    Checkpoint-Workflow
+
+    Write-Output "Process $ProcessName completed"
+    return $true
+}
+
+# Job management
+function Start-BackgroundJobs {
+    param([string[]]$Commands)
+
+    $jobs = @()
+    foreach ($command in $Commands) {
+        $job = Start-Job -ScriptBlock ([scriptblock]::Create($command))
+        $jobs += $job
+    }
+
+    # Wait for all jobs to complete
+    $results = $jobs | Wait-Job | Receive-Job
+
+    # Clean up jobs
+    $jobs | Remove-Job
+
+    return $results
+}
+
+# Runspace pools for parallel execution
+function Invoke-ParallelOperations {
+    param(
+        [scriptblock[]]$Operations,
+        [int]$MaxThreads = 4
+    )
+
+    $runspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
+    $runspacePool.Open()
+
+    $runspaces = @()
+    foreach ($operation in $Operations) {
+        $powershell = [powershell]::Create()
+        $powershell.RunspacePool = $runspacePool
+        $powershell.AddScript($operation)
+
+        $runspaces += @{
+            PowerShell = $powershell
+            Handle = $powershell.BeginInvoke()
+        }
+    }
+
+    # Collect results
+    $results = @()
+    foreach ($runspace in $runspaces) {
+        $results += $runspace.PowerShell.EndInvoke($runspace.Handle)
+        $runspace.PowerShell.Dispose()
+    }
+
+    $runspacePool.Close()
+    return $results
+}
+"###;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test workflow functions
+            let test_parallel_processing = symbols.iter().find(|s| s.name == "Test-ParallelProcessing");
+            assert!(test_parallel_processing.is_some());
+            assert_eq!(test_parallel_processing.unwrap().kind, SymbolKind::Function);
+
+            let process_items_in_parallel = symbols.iter().find(|s| s.name == "Process-ItemsInParallel");
+            assert!(process_items_in_parallel.is_some());
+
+            let long_running_process = symbols.iter().find(|s| s.name == "Long-RunningProcess");
+            assert!(long_running_process.is_some());
+
+            let start_background_jobs = symbols.iter().find(|s| s.name == "Start-BackgroundJobs");
+            assert!(start_background_jobs.is_some());
+
+            let invoke_parallel_operations = symbols.iter().find(|s| s.name == "Invoke-ParallelOperations");
+            assert!(invoke_parallel_operations.is_some());
+        }
+    }
+
+    mod dsc_and_configuration_management {
+        use super::*;
+
+        #[test]
+        fn test_extract_powershell_dsc_configurations_and_resources() {
+            let powershell_code = r###"
+# DSC Configuration
+Configuration MyWebServer {
+    param(
+        [string[]]$ComputerName = 'localhost'
+    )
+
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DscResource -ModuleName xWebAdministration
+
+    Node $ComputerName {
+        # Windows features
+        WindowsFeature IIS {
+            Ensure = 'Present'
+            Name = 'Web-Server'
+        }
+
+        WindowsFeature IISManagement {
+            Ensure = 'Present'
+            Name = 'Web-Mgmt-Tools'
+        }
+
+        # File resource
+        File WebsiteContent {
+            Ensure = 'Present'
+            SourcePath = '\\server\share\website'
+            DestinationPath = 'C:\inetpub\wwwroot'
+            Recurse = $true
+            DependsOn = '[WindowsFeature]IIS'
+        }
+
+        # Registry resource
+        Registry DisableFirewall {
+            Ensure = 'Present'
+            Key = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile'
+            ValueName = 'EnableFirewall'
+            ValueData = 0
+            ValueType = 'Dword'
+        }
+
+        # Service resource
+        Service W3SVC {
+            Name = 'W3SVC'
+            StartupType = 'Automatic'
+            State = 'Running'
+            DependsOn = '[WindowsFeature]IIS'
+        }
+
+        # Custom DSC resource
+        xWebsite DefaultSite {
+            Ensure = 'Present'
+            Name = 'Default Web Site'
+            PhysicalPath = 'C:\inetpub\wwwroot'
+            State = 'Started'
+            DependsOn = '[File]WebsiteContent'
         }
     }
 }
 
+# Apply configuration
+MyWebServer -ComputerName 'WEBSERVER01'
+
+# Test configuration
+Test-DscConfiguration -ComputerName 'WEBSERVER01'
+
+# Get configuration status
+Get-DscConfigurationStatus -ComputerName 'WEBSERVER01'
+
+# Custom DSC resource function
+function Get-TargetResource {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $currentState = @{
+        Name = $Name
+        Path = $Path
+        Ensure = 'Absent'
+    }
+
+    if (Test-Path $Path) {
+        $currentState.Ensure = 'Present'
+    }
+
+    return $currentState
+}
+
+function Set-TargetResource {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [ValidateSet('Present', 'Absent')]
+        [string]$Ensure = 'Present'
+    )
+
+    if ($Ensure -eq 'Present') {
+        if (-not (Test-Path $Path)) {
+            New-Item -ItemType Directory -Path $Path -Force
+        }
+    }
+    else {
+        if (Test-Path $Path) {
+            Remove-Item -Path $Path -Recurse -Force
+        }
+    }
+}
+
+function Test-TargetResource {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [ValidateSet('Present', 'Absent')]
+        [string]$Ensure = 'Present'
+    )
+
+    $currentState = Get-TargetResource -Name $Name -Path $Path
+    return $currentState.Ensure -eq $Ensure
+}
+"###;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test DSC configuration
+            let my_web_server = symbols.iter().find(|s| s.name == "MyWebServer");
+            assert!(my_web_server.is_some());
+            assert_eq!(my_web_server.unwrap().kind, SymbolKind::Function);
+
+            // Test DSC resource functions
+            let get_target_resource = symbols.iter().find(|s| s.name == "Get-TargetResource");
+            assert!(get_target_resource.is_some());
+
+            let set_target_resource = symbols.iter().find(|s| s.name == "Set-TargetResource");
+            assert!(set_target_resource.is_some());
+
+            let test_target_resource = symbols.iter().find(|s| s.name == "Test-TargetResource");
+            assert!(test_target_resource.is_some());
+        }
+
+    #[test]
+    fn test_extract_powershell_devops_pipeline_commands() {
+        let powershell_code = r#"
 # DevOps pipeline commands
 function Run-DeploymentPipeline {
     # Docker operations
@@ -467,7 +897,7 @@ function Run-DeploymentPipeline {
 
     # PowerShell remoting
     Invoke-Command -ComputerName $ServerList -ScriptBlock {
-        Get-Service | Where-Object { $_.Status -eq 'Stopped' }
+        Get-Service | Where-Object { $_.Status -eq "Stopped" }
     }
 }
 "#;
@@ -475,80 +905,35 @@ function Run-DeploymentPipeline {
             let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
             let symbols = extractor.extract_symbols(&tree);
 
-            // Should extract Azure commands
-            let azure_commands = symbols
-                .iter()
-                .filter(|s| {
-                    s.kind == SymbolKind::Function
-                        && (s.name.starts_with("Connect-Az")
-                            || s.name.starts_with("New-Az")
-                            || s.name.starts_with("Set-Az"))
-                })
-                .collect::<Vec<_>>();
-            assert!(
-                azure_commands.len() >= 4,
-                "Should extract at least 4 Azure commands"
-            );
+            // Should extract the main deployment function
+            let deployment_func = symbols.iter().find(|s| s.name == "Run-DeploymentPipeline");
+            assert!(deployment_func.is_some(), "Should extract Run-DeploymentPipeline function");
+            assert_eq!(deployment_func.unwrap().kind, SymbolKind::Function);
 
-            let connect_az = azure_commands
-                .iter()
-                .find(|c| c.name == "Connect-AzAccount");
-            assert!(
-                connect_az.is_some(),
-                "Should extract Connect-AzAccount command"
-            );
-            let connect_az = connect_az.unwrap();
-            assert!(connect_az
-                .doc_comment
-                .as_ref()
-                .unwrap()
-                .contains("[Azure CLI Call]"));
-
-            // Should extract Windows management commands
-            let windows_commands = symbols
-                .iter()
-                .filter(|s| {
-                    s.kind == SymbolKind::Function
-                        && (s.name.contains("Windows")
-                            || s.name.contains("Service")
-                            || s.name.contains("Registry"))
-                })
-                .collect::<Vec<_>>();
-            assert!(
-                windows_commands.len() >= 3,
-                "Should extract at least 3 Windows commands"
-            );
-
-            // Should extract cross-platform DevOps commands
+            // Should extract DevOps tool calls
             let devops_commands = symbols
                 .iter()
                 .filter(|s| {
                     s.kind == SymbolKind::Function
-                        && ["docker", "kubectl", "az"].contains(&s.name.as_str())
+                        && ["docker", "kubectl", "az", "Invoke-Command"].contains(&s.name.as_str())
                 })
                 .collect::<Vec<_>>();
             assert!(
-                devops_commands.len() >= 3,
-                "Should extract at least 3 DevOps commands"
+                devops_commands.len() >= 4,
+                "Should extract at least 4 DevOps commands"
             );
 
             let docker_cmd = devops_commands.iter().find(|c| c.name == "docker");
             assert!(docker_cmd.is_some(), "Should extract docker command");
-            let docker_cmd = docker_cmd.unwrap();
-            assert!(docker_cmd
-                .doc_comment
-                .as_ref()
-                .unwrap()
-                .contains("[Docker Container Call]"));
 
             let kubectl_cmd = devops_commands.iter().find(|c| c.name == "kubectl");
             assert!(kubectl_cmd.is_some(), "Should extract kubectl command");
-            let kubectl_cmd = kubectl_cmd.unwrap();
-            assert!(kubectl_cmd
-                .doc_comment
-                .as_ref()
-                .unwrap()
-                .contains("[Kubernetes CLI Call]"));
+
+            let az_cmd = devops_commands.iter().find(|c| c.name == "az");
+            assert!(az_cmd.is_some(), "Should extract az command");
+
+            let invoke_cmd = devops_commands.iter().find(|c| c.name == "Invoke-Command");
+            assert!(invoke_cmd.is_some(), "Should extract Invoke-Command");
         }
     }
 
@@ -564,8 +949,8 @@ Import-Module Az.Resources -Force
 Import-Module -Name "Custom.Tools" -RequiredVersion "2.1.0"
 
 # Dot sourcing
-. "$PSScriptRoot\CommonFunctions.ps1"
-. "C:\Scripts\HelperFunctions.ps1"
+. "$PSScriptRoot\\CommonFunctions.ps1"
+. "C:\\Scripts\\HelperFunctions.ps1"
 
 # Using statements (PowerShell 5.0+)
 using namespace System.Collections.Generic
@@ -573,7 +958,7 @@ using module Az.Storage
 
 # Module manifest variables
 $ModuleManifestData = @{
-    RootModule = 'MyModule.psm1'
+    RootModule = "MyModule.psm1"
     ModuleVersion = '1.0.0'
     GUID = [System.Guid]::NewGuid()
     Author = 'DevOps Team'

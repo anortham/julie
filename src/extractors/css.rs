@@ -60,6 +60,12 @@ impl CSSExtractor {
                     current_parent_id = Some(keyframes_symbol.id.clone());
                     symbols.push(keyframes_symbol);
                 }
+                // Also extract the animation name as a separate symbol
+                if let Some(animation_symbol) =
+                    self.extract_animation_name(node, current_parent_id.as_deref())
+                {
+                    symbols.push(animation_symbol);
+                }
                 // Also extract individual keyframes
                 self.extract_keyframes(node, symbols, current_parent_id.as_deref());
             }
@@ -127,6 +133,17 @@ impl CSSExtractor {
 
         let signature = self.build_rule_signature(&node, &selector_text);
 
+        // Determine symbol kind based on selector type
+        let symbol_kind = if selector_text.starts_with('.') {
+            SymbolKind::Class // Class selectors
+        } else if selector_text.starts_with('#') {
+            SymbolKind::Variable // ID selectors (treated as variables)
+        } else if selector_text == ":root" {
+            SymbolKind::Class // :root pseudo-class treated as class
+        } else {
+            SymbolKind::Variable // Other selectors
+        };
+
         // Create metadata
         let mut metadata = HashMap::new();
         metadata.insert(
@@ -152,7 +169,7 @@ impl CSSExtractor {
         Some(self.base.create_symbol(
             &node,
             selector_text,
-            SymbolKind::Variable, // CSS rules as variables per Miller
+            symbol_kind,
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
@@ -270,6 +287,36 @@ impl CSSExtractor {
             &node,
             symbol_name,
             SymbolKind::Function, // Animations as functions per Miller
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|id| id.to_string()),
+                metadata: Some(metadata),
+                doc_comment: None,
+            },
+        ))
+    }
+
+    /// Extract animation name as separate symbol - for test compatibility
+    fn extract_animation_name(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
+        let animation_name = self.extract_keyframes_name(&node);
+        let signature = format!("@keyframes {}", animation_name);
+
+        // Create metadata
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "type".to_string(),
+            serde_json::Value::String("animation".to_string()),
+        );
+
+        Some(self.base.create_symbol(
+            &node,
+            animation_name,
+            SymbolKind::Function, // Animation names as functions
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),

@@ -1072,4 +1072,597 @@ class Test {
             );
         }
     }
+
+    mod async_await_and_futures {
+        use super::*;
+
+        #[test]
+        fn test_extract_async_functions_and_futures() {
+            let code = r#"
+// Async function
+Future<String> fetchUserData(int userId) async {
+  try {
+    var response = await http.get(Uri.parse('https://api.example.com/users/$userId'));
+    return response.body;
+  } catch (e) {
+    return 'Error: $e';
+  }
+}
+
+// Stream function
+Stream<int> countDown(int from) async* {
+  for (int i = from; i >= 0; i--) {
+    yield i;
+    await Future.delayed(Duration(seconds: 1));
+  }
+}
+
+// Future with completer
+Future<String> processDataWithCompleter() {
+  var completer = Completer<String>();
+
+  Timer(Duration(seconds: 2), () {
+    completer.complete('Data processed');
+  });
+
+  return completer.future;
+}
+
+// Async generator
+Stream<String> generateMessages() async* {
+  var messages = ['Hello', 'World', 'from', 'Dart'];
+
+  for (var message in messages) {
+    yield message;
+    await Future.delayed(Duration(milliseconds: 500));
+  }
+}
+
+// Future chaining
+Future<String> chainOperations() {
+  return fetchUserData(123)
+      .then((data) => data.toUpperCase())
+      .then((upperData) => 'Processed: $upperData')
+      .catchError((error) => 'Failed: $error');
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "async.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test async functions
+            let fetch_user_data = symbols.iter().find(|s| s.name == "fetchUserData");
+            assert!(fetch_user_data.is_some());
+            assert_eq!(fetch_user_data.unwrap().kind, SymbolKind::Function);
+
+            let count_down = symbols.iter().find(|s| s.name == "countDown");
+            assert!(count_down.is_some());
+
+            let process_data_with_completer = symbols.iter().find(|s| s.name == "processDataWithCompleter");
+            assert!(process_data_with_completer.is_some());
+
+            let generate_messages = symbols.iter().find(|s| s.name == "generateMessages");
+            assert!(generate_messages.is_some());
+
+            let chain_operations = symbols.iter().find(|s| s.name == "chainOperations");
+            assert!(chain_operations.is_some());
+        }
+    }
+
+    mod error_handling_and_exceptions {
+        use super::*;
+
+        #[test]
+        fn test_extract_exception_handling_patterns() {
+            let code = r#"
+// Custom exception class
+class NetworkException implements Exception {
+  final String message;
+  final int statusCode;
+
+  NetworkException(this.message, this.statusCode);
+
+  @override
+  String toString() => 'NetworkException: $message (Status: $statusCode)';
+}
+
+// Function with try-catch
+Future<String> safeApiCall(String url) async {
+  try {
+    var response = await http.get(Uri.parse(url));
+    if (response.statusCode != 200) {
+      throw NetworkException('API call failed', response.statusCode);
+    }
+    return response.body;
+  } on SocketException catch (e) {
+    throw NetworkException('Network error: ${e.message}', 0);
+  } on TimeoutException catch (e) {
+    throw NetworkException('Request timeout', 408);
+  } catch (e) {
+    throw NetworkException('Unknown error: $e', 500);
+  } finally {
+    print('API call completed');
+  }
+}
+
+// Rethrow pattern
+void rethrowExample() {
+  try {
+    riskyOperation();
+  } catch (e) {
+    logError(e);
+    rethrow;
+  }
+}
+
+// Custom error handler
+class ErrorHandler {
+  static void handleError(dynamic error, StackTrace stackTrace) {
+    print('Error: $error');
+    print('Stack trace: $stackTrace');
+
+    if (error is NetworkException) {
+      // Handle network errors
+      reportToAnalytics(error);
+    } else {
+      // Handle other errors
+      sendToCrashReporting(error, stackTrace);
+    }
+  }
+}
+
+// Zone with error handling
+void runWithErrorHandling(void Function() operation) {
+  runZonedGuarded(() {
+    operation();
+  }, (error, stackTrace) {
+    ErrorHandler.handleError(error, stackTrace);
+  });
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "errors.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test exception classes
+            let network_exception = symbols.iter().find(|s| s.name == "NetworkException");
+            assert!(network_exception.is_some());
+            assert_eq!(network_exception.unwrap().kind, SymbolKind::Class);
+
+            // Test error handling functions
+            let safe_api_call = symbols.iter().find(|s| s.name == "safeApiCall");
+            assert!(safe_api_call.is_some());
+
+            let rethrow_example = symbols.iter().find(|s| s.name == "rethrowExample");
+            assert!(rethrow_example.is_some());
+
+            // Test error handler class
+            let error_handler = symbols.iter().find(|s| s.name == "ErrorHandler");
+            assert!(error_handler.is_some());
+            assert_eq!(error_handler.unwrap().kind, SymbolKind::Class);
+
+            let run_with_error_handling = symbols.iter().find(|s| s.name == "runWithErrorHandling");
+            assert!(run_with_error_handling.is_some());
+        }
+    }
+
+    mod isolates_and_concurrency {
+        use super::*;
+
+        #[test]
+        fn test_extract_isolates_and_concurrent_patterns() {
+            let code = r#"
+// Isolate function
+void isolateFunction(SendPort sendPort) {
+  // Perform computation in isolate
+  var result = heavyComputation();
+  sendPort.send(result);
+}
+
+// Spawn isolate
+Future<void> runInIsolate() async {
+  var receivePort = ReceivePort();
+
+  await Isolate.spawn(isolateFunction, receivePort.sendPort);
+
+  var result = await receivePort.first;
+  print('Result from isolate: $result');
+  receivePort.close();
+}
+
+// Compute-intensive function
+int heavyComputation() {
+  var sum = 0;
+  for (var i = 0; i < 1000000; i++) {
+    sum += i;
+  }
+  return sum;
+}
+
+// Message passing between isolates
+class IsolateMessenger {
+  final SendPort _sendPort;
+
+  IsolateMessenger(this._sendPort);
+
+  void sendMessage(dynamic message) {
+    _sendPort.send(message);
+  }
+}
+
+// Isolate with message handling
+void messageHandlingIsolate(SendPort sendPort) {
+  var receivePort = ReceivePort();
+  sendPort.send(receivePort.sendPort);
+
+  receivePort.listen((message) {
+    if (message == 'exit') {
+      receivePort.close();
+      return;
+    }
+
+    // Process message
+    var result = processMessage(message);
+    sendPort.send(result);
+  });
+}
+
+// Concurrent data processing
+Future<List<String>> processDataConcurrently(List<String> data) async {
+  var chunkSize = (data.length / 4).ceil();
+  var chunks = <List<String>>[];
+
+  for (var i = 0; i < data.length; i += chunkSize) {
+    var end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
+    chunks.add(data.sublist(i, end));
+  }
+
+  var futures = chunks.map((chunk) => Isolate.run(() => processChunk(chunk)));
+  var results = await Future.wait(futures);
+
+  return results.expand((x) => x).toList();
+}
+
+List<String> processChunk(List<String> chunk) {
+  return chunk.map((item) => 'Processed: $item').toList();
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "isolates.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test isolate functions
+            let isolate_function = symbols.iter().find(|s| s.name == "isolateFunction");
+            assert!(isolate_function.is_some());
+
+            let run_in_isolate = symbols.iter().find(|s| s.name == "runInIsolate");
+            assert!(run_in_isolate.is_some());
+
+            let heavy_computation = symbols.iter().find(|s| s.name == "heavyComputation");
+            assert!(heavy_computation.is_some());
+
+            // Test isolate classes
+            let isolate_messenger = symbols.iter().find(|s| s.name == "IsolateMessenger");
+            assert!(isolate_messenger.is_some());
+            assert_eq!(isolate_messenger.unwrap().kind, SymbolKind::Class);
+
+            let message_handling_isolate = symbols.iter().find(|s| s.name == "messageHandlingIsolate");
+            assert!(message_handling_isolate.is_some());
+
+            let process_data_concurrently = symbols.iter().find(|s| s.name == "processDataConcurrently");
+            assert!(process_data_concurrently.is_some());
+
+            let process_chunk = symbols.iter().find(|s| s.name == "processChunk");
+            assert!(process_chunk.is_some());
+        }
+    }
+
+    mod streams_and_reactive_patterns {
+        use super::*;
+
+        #[test]
+        fn test_extract_streams_and_rx_patterns() {
+            let code = r#"
+// Basic stream
+Stream<int> countStream(int max) async* {
+  for (int i = 0; i < max; i++) {
+    yield i;
+    await Future.delayed(Duration(milliseconds: 100));
+  }
+}
+
+// Stream transformation
+Stream<String> transformStream(Stream<int> input) {
+  return input
+      .where((number) => number % 2 == 0)
+      .map((number) => 'Even: $number')
+      .take(5);
+}
+
+// Stream controller
+class NumberStreamController {
+  final _controller = StreamController<int>();
+
+  Stream<int> get stream => _controller.stream;
+
+  void addNumber(int number) {
+    _controller.add(number);
+  }
+
+  void close() {
+    _controller.close();
+  }
+}
+
+// Broadcast stream
+class EventBus {
+  final _controller = StreamController<String>.broadcast();
+
+  Stream<String> get onEvent => _controller.stream;
+
+  void fireEvent(String event) {
+    _controller.add(event);
+  }
+
+  void dispose() {
+    _controller.close();
+  }
+}
+
+// Stream subscription management
+class StreamManager {
+  final List<StreamSubscription> _subscriptions = [];
+
+  void addSubscription(StreamSubscription subscription) {
+    _subscriptions.add(subscription);
+  }
+
+  void cancelAll() {
+    for (var subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+  }
+}
+
+// Reactive pattern with rxdart
+Stream<int> reactiveCounter(Stream<void> incrementStream) {
+  return incrementStream
+      .scan<int>((accumulator, _, __) => accumulator + 1, 0)
+      .startWith(0);
+}
+
+// Error handling in streams
+Stream<String> safeStream() async* {
+  try {
+    yield 'Starting';
+    yield await riskyOperation();
+    yield 'Completed';
+  } catch (e) {
+    yield 'Error: $e';
+  }
+}
+
+Future<String> riskyOperation() async {
+  await Future.delayed(Duration(seconds: 1));
+  if (Random().nextBool()) {
+    throw Exception('Random failure');
+  }
+  return 'Success';
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "streams.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test stream functions
+            let count_stream = symbols.iter().find(|s| s.name == "countStream");
+            assert!(count_stream.is_some());
+
+            let transform_stream = symbols.iter().find(|s| s.name == "transformStream");
+            assert!(transform_stream.is_some());
+
+            // Test stream classes
+            let number_stream_controller = symbols.iter().find(|s| s.name == "NumberStreamController");
+            assert!(number_stream_controller.is_some());
+            assert_eq!(number_stream_controller.unwrap().kind, SymbolKind::Class);
+
+            let event_bus = symbols.iter().find(|s| s.name == "EventBus");
+            assert!(event_bus.is_some());
+            assert_eq!(event_bus.unwrap().kind, SymbolKind::Class);
+
+            let stream_manager = symbols.iter().find(|s| s.name == "StreamManager");
+            assert!(stream_manager.is_some());
+            assert_eq!(stream_manager.unwrap().kind, SymbolKind::Class);
+
+            // Test reactive functions
+            let reactive_counter = symbols.iter().find(|s| s.name == "reactiveCounter");
+            assert!(reactive_counter.is_some());
+
+            let safe_stream = symbols.iter().find(|s| s.name == "safeStream");
+            assert!(safe_stream.is_some());
+
+            let risky_operation = symbols.iter().find(|s| s.name == "riskyOperation");
+            assert!(risky_operation.is_some());
+        }
+    }
+
+    mod annotations_and_metadata {
+        use super::*;
+
+        #[test]
+        fn test_extract_annotations_and_metadata() {
+            let code = r#"
+// Built-in annotations
+@deprecated
+@override
+void oldMethod() {
+  print('This method is deprecated');
+}
+
+class User {
+  final String name;
+  final int age;
+
+  @JsonKey(name: 'user_name')
+  final String userName;
+
+  @JsonKey(ignore: true)
+  final String password;
+
+  User({
+    required this.name,
+    required this.age,
+    required this.userName,
+    required this.password,
+  });
+
+  @JsonSerializable()
+  factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
+
+  @JsonSerializable()
+  Map<String, dynamic> toJson() => _$UserToJson(this);
+}
+
+// Custom annotation
+class Todo {
+  final String message;
+  final String assignee;
+  const Todo(this.message, {this.assignee = 'unassigned'});
+}
+
+// Using custom annotation
+@Todo('Implement caching', assignee: 'developer')
+class CacheManager {
+  @Todo('Add cache invalidation')
+  void clearCache() {
+    // Implementation
+  }
+
+  @Todo('Optimize cache size calculation')
+  int getCacheSize() {
+    return 0;
+  }
+}
+
+// Reflection-like metadata
+class Metadata {
+  final Map<String, dynamic> data;
+
+  const Metadata(this.data);
+
+  dynamic get(String key) => data[key];
+}
+
+@Metadata({'version': '1.0', 'author': 'team', 'deprecated': false})
+class ApiService {
+  @Metadata({'httpMethod': 'GET', 'path': '/users'})
+  Future<List<User>> getUsers() async {
+    // Implementation
+    return [];
+  }
+
+  @Metadata({'httpMethod': 'POST', 'path': '/users', 'requiresAuth': true})
+  Future<User> createUser(@Metadata({'fromBody': true}) User user) async {
+    // Implementation
+    return user;
+  }
+}
+
+// Annotation for dependency injection
+class Injectable {
+  const Injectable();
+}
+
+@Service()
+class UserService {
+  @Injectable()
+  final Database database;
+
+  UserService(this.database);
+
+  @Transactional()
+  Future<void> saveUser(User user) async {
+    // Implementation
+  }
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "annotations.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Test annotated functions
+            let old_method = symbols.iter().find(|s| s.name == "oldMethod");
+            assert!(old_method.is_some());
+
+            // Test annotated classes
+            let user = symbols.iter().find(|s| s.name == "User");
+            assert!(user.is_some());
+            assert_eq!(user.unwrap().kind, SymbolKind::Class);
+
+            // Test custom annotation class
+            let todo = symbols.iter().find(|s| s.name == "Todo");
+            assert!(todo.is_some());
+            assert_eq!(todo.unwrap().kind, SymbolKind::Class);
+
+            // Test annotated class
+            let cache_manager = symbols.iter().find(|s| s.name == "CacheManager");
+            assert!(cache_manager.is_some());
+            assert_eq!(cache_manager.unwrap().kind, SymbolKind::Class);
+
+            // Test metadata class
+            let metadata = symbols.iter().find(|s| s.name == "Metadata");
+            assert!(metadata.is_some());
+            assert_eq!(metadata.unwrap().kind, SymbolKind::Class);
+
+            // Test annotated service class
+            let api_service = symbols.iter().find(|s| s.name == "ApiService");
+            assert!(api_service.is_some());
+            assert_eq!(api_service.unwrap().kind, SymbolKind::Class);
+
+            let user_service = symbols.iter().find(|s| s.name == "UserService");
+            assert!(user_service.is_some());
+            assert_eq!(user_service.unwrap().kind, SymbolKind::Class);
+        }
+    }
 }

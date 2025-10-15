@@ -24,7 +24,9 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
     extractor.extract_symbols(&tree)
 }
 
+pub mod edge_cases;
 pub mod forms;
 pub mod identifier_extraction;
 pub mod media;
+pub mod script_style;
 pub mod structure;

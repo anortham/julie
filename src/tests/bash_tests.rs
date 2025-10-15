@@ -630,7 +630,7 @@ helper_function() {
 
 #[cfg(test)]
 mod identifier_extraction_tests {
-    use crate::extractors::base::IdentifierKind;
+    use crate::extractors::base::{IdentifierKind, SymbolKind};
     use crate::extractors::bash::BashExtractor;
     use tree_sitter::Parser;
 
@@ -884,5 +884,385 @@ run_tests() {
             npm_calls[0].start_line, npm_calls[1].start_line,
             "Duplicate calls should have different line numbers"
         );
+    }
+
+    #[test]
+    fn test_extract_complex_parameter_expansion() {
+        let bash_code = r##"#!/bin/bash
+
+# Complex parameter expansion patterns
+process_filename() {
+    local filename=$1
+
+    # Pattern replacement
+    local base="${filename%.*}"        # Remove extension
+    local extension="${filename##*.}"  # Get extension
+    local dirname="${filename%/*}"     # Get directory
+    local basename="${filename##*/}"   # Get basename
+
+    # Advanced pattern replacement
+    local clean_name="${filename//[^a-zA-Z0-9]/_}"  # Replace non-alnum with _
+    local upper_name="${filename^^}"                 # Uppercase
+    local lower_name="${filename,,}"                 # Lowercase
+
+    # Conditional expansion
+    local default_value="${undefined_var:-default}"
+    local error_value="${undefined_var:?ERROR: var not set}"
+    local alt_value="${filename:+alternate}"
+
+    # Substring operations
+    local first_five="${filename:0:5}"
+    local from_pos="${filename:3}"
+    local last_five="${filename: -5}"
+
+    # Array parameter expansion
+    local files=("$@")
+    local first_file="${files[0]}"
+    local all_files="${files[*]}"
+    local count="${#files[@]}"
+
+    echo "Processed: $clean_name"
+}
+
+# Test various expansion patterns
+test_expansions() {
+    local text="Hello_World-123.test"
+
+    # Pattern replacement
+    local snake_case="${text//-/_}"
+    local no_digits="${text//[0-9]/}"
+    local reversed="${text//Hello/World}"
+
+    # Length and substring
+    local len="${#text}"
+    local prefix="${text:0:5}"
+    local suffix="${text: -4}"
+
+    echo "Length: $len, Prefix: $prefix, Suffix: $suffix"
+}
+
+# Use in command substitution
+backup_files() {
+    local pattern="${1:-*.txt}"
+    local backup_dir="${2:-/tmp/backup}"
+
+    # Create backup directory if it doesn't exist
+    mkdir -p "$backup_dir"
+
+    # Copy files with timestamp
+    local timestamp="$(date +%Y%m%d_%H%M%S)"
+    cp $pattern "$backup_dir/backup_$timestamp/"
+
+    echo "Backed up files matching '$pattern' to '$backup_dir'"
+}
+"##;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).expect("Failed to parse code");
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "expansion.sh".to_string(),
+            bash_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Functions should be extracted
+        let process_filename = symbols.iter().find(|s| s.name == "process_filename");
+        assert!(process_filename.is_some());
+        assert_eq!(process_filename.unwrap().kind, SymbolKind::Function);
+
+        let test_expansions = symbols.iter().find(|s| s.name == "test_expansions");
+        assert!(test_expansions.is_some());
+        assert_eq!(test_expansions.unwrap().kind, SymbolKind::Function);
+
+        let backup_files = symbols.iter().find(|s| s.name == "backup_files");
+        assert!(backup_files.is_some());
+        assert_eq!(backup_files.unwrap().kind, SymbolKind::Function);
+
+        // Variables with complex expansions should be extracted
+        let filename_var = symbols.iter().find(|s| s.name == "filename");
+        assert!(filename_var.is_some());
+
+        let base_var = symbols.iter().find(|s| s.name == "base");
+        assert!(base_var.is_some());
+
+        let extension_var = symbols.iter().find(|s| s.name == "extension");
+        assert!(extension_var.is_some());
+
+        let clean_name_var = symbols.iter().find(|s| s.name == "clean_name");
+        assert!(clean_name_var.is_some());
+
+        let upper_name_var = symbols.iter().find(|s| s.name == "upper_name");
+        assert!(upper_name_var.is_some());
+
+        let lower_name_var = symbols.iter().find(|s| s.name == "lower_name");
+        assert!(lower_name_var.is_some());
+    }
+
+    #[test]
+    fn test_extract_process_substitution() {
+        let bash_code = r##"#!/bin/bash
+
+# Process substitution examples
+compare_files() {
+    local file1=$1
+    local file2=$2
+
+    # Process substitution for diff input
+    if diff <(sort "$file1") <(sort "$file2") > /dev/null; then
+        echo "Files are identical when sorted"
+    else
+        echo "Files differ"
+    fi
+}
+
+# Process substitution with output redirection
+generate_report() {
+    local output_file=$1
+
+    # Redirect output of process substitution
+    cat > "$output_file" < <(echo "Report generated at $(date)")
+}
+
+# Process substitution in command arguments
+analyze_logs() {
+    local log_dir=$1
+
+    # Use process substitution as command input
+    grep "ERROR" <(find "$log_dir" -name "*.log" -exec cat {} \;) |
+        sort |
+        uniq -c |
+        sort -nr > error_summary.txt
+}
+
+# Process substitution with tee
+backup_and_compress() {
+    local source_dir=$1
+    local backup_file=$2
+
+    # Backup while showing progress
+    tar -czf "$backup_file" "$source_dir" 2>&1 |
+        tee >(grep "tar:" >&2) |
+        grep -v "tar:" > /dev/null
+}
+
+# Advanced process substitution
+merge_data() {
+    local file1=$1
+    local file2=$2
+
+    # Merge sorted data from two sources
+    sort -m <(sort "$file1") <(sort "$file2") |
+        uniq > merged_data.txt
+}
+
+# Process substitution in loops
+process_multiple_files() {
+    local pattern=$1
+
+    # Read from process substitution in while loop
+    while IFS= read -r line; do
+        echo "Processing: $line"
+    done < <(find . -name "$pattern" -type f)
+}
+"##;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).expect("Failed to parse code");
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "process.sh".to_string(),
+            bash_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Functions should be extracted
+        let compare_files = symbols.iter().find(|s| s.name == "compare_files");
+        assert!(compare_files.is_some());
+        assert_eq!(compare_files.unwrap().kind, SymbolKind::Function);
+
+        let generate_report = symbols.iter().find(|s| s.name == "generate_report");
+        assert!(generate_report.is_some());
+        assert_eq!(generate_report.unwrap().kind, SymbolKind::Function);
+
+        let analyze_logs = symbols.iter().find(|s| s.name == "analyze_logs");
+        assert!(analyze_logs.is_some());
+        assert_eq!(analyze_logs.unwrap().kind, SymbolKind::Function);
+
+        let backup_and_compress = symbols.iter().find(|s| s.name == "backup_and_compress");
+        assert!(backup_and_compress.is_some());
+        assert_eq!(backup_and_compress.unwrap().kind, SymbolKind::Function);
+
+        let merge_data = symbols.iter().find(|s| s.name == "merge_data");
+        assert!(merge_data.is_some());
+        assert_eq!(merge_data.unwrap().kind, SymbolKind::Function);
+
+        let process_multiple_files = symbols.iter().find(|s| s.name == "process_multiple_files");
+        assert!(process_multiple_files.is_some());
+        assert_eq!(process_multiple_files.unwrap().kind, SymbolKind::Function);
+    }
+
+    #[test]
+    fn test_extract_arrays_and_associative_arrays() {
+        let bash_code = r###"#!/bin/bash
+
+# Indexed arrays
+declare -a fruits=("apple" "banana" "cherry")
+fruits[3]="date"
+fruits+=( "elderberry" )
+
+# Simple associative arrays
+declare -A colors
+colors["red"]="red_value"
+colors["green"]="green_value"
+colors["blue"]="blue_value"
+
+# Array operations
+process_fruits() {
+    local -a local_fruits=("$@")
+
+    # Array length
+    echo "Number of fruits: ${#local_fruits[@]}"
+
+    # All elements
+    echo "All fruits: ${local_fruits[*]}"
+
+    # Specific indices
+    echo "First fruit: ${local_fruits[0]}"
+    echo "Last fruit: ${local_fruits[-1]}"
+
+    # Slicing
+    echo "First three: ${local_fruits[@]:0:3}"
+    echo "From index 2: ${local_fruits[@]:2}"
+}
+
+# Associative array operations
+manage_colors() {
+    local -A color_map=("$@")
+
+    # All keys
+    echo "Available colors: ${!color_map[@]}"
+
+    # All values
+    echo "Color codes: ${color_map[@]}"
+
+    # Specific key
+    echo "Red color: ${color_map["red"]}"
+
+    # Check if key exists
+    if [[ -v color_map["purple"] ]]; then
+        echo "Purple exists: ${color_map["purple"]}"
+    else
+        echo "Purple not found, adding it"
+        color_map["purple"]="#800080"
+    fi
+}
+
+# Array manipulation functions
+array_utils() {
+    local -a numbers=(1 2 3 4 5)
+
+    # Append elements
+    numbers+=(6 7 8)
+
+    # Remove elements
+    unset numbers[2]  # Remove element at index 2
+
+    # Insert elements
+    numbers=( "${numbers[@]:0:2}" 10 "${numbers[@]:2}" )
+
+    # Reverse array
+    local -a reversed=()
+    for ((i=${#numbers[@]}-1; i>=0; i--)); do
+        reversed+=("${numbers[i]}")
+    done
+
+    echo "Original: ${numbers[*]}"
+    echo "Reversed: ${reversed[*]}"
+}
+
+# Multidimensional arrays (simulated with associative arrays)
+matrix_operations() {
+    local -A matrix=()
+
+    # Set matrix values
+    matrix["0,0"]=1
+    matrix["0,1"]=2
+    matrix["1,0"]=3
+    matrix["1,1"]=4
+
+    # Access matrix values
+    echo "Matrix[0,0]: ${matrix["0,0"]}"
+    echo "Matrix[1,1]: ${matrix["1,1"]}"
+
+    # Iterate over matrix
+    for key in "${!matrix[@]}"; do
+        echo "Matrix[$key] = ${matrix[$key]}"
+    done
+}
+
+# Array with command substitution
+collect_files() {
+    local -a script_files=()
+    local -a config_files=()
+
+    # Populate arrays with command output
+    mapfile -t script_files < <(find . -name "*.sh" -type f)
+    mapfile -t config_files < <(find . -name "*.conf" -type f)
+
+    echo "Found ${#script_files[@]} scripts and ${#config_files[@]} configs"
+}
+"###;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(bash_code, None).expect("Failed to parse code");
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "arrays.sh".to_string(),
+            bash_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Functions should be extracted
+        let process_fruits = symbols.iter().find(|s| s.name == "process_fruits");
+        assert!(process_fruits.is_some());
+        assert_eq!(process_fruits.unwrap().kind, SymbolKind::Function);
+
+        let manage_colors = symbols.iter().find(|s| s.name == "manage_colors");
+        assert!(manage_colors.is_some());
+        assert_eq!(manage_colors.unwrap().kind, SymbolKind::Function);
+
+        let array_utils = symbols.iter().find(|s| s.name == "array_utils");
+        assert!(array_utils.is_some());
+        assert_eq!(array_utils.unwrap().kind, SymbolKind::Function);
+
+        let matrix_operations = symbols.iter().find(|s| s.name == "matrix_operations");
+        assert!(matrix_operations.is_some());
+        assert_eq!(matrix_operations.unwrap().kind, SymbolKind::Function);
+
+        let collect_files = symbols.iter().find(|s| s.name == "collect_files");
+        assert!(collect_files.is_some());
+        assert_eq!(collect_files.unwrap().kind, SymbolKind::Function);
+
+        // Array variables and their elements should be extracted
+        // The extractor captures array declarations and individual element accesses
+        let fruits_elements = symbols.iter().filter(|s| s.name.starts_with("fruits")).count();
+        assert!(fruits_elements >= 3, "Expected at least 3 fruits-related symbols, got {}", fruits_elements);
+
+        let colors_elements = symbols.iter().filter(|s| s.name.contains("colors")).count();
+        assert!(colors_elements >= 4, "Expected at least 4 colors-related symbols, got {}", colors_elements);
+
+        let numbers_elements = symbols.iter().filter(|s| s.name == "numbers").count();
+        assert!(numbers_elements >= 4, "Expected at least 4 numbers-related symbols, got {}", numbers_elements);
+
+        let matrix_elements = symbols.iter().filter(|s| s.name.contains("matrix")).count();
+        assert!(matrix_elements >= 6, "Expected at least 6 matrix-related symbols, got {}", matrix_elements);
+
+        // Verify specific array element access patterns
+        let red_color = symbols.iter().find(|s| s.name == "colors[\"red\"]");
+        assert!(red_color.is_some(), "colors[\"red\"] element access not found");
+
+        let matrix_00 = symbols.iter().find(|s| s.name == "matrix[\"0,0\"]");
+        assert!(matrix_00.is_some(), "matrix[\"0,0\"] element access not found");
     }
 }

@@ -529,4 +529,537 @@ mod tests {
             .unwrap()
             .contains("int main(int argc, char* argv[])"));
     }
+
+    #[test]
+    fn test_extract_advanced_variadic_functions() {
+        let code = r#"
+    #include <stdio.h>
+    #include <stdarg.h>
+
+    // Advanced variadic function with type checking
+    int sum_integers(int count, ...) {
+        va_list args;
+        va_start(args, count);
+        int sum = 0;
+        for(int i = 0; i < count; i++) {
+            sum += va_arg(args, int);
+        }
+        va_end(args);
+        return sum;
+    }
+
+    // Variadic function with mixed types
+    double average(int count, ...) {
+        va_list args;
+        va_start(args, count);
+        double sum = 0.0;
+        for(int i = 0; i < count; i++) {
+            sum += va_arg(args, double);
+        }
+        va_end(args);
+        return sum / count;
+    }
+
+    // Printf-style variadic function
+    void log_message(const char* format, ...) {
+        va_list args;
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+    }
+
+    // Variadic function with struct parameters
+    typedef struct {
+        int x, y;
+    } Point;
+
+    Point create_point(int x, int y) {
+        return (Point){x, y};
+    }
+
+    void draw_polygon(int num_points, ...) {
+        va_list args;
+        va_start(args, num_points);
+
+        printf("Drawing polygon with %d points:\n", num_points);
+        for(int i = 0; i < num_points; i++) {
+            Point p = va_arg(args, Point);
+            printf("  Point %d: (%d, %d)\n", i+1, p.x, p.y);
+        }
+
+        va_end(args);
+    }
+
+    // Recursive variadic template-like function (simulated)
+    int max_value(int first, ...) {
+        va_list args;
+        va_start(args, first);
+
+        int max = first;
+        int value;
+        while((value = va_arg(args, int)) != -1) {  // -1 sentinel
+            if(value > max) max = value;
+        }
+
+        va_end(args);
+        return max;
+    }
+
+    int main() {
+        // Test variadic functions
+        int sum = sum_integers(4, 1, 2, 3, 4);
+        double avg = average(3, 1.5, 2.5, 3.5);
+        log_message("Sum: %d, Average: %.2f\n", sum, avg);
+
+        Point p1 = create_point(0, 0);
+        Point p2 = create_point(10, 0);
+        Point p3 = create_point(10, 10);
+        Point p4 = create_point(0, 10);
+
+        draw_polygon(4, p1, p2, p3, p4);
+
+        int maximum = max_value(5, 10, 3, 8, 1, -1);
+        printf("Maximum value: %d\n", maximum);
+
+        return 0;
+    }
+    "#;
+        let (mut extractor, tree) = parse_c(code, "variadic.c");
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Advanced variadic function with type checking
+        let sum_integers = symbols.iter().find(|s| s.name == "sum_integers");
+        assert!(sum_integers.is_some());
+        assert!(sum_integers
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("int sum_integers(int count, ...)"));
+
+        // Variadic function with mixed types
+        let average_func = symbols.iter().find(|s| s.name == "average");
+        assert!(average_func.is_some());
+        assert!(average_func
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("double average(int count, ...)"));
+
+        // Printf-style variadic function
+        let log_message = symbols.iter().find(|s| s.name == "log_message");
+        assert!(log_message.is_some());
+        assert!(log_message
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("void log_message(const char* format, ...)"));
+
+        // Variadic function with struct parameters
+        let draw_polygon = symbols.iter().find(|s| s.name == "draw_polygon");
+        assert!(draw_polygon.is_some());
+        assert!(draw_polygon
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("void draw_polygon(int num_points, ...)"));
+
+        // Recursive variadic function
+        let max_value = symbols.iter().find(|s| s.name == "max_value");
+        assert!(max_value.is_some());
+        assert!(max_value
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("int max_value(int first, ...)"));
+    }
+
+    #[test]
+    fn test_extract_static_extern_linkage_patterns() {
+        let code = r#"
+    // External declarations
+    extern int global_counter;
+    extern void external_function(void);
+    extern const char* get_version(void);
+
+    // Static file-scoped variables
+    static int file_static_var = 42;
+    static const char* file_static_string = "file scope";
+
+    // Static file-scoped functions
+    static void file_static_function(void) {
+        static int call_count = 0;
+        call_count++;
+        printf("Called %d times\n", call_count);
+    }
+
+    static int file_static_helper(int x) {
+        return x * 2;
+    }
+
+    // Module with internal linkage
+    typedef struct {
+        int id;
+        char name[50];
+    } Record;
+
+    static Record* records = NULL;
+    static size_t record_count = 0;
+
+    static void init_records(void) {
+        records = calloc(10, sizeof(Record));
+        record_count = 0;
+    }
+
+    static Record* find_record(int id) {
+        for(size_t i = 0; i < record_count; i++) {
+            if(records[i].id == id) {
+                return &records[i];
+            }
+        }
+        return NULL;
+    }
+
+    static void add_record(int id, const char* name) {
+        if(record_count < 10) {
+            records[record_count].id = id;
+            strncpy(records[record_count].name, name, 49);
+            record_count++;
+        }
+    }
+
+    // Public interface functions
+    void record_init(void) {
+        init_records();
+    }
+
+    Record* record_find(int id) {
+        return find_record(id);
+    }
+
+    void record_add(int id, const char* name) {
+        add_record(id, name);
+    }
+
+    // External linkage override
+    extern inline int external_inline_function(int x) {
+        return x + 1;
+    }
+
+    // Static inline functions
+    static inline int static_inline_helper(int a, int b) {
+        return a > b ? a : b;
+    }
+
+    static inline void* static_inline_alloc(size_t size) {
+        return malloc(size);
+    }
+
+    // Function with mixed linkage
+    int public_function(int x) {
+        static int static_local = 0;
+        static_local += x;
+        return static_local + file_static_helper(x);
+    }
+
+    // External reference to standard library
+    extern FILE* stdin;
+    extern FILE* stdout;
+    extern FILE* stderr;
+
+    // External math functions
+    extern double sin(double);
+    extern double cos(double);
+    extern double sqrt(double);
+    "#;
+        let (mut extractor, tree) = parse_c(code, "linkage.c");
+        let symbols = extractor.extract_symbols(&tree);
+
+        // External declarations
+        let global_counter = symbols.iter().find(|s| s.name == "global_counter");
+        assert!(global_counter.is_some());
+        assert!(global_counter
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("int global_counter"));
+
+        let external_function = symbols.iter().find(|s| s.name == "external_function");
+        assert!(external_function.is_some());
+        assert!(external_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("void external_function(void)"));
+
+        // Static file-scoped variables
+        let file_static_var = symbols.iter().find(|s| s.name == "file_static_var");
+        assert!(file_static_var.is_some());
+        assert_eq!(file_static_var.unwrap().kind, SymbolKind::Variable);
+
+        let file_static_string = symbols.iter().find(|s| s.name == "file_static_string");
+        assert!(file_static_string.is_some());
+        assert_eq!(file_static_string.unwrap().kind, SymbolKind::Variable);
+
+        // Static file-scoped functions
+        let file_static_function = symbols.iter().find(|s| s.name == "file_static_function");
+        assert!(file_static_function.is_some());
+        assert!(file_static_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("static void file_static_function(void)"));
+
+        let file_static_helper = symbols.iter().find(|s| s.name == "file_static_helper");
+        assert!(file_static_helper.is_some());
+        assert!(file_static_helper
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("static int file_static_helper(int x)"));
+
+        // Static module variables
+        let records = symbols.iter().find(|s| s.name == "records");
+        assert!(records.is_some());
+        assert_eq!(records.unwrap().kind, SymbolKind::Variable);
+
+        let record_count = symbols.iter().find(|s| s.name == "record_count");
+        assert!(record_count.is_some());
+        assert_eq!(record_count.unwrap().kind, SymbolKind::Variable);
+
+        // Static helper functions
+        let init_records = symbols.iter().find(|s| s.name == "init_records");
+        assert!(init_records.is_some());
+        assert_eq!(init_records.unwrap().kind, SymbolKind::Function);
+
+        let find_record = symbols.iter().find(|s| s.name == "find_record");
+        assert!(find_record.is_some());
+        assert_eq!(find_record.unwrap().kind, SymbolKind::Function);
+
+        // External linkage override
+        let external_inline_function = symbols.iter().find(|s| s.name == "external_inline_function");
+        assert!(external_inline_function.is_some());
+        assert_eq!(external_inline_function.unwrap().kind, SymbolKind::Function);
+
+        // Static inline functions
+        let static_inline_helper = symbols.iter().find(|s| s.name == "static_inline_helper");
+        assert!(static_inline_helper.is_some());
+        assert!(static_inline_helper
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("static inline int static_inline_helper(int a, int b)"));
+
+        // Function with mixed linkage
+        let public_function = symbols.iter().find(|s| s.name == "public_function");
+        assert!(public_function.is_some());
+        assert!(public_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("int public_function(int x)"));
+    }
+
+    #[test]
+    fn test_extract_complex_typedef_chains() {
+        let code = r#"
+    // Basic typedefs
+    typedef int Integer;
+    typedef Integer Number;
+
+    // Pointer typedef chains
+    typedef char* String;
+    typedef String* StringArray;
+    typedef StringArray* StringMatrix;
+
+    // Function pointer typedefs
+    typedef int (*CompareFunc)(const void*, const void*);
+    typedef void (*Callback)(void* context);
+    typedef CompareFunc* CompareFuncPtr;
+
+    // Struct typedef chains
+    typedef struct {
+        int x, y;
+    } Point;
+
+    typedef struct {
+        Point start;
+        Point end;
+    } Line;
+
+    typedef struct {
+        Line* lines;
+        size_t count;
+    } Polygon;
+
+    typedef Polygon* PolygonPtr;
+    typedef PolygonPtr* PolygonArray;
+
+    // Enum typedef chains
+    typedef enum {
+        RED, GREEN, BLUE
+    } Color;
+
+    typedef enum {
+        CIRCLE, SQUARE, TRIANGLE
+    } ShapeType;
+
+    typedef struct {
+        ShapeType type;
+        Color color;
+        union {
+            struct { Point center; int radius; } circle;
+            struct { Point corner; int width, height; } rectangle;
+            struct { Point vertices[3]; } triangle;
+        } data;
+    } Shape;
+
+    typedef Shape* ShapePtr;
+    typedef ShapePtr* ShapeArray;
+
+    // Complex function typedefs
+    typedef int (*BinaryOp)(int, int);
+    typedef BinaryOp* BinaryOpPtr;
+    typedef BinaryOpPtr* BinaryOpArray;
+
+    typedef struct {
+        const char* name;
+        BinaryOp operation;
+    } Operation;
+
+    typedef Operation* OperationPtr;
+    typedef OperationPtr (*OperationFactory)(void);
+
+    // Callback system typedefs
+    typedef struct Event Event;
+    typedef void (*EventHandler)(Event* event, void* context);
+    typedef EventHandler* EventHandlerPtr;
+
+    struct Event {
+        int type;
+        void* data;
+        EventHandlerPtr handlers;
+        size_t handler_count;
+    };
+
+    typedef struct {
+        Event* events;
+        size_t event_count;
+        void* context;
+    } EventSystem;
+
+    typedef EventSystem* EventSystemPtr;
+
+    // Generic container typedefs
+    typedef void* GenericData;
+    typedef size_t (*HashFunc)(GenericData);
+    typedef int (*CompareFuncGeneric)(GenericData, GenericData);
+    typedef void (*DestroyFunc)(GenericData);
+
+    typedef struct {
+        GenericData* items;
+        size_t count;
+        size_t capacity;
+        HashFunc hash;
+        CompareFuncGeneric compare;
+        DestroyFunc destroy;
+    } GenericSet;
+
+    typedef GenericSet* GenericSetPtr;
+    typedef GenericSetPtr* GenericSetArray;
+
+    // Usage examples
+    Integer num = 42;
+    Number value = num;
+
+    String str = "hello";
+    StringArray strings = &str;
+    StringMatrix matrix = &strings;
+
+    Point p = {1, 2};
+    Line l = {p, {3, 4}};
+    Polygon poly = {&l, 1};
+    PolygonPtr poly_ptr = &poly;
+    PolygonArray poly_array = &poly_ptr;
+
+    Shape circle = {CIRCLE, RED, {.circle = {{0, 0}, 5}}};
+    ShapePtr shape_ptr = &circle;
+    ShapeArray shape_array = &shape_ptr;
+
+    int add(int a, int b) { return a + b; }
+    int multiply(int a, int b) { return a * b; }
+
+    BinaryOp ops[2] = {add, multiply};
+    BinaryOpPtr op_ptr = &ops[0];
+    BinaryOpArray op_array = &op_ptr;
+
+    Operation op = {"add", add};
+    OperationPtr op_ptr2 = &op;
+
+    Event event = {1, NULL, NULL, 0};
+    EventSystem sys = {&event, 1, NULL};
+    EventSystemPtr sys_ptr = &sys;
+    "#;
+        let (mut extractor, tree) = parse_c(code, "typedefs.c");
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Basic typedef chains
+        let integer_typedef = symbols.iter().find(|s| s.name == "Integer");
+        assert!(integer_typedef.is_some());
+
+        let number_typedef = symbols.iter().find(|s| s.name == "Number");
+        assert!(number_typedef.is_some());
+
+        // Pointer typedef chains
+        let string_typedef = symbols.iter().find(|s| s.name == "String");
+        assert!(string_typedef.is_some());
+
+        let string_array_typedef = symbols.iter().find(|s| s.name == "StringArray");
+        assert!(string_array_typedef.is_some());
+
+        let string_matrix_typedef = symbols.iter().find(|s| s.name == "StringMatrix");
+        assert!(string_matrix_typedef.is_some());
+
+        // Struct typedef chains
+        let point_typedef = symbols.iter().find(|s| s.name == "Point");
+        assert!(point_typedef.is_some());
+
+        let line_typedef = symbols.iter().find(|s| s.name == "Line");
+        assert!(line_typedef.is_some());
+
+        let polygon_typedef = symbols.iter().find(|s| s.name == "Polygon");
+        assert!(polygon_typedef.is_some());
+
+        let polygon_ptr_typedef = symbols.iter().find(|s| s.name == "PolygonPtr");
+        assert!(polygon_ptr_typedef.is_some());
+
+        let polygon_array_typedef = symbols.iter().find(|s| s.name == "PolygonArray");
+        assert!(polygon_array_typedef.is_some());
+
+        // Enum typedef chains
+        let color_typedef = symbols.iter().find(|s| s.name == "Color");
+        assert!(color_typedef.is_some());
+
+        let shape_type_typedef = symbols.iter().find(|s| s.name == "ShapeType");
+        assert!(shape_type_typedef.is_some());
+
+        let shape_typedef = symbols.iter().find(|s| s.name == "Shape");
+        assert!(shape_typedef.is_some());
+
+        let shape_ptr_typedef = symbols.iter().find(|s| s.name == "ShapePtr");
+        assert!(shape_ptr_typedef.is_some());
+
+        let shape_array_typedef = symbols.iter().find(|s| s.name == "ShapeArray");
+        assert!(shape_array_typedef.is_some());
+    }
 }

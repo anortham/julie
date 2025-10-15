@@ -5,15 +5,17 @@
 //
 // Split into focused test modules for better maintainability:
 
+pub mod annotation_tests;
 pub mod class_tests;
+pub mod generic_tests;
 pub mod identifier_extraction;
+pub mod interface_tests;
+pub mod method_tests;
+pub mod modern_java_tests;
 pub mod package_import_tests;
 // TODO: Add more modules as they are extracted from the large java_tests.rs file
-// pub mod interface_tests;
-// pub mod method_tests;
 // pub mod field_tests;
 // pub mod enum_tests;
-// pub mod annotation_tests;
 // pub mod generic_tests;
 // pub mod nested_class_tests;
 // pub mod modern_java_tests;

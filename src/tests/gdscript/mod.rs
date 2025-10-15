@@ -30,3 +30,6 @@ pub mod identifier_extraction;
 pub mod modern;
 pub mod patterns;
 pub mod resources;
+pub mod scenes;
+pub mod signals;
+pub mod ui;

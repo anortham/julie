@@ -76,6 +76,8 @@ impl PowerShellExtractor {
         match node.kind() {
             "function_statement" => self.extract_function(node, parent_id),
             "param_block" => self.extract_advanced_function(node, parent_id),
+            "configuration" => self.extract_configuration(node, parent_id),
+            "ERROR" => self.extract_error_node(node, parent_id),
             "assignment_expression" => self.extract_variable(node, parent_id),
             "variable" => self.extract_variable_reference(node, parent_id),
             "class_statement" => self.extract_class(node, parent_id),
@@ -140,6 +142,128 @@ impl PowerShellExtractor {
                 ),
             },
         ))
+    }
+
+    fn extract_configuration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let name_node = self.find_configuration_name_node(node)?;
+        let name = self.base.get_node_text(&name_node);
+
+        let signature = self.extract_configuration_signature(node);
+        let doc_comment = Some("PowerShell DSC Configuration".to_string());
+
+        Some(self.base.create_symbol(
+            &node,
+            name,
+            SymbolKind::Function, // DSC configurations are treated as functions for symbol purposes
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: None,
+                doc_comment,
+            },
+        ))
+    }
+
+    fn extract_error_node(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let node_text = self.base.get_node_text(&node);
+
+        // Check if this ERROR node contains a DSC configuration
+        if node_text.contains("Configuration ") {
+            // Extract configuration name from text like "Configuration MyWebServer {"
+            if let Some(config_match) = regex::Regex::new(r"Configuration\s+([A-Za-z][A-Za-z0-9-_]*)")
+                .unwrap()
+                .captures(&node_text)
+            {
+                let name = config_match.get(1).unwrap().as_str().to_string();
+                let signature = format!("Configuration {}", name);
+                let doc_comment = Some("PowerShell DSC Configuration".to_string());
+
+                return Some(self.base.create_symbol(
+                    &node,
+                    name,
+                    SymbolKind::Function,
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment,
+                    },
+                ));
+            }
+        }
+
+        // Also check for function definitions that might be in ERROR nodes
+        if node_text.contains("function ") {
+            if let Some(func_match) = regex::Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)")
+                .unwrap()
+                .captures(&node_text)
+            {
+                let name = func_match.get(1).unwrap().as_str().to_string();
+                let signature = format!("function {}()", name);
+
+                return Some(self.base.create_symbol(
+                    &node,
+                    name,
+                    SymbolKind::Function,
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility: Some(Visibility::Public),
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                ));
+            }
+        }
+
+        None
+    }
+
+    fn extract_dsc_configuration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        // For DSC Configuration commands, extract the configuration name from command arguments
+        let mut cursor = node.walk();
+        let command_elements: Vec<_> = node.children(&mut cursor)
+            .filter(|child| child.kind() == "command_elements")
+            .collect();
+
+        if command_elements.is_empty() {
+            return None;
+        }
+
+        // Look for the configuration name in the command elements
+        let mut elements_cursor = command_elements[0].walk();
+        for element in command_elements[0].children(&mut elements_cursor) {
+            if element.kind() == "command_argument_sep" {
+                // Skip separators
+                continue;
+            }
+            if element.kind() == "generic_token" || element.kind() == "command_name" {
+                let token_text = self.base.get_node_text(&element);
+                // Skip "Configuration" keyword and look for the name
+                if token_text != "Configuration" && !token_text.trim().is_empty() {
+                    let name = token_text.trim().to_string();
+                    let signature = format!("Configuration {}", name);
+                    let doc_comment = Some("PowerShell DSC Configuration".to_string());
+
+                    return Some(self.base.create_symbol(
+                        &node,
+                        name,
+                        SymbolKind::Function,
+                        SymbolOptions {
+                            signature: Some(signature),
+                            visibility: Some(Visibility::Public),
+                            parent_id: parent_id.map(|s| s.to_string()),
+                            metadata: None,
+                            doc_comment,
+                        },
+                    ));
+                }
+            }
+        }
+
+        None
     }
 
     fn extract_function_parameters(&mut self, func_node: Node, parent_id: &str) -> Vec<Symbol> {
@@ -494,6 +618,11 @@ impl PowerShellExtractor {
 
         let command_name_node = self.find_command_name_node(node)?;
         let command_name = self.base.get_node_text(&command_name_node);
+
+        // Check for DSC Configuration command
+        if command_name == "Configuration" {
+            return self.extract_dsc_configuration(node, parent_id);
+        }
 
         // Check for import/module commands first
         let import_commands = ["Import-Module", "Export-ModuleMember", "using"];
@@ -1444,5 +1573,22 @@ impl PowerShellExtractor {
         self.base
             .find_containing_symbol(&node, &file_symbols)
             .map(|s| s.id.clone())
+    }
+
+    fn find_configuration_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+        children
+            .into_iter()
+            .find(|child| child.kind() == "identifier")
+    }
+
+    fn extract_configuration_signature(&self, node: Node) -> String {
+        let name = self
+            .find_configuration_name_node(node)
+            .map(|n| self.base.get_node_text(&n))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        format!("Configuration {}", name)
     }
 }

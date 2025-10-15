@@ -19,8 +19,13 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
 }
 
 pub mod advanced;
+pub mod animations;
 pub mod at_rules;
 pub mod basic;
 pub mod custom;
 pub mod identifier_extraction;
+pub mod media_queries;
 pub mod modern;
+pub mod pseudo_elements;
+pub mod responsive;
+pub mod utilities;
