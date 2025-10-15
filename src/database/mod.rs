@@ -560,13 +560,13 @@ impl SymbolDatabase {
                 signature,
                 doc_comment,
                 code_context,
-                tokenize='porter unicode61',
+                tokenize='unicode61 separators \"_::->.\"',
                 content='symbols',
                 content_rowid='rowid'
             )",
             [],
         )?;
-        debug!("Created symbols_fts virtual table with porter unicode61 tokenizer");
+        debug!("Created symbols_fts virtual table with unicode61 tokenizer (separators: _::->.)");
         Ok(())
     }
 
@@ -1945,7 +1945,13 @@ impl SymbolDatabase {
     /// 1. If query is already quoted → pass through as-is (user knows what they want)
     /// 2. If query contains intentional operators (AND, OR, NOT, *, ") → pass through
     /// 3. If query contains special characters → quote the entire query as a phrase
-    /// 4. Otherwise → pass through as-is (simple term search)
+    /// 4. Multi-word queries → use OR for forgiving search
+    /// 5. Otherwise → pass through as-is (simple term search)
+    ///
+    /// Works with unicode61 tokenizer configured with separators "_::->.":
+    /// - "user_service" → tokenized as ["user", "service"] at index time
+    /// - "std::vector" → tokenized as ["std", "vector"] at index time
+    /// - Queries naturally match individual tokens
     fn sanitize_fts5_query(query: &str) -> String {
         let trimmed = query.trim();
 
@@ -1971,10 +1977,21 @@ impl SymbolDatabase {
             return trimmed.to_string();
         }
 
+        // 🔥 FIX: Handle :: scope resolution operator specially
+        // FTS5 treats : as column specification syntax (e.g., "name:term")
+        // So "WorkspaceOperation::Refresh" is interpreted as "column WorkspaceOperation, term :Refresh"
+        // Split on :: and convert to OR query to work with our separator tokenization
+        if trimmed.contains("::") {
+            let parts: Vec<&str> = trimmed.split("::").collect();
+            return parts.join(" OR ");
+        }
+
         // FTS5 special characters that need escaping
-        // Note: + is not officially documented as special, but causes "syntax error near +" in practice
+        // Note: Removed separators (_ - >) since they're now tokenizer delimiters
+        // : is a separator BUT also FTS5 column syntax, handled specially above
+        // + is not officially documented as special, but causes "syntax error near +" in practice
         // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
-        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', ':', '+', '/', '\\', '!', '(', ')'];
+        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')'];
 
         // Check if query contains any special characters
         let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
