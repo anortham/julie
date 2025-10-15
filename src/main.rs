@@ -73,18 +73,12 @@ async fn main() -> SdkResult<()> {
     let file_appender = rolling::daily(logs_dir, "julie.log");
     let (non_blocking_file, _file_guard) = non_blocking(file_appender);
 
-    // Set up console appender
-    let (non_blocking_console, _console_guard) = non_blocking(std::io::stdout());
-
-    // Create multi-layer subscriber
+    // 🔥 CRITICAL FIX: MCP servers MUST NOT log to stdout
+    // stdout is reserved exclusively for JSON-RPC messages
+    // Any text logging breaks the MCP protocol parser in VS Code/Copilot
+    // ALL logging goes to file only: .julie/logs/julie.log
     tracing_subscriber::registry()
         .with(filter.clone())
-        .with(
-            fmt::layer()
-                .with_writer(non_blocking_console)
-                .with_target(false)
-                .with_ansi(false), // Disabled: MCP uses stdio for JSON-RPC, ANSI codes break protocol parsing
-        )
         .with(
             fmt::layer()
                 .with_writer(non_blocking_file)
@@ -97,7 +91,7 @@ async fn main() -> SdkResult<()> {
 
     info!("🚀 Starting Julie - Cross-Platform Code Intelligence Server");
     debug!("Built with Rust for true cross-platform compatibility");
-    info!("📝 Logging enabled - Console output + File output to .julie/logs/julie.log");
+    info!("📝 Logging enabled - File output to .julie/logs/julie.log");
 
     // STEP 1: Define server details and capabilities
     let server_details = InitializeResult {
