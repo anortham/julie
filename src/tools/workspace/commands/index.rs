@@ -97,9 +97,7 @@ impl ManageWorkspaceTool {
                     0
                 };
                 let message = format!(
-                    "✅ Workspace already indexed!\n\
-                    📊 Found {} symbols\n\
-                    💡 Use force: true to re-index",
+                    "Workspace already indexed: {} symbols\nUse force: true to re-index",
                     symbol_count
                 );
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -197,11 +195,7 @@ impl ManageWorkspaceTool {
                 }
 
                 let message = format!(
-                    "🎉 Workspace indexing complete!\n\
-                    📁 Indexed {} files\n\
-                    🔍 Extracted {} symbols\n\
-                    🔗 Found {} relationships\n\
-                    ⚡ Ready for search and navigation!",
+                    "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
                     file_count, symbol_count, relationship_count
                 );
                 Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -211,8 +205,7 @@ impl ManageWorkspaceTool {
             Err(e) => {
                 error!("Failed to index workspace: {}", e);
                 let message = format!(
-                    "❌ Workspace indexing failed: {}\n\
-                    💡 Check that the path exists and contains source files",
+                    "Workspace indexing failed: {}\nCheck that the path exists and contains source files",
                     e
                 );
                 Ok(CallToolResult::text_content(vec![TextContent::from(

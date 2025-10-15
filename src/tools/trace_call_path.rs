@@ -13,7 +13,7 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
@@ -22,8 +22,6 @@ use crate::embeddings::CodeContext;
 use crate::extractors::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
-use crate::utils::progressive_reduction::ProgressiveReducer;
-use crate::utils::token_estimation::TokenEstimator;
 
 /// Structured result from trace_call_path operation
 #[derive(Debug, Clone, Serialize)]
@@ -125,9 +123,13 @@ pub struct TraceCallPathTool {
 #[derive(Debug, Clone)]
 struct CallPathNode {
     symbol: Symbol,
+    #[allow(dead_code)]
     level: u32,
+    #[allow(dead_code)]
     match_type: MatchType,
+    #[allow(dead_code)]
     relationship_kind: Option<RelationshipKind>,
+    #[allow(dead_code)]
     similarity: Option<f32>,
     children: Vec<CallPathNode>,
 }
@@ -191,9 +193,7 @@ impl TraceCallPathTool {
 
         // Validate parameters
         if self.max_depth > 10 {
-            let message = "❌ max_depth cannot exceed 10 (performance limit)\n\
-                 💡 Try with max_depth: 5 for a reasonable balance"
-                .to_string();
+            let message = "Error: max_depth cannot exceed 10 (recommended: 5)".to_string();
             return self.create_result(
                 false,
                 0,
@@ -204,9 +204,9 @@ impl TraceCallPathTool {
         }
 
         if self.similarity_threshold < 0.0 || self.similarity_threshold > 1.0 {
-            let message = "❌ similarity_threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.7 for balanced results"
-                .to_string();
+            let message =
+                "Error: similarity_threshold must be between 0.0 and 1.0 (recommended: 0.7)"
+                    .to_string();
             return self.create_result(
                 false,
                 0,
@@ -235,11 +235,7 @@ impl TraceCallPathTool {
 
         if starting_symbols.is_empty() {
             let message = format!(
-                "❌ Symbol not found: '{}'\n\n\
-                 Possible reasons:\n\
-                 • Symbol doesn't exist or not indexed\n\
-                 • Typo in symbol name\n\
-                 • Try using fast_search to find the symbol first",
+                "Symbol not found: '{}'\nTry fast_search to find the symbol, or check spelling",
                 self.symbol
             );
             return self.create_result(
@@ -259,8 +255,7 @@ impl TraceCallPathTool {
             starting_symbols.retain(|s| s.file_path == *context_file);
             if starting_symbols.is_empty() {
                 let message = format!(
-                    "❌ Symbol '{}' not found in file: {}\n\n\
-                     💡 Try without context_file to search all files",
+                    "Symbol '{}' not found in file: {} (try without context_file to search all files)",
                     self.symbol, context_file
                 );
                 return self.create_result(
@@ -300,8 +295,7 @@ impl TraceCallPathTool {
                 }
                 _ => {
                     let message = format!(
-                        "❌ Invalid direction: '{}'\n\
-                         💡 Valid options: 'upstream', 'downstream', 'both'",
+                        "Invalid direction: '{}' (valid options: 'upstream', 'downstream', 'both')",
                         self.direction
                     );
                     return self.create_result(
@@ -321,7 +315,6 @@ impl TraceCallPathTool {
 
         // Format output
         let output = self.format_call_trees(&all_trees)?;
-        let optimized_output = self.optimize_response(&output);
 
         self.create_result(
             true,
@@ -330,7 +323,7 @@ impl TraceCallPathTool {
                 "Review call paths to understand execution flow".to_string(),
                 "Use fast_goto to navigate to specific symbols".to_string(),
             ],
-            optimized_output,
+            output,
             None,
         )
     }
@@ -911,178 +904,41 @@ impl TraceCallPathTool {
         Ok(matches)
     }
 
-    /// Format multiple call trees for display with progressive reduction
+    /// Format multiple call trees for display - minimal 2-line summary
     fn format_call_trees(&self, trees: &[(Symbol, Vec<CallPathNode>)]) -> Result<String> {
-        let mut output = String::new();
+        if trees.is_empty() {
+            return Ok(format!(
+                "No call paths found for '{}'\nTry enabling cross_language or using fast_refs",
+                self.symbol
+            ));
+        }
 
-        output.push_str(&format!("🔍 **Call Path Trace: {}**\n\n", self.symbol));
-        output.push_str(&format!(
-            "**Direction:** {} | **Depth:** {} | **Cross-Language:** {}\n\n",
+        // Calculate statistics
+        let total_nodes: usize = trees.iter().map(|(_, nodes)| self.count_nodes(nodes)).sum();
+        let all_languages: HashSet<String> = trees
+            .iter()
+            .flat_map(|(_, nodes)| self.collect_languages(nodes))
+            .collect();
+
+        let direction_label = if self.direction == "upstream" {
+            "callers"
+        } else {
+            "callees"
+        };
+
+        Ok(format!(
+            "Traced {} call paths for '{}' (direction: {}, depth: {}, cross_language: {})\nFound {} {} across {} languages",
+            trees.len(),
+            self.symbol,
             self.direction,
             self.max_depth,
-            if self.cross_language { "✓" } else { "✗" }
-        ));
-
-        if trees.is_empty() {
-            output.push_str("ℹ️ No call paths found.\n\n");
-            output.push_str("Possible reasons:\n");
-            output.push_str("• Symbol not called/referenced anywhere\n");
-            output.push_str("• Symbol name mismatch\n");
-            output.push_str("• Try enabling cross_language: true\n");
-            output.push_str("• Try using fast_refs to find references first\n");
-            return Ok(output);
-        }
-
-        // Apply progressive reduction if we have too many nodes
-        // This prevents token explosion from wide call graphs
-        let optimized_trees = self.apply_call_breadth_optimization(trees)?;
-
-        // Display each tree (using optimized version)
-        for (i, (root_symbol, nodes)) in optimized_trees.iter().enumerate() {
-            if optimized_trees.len() > 1 {
-                output.push_str(&format!(
-                    "\n### Starting from: {}:{}\n\n",
-                    root_symbol.file_path, root_symbol.start_line
-                ));
-            }
-
-            if nodes.is_empty() {
-                output.push_str(&format!(
-                    "  No {} found for this symbol.\n",
-                    if self.direction == "upstream" {
-                        "callers"
-                    } else {
-                        "callees"
-                    }
-                ));
-                continue;
-            }
-
-            // Group by level
-            let mut by_level: HashMap<u32, Vec<&CallPathNode>> = HashMap::new();
-            self.collect_by_level(nodes, &mut by_level);
-
-            // Display by level
-            for level in 0..self.max_depth {
-                if let Some(level_nodes) = by_level.get(&level) {
-                    if level_nodes.is_empty() {
-                        continue;
-                    }
-
-                    output.push_str(&format!("**Level {}** ", level + 1));
-
-                    // Count by match type
-                    let direct_count = level_nodes
-                        .iter()
-                        .filter(|n| n.match_type == MatchType::Direct)
-                        .count();
-                    let variant_count = level_nodes
-                        .iter()
-                        .filter(|n| n.match_type == MatchType::NamingVariant)
-                        .count();
-                    let semantic_count = level_nodes
-                        .iter()
-                        .filter(|n| n.match_type == MatchType::Semantic)
-                        .count();
-
-                    if semantic_count > 0 || variant_count > 0 {
-                        output.push_str(&format!(
-                            "({} direct, {} variant, {} semantic):\n",
-                            direct_count, variant_count, semantic_count
-                        ));
-                    } else if direct_count > 0 {
-                        output.push_str("(Direct):\n");
-                    } else {
-                        output.push_str(":\n");
-                    }
-
-                    for node in level_nodes {
-                        let indent = "  ".repeat(level as usize);
-                        let match_indicator = match node.match_type {
-                            MatchType::Direct => "",
-                            MatchType::NamingVariant => " ⚡",
-                            MatchType::Semantic => " 🧠",
-                        };
-
-                        let relationship_info = if let Some(ref kind) = node.relationship_kind {
-                            format!(
-                                " [{}]",
-                                match kind {
-                                    RelationshipKind::Calls => "calls",
-                                    RelationshipKind::References => "refs",
-                                    _ => "other",
-                                }
-                            )
-                        } else {
-                            String::new()
-                        };
-
-                        let similarity_info = node
-                            .similarity
-                            .map(|score| format!(" [sim {:.2}]", score))
-                            .unwrap_or_default();
-
-                        output.push_str(&format!(
-                            "{}• {}:{} `{}`{}{}{} ({})\n",
-                            indent,
-                            node.symbol.file_path,
-                            node.symbol.start_line,
-                            node.symbol.name,
-                            match_indicator,
-                            relationship_info,
-                            similarity_info,
-                            node.symbol.language
-                        ));
-                    }
-
-                    output.push('\n');
-                }
-            }
-
-            // Summary statistics for this tree
-            let total_nodes = self.count_nodes(nodes);
-            let languages: HashSet<String> = self.collect_languages(nodes);
-
-            if i < trees.len() - 1 || trees.len() == 1 {
-                output.push_str("**Summary:**\n");
-                output.push_str(&format!(
-                    "• Total {}: {}\n",
-                    if self.direction == "upstream" {
-                        "callers"
-                    } else {
-                        "callees"
-                    },
-                    total_nodes
-                ));
-                output.push_str(&format!(
-                    "• Languages: {} ({})\n",
-                    languages.len(),
-                    languages.iter().cloned().collect::<Vec<_>>().join(", ")
-                ));
-                output.push_str(&format!(
-                    "• Max depth reached: {}\n",
-                    self.find_max_depth(nodes)
-                ));
-            }
-        }
-
-        Ok(output)
+            self.cross_language,
+            total_nodes,
+            direction_label,
+            all_languages.len()
+        ))
     }
 
-    /// Collect nodes by level for display
-    fn collect_by_level<'a>(
-        &self,
-        nodes: &'a [CallPathNode],
-        by_level: &mut HashMap<u32, Vec<&'a CallPathNode>>,
-    ) {
-        for node in nodes {
-            by_level
-                .entry(node.level)
-                .or_insert_with(Vec::new)
-                .push(node);
-            self.collect_by_level(&node.children, by_level);
-        }
-    }
 
     /// Count total nodes in tree
     fn count_nodes(&self, nodes: &[CallPathNode]) -> usize {
@@ -1102,93 +958,8 @@ impl TraceCallPathTool {
         languages
     }
 
-    /// Find maximum depth reached
-    fn find_max_depth(&self, nodes: &[CallPathNode]) -> u32 {
-        nodes
-            .iter()
-            .map(|n| {
-                let child_depth = if n.children.is_empty() {
-                    0
-                } else {
-                    self.find_max_depth(&n.children)
-                };
-                n.level + 1 + child_depth
-            })
-            .max()
-            .unwrap_or(0)
-    }
 
-    /// Apply progressive reduction to call breadth (nodes per level)
-    /// This prevents token explosion from wide call graphs by intelligently
-    /// reducing the number of nodes at each level while preserving important paths
-    fn apply_call_breadth_optimization(
-        &self,
-        trees: &[(Symbol, Vec<CallPathNode>)],
-    ) -> Result<Vec<(Symbol, Vec<CallPathNode>)>> {
-        let reducer = ProgressiveReducer::new();
-        let token_estimator = TokenEstimator::new();
 
-        // Target: 15000 tokens for call trees (allowing some headroom for headers)
-        let target_tokens = 15000;
-
-        // Estimate current token usage
-        let estimate_trees = |tree_subset: &[(Symbol, Vec<CallPathNode>)]| {
-            // Quick estimate based on node count and average path string length
-            let total_nodes: usize = tree_subset.iter().map(|(_, nodes)| self.count_nodes(nodes)).sum();
-            // Average node representation: ~100 characters (file path + name + metadata)
-            // Use a sample formatted node to get accurate token count
-            let sample_node = format!("  • path/to/file.rs:42 `function_name` [calls] (rust)\n");
-            let tokens_per_node = token_estimator.estimate_string(&sample_node);
-            total_nodes * tokens_per_node
-        };
-
-        let current_tokens = estimate_trees(trees);
-
-        // If under target, return as-is
-        if current_tokens <= target_tokens {
-            return Ok(trees.to_vec());
-        }
-
-        debug!(
-            "Call breadth optimization: {} tokens -> target {}",
-            current_tokens, target_tokens
-        );
-
-        // Apply reduction - convert to vector for reduction
-        let tree_vec: Vec<(Symbol, Vec<CallPathNode>)> = trees.to_vec();
-        let optimized = reducer.reduce(&tree_vec, target_tokens, estimate_trees);
-
-        // If we reduced trees, add a notice that some were omitted
-        if optimized.len() < trees.len() {
-            debug!(
-                "Reduced call trees from {} to {} to fit token budget",
-                trees.len(),
-                optimized.len()
-            );
-        }
-
-        Ok(optimized)
-    }
-
-    /// Optimize response for token limits (fallback for final string truncation)
-    fn optimize_response(&self, response: &str) -> String {
-        let estimator = TokenEstimator::new();
-        let tokens = estimator.estimate_string(response);
-
-        // Target 20000 tokens for call traces (can be large)
-        if tokens <= 20000 {
-            response.to_string()
-        } else {
-            // Truncate with notice
-            let chars_per_token = response.len() / tokens.max(1);
-            let target_chars = chars_per_token * 20000;
-            let truncated = &response[..target_chars.min(response.len())];
-            format!(
-                "{}\n\n... (truncated for context limits - reduce max_depth to see full results)",
-                truncated
-            )
-        }
-    }
 }
 
 #[cfg(test)]

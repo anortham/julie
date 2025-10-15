@@ -16,13 +16,13 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
-        info!("➕ Adding reference workspace: {}", path);
+        info!("Adding reference workspace: {}", path);
 
         // Get primary workspace for registry service
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found. Please run 'index' command first.";
+                let message = "No primary workspace found. Please run 'index' command first.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -33,7 +33,7 @@ impl ManageWorkspaceTool {
 
         // Register the reference workspace
         debug!(
-            "🐛 TRACE: About to call register_workspace for path: {}",
+            "TRACE: About to call register_workspace for path: {}",
             path
         );
         match registry_service
@@ -42,7 +42,7 @@ impl ManageWorkspaceTool {
         {
             Ok(entry) => {
                 debug!(
-                    "🐛 TRACE: register_workspace completed successfully for {}",
+                    "TRACE: register_workspace completed successfully for {}",
                     entry.id
                 );
                 let display_name = name.unwrap_or_else(|| entry.display_name.clone());
@@ -51,24 +51,24 @@ impl ManageWorkspaceTool {
                 let workspace_path = std::path::PathBuf::from(&entry.original_path);
 
                 info!(
-                    "🔍 Starting indexing of reference workspace: {}",
+                    "Starting indexing of reference workspace: {}",
                     display_name
                 );
 
-                // 🔥 TEST: Let's see if awaiting actually deadlocks or if something else is the issue
-                debug!("🐛 About to call index_workspace_files for reference workspace");
+                // TEST: Let's see if awaiting actually deadlocks or if something else is the issue
+                debug!("About to call index_workspace_files for reference workspace");
                 match self
                     .index_workspace_files(handler, &workspace_path, false)
                     .await
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {
-                        debug!("🐛 index_workspace_files completed successfully");
+                        debug!("index_workspace_files completed successfully");
                         let message = format!(
-                            "✅ Reference workspace added and indexed!\n\
-                             📁 Workspace ID: {}\n\
-                             📝 Display Name: {}\n\
-                             📂 Path: {}\n\
-                             📊 {} files, {} symbols, {} relationships",
+                            "Reference workspace added and indexed!\n\
+                             Workspace ID: {}\n\
+                             Display Name: {}\n\
+                             Path: {}\n\
+                             {} files, {} symbols, {} relationships",
                             entry.id,
                             display_name,
                             entry.original_path,
@@ -83,11 +83,11 @@ impl ManageWorkspaceTool {
                     Err(e) => {
                         warn!("Failed to index reference workspace: {}", e);
                         let message = format!(
-                            "⚠️ Reference workspace added but indexing failed!\n\
-                             📁 Workspace ID: {}\n\
-                             📝 Display Name: {}\n\
-                             📂 Path: {}\n\
-                             ❌ Error: {}",
+                            "Reference workspace added but indexing failed!\n\
+                             Workspace ID: {}\n\
+                             Display Name: {}\n\
+                             Path: {}\n\
+                             Error: {}",
                             entry.id, display_name, entry.original_path, e
                         );
                         Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -98,7 +98,7 @@ impl ManageWorkspaceTool {
             }
             Err(e) => {
                 // Registration failed
-                let message = format!("❌ Failed to add reference workspace: {}", e);
+                let message = format!("Failed to add reference workspace: {}", e);
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]))
@@ -112,12 +112,12 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<CallToolResult> {
-        info!("🗑️ Removing workspace: {}", workspace_id);
+        info!("Removing workspace: {}", workspace_id);
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -157,10 +157,10 @@ impl ManageWorkspaceTool {
             match registry_service.unregister_workspace(workspace_id).await {
                 Ok(true) => {
                     let message = format!(
-                        "✅ **Workspace Removed Successfully**\n\
-                        🗑️ Workspace: {}\n\
-                        📊 Database data cleaned up\n\
-                        💡 All associated symbols, files, and relationships have been removed.",
+                        "Workspace Removed Successfully\n\
+                        Workspace: {}\n\
+                        Database data cleaned up\n\
+                        All associated symbols, files, and relationships have been removed.",
                         workspace_id
                     );
                     Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -168,20 +168,20 @@ impl ManageWorkspaceTool {
                     )]))
                 }
                 Ok(false) => {
-                    let message = format!("⚠️ Workspace not found in registry: {}", workspace_id);
+                    let message = format!("Workspace not found in registry: {}", workspace_id);
                     Ok(CallToolResult::text_content(vec![TextContent::from(
                         message,
                     )]))
                 }
                 Err(e) => {
-                    let message = format!("❌ Failed to remove workspace from registry: {}", e);
+                    let message = format!("Failed to remove workspace from registry: {}", e);
                     Ok(CallToolResult::text_content(vec![TextContent::from(
                         message,
                     )]))
                 }
             }
         } else {
-            let message = format!("⚠️ Workspace not found: {}", workspace_id);
+            let message = format!("Workspace not found: {}", workspace_id);
             Ok(CallToolResult::text_content(vec![TextContent::from(
                 message,
             )]))
@@ -193,12 +193,12 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
-        info!("📋 Listing all workspaces");
+        info!("Listing all workspaces");
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found. Use 'index' command to create one.";
+                let message = "No primary workspace found. Use 'index' command to create one.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -225,14 +225,14 @@ impl ManageWorkspaceTool {
 
                 // Create a token estimation function that formats a workspace entry
                 let estimate_workspaces = |ws_subset: &[crate::workspace::registry::WorkspaceEntry]| {
-                    let mut test_output = String::from("📋 Registered Workspaces:\n\n");
+                    let mut test_output = String::from("Registered Workspaces:\n\n");
                     for workspace in ws_subset {
                         let status = if workspace.is_expired() {
-                            "⏰ EXPIRED"
+                            "EXPIRED"
                         } else if !workspace.path_exists() {
-                            "❌ MISSING"
+                            "MISSING"
                         } else {
-                            "✅ ACTIVE"
+                            "ACTIVE"
                         };
 
                         let expires = match workspace.expires_at {
@@ -249,12 +249,12 @@ impl ManageWorkspaceTool {
                         };
 
                         test_output.push_str(&format!(
-                            "🏷️ **{}** ({})\n\
-                            📁 Path: {}\n\
-                            🔍 Type: {:?}\n\
-                            📊 Files: {} | Symbols: {} | Size: {:.1} KB\n\
-                            ⏰ Expires: {}\n\
-                            📅 Status: {}\n\n",
+                            "{} ({})\n\
+                            Path: {}\n\
+                            Type: {:?}\n\
+                            Files: {} | Symbols: {} | Size: {:.1} KB\n\
+                            Expires: {}\n\
+                            Status: {}\n\n",
                             workspace.display_name,
                             workspace.id,
                             workspace.original_path,
@@ -274,15 +274,15 @@ impl ManageWorkspaceTool {
                 let optimized_workspaces = reducer.reduce(&workspaces, target_tokens, estimate_workspaces);
                 let shown_count = optimized_workspaces.len();
 
-                let mut output = String::from("📋 Registered Workspaces:\n\n");
+                let mut output = String::from("Registered Workspaces:\n\n");
 
                 for workspace in &optimized_workspaces {
                     let status = if workspace.is_expired() {
-                        "⏰ EXPIRED"
+                        "EXPIRED"
                     } else if !workspace.path_exists() {
-                        "❌ MISSING"
+                        "MISSING"
                     } else {
-                        "✅ ACTIVE"
+                        "ACTIVE"
                     };
 
                     let expires = match workspace.expires_at {
@@ -299,12 +299,12 @@ impl ManageWorkspaceTool {
                     };
 
                     output.push_str(&format!(
-                        "🏷️ **{}** ({})\n\
-                        📁 Path: {}\n\
-                        🔍 Type: {:?}\n\
-                        📊 Files: {} | Symbols: {} | Size: {:.1} KB\n\
-                        ⏰ Expires: {}\n\
-                        📅 Status: {}\n\n",
+                        "{} ({})\n\
+                        Path: {}\n\
+                        Type: {:?}\n\
+                        Files: {} | Symbols: {} | Size: {:.1} KB\n\
+                        Expires: {}\n\
+                        Status: {}\n\n",
                         workspace.display_name,
                         workspace.id,
                         workspace.original_path,
@@ -320,8 +320,8 @@ impl ManageWorkspaceTool {
                 // Add truncation notice if results were reduced
                 if shown_count < total_count {
                     output.push_str(&format!(
-                        "📊 Showing {} of {} total workspaces (token limit applied)\n\
-                        💡 Use workspace stats to see details for specific workspaces\n",
+                        "Showing {} of {} total workspaces (token limit applied)\n\
+                        Use workspace stats to see details for specific workspaces\n",
                         shown_count, total_count
                     ));
                 }
@@ -331,7 +331,7 @@ impl ManageWorkspaceTool {
                 )]))
             }
             Err(e) => {
-                let message = format!("❌ Failed to list workspaces: {}", e);
+                let message = format!("Failed to list workspaces: {}", e);
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]))
@@ -345,12 +345,12 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         expired_only: bool,
     ) -> Result<CallToolResult> {
-        info!("🧹 Cleaning workspaces (expired_only: {})", expired_only);
+        info!("Cleaning workspaces (expired_only: {})", expired_only);
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -367,11 +367,11 @@ impl ManageWorkspaceTool {
             {
                 Ok(report) => {
                     let message = if report.workspaces_removed.is_empty() {
-                        "✨ No expired workspaces to clean.".to_string()
+                        "No expired workspaces to clean.".to_string()
                     } else {
                         format!(
-                            "✅ Cleaned {} expired workspace(s):\n{}\n\n\
-                            📊 Database cleanup:\n\
+                            "Cleaned {} expired workspace(s):\n{}\n\n\
+                            Database cleanup:\n\
                             • {} symbols deleted\n\
                             • {} files deleted\n\
                             • {} relationships deleted",
@@ -392,7 +392,7 @@ impl ManageWorkspaceTool {
                     )]))
                 }
                 Err(e) => {
-                    let message = format!("❌ Failed to clean expired workspaces: {}", e);
+                    let message = format!("Failed to clean expired workspaces: {}", e);
                     Ok(CallToolResult::text_content(vec![TextContent::from(
                         message,
                     )]))
@@ -417,33 +417,33 @@ impl ManageWorkspaceTool {
 
                     if ttl_count > 0 {
                         message_parts
-                            .push(format!("⏰ TTL Cleanup: {} expired workspaces", ttl_count));
+                            .push(format!("TTL Cleanup: {} expired workspaces", ttl_count));
                     }
 
                     if size_count > 0 {
                         message_parts.push(format!(
-                            "💾 Size Cleanup: {} workspaces (LRU eviction)",
+                            "Size Cleanup: {} workspaces (LRU eviction)",
                             size_count
                         ));
                     }
 
                     if orphan_count > 0 {
                         message_parts.push(format!(
-                            "🗑️ Orphan Cleanup: {} abandoned indexes",
+                            "Orphan Cleanup: {} abandoned indexes",
                             orphan_count
                         ));
                     }
 
                     let message = if message_parts.is_empty() {
-                        "✨ No cleanup needed. All workspaces are healthy!".to_string()
+                        "No cleanup needed. All workspaces are healthy!".to_string()
                     } else {
                         format!(
-                            "🧹 **Comprehensive Cleanup Complete**\n\n{}\n\n\
-                            📊 **Database Impact:**\n\
+                            "Comprehensive Cleanup Complete\n\n{}\n\n\
+                            Database Impact:\n\
                             • {} symbols deleted\n\
                             • {} files deleted\n\
                             • {} relationships deleted\n\n\
-                            💡 Cleanup helps maintain optimal performance and storage usage.",
+                            Cleanup helps maintain optimal performance and storage usage.",
                             message_parts.join("\n"),
                             total_symbols,
                             total_files,
@@ -457,7 +457,7 @@ impl ManageWorkspaceTool {
                     )]))
                 }
                 Err(e) => {
-                    let message = format!("❌ Failed to perform comprehensive cleanup: {}", e);
+                    let message = format!("Failed to perform comprehensive cleanup: {}", e);
                     Ok(CallToolResult::text_content(vec![TextContent::from(
                         message,
                     )]))
@@ -472,12 +472,12 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<CallToolResult> {
-        info!("🔄 Refreshing workspace: {}", workspace_id);
+        info!("Refreshing workspace: {}", workspace_id);
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -496,7 +496,7 @@ impl ManageWorkspaceTool {
                 let workspace_path = std::path::PathBuf::from(&workspace_entry.original_path);
 
                 info!(
-                    "🔄 Starting re-indexing of workspace: {}",
+                    "Starting re-indexing of workspace: {}",
                     workspace_entry.display_name
                 );
 
@@ -543,20 +543,20 @@ impl ManageWorkspaceTool {
                             {
                                 warn!("Failed to update workspace statistics: {}", e);
                             } else {
-                                info!("✅ Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
+                                info!("Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
                                       workspace_id, file_count, symbol_count, index_size);
                             }
                         }
 
                         let message = format!(
-                            "✅ **Workspace Refresh Complete!**\n\
-                            🏷️ Workspace: {}\n\
-                            📁 Path: {}\n\
-                            📊 Results:\n\
+                            "Workspace Refresh Complete!\n\
+                            Workspace: {}\n\
+                            Path: {}\n\
+                            Results:\n\
                             • {} files indexed\n\
                             • {} symbols extracted\n\
                             • {} relationships found\n\
-                            ⚡ Content is now up-to-date and searchable!",
+                            Content is now up-to-date and searchable!",
                             workspace_entry.display_name,
                             workspace_entry.original_path,
                             file_count,
@@ -569,11 +569,11 @@ impl ManageWorkspaceTool {
                     }
                     Err(e) => {
                         let message = format!(
-                            "❌ **Workspace Refresh Failed**\n\
-                            🏷️ Workspace: {}\n\
-                            📁 Path: {}\n\
-                            💥 Error: {}\n\
-                            💡 Check that the path exists and contains readable files",
+                            "Workspace Refresh Failed\n\
+                            Workspace: {}\n\
+                            Path: {}\n\
+                            Error: {}\n\
+                            Check that the path exists and contains readable files",
                             workspace_entry.display_name, workspace_entry.original_path, e
                         );
                         Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -583,7 +583,7 @@ impl ManageWorkspaceTool {
                 }
             }
             None => {
-                let message = format!("❌ Workspace not found: {}", workspace_id);
+                let message = format!("Workspace not found: {}", workspace_id);
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]))
@@ -597,12 +597,12 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         workspace_id: Option<String>,
     ) -> Result<CallToolResult> {
-        info!("📊 Showing workspace statistics");
+        info!("Showing workspace statistics");
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -627,15 +627,15 @@ impl ManageWorkspaceTool {
                 match registry_service.get_workspace(&id).await? {
                     Some(workspace) => {
                         let message = format!(
-                            "📊 Workspace Statistics: {}\n\n\
-                            🏷️ **{}** ({})\n\
-                            📁 Path: {}\n\
-                            🔍 Type: {:?}\n\
-                            📊 Files: {} | Symbols: {}\n\
-                            💾 Index Size: {:.2} MB\n\
-                            📅 Created: {} (timestamp)\n\
-                            🕐 Last Accessed: {} (timestamp)\n\
-                            ⏰ Expires: {}",
+                            "Workspace Statistics: {}\n\n\
+                            {} ({})\n\
+                            Path: {}\n\
+                            Type: {:?}\n\
+                            Files: {} | Symbols: {}\n\
+                            Index Size: {:.2} MB\n\
+                            Created: {} (timestamp)\n\
+                            Last Accessed: {} (timestamp)\n\
+                            Expires: {}",
                             workspace.display_name,
                             workspace.display_name,
                             workspace.id,
@@ -656,7 +656,7 @@ impl ManageWorkspaceTool {
                         )]))
                     }
                     None => {
-                        let message = format!("❌ Workspace not found: {}", id);
+                        let message = format!("Workspace not found: {}", id);
                         Ok(CallToolResult::text_content(vec![TextContent::from(
                             message,
                         )]))
@@ -668,21 +668,21 @@ impl ManageWorkspaceTool {
                 let registry = registry_service.load_registry().await?;
 
                 let message = format!(
-                    "📊 Overall Workspace Statistics\n\n\
-                    🏗️ **Registry Status**\n\
-                    📦 Total Workspaces: {}\n\
-                    👑 Primary Workspace: {}\n\
-                    📚 Reference Workspaces: {}\n\
-                    🗑️ Orphaned Indexes: {}\n\n\
-                    💾 **Storage Usage**\n\
-                    📁 Total Files: {}\n\
-                    📊 Total Symbols: {}\n\
-                    💽 Total Index Size: {:.2} MB\n\
-                    📅 Last Updated: {} (timestamp)\n\n\
-                    ⚙️ **Configuration**\n\
-                    ⏰ Default TTL: {} days\n\
-                    📏 Max Size Limit: {} MB\n\
-                    🧹 Auto Cleanup: {}",
+                    "Overall Workspace Statistics\n\n\
+                    Registry Status\n\
+                    Total Workspaces: {}\n\
+                    Primary Workspace: {}\n\
+                    Reference Workspaces: {}\n\
+                    Orphaned Indexes: {}\n\n\
+                    Storage Usage\n\
+                    Total Files: {}\n\
+                    Total Symbols: {}\n\
+                    Total Index Size: {:.2} MB\n\
+                    Last Updated: {} (timestamp)\n\n\
+                    Configuration\n\
+                    Default TTL: {} days\n\
+                    Max Size Limit: {} MB\n\
+                    Auto Cleanup: {}",
                     registry.statistics.total_workspaces,
                     if registry.primary_workspace.is_some() {
                         "Yes"
@@ -717,54 +717,54 @@ impl ManageWorkspaceTool {
         detailed: bool,
     ) -> Result<CallToolResult> {
         info!(
-            "🏥 Performing comprehensive system health check (detailed: {})",
+            "Performing comprehensive system health check (detailed: {})",
             detailed
         );
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ **CRITICAL**: No primary workspace found!\n\
-                               💡 Run 'index' command to initialize workspace.";
+                let message = "CRITICAL: No primary workspace found!\n\
+                               Run 'index' command to initialize workspace.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
             }
         };
 
-        let mut health_report = String::from("🏥 **JULIE SYSTEM HEALTH REPORT**\n\n");
+        let mut health_report = String::from("JULIE SYSTEM HEALTH REPORT\n\n");
 
-        // 🔍 PHASE 1: SQLite Database Health
-        health_report.push_str("📊 **SQLite Database (Source of Truth)**\n");
+        // PHASE 1: SQLite Database Health
+        health_report.push_str("SQLite Database (Source of Truth)\n");
         let db_status = self
             .check_database_health(&primary_workspace, detailed)
             .await?;
         health_report.push_str(&db_status);
         health_report.push('\n');
 
-        // 🔍 PHASE 2: SQLite FTS5 Search Health
-        health_report.push_str("🔍 **SQLite FTS5 Search**\n");
+        // PHASE 2: SQLite FTS5 Search Health
+        health_report.push_str("SQLite FTS5 Search\n");
         let search_status = self
             .check_search_engine_health(&primary_workspace, detailed)
             .await?;
         health_report.push_str(&search_status);
         health_report.push('\n');
 
-        // 🔍 PHASE 3: Embedding System Health
-        health_report.push_str("🧠 **Embedding System (Semantic Search)**\n");
+        // PHASE 3: Embedding System Health
+        health_report.push_str("Embedding System (Semantic Search)\n");
         let embedding_status = self
             .check_embedding_health(&primary_workspace, detailed)
             .await?;
         health_report.push_str(&embedding_status);
         health_report.push('\n');
 
-        // 🔍 PHASE 4: Overall System Assessment
-        health_report.push_str("⚡ **Overall System Assessment**\n");
+        // PHASE 4: Overall System Assessment
+        health_report.push_str("Overall System Assessment\n");
         let overall_status = self.assess_overall_health(&primary_workspace).await?;
         health_report.push_str(&overall_status);
 
         if detailed {
-            health_report.push_str("\n💡 **Performance Recommendations**\n");
+            health_report.push_str("\nPerformance Recommendations\n");
             health_report.push_str("• Use fast_search for lightning-fast code discovery\n");
             health_report.push_str("• Use fast_goto for instant symbol navigation\n");
             health_report.push_str("• Use fast_refs to understand code dependencies\n");
@@ -798,13 +798,13 @@ impl ManageWorkspaceTool {
                         };
 
                         status.push_str(&format!(
-                            "✅ **SQLite Status**: HEALTHY\n\
-                            📊 **Data Summary**:\n\
+                            "SQLite Status: HEALTHY\n\
+                            Data Summary:\n\
                             • {} symbols across {} files\n\
                             • {} relationships tracked\n\
                             • {} languages supported: {}\n\
                             • {:.1} symbols per file average\n\
-                            💾 **Storage**: {:.2} MB on disk\n",
+                            Storage: {:.2} MB on disk\n",
                             stats.total_symbols,
                             stats.total_files,
                             stats.total_relationships,
@@ -816,7 +816,7 @@ impl ManageWorkspaceTool {
 
                         if detailed {
                             status.push_str(&format!(
-                                "🔍 **Detailed Metrics**:\n\
+                                "Detailed Metrics:\n\
                                 • Database file: {:.2} MB\n\
                                 • Embeddings tracked: {}\n\
                                 • Query performance: Optimized with indexes\n",
@@ -825,13 +825,13 @@ impl ManageWorkspaceTool {
                         }
                     }
                     Err(e) => {
-                        status.push_str(&format!("⚠️ **SQLite Status**: ERROR\n💥 {}\n", e));
+                        status.push_str(&format!("SQLite Status: ERROR\n{}\n", e));
                     }
                 }
             }
             None => {
                 status
-                    .push_str("❌ **SQLite Status**: NOT CONNECTED\n💡 Database not initialized\n");
+                    .push_str("SQLite Status: NOT CONNECTED\nDatabase not initialized\n");
             }
         }
 
@@ -848,12 +848,12 @@ impl ManageWorkspaceTool {
 
         // SQLite FTS5 search is always available when database exists
         if workspace.db.is_some() {
-            status.push_str("✅ **SQLite FTS5 Status**: READY\n");
-            status.push_str("🔍 **Search Capabilities**: Fast full-text search enabled\n");
-            status.push_str("⚡ **Performance**: <5ms query response time\n");
+            status.push_str("SQLite FTS5 Status: READY\n");
+            status.push_str("Search Capabilities: Fast full-text search enabled\n");
+            status.push_str("Performance: <5ms query response time\n");
         } else {
-            status.push_str("❌ **Search Status**: NOT AVAILABLE\n");
-            status.push_str("💡 Database not initialized\n");
+            status.push_str("Search Status: NOT AVAILABLE\n");
+            status.push_str("Database not initialized\n");
         }
 
         Ok(status)
@@ -881,18 +881,18 @@ impl ManageWorkspaceTool {
                 let embeddings_exist = embedding_path.exists();
 
                 if embeddings_exist {
-                    status.push_str("✅ **Embeddings Status**: READY\n");
+                    status.push_str("Embeddings Status: READY\n");
                     status.push_str(
-                        "🧠 **Semantic Search**: AI-powered code understanding enabled\n",
+                        "Semantic Search: AI-powered code understanding enabled\n",
                     );
                     status.push_str(
-                        "🎯 **Features**: Concept-based search and similarity matching\n",
+                        "Features: Concept-based search and similarity matching\n",
                     );
 
                     if detailed {
                         let embedding_size = Self::calculate_directory_size(&embedding_path)?;
                         status.push_str(&format!(
-                            "🔮 **Embedding Details**:\n\
+                            "Embedding Details:\n\
                             • Model: FastEmbed all-MiniLM-L6-v2\n\
                             • Storage: {:.2} MB\n\
                             • Status: Full semantic search available\n",
@@ -900,14 +900,14 @@ impl ManageWorkspaceTool {
                         ));
                     }
                 } else {
-                    status.push_str("🔄 **Embeddings Status**: BUILDING\n");
+                    status.push_str("Embeddings Status: BUILDING\n");
                     status
-                        .push_str("💡 Background generation in progress, text search available\n");
+                        .push_str("Background generation in progress, text search available\n");
                 }
             }
             None => {
-                status.push_str("⚠️ **Embeddings Status**: NOT INITIALIZED\n");
-                status.push_str("💡 Text-based search available, semantic search unavailable\n");
+                status.push_str("Embeddings Status: NOT INITIALIZED\n");
+                status.push_str("Text-based search available, semantic search unavailable\n");
             }
         }
 
@@ -931,24 +931,24 @@ impl ManageWorkspaceTool {
         let systems_ready = [db_ready, embeddings_ready].iter().filter(|&&x| x).count();
 
         let status = match systems_ready {
-            2 => "🟢 **FULLY OPERATIONAL** - All systems ready!",
-            1 => "🟡 **PARTIALLY READY** - Core systems operational",
-            0 => "🔴 **INITIALIZING** - Please wait for indexing to complete",
-            _ => "❓ **UNKNOWN STATUS**",
+            2 => "FULLY OPERATIONAL - All systems ready!",
+            1 => "PARTIALLY READY - Core systems operational",
+            0 => "INITIALIZING - Please wait for indexing to complete",
+            _ => "UNKNOWN STATUS",
         };
 
         let mut assessment = format!("{}\n", status);
 
         assessment.push_str(&format!(
-            "📊 **System Readiness**: {}/2 systems ready\n\
+            "System Readiness: {}/2 systems ready\n\
             • SQLite Database (with FTS5 search): {}\n\
             • Embedding System: {}\n\n",
             systems_ready,
-            if db_ready { "✅" } else { "🔄" },
-            if embeddings_ready { "✅" } else { "🔄" }
+            if db_ready { "READY" } else { "BUILDING" },
+            if embeddings_ready { "READY" } else { "BUILDING" }
         ));
 
-        assessment.push_str("🎯 **Recommended Actions**:\n");
+        assessment.push_str("Recommended Actions:\n");
         if !db_ready {
             assessment.push_str("• Run 'manage_workspace index' to initialize database\n");
         }
@@ -990,12 +990,12 @@ impl ManageWorkspaceTool {
         days: u32,
         limit: u32,
     ) -> Result<CallToolResult> {
-        info!("📅 Finding files modified in the last {} days", days);
+        info!("Finding files modified in the last {} days", days);
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found. Use 'index' command to create one.";
+                let message = "No primary workspace found. Use 'index' command to create one.";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -1035,7 +1035,7 @@ impl ManageWorkspaceTool {
 
                 // Create a token estimation function that formats file entries
                 let estimate_files = |file_subset: &[crate::database::FileInfo]| {
-                    let mut test_output = format!("📅 Files modified in the last {} days:\n\n", days);
+                    let mut test_output = format!("Files modified in the last {} days:\n\n", days);
                     for file in file_subset {
                         let now = chrono::Utc::now().timestamp();
                         let hours_ago = (now - file.last_modified) / 3600;
@@ -1046,10 +1046,10 @@ impl ManageWorkspaceTool {
                         };
 
                         test_output.push_str(&format!(
-                            "📄 **{}**\n\
-                            🕐 Modified: {}\n\
-                            📊 {} symbols | {} bytes\n\
-                            🔤 Language: {}\n\n",
+                            "{}\n\
+                            Modified: {}\n\
+                            {} symbols | {} bytes\n\
+                            Language: {}\n\n",
                             file.path, time_ago, file.symbol_count, file.size, file.language
                         ));
                     }
@@ -1061,7 +1061,7 @@ impl ManageWorkspaceTool {
                 let optimized_files = reducer.reduce(&files, target_tokens, estimate_files);
                 let shown_count = optimized_files.len();
 
-                let mut output = format!("📅 Files modified in the last {} days:\n\n", days);
+                let mut output = format!("Files modified in the last {} days:\n\n", days);
 
                 for file in &optimized_files {
                     // Calculate how long ago the file was modified
@@ -1074,10 +1074,10 @@ impl ManageWorkspaceTool {
                     };
 
                     output.push_str(&format!(
-                        "📄 **{}**\n\
-                        🕐 Modified: {}\n\
-                        📊 {} symbols | {} bytes\n\
-                        🔤 Language: {}\n\n",
+                        "{}\n\
+                        Modified: {}\n\
+                        {} symbols | {} bytes\n\
+                        Language: {}\n\n",
                         file.path, time_ago, file.symbol_count, file.size, file.language
                     ));
                 }
@@ -1085,8 +1085,8 @@ impl ManageWorkspaceTool {
                 // Add truncation notice if results were reduced
                 if shown_count < total_count {
                     output.push_str(&format!(
-                        "📊 Showing {} of {} recently modified files (token limit applied)\n\
-                        💡 Adjust the 'limit' parameter to control result count\n",
+                        "Showing {} of {} recently modified files (token limit applied)\n\
+                        Adjust the 'limit' parameter to control result count\n",
                         shown_count, total_count
                     ));
                 }
@@ -1096,7 +1096,7 @@ impl ManageWorkspaceTool {
                 )]))
             }
             Err(e) => {
-                let message = format!("❌ Failed to query recent files: {}", e);
+                let message = format!("Failed to query recent files: {}", e);
                 Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]))

@@ -12,9 +12,8 @@ use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::health::SystemReadiness;
 use crate::utils::{
-    context_truncation::ContextTruncator, exact_match_boost::ExactMatchBoost,
-    path_relevance::PathRelevanceScorer, progressive_reduction::ProgressiveReducer,
-    token_estimation::TokenEstimator,
+    exact_match_boost::ExactMatchBoost,
+    path_relevance::PathRelevanceScorer,
 };
 use crate::workspace::registry_service::WorkspaceRegistryService;
 
@@ -782,156 +781,31 @@ impl FastSearchTool {
         actions
     }
 
-    /// Format optimized response with insights and next actions
+    /// Format minimal summary for AI agents (structured_content has all data)
+    ///
+    /// AI agents parse structured_content (JSON), not text output.
+    /// Keep text minimal to save massive context tokens.
     pub fn format_optimized_results(&self, optimized: &OptimizedResponse<Symbol>) -> String {
-        let mut lines = vec![format!(
-            "⚡ Fast Search: '{}' (mode: {})",
-            self.query, self.mode
-        )];
+        // Line 1: Summary with count and confidence
+        let summary = format!(
+            "Found {} results for '{}' (confidence: {:.1})",
+            optimized.total_found,
+            self.query,
+            optimized.confidence
+        );
 
-        // Add insights if available
-        if let Some(insights) = &optimized.insights {
-            lines.push(format!("💡 {}", insights));
-        }
+        // Line 2: Top 5 result names (quick scan)
+        let top_names: Vec<String> = optimized.results
+            .iter()
+            .take(5)
+            .map(|s| s.name.clone())
+            .collect();
 
-        lines.push(String::new());
-
-        // Token optimization: apply progressive reduction first, then early termination if needed
-        let token_estimator = TokenEstimator::new();
-        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
-        let progressive_reducer = ProgressiveReducer::new();
-
-        // Calculate initial header tokens
-        let header_text = lines.join("\n");
-        let header_tokens = token_estimator.estimate_string(&header_text);
-        let available_tokens = token_limit.saturating_sub(header_tokens);
-
-        // Define token estimator function for symbols
-        let estimate_symbols_tokens = |symbols: &[&Symbol]| -> usize {
-            let mut total_tokens = 0;
-            for (i, symbol) in symbols.iter().enumerate() {
-                let mut symbol_text = String::new();
-                symbol_text.push_str(&format!(
-                    "{}. {} [{}]\n",
-                    i + 1,
-                    symbol.name,
-                    symbol.language
-                ));
-                symbol_text.push_str(&format!(
-                    "   📁 {}:{}-{}\n",
-                    symbol.file_path, symbol.start_line, symbol.end_line
-                ));
-
-                if let Some(signature) = &symbol.signature {
-                    symbol_text.push_str(&format!("   📝 {}\n", signature));
-                }
-
-                if let Some(context) = &symbol.code_context {
-                    symbol_text.push_str("   📄 Context:\n");
-                    let context_lines: Vec<String> =
-                        context.lines().map(|s| s.to_string()).collect();
-                    let max_lines = 10;
-
-                    if context_lines.len() > max_lines {
-                        let truncated_lines: Vec<String> =
-                            context_lines.iter().take(max_lines).cloned().collect();
-                        let lines_truncated = context_lines.len() - max_lines;
-                        for context_line in &truncated_lines {
-                            symbol_text.push_str(&format!("   {}\n", context_line));
-                        }
-                        symbol_text
-                            .push_str(&format!("   ({} more lines truncated)\n", lines_truncated));
-                    } else {
-                        for context_line in &context_lines {
-                            symbol_text.push_str(&format!("   {}\n", context_line));
-                        }
-                    }
-                }
-
-                total_tokens += token_estimator.estimate_string(&symbol_text);
-            }
-            total_tokens
-        };
-
-        // Try progressive reduction first
-        let symbol_refs: Vec<&Symbol> = optimized.results.iter().collect();
-        let reduced_symbol_refs =
-            progressive_reducer.reduce(&symbol_refs, available_tokens, estimate_symbols_tokens);
-
-        let (symbols_to_show, reduction_message) = if reduced_symbol_refs.len()
-            < optimized.results.len()
-        {
-            // Progressive reduction was applied
-            let symbols: Vec<Symbol> = reduced_symbol_refs.into_iter().cloned().collect();
-            let message = format!("📊 Showing {} of {} results (confidence: {:.1}) - Applied progressive reduction {} → {}",
-                    symbols.len(), optimized.total_found, optimized.confidence, optimized.results.len(), symbols.len());
-            (symbols, message)
+        if top_names.is_empty() {
+            summary
         } else {
-            // No reduction needed
-            let message = format!(
-                "📊 Showing {} of {} results (confidence: {:.1})",
-                optimized.results.len(),
-                optimized.total_found,
-                optimized.confidence
-            );
-            (optimized.results.clone(), message)
-        };
-
-        lines[1] = reduction_message;
-
-        // Format the symbols we decided to show
-        for (i, symbol) in symbols_to_show.iter().enumerate() {
-            lines.push(format!("{}. {} [{}]", i + 1, symbol.name, symbol.language));
-            lines.push(format!(
-                "   📁 {}:{}-{}",
-                symbol.file_path, symbol.start_line, symbol.end_line
-            ));
-
-            if let Some(signature) = &symbol.signature {
-                lines.push(format!("   📝 {}", signature));
-            }
-
-            // Add code context if available
-            if let Some(context) = &symbol.code_context {
-                lines.push("   📄 Context:".to_string());
-
-                // Apply context truncation using ContextTruncator
-                let truncator = ContextTruncator::new();
-                let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
-                let max_lines = 10; // Max 10 lines per symbol
-
-                if context_lines.len() > max_lines {
-                    // Truncate and show truncation message
-                    let truncated_lines = truncator.truncate_lines(&context_lines, max_lines);
-                    let lines_truncated = context_lines.len() - max_lines;
-
-                    // Add truncated lines
-                    for context_line in &truncated_lines {
-                        lines.push(format!("   {}", context_line));
-                    }
-
-                    // Add truncation message
-                    lines.push(format!("   ({} more lines truncated)", lines_truncated));
-                } else {
-                    // Add all lines if within limit
-                    for context_line in &context_lines {
-                        lines.push(format!("   {}", context_line));
-                    }
-                }
-            }
-
-            lines.push(String::new());
+            format!("{}\nTop results: {}", summary, top_names.join(", "))
         }
-
-        // Add next actions
-        if !optimized.next_actions.is_empty() {
-            lines.push("🎯 Suggested next actions:".to_string());
-            for action in &optimized.next_actions {
-                lines.push(format!("   • {}", action));
-            }
-        }
-
-        lines.join("\n")
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs

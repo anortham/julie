@@ -174,10 +174,6 @@ impl FastExploreTool {
     // ═══════════════════════════════════════════════════════════════════
 
     async fn intelligent_overview(&self, handler: &JulieServerHandler) -> Result<String> {
-        let mut message = String::new();
-        message.push_str("🧠 INTELLIGENT Codebase Overview\n");
-        message.push_str("==================================\n");
-
         // Use SQLite FTS5 for fast codebase statistics
         let workspace = handler
             .get_workspace()
@@ -195,46 +191,25 @@ impl FastExploreTool {
 
         // Use SQL GROUP BY aggregations filtered by current workspace
         let workspace_ids = vec![workspace_id];
-        let (kind_counts, language_counts) = db_lock.get_symbol_statistics(&workspace_ids)?;
+        let (_kind_counts, language_counts) = db_lock.get_symbol_statistics(&workspace_ids)?;
         let file_counts = db_lock.get_file_statistics(&workspace_ids)?;
         let total_symbols = db_lock.get_total_symbol_count(&workspace_ids)?;
 
-        message.push_str(&format!("📊 Total Symbols: {}\n", total_symbols));
-        message.push_str(&format!("📁 Total Files: {}\n", file_counts.len()));
-
-        // Symbol type breakdown
-        message.push_str("\n🏷️ Symbol Types:\n");
-        let mut sorted_kinds: Vec<_> = kind_counts.iter().collect();
-        sorted_kinds.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (kind, count) in sorted_kinds.iter().take(15) {
-            message.push_str(&format!("  {}: {}\n", kind, count));
-        }
-
-        // Language breakdown
-        message.push_str("\n💻 Languages:\n");
+        // Get top languages
         let mut sorted_langs: Vec<_> = language_counts.iter().collect();
         sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (lang, count) in sorted_langs.iter().take(10) {
-            message.push_str(&format!("  {}: {} symbols\n", lang, count));
-        }
+        let top_langs: Vec<String> = sorted_langs
+            .iter()
+            .take(5)
+            .map(|(lang, _)| (*lang).clone())
+            .collect();
 
-        // Top files (if medium or deep depth)
-        if matches!(self.depth.as_str(), "medium" | "deep") {
-            message.push_str("\n📁 Top Files by Symbol Count:\n");
-            let mut sorted_files: Vec<_> = file_counts.iter().collect();
-            sorted_files.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-            for (file_path, count) in sorted_files.iter().take(10) {
-                let file_name = std::path::Path::new(file_path)
-                    .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
-                    .to_string_lossy();
-                message.push_str(&format!("  {}: {} symbols\n", file_name, count));
-            }
-        }
-
-        message.push_str("\n🎯 Intelligence: Using database fallback");
-
-        Ok(message)
+        Ok(format!(
+            "Codebase overview: {} symbols in {} files\nLanguages: {}",
+            total_symbols,
+            file_counts.len(),
+            top_langs.join(", ")
+        ))
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -251,94 +226,33 @@ impl FastExploreTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
-        let mut message = String::new();
-        message.push_str("🧠 INTELLIGENT Dependency Analysis\n");
-        message.push_str("====================================\n");
-
-        // 🚀 CRITICAL FIX: Use SQL aggregation instead of loading ALL relationships into memory
         // Get the current workspace ID to filter results
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
         let workspace_ids = vec![workspace_id];
 
-        // Use SQL GROUP BY aggregation - O(1) memory vs O(N) memory for get_all_relationships()
+        // Use SQL GROUP BY aggregation
         let relationship_counts = tokio::task::block_in_place(|| {
             let db_lock = db.lock().unwrap();
             db_lock.get_relationship_type_statistics(&workspace_ids)
         })?;
 
         let total_relationships: i64 = relationship_counts.values().sum();
-        message.push_str(&format!("Total Relationships: {}\n\n", total_relationships));
 
-        message.push_str("🏷️ Relationship Types:\n");
+        // Get top relationship types
         let mut sorted_rel_types: Vec<_> = relationship_counts.iter().collect();
         sorted_rel_types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (kind, count) in sorted_rel_types {
-            message.push_str(&format!("  {}: {}\n", kind, count));
-        }
+        let top_types: Vec<String> = sorted_rel_types
+            .iter()
+            .take(3)
+            .map(|(kind, _)| (*kind).clone())
+            .collect();
 
-        // If focus is provided, analyze that specific symbol
-        if let Some(focus) = &self.focus {
-            message.push_str(&format!("\n🔍 Focused Analysis: '{}'\n", focus));
-
-            // Use database to find the symbol by name
-            let db_lock = tokio::task::block_in_place(|| db.lock().unwrap());
-
-            if let Ok(symbols) = db_lock.find_symbols_by_name(focus) {
-                if let Some(target) = symbols.first() {
-                    let symbol_id = &target.id;
-
-                    // Get targeted relationship queries for this symbol
-                    let incoming_rels = db_lock
-                        .get_relationships_to_symbol(symbol_id)
-                        .unwrap_or_default();
-                    let outgoing_rels = db_lock
-                        .get_relationships_for_symbol(symbol_id)
-                        .unwrap_or_default();
-
-                    message.push_str(&format!(
-                        "  ← Incoming: {} references\n",
-                        incoming_rels.len()
-                    ));
-                    message.push_str(&format!(
-                        "  → Outgoing: {} dependencies\n",
-                        outgoing_rels.len()
-                    ));
-                } else {
-                    message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
-                }
-            } else {
-                message.push_str(&format!("  ❌ Symbol '{}' not found\n", focus));
-            }
-        } else {
-            // 🚀 CRITICAL FIX: Use SQL aggregation to find most referenced symbols
-            // Instead of loading ALL relationships and counting in Rust, use GROUP BY in SQL
-            let top_refs = tokio::task::block_in_place(|| {
-                let db_lock = db.lock().unwrap();
-                db_lock.get_most_referenced_symbols(&workspace_ids, 10)
-            })?;
-
-            message.push_str("\n🔥 Most Referenced Symbols:\n");
-            for (symbol_id, ref_count) in top_refs.iter() {
-                let symbol = tokio::task::block_in_place(|| {
-                    let db_lock = db.lock().unwrap();
-                    db_lock.get_symbol_by_id(symbol_id)
-                })?;
-
-                if let Some(symbol) = symbol {
-                    message.push_str(&format!(
-                        "  {} [{}]: {} references\n",
-                        symbol.name,
-                        format!("{:?}", symbol.kind).to_lowercase(),
-                        ref_count
-                    ));
-                }
-            }
-        }
-
-        message.push_str("\n🎯 Intelligence: Using targeted relationship queries");
-
-        Ok(message)
+        Ok(format!(
+            "Dependencies: {} total relationships\nTop types: {}",
+            total_relationships,
+            top_types.join(", ")
+        ))
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -356,10 +270,6 @@ impl FastExploreTool {
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().unwrap();
 
-        let mut message = String::new();
-        message.push_str("🧠 INTELLIGENT Complexity Hotspots\n");
-        message.push_str("===================================\n");
-
         // Get the current workspace ID to filter results
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
@@ -369,64 +279,37 @@ impl FastExploreTool {
         let file_symbol_counts = db_lock.get_file_statistics(&workspace_ids)?;
         let file_rel_counts = db_lock.get_file_relationship_statistics(&workspace_ids)?;
 
-        // Top files by symbol count
-        let mut files_by_symbol_count: Vec<_> = file_symbol_counts
-            .iter()
-            .map(|(k, v)| (k.clone(), *v as i64))
-            .collect();
-        files_by_symbol_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-
-        // Top files by relationship count
-        let mut files_by_relationship_count: Vec<_> = file_rel_counts
-            .iter()
-            .map(|(k, v)| (k.clone(), *v as i64))
-            .collect();
-        files_by_relationship_count.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-
-        message.push_str("🔥 Files with Most Symbols:\n");
-        for (file_path, count) in files_by_symbol_count.iter().take(10) {
-            let file_name = std::path::Path::new(file_path)
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
-                .to_string_lossy();
-            message.push_str(&format!("  {}: {} symbols\n", file_name, count));
-        }
-
-        message.push_str("\n🔗 Files with Most Relationships:\n");
-        for (file_path, count) in files_by_relationship_count.iter().take(10) {
-            let file_name = std::path::Path::new(file_path)
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
-                .to_string_lossy();
-            message.push_str(&format!("  {}: {} relationships\n", file_name, count));
-        }
-
-        // Calculate complexity scores
-        message.push_str("\n📊 Complexity Score (symbols × relationships):\n");
+        // Calculate complexity scores (symbols × relationships)
         let mut complexity_scores: Vec<(String, i64)> = Vec::new();
-
-        for (file, symbol_count) in files_by_symbol_count.iter() {
-            let rel_count = files_by_relationship_count
-                .iter()
-                .find(|(f, _)| f == file)
-                .map(|(_, c)| *c)
-                .unwrap_or(0);
-            let complexity = symbol_count * (1 + rel_count);
+        for (file, symbol_count) in file_symbol_counts.iter() {
+            let symbol_count_i64 = *symbol_count as i64;
+            let rel_count = file_rel_counts
+                .get(file)
+                .copied()
+                .unwrap_or(0) as i64;
+            let complexity = symbol_count_i64 * (1 + rel_count);
             complexity_scores.push((file.clone(), complexity));
         }
 
         complexity_scores.sort_by(|a, b| b.1.cmp(&a.1));
-        for (file_path, score) in complexity_scores.iter().take(10) {
-            let file_name = std::path::Path::new(file_path)
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(file_path))
-                .to_string_lossy();
-            message.push_str(&format!("  {}: {} complexity\n", file_name, score));
-        }
 
-        message.push_str("\n🎯 Intelligence: Using SQL GROUP BY aggregations");
+        // Get top file names for summary
+        let top_files: Vec<String> = complexity_scores.iter()
+            .take(5)
+            .map(|(path, _)| {
+                std::path::Path::new(path)
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new(path))
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
 
-        Ok(message)
+        Ok(format!(
+            "Complexity hotspots: {} files analyzed\nTop files: {}",
+            file_symbol_counts.len(),
+            top_files.join(", ")
+        ))
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -434,10 +317,6 @@ impl FastExploreTool {
     // ═══════════════════════════════════════════════════════════════════
 
     async fn intelligent_trace(&self, handler: &JulieServerHandler) -> Result<String> {
-        let mut message = String::new();
-        message.push_str("🧠 INTELLIGENT Relationship Tracing\n");
-        message.push_str("====================================\n");
-
         if let Some(focus) = &self.focus {
             // Get workspace and database first
             let workspace = handler
@@ -463,59 +342,22 @@ impl FastExploreTool {
                         .get_relationships_for_symbol(symbol_id)
                         .unwrap_or_default();
 
-                    message.push_str(&format!(
-                        "Tracing: '{}' [{}]\n\n",
+                    Ok(format!(
+                        "Tracing '{}': {} relationships found\nIncoming: {}, Outgoing: {}",
                         focus,
-                        format!("{:?}", target.kind).to_lowercase()
-                    ));
-
-                    message.push_str(&format!("← Incoming ({} relationships):\n", incoming.len()));
-                    for (i, rel) in incoming.iter().take(10).enumerate() {
-                        if let Ok(Some(from_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id)
-                        {
-                            message.push_str(&format!(
-                                "  {}. {} {} this symbol\n",
-                                i + 1,
-                                from_symbol.name,
-                                rel.kind
-                            ));
-                        }
-                    }
-                    if incoming.len() > 10 {
-                        message.push_str(&format!("  ... and {} more\n", incoming.len() - 10));
-                    }
-
-                    message.push_str(&format!(
-                        "\n→ Outgoing ({} relationships):\n",
+                        incoming.len() + outgoing.len(),
+                        incoming.len(),
                         outgoing.len()
-                    ));
-                    for (i, rel) in outgoing.iter().take(10).enumerate() {
-                        if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
-                            message.push_str(&format!(
-                                "  {}. This symbol {} {}\n",
-                                i + 1,
-                                rel.kind,
-                                to_symbol.name
-                            ));
-                        }
-                    }
-                    if outgoing.len() > 10 {
-                        message.push_str(&format!("  ... and {} more\n", outgoing.len() - 10));
-                    }
+                    ))
                 } else {
-                    message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
+                    Ok(format!("Symbol '{}' not found", focus))
                 }
             } else {
-                message.push_str(&format!("❌ Symbol '{}' not found\n", focus));
+                Ok(format!("Symbol '{}' not found", focus))
             }
         } else {
-            message.push_str("💡 Use focus parameter to trace a specific symbol\n");
-            message.push_str("Example: { \"mode\": \"trace\", \"focus\": \"functionName\" }");
+            Ok("No focus symbol specified\nUse focus parameter to trace a specific symbol".to_string())
         }
-
-        message.push_str("\n\n🎯 Intelligence: Using focused relationship queries");
-
-        Ok(message)
     }
 
     /// Format optimized results with token optimization for FastExploreTool
@@ -1565,243 +1407,31 @@ impl FindLogicTool {
         Ok(relationships)
     }
 
-    /// Format optimized results with token optimization for FindLogicTool
+    /// Format optimized results for FindLogicTool
     pub fn format_optimized_results(
         &self,
         symbols: &[Symbol],
-        relationships: &[Relationship],
+        _relationships: &[Relationship],
     ) -> String {
-        use crate::utils::context_truncation::ContextTruncator;
-        use crate::utils::progressive_reduction::ProgressiveReducer;
-        use crate::utils::token_estimation::TokenEstimator;
-
-        let mut lines = vec![
-            format!("🏢 Business Logic Discovery"),
-            format!("Domain: {}", self.domain),
-            format!("Business Score ≥ {:.1}", self.min_business_score),
-        ];
-
-        // Add configuration info
-        lines.push(format!("📊 Max results: {}", self.max_results));
-        if self.group_by_layer {
-            lines.push("📊 Grouped by Layer".to_string());
-        }
-
-        let count_line_index = lines.len(); // Remember where the count line will be
-        lines.push(format!("📊 {} business components found", symbols.len()));
-        lines.push(String::new());
-
-        // Token optimization: apply progressive reduction first, then early termination if needed
-        let token_estimator = TokenEstimator::new();
-        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
-        let progressive_reducer = ProgressiveReducer::new();
-
-        // Calculate initial header tokens
-        let header_text = lines.join("\n");
-        let header_tokens = token_estimator.estimate_string(&header_text);
-        let available_tokens = token_limit.saturating_sub(header_tokens);
-
-        // Create formatted business logic items
-        let mut all_items = Vec::new();
-
-        if self.group_by_layer {
-            // Group symbols by semantic_group (layer)
-            use std::collections::HashMap;
-            let mut grouped_symbols: HashMap<String, Vec<&Symbol>> = HashMap::new();
-            for symbol in symbols {
-                let layer = symbol
-                    .semantic_group
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string())
-                    .clone();
-                grouped_symbols.entry(layer).or_default().push(symbol);
-            }
-
-            // Format grouped results
-            for (layer, layer_symbols) in grouped_symbols {
-                all_items.push(format!(
-                    "🏛️ {} Layer ({} components):",
-                    layer,
-                    layer_symbols.len()
-                ));
-
-                for symbol in layer_symbols {
-                    let mut item_lines = vec![
-                        format!(
-                            "  📍 {} [{}] (score: {:.2})",
-                            symbol.name,
-                            format!("{:?}", symbol.kind).to_lowercase(),
-                            symbol.confidence.unwrap_or(0.0)
-                        ),
-                        format!("     📄 File: {}", symbol.file_path),
-                        format!(
-                            "     📍 Location: {}:{}",
-                            symbol.start_line, symbol.start_column
-                        ),
-                    ];
-
-                    if let Some(signature) = &symbol.signature {
-                        item_lines.push(format!("     🔧 Signature: {}", signature));
-                    }
-
-                    if let Some(doc_comment) = &symbol.doc_comment {
-                        item_lines.push(format!("     📝 Business Logic: {}", doc_comment));
-                    }
-
-                    // Include business context if available (this triggers token optimization)
-                    if let Some(context) = &symbol.code_context {
-                        let truncator = ContextTruncator::new();
-                        item_lines.push("     💼 Business Context:".to_string());
-                        let context_lines: Vec<String> =
-                            context.lines().map(|s| s.to_string()).collect();
-                        let max_lines = 8; // Max 8 lines per business component for token control (FindLogicTool)
-                        let final_lines = if context_lines.len() > max_lines {
-                            truncator.truncate_lines(&context_lines, max_lines)
-                        } else {
-                            context_lines
-                        };
-                        for context_line in &final_lines {
-                            item_lines.push(format!("     {}", context_line));
-                        }
-                    }
-
-                    item_lines.push(String::new());
-                    all_items.push(item_lines.join("\n"));
-                }
-                all_items.push(String::new()); // Empty line between layers
-            }
-        } else {
-            // Flat format - sort by business score (confidence)
-            let mut sorted_symbols: Vec<&Symbol> = symbols.iter().collect();
-            sorted_symbols.sort_by(|a, b| {
-                let score_a = a.confidence.unwrap_or(0.0);
-                let score_b = b.confidence.unwrap_or(0.0);
-                score_b
-                    .partial_cmp(&score_a)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            for symbol in sorted_symbols {
-                let mut item_lines = vec![
-                    format!(
-                        "📍 {} [{}] (business score: {:.2})",
-                        symbol.name,
-                        format!("{:?}", symbol.kind).to_lowercase(),
-                        symbol.confidence.unwrap_or(0.0)
-                    ),
-                    format!("   📄 File: {}", symbol.file_path),
-                    format!(
-                        "   📍 Location: {}:{}",
-                        symbol.start_line, symbol.start_column
-                    ),
-                ];
-
-                if let Some(signature) = &symbol.signature {
-                    item_lines.push(format!("   🔧 Signature: {}", signature));
-                }
-
-                if let Some(doc_comment) = &symbol.doc_comment {
-                    item_lines.push(format!("   📝 Business Logic: {}", doc_comment));
-                }
-
-                if let Some(semantic_group) = &symbol.semantic_group {
-                    item_lines.push(format!("   🏛️ Layer: {}", semantic_group));
-                }
-
-                // Include business context if available (this triggers token optimization)
-                if let Some(context) = &symbol.code_context {
-                    let truncator = ContextTruncator::new();
-                    item_lines.push("   💼 Business Context:".to_string());
-                    let context_lines: Vec<String> =
-                        context.lines().map(|s| s.to_string()).collect();
-                    let max_lines = 8; // Max 8 lines per business component for token control (FindLogicTool)
-                    let final_lines = if context_lines.len() > max_lines {
-                        truncator.truncate_lines(&context_lines, max_lines)
-                    } else {
-                        context_lines
-                    };
-                    for context_line in &final_lines {
-                        item_lines.push(format!("   {}", context_line));
-                    }
-                }
-
-                item_lines.push(String::new());
-                all_items.push(item_lines.join("\n"));
-            }
-        }
-
-        // Define token estimator function for items
-        let estimate_items_tokens = |items: &[&String]| -> usize {
-            let mut total_tokens = 0;
-            for item in items {
-                total_tokens += token_estimator.estimate_string(item);
-            }
-            total_tokens
-        };
-
-        // Try progressive reduction first
-        let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs =
-            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
-
-        let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
-            // Progressive reduction was applied - update the count line using the correct index
-            lines[count_line_index] = format!(
-                "📊 {} business components found - Applied progressive reduction",
-                reduced_item_refs.len()
+        if symbols.is_empty() {
+            return format!(
+                "No business logic found for domain '{}'\nTry lowering min_business_score or different keywords",
+                self.domain
             );
-            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
-            (items, true)
-        } else {
-            // No reduction needed
-            (all_items, false)
-        };
-
-        // Add the items we decided to show
-        for item in &items_to_show {
-            lines.push(item.clone());
         }
 
-        // Add business relationships summary if available
-        if !relationships.is_empty() {
-            lines.push("🔗 Business Process Relationships:".to_string());
-            let relationship_count = relationships.len().min(5); // Show max 5 relationships
-            for (i, relationship) in relationships.iter().take(relationship_count).enumerate() {
-                lines.push(format!(
-                    "   {}. {} ↔ {} (confidence: {:.2})",
-                    i + 1,
-                    relationship.from_symbol_id,
-                    relationship.to_symbol_id,
-                    relationship.confidence
-                ));
-            }
-            if relationships.len() > 5 {
-                lines.push(format!(
-                    "   ... and {} more relationships",
-                    relationships.len() - 5
-                ));
-            }
-            lines.push(String::new());
-        }
+        // Get top symbol names for summary
+        let top_symbols: Vec<String> = symbols
+            .iter()
+            .take(5)
+            .map(|s| s.name.clone())
+            .collect();
 
-        // Add next actions if we have results
-        if !items_to_show.is_empty() {
-            lines.push("🎯 Business Logic Actions:".to_string());
-            lines.push("   • Jump to core business components".to_string());
-            lines.push("   • Trace business process flows".to_string());
-            lines.push("   • Focus on high-scoring logic".to_string());
-        } else {
-            lines.push("❌ No business logic found for this domain".to_string());
-            lines.push("💡 Try lowering min_business_score or different domain terms".to_string());
-        }
-
-        // Add reduction warning if truncated significantly
-        if reduction_applied {
-            lines.push(String::new());
-            lines.push("⚠️  Response truncated to stay within token limits".to_string());
-            lines.push("💡 Use more specific domain terms for focused results".to_string());
-        }
-
-        lines.join("\n")
+        format!(
+            "Found {} business logic components for '{}'\nTop: {}",
+            symbols.len(),
+            self.domain,
+            top_symbols.join(", ")
+        )
     }
 }

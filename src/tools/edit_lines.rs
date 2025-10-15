@@ -308,39 +308,22 @@ impl EditLinesTool {
     ) -> Result<CallToolResult> {
         let message = if dry_run {
             format!(
-                "🔍 **Dry Run Preview**\n\n\
-                 Operation: {}\n\
-                 File: {}\n\
-                 Line Range: {} {}\n\
-                 Lines Modified: {}\n\
-                 Original Size: {} lines\n\
-                 New Size: {} lines\n\n\
-                 ⚠️  No changes were applied (dry_run=true)",
+                "Dry run: {} operation on {} (lines {} - {})\nWould modify {} lines: {} -> {} lines (no changes applied)",
                 self.operation,
                 display_path,
                 self.start_line,
-                self.end_line
-                    .map(|e| format!("- {}", e))
-                    .unwrap_or_default(),
+                self.end_line.unwrap_or(self.start_line),
                 modified,
                 original_lines,
                 new_lines
             )
         } else {
             format!(
-                "✅ **Edit Complete**\n\n\
-                 Operation: {}\n\
-                 File: {}\n\
-                 Line Range: {} {}\n\
-                 Lines Modified: {}\n\
-                 Original Size: {} lines\n\
-                 New Size: {} lines",
+                "Edit complete: {} operation on {} (lines {} - {})\nModified {} lines: {} -> {} lines",
                 self.operation,
                 display_path,
                 self.start_line,
-                self.end_line
-                    .map(|e| format!("- {}", e))
-                    .unwrap_or_default(),
+                self.end_line.unwrap_or(self.start_line),
                 modified,
                 original_lines,
                 new_lines

@@ -53,13 +53,18 @@ mod search_tools_tests {
 
         let result = search_tool.format_optimized_results(&optimized);
 
-        // Should contain the function name and context
-        assert!(result.contains("testFunction"));
-        assert!(result.contains("fn testFunction() -> bool {"));
-        assert!(result.contains("true"));
+        // NEW FORMAT: Minimal 2-line output for AI agents
+        // Line 1: Summary with count and confidence
+        assert!(result.contains("Found 1 results for 'test'"));
+        assert!(result.contains("confidence: 0.9")); // Rounded to 1 decimal
 
-        // Should not contain truncation messages for short content
-        assert!(!result.contains("truncated"));
+        // Line 2: Top result names
+        assert!(result.contains("Top results:"));
+        assert!(result.contains("testFunction"));
+
+        // Should NOT contain code context (agents get that in structured_content)
+        assert!(!result.contains("fn testFunction() -> bool {"));
+        assert!(!result.contains("true\n}"));
     }
 
     #[test]
@@ -113,22 +118,21 @@ mod search_tools_tests {
 
         let result = search_tool.format_optimized_results(&optimized);
 
-        // Should contain the function name
+        // NEW FORMAT: Minimal output regardless of context length
+        assert!(result.contains("Found 1 results for 'longFunction'"));
+        assert!(result.contains("Top results:"));
         assert!(result.contains("longFunction"));
 
-        // Should show truncation message since context > 10 lines
-        assert!(result.contains("more lines truncated"));
-        assert!(result.contains("(5 more lines truncated"));
-
-        // Should contain some context lines but not all
-        assert!(result.contains("line_1"));
-        assert!(!result.contains("line_15")); // Last line should be truncated
+        // Should NOT contain truncation messages (no context in text output)
+        assert!(!result.contains("more lines truncated"));
+        assert!(!result.contains("line_1"));
+        assert!(!result.contains("line_15"));
     }
 
     #[test]
     fn test_token_limit_early_termination() {
-        // This test verifies that we stop adding results when approaching token limits
-        // We'll need to create enough symbols with large contexts to trigger the limit
+        // NEW: With minimal output, token limits are no longer relevant
+        // Text output is always 2 lines regardless of result count
 
         let search_tool = FastSearchTool {
             query: "manyResults".to_string(),
@@ -140,12 +144,11 @@ mod search_tools_tests {
             output: None,
         };
 
-        // Create many symbols with substantial context to trigger token limit
-        let large_context = (1..=10).map(|i| format!("    // This is a comment line {} with substantial content that will contribute to token count", i)).collect::<Vec<_>>().join("\n");
+        // Create many symbols - text output will remain minimal
+        let large_context = (1..=10).map(|i| format!("    // Comment line {} with content", i)).collect::<Vec<_>>().join("\n");
 
         let mut symbols = Vec::new();
         for i in 1..=70 {
-            // Create 70 symbols to definitely exceed 15K token limits (was 50)
             symbols.push(Symbol {
                 id: i.to_string(),
                 name: format!("function_{}", i),
@@ -180,19 +183,26 @@ mod search_tools_tests {
 
         let result = search_tool.format_optimized_results(&optimized);
 
-        // Should contain either progressive reduction notice OR early termination
-        let has_progressive_reduction = result.contains("Applied progressive reduction");
-        let has_early_termination =
-            result.contains("Response truncated to stay within token limits");
-        assert!(has_progressive_reduction || has_early_termination);
+        // NEW FORMAT: Minimal output shows top 5 names only
+        assert!(result.contains("Found 70 results for 'manyResults'"));
+        assert!(result.contains("Top results:"));
 
-        // Should not contain all 70 functions due to token limiting
+        // Shows only top 5 names
         assert!(result.contains("function_1"));
-        assert!(!result.contains("function_70")); // Last functions should be excluded
+        assert!(result.contains("function_5"));
+
+        // Does NOT show all 70 (only top 5)
+        assert!(!result.contains("function_70"));
+
+        // NO token limit messages (not needed with minimal output)
+        assert!(!result.contains("Applied progressive reduction"));
+        assert!(!result.contains("Response truncated"));
     }
 
     #[test]
     fn test_progressive_reduction_integration() {
+        // NEW: Progressive reduction no longer exists - minimal output is always 2 lines
+
         let search_tool = FastSearchTool {
             query: "manyResults".to_string(),
             mode: "text".to_string(),
@@ -203,12 +213,11 @@ mod search_tools_tests {
             output: None,
         };
 
-        // Create enough symbols to trigger progressive reduction (not just early termination)
-        let large_context = (1..=20).map(|i| format!("    // Large context line {} with substantial content for progressive reduction", i)).collect::<Vec<_>>().join("\n");
+        // Create 80 symbols - text output will remain minimal
+        let large_context = (1..=20).map(|i| format!("    // Large context line {} with content", i)).collect::<Vec<_>>().join("\n");
 
         let mut symbols = Vec::new();
         for i in 1..=80 {
-            // Create 80 symbols to definitely exceed rough estimate
             symbols.push(Symbol {
                 id: i.to_string(),
                 name: format!("function_{}", i),
@@ -243,16 +252,19 @@ mod search_tools_tests {
 
         let result = search_tool.format_optimized_results(&optimized);
 
-        // Should contain progressive reduction notice
-        assert!(result.contains("Applied progressive reduction"));
-        assert!(result.contains("→")); // The reduction arrow
+        // NEW FORMAT: Minimal 2-line output
+        assert!(result.contains("Found 80 results for 'manyResults'"));
+        assert!(result.contains("Top results:"));
 
-        // Should contain first function but not all 80
+        // Shows top 5 names only
         assert!(result.contains("function_1"));
+
+        // Does NOT show all 80 results
         assert!(!result.contains("function_80"));
 
-        // Should show accurate count (not 80)
-        assert!(!result.contains("Showing 80 of 80"));
+        // NO progressive reduction messages
+        assert!(!result.contains("Applied progressive reduction"));
+        assert!(!result.contains("→"));
     }
 
     #[test]

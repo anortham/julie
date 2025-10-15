@@ -23,7 +23,6 @@ use tree_sitter::Parser;
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction; // Atomic file operations
 use crate::tools::navigation::FastRefsTool;
-use crate::utils::{progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator};
 
 /// Structured result from smart refactoring operations
 #[derive(Debug, Clone, Serialize)]
@@ -281,11 +280,7 @@ impl SmartRefactorTool {
         let file_locations = self.parse_refs_result(&refs_result)?;
 
         if file_locations.is_empty() {
-            let message = format!(
-                "🔍 No references found for symbol '{}'\n\
-                💡 Check spelling or try fast_search to locate the symbol",
-                old_name
-            );
+            let message = format!("No references found for symbol '{}'", old_name);
             return self.create_result(
                 "rename_symbol",
                 false, // Failed to find symbol
@@ -342,24 +337,10 @@ impl SmartRefactorTool {
         let total_changes: usize = renamed_files.iter().map(|(_, count)| count).sum();
 
         if self.dry_run {
-            let mut preview = format!(
-                "🔍 DRY RUN: Rename '{}' -> '{}'\n\
-                📊 Would modify {} files with {} total changes\n\n",
+            let message = format!(
+                "DRY RUN: Rename '{}' -> '{}'\nWould modify {} files with {} changes",
                 old_name, new_name, total_files, total_changes
             );
-
-            for (file, count) in &renamed_files {
-                preview.push_str(&format!("  • {}: {} changes\n", file, count));
-            }
-
-            if !errors.is_empty() {
-                preview.push_str("\n⚠️ Potential issues:\n");
-                for error in &errors {
-                    preview.push_str(&format!("  • {}\n", error));
-                }
-            }
-
-            preview.push_str("\n💡 Set dry_run=false to apply changes");
 
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
             return self.create_result(
@@ -368,33 +349,16 @@ impl SmartRefactorTool {
                 files,
                 total_changes,
                 vec!["Set dry_run=false to apply changes".to_string()],
-                preview,
+                message,
                 None,
             );
         }
 
         // Final success message
-        let mut message = format!(
-            "✅ Rename successful: '{}' -> '{}'\n\
-            📊 Modified {} files with {} total changes\n",
+        let message = format!(
+            "Rename successful: '{}' -> '{}'\nModified {} files with {} changes",
             old_name, new_name, total_files, total_changes
         );
-
-        if !renamed_files.is_empty() {
-            message.push_str("\n📁 Modified files:\n");
-            for (file, count) in &renamed_files {
-                message.push_str(&format!("  • {}: {} changes\n", file, count));
-            }
-        }
-
-        if !errors.is_empty() {
-            message.push_str("\n⚠️ Some files had errors:\n");
-            for error in &errors {
-                message.push_str(&format!("  • {}\n", error));
-            }
-        }
-
-        message.push_str("\n🎯 Next steps:\n• Run tests to verify changes\n• Use fast_refs to validate rename completion\n💡 Tip: Use git to track changes and revert if needed");
 
         let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
         self.create_result(
@@ -2968,49 +2932,10 @@ impl SmartRefactorTool {
     }
 
     /// Apply token optimization to SmartRefactorTool responses to prevent context overflow
+    /// Pass-through for minimal messages (no optimization needed)
     fn optimize_response(&self, message: &str) -> String {
-        let token_estimator = TokenEstimator::new();
-        let token_limit: usize = 25000; // 25K token limit - maximum for AST-powered tools that need full context
-
-        let message_tokens = token_estimator.estimate_string(message);
-
-        if message_tokens <= token_limit {
-            // No optimization needed
-            return message.to_string();
-        }
-
-        // Split message into lines for progressive reduction
-        let lines: Vec<String> = message.lines().map(|s| s.to_string()).collect();
-
-        // Apply progressive reduction to stay within token limits
-        let progressive_reducer = ProgressiveReducer::new();
-        let line_refs: Vec<&String> = lines.iter().collect();
-
-        let estimate_lines_tokens = |line_refs: &[&String]| -> usize {
-            let content = line_refs
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
-            token_estimator.estimate_string(&content)
-        };
-
-        let reduced_lines =
-            progressive_reducer.reduce(&line_refs, token_limit, estimate_lines_tokens);
-
-        let reduced_count = reduced_lines.len();
-        let mut optimized_message = reduced_lines
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if reduced_count < lines.len() {
-            optimized_message.push_str("\n\n⚠️  Response truncated to stay within token limits");
-            optimized_message.push_str("\n💡 Use more specific parameters for focused results");
-        }
-
-        optimized_message
+        // Messages are now minimal 2-line summaries - no optimization needed
+        message.to_string()
     }
 }
 

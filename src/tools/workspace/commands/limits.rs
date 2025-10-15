@@ -17,7 +17,7 @@ impl ManageWorkspaceTool {
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -33,9 +33,7 @@ impl ManageWorkspaceTool {
         registry_service.save_registry(registry).await?;
 
         let message = format!(
-            "✅ TTL updated to {} days\n\
-            💡 This affects new reference workspaces only.\n\
-            🔄 Existing workspaces keep their current expiration dates.",
+            "TTL updated to {} days (affects new reference workspaces only)",
             days
         );
         Ok(CallToolResult::text_content(vec![TextContent::from(
@@ -54,7 +52,7 @@ impl ManageWorkspaceTool {
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {
-                let message = "❌ No primary workspace found.";
+                let message = "No primary workspace found";
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     message,
                 )]));
@@ -74,9 +72,7 @@ impl ManageWorkspaceTool {
         registry_service.save_registry(registry).await?;
 
         let message = format!(
-            "✅ Storage limit updated to {} MB\n\
-            💡 Current usage: {:.2} MB\n\
-            🧹 Auto-cleanup will enforce this limit.",
+            "Storage limit updated to {} MB (current usage: {:.2} MB)",
             max_size_mb, current_usage_mb
         );
         Ok(CallToolResult::text_content(vec![TextContent::from(

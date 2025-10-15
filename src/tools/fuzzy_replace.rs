@@ -24,7 +24,6 @@ use tokio::fs; // Use async file I/O
 use tracing::{debug, info};
 
 use crate::tools::editing::EditingTransaction;
-use crate::utils::token_estimation::TokenEstimator;
 
 /// Structured result from fuzzy replace operation
 #[derive(Debug, Clone, Serialize)]
@@ -118,17 +117,13 @@ impl FuzzyReplaceTool {
         // Validate parameters
         if self.threshold < 0.0 || self.threshold > 1.0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                "❌ threshold must be between 0.0 and 1.0\n\
-                 💡 Recommended: 0.8 for most cases"
-                    .to_string(),
+                "Error: threshold must be between 0.0 and 1.0 (recommended: 0.8)".to_string(),
             )]));
         }
 
         if self.distance < 0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                "❌ distance must be positive\n\
-                 💡 Recommended: 1000 for most files"
-                    .to_string(),
+                "Error: distance must be positive (recommended: 1000)".to_string(),
             )]));
         }
 
@@ -139,7 +134,7 @@ impl FuzzyReplaceTool {
 
         if original_content.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                format!("❌ File is empty: {}", self.file_path),
+                format!("Error: File is empty: {}", self.file_path),
             )]));
         }
 
@@ -149,13 +144,7 @@ impl FuzzyReplaceTool {
         if matches_found == 0 {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 format!(
-                    "ℹ️ No fuzzy matches found for pattern in: {}\n\n\
-                     Pattern: '{}'\n\
-                     Threshold: {}\n\n\
-                     Possible reasons:\n\
-                     • Pattern doesn't exist (even fuzzily)\n\
-                     • Threshold too strict (try higher value like 0.9)\n\
-                     • Distance too small (try larger value like 2000)",
+                    "No fuzzy matches found for pattern in: {}\nPattern: '{}', Threshold: {} (try increasing threshold or distance)",
                     self.file_path, self.pattern, self.threshold
                 ),
             )]));
@@ -177,13 +166,7 @@ impl FuzzyReplaceTool {
                 if replacement_balance != pattern_balance {
                     return Ok(CallToolResult::text_content(vec![TextContent::from(
                         format!(
-                            "❌ Validation failed: Replacement changes bracket/paren balance\n\n\
-                             Pattern balance: {:?}\n\
-                             Replacement balance: {:?}\n\n\
-                             The replacement would break code structure.\n\
-                             • Check braces, brackets, parentheses in replacement\n\
-                             • Ensure pattern and replacement have same balance\n\
-                             • Set validate: false to skip validation (not recommended)",
+                            "Validation failed: Replacement changes bracket/paren balance\nPattern balance: {:?}, Replacement balance: {:?}",
                             pattern_balance, replacement_balance
                         ),
                     )]));
@@ -209,37 +192,11 @@ impl FuzzyReplaceTool {
                 ],
             };
 
-            // Format human-readable markdown
-            let mut markdown = String::new();
-            markdown.push_str(&format!(
-                "📋 **Fuzzy Replace Preview: {}**\n\n",
-                result.file_path
-            ));
-            markdown.push_str(&format!("**Matches found:** {}\n", result.matches_found));
-            markdown.push_str(&format!("**Pattern:** `{}`\n", result.pattern));
-            markdown.push_str(&format!("**Replacement:** `{}`\n", result.replacement));
-            markdown.push_str(&format!(
-                "**Threshold:** {} (fuzzy matching)\n",
-                result.threshold
-            ));
-            markdown.push_str(&format!("**Distance:** {} characters\n\n", self.distance));
-
-            // Show diff preview (simplified - just show summary)
-            markdown.push_str("**Changes Preview:**\n");
-            let lines_changed = modified_content
-                .lines()
-                .count()
-                .abs_diff(original_content.lines().count());
-            markdown.push_str(&format!("• Lines changed: ~{}\n", lines_changed));
-            markdown.push_str(&format!(
-                "• Original length: {} chars\n",
-                original_content.len()
-            ));
-            markdown.push_str(&format!(
-                "• Modified length: {} chars\n\n",
-                modified_content.len()
-            ));
-            markdown.push_str("💡 Set dry_run: false to apply changes\n");
+            // Minimal 2-line summary
+            let markdown = format!(
+                "Fuzzy match preview: {} matches found in {}\nPattern: '{}' → Replacement: '{}' (threshold: {}, dry_run: true)",
+                result.matches_found, result.file_path, result.pattern, result.replacement, result.threshold
+            );
 
             // Serialize to JSON
             let structured = serde_json::to_value(&result)
@@ -251,10 +208,10 @@ impl FuzzyReplaceTool {
                 return Err(anyhow!("Expected JSON object"));
             };
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
-                self.optimize_response(&markdown),
-            )])
-            .with_structured_content(structured_map));
+            return Ok(
+                CallToolResult::text_content(vec![TextContent::from(markdown)])
+                    .with_structured_content(structured_map),
+            );
         }
 
         // Apply changes atomically using EditingTransaction
@@ -280,19 +237,10 @@ impl FuzzyReplaceTool {
             ],
         };
 
-        // Format human-readable markdown
+        // Minimal 2-line summary
         let markdown = format!(
-            "✅ **Fuzzy Replace Complete: {}**\n\n\
-             **Matches replaced:** {}\n\
-             **Pattern:** `{}`\n\
-             **Replacement:** `{}`\n\
-             **Threshold:** {} (fuzzy matching)\n\n\
-             Changes applied successfully!",
-            result.file_path,
-            result.matches_found,
-            result.pattern,
-            result.replacement,
-            result.threshold
+            "Fuzzy replace complete: {} matches replaced in {}\nPattern: '{}' → Replacement: '{}' (threshold: {})",
+            result.matches_found, result.file_path, result.pattern, result.replacement, result.threshold
         );
 
         // Serialize to JSON for structured_content
@@ -515,18 +463,4 @@ impl FuzzyReplaceTool {
         (brace_count, bracket_count, paren_count)
     }
 
-    /// Optimize response for token limits
-    fn optimize_response(&self, response: &str) -> String {
-        let estimator = TokenEstimator::new();
-        let tokens = estimator.estimate_string(response);
-
-        if tokens <= 5000 {
-            response.to_string()
-        } else {
-            let chars_per_token = response.len() / tokens.max(1);
-            let target_chars = chars_per_token * 5000;
-            let truncated = &response[..target_chars.min(response.len())];
-            format!("{}\n\n... (preview truncated)", truncated)
-        }
-    }
 }

@@ -7,10 +7,7 @@ use tracing::debug;
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::utils::{
-    cross_language_intelligence::generate_naming_variants,
-    progressive_reduction::ProgressiveReducer, token_estimation::TokenEstimator,
-};
+use crate::utils::cross_language_intelligence::generate_naming_variants;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 
 //*********************//
@@ -490,150 +487,23 @@ impl FastGotoTool {
         std::cmp::Ordering::Equal
     }
 
-    /// Format optimized results with token optimization for FastGotoTool
+    /// Format minimal summary for AI agents (structured_content has all data)
     pub fn format_optimized_results(&self, symbols: &[Symbol]) -> String {
-        use crate::utils::progressive_reduction::ProgressiveReducer;
-        use crate::utils::token_estimation::TokenEstimator;
+        let count = symbols.len();
+        let top_results: Vec<String> = symbols
+            .iter()
+            .take(5)
+            .map(|s| s.name.clone())
+            .collect();
 
-        let mut lines = vec![format!("🎯 Go to Definition: {}", self.symbol)];
-
-        // Add context information if provided
-        if let Some(context_file) = &self.context_file {
-            if let Some(line_number) = self.line_number {
-                lines.push(format!("📍 Context: {}:{}", context_file, line_number));
-            } else {
-                lines.push(format!("📍 Context: {}", context_file));
-            }
-        }
-
-        let count_line_index = lines.len(); // Remember where the count line will be
-        lines.push(format!(
-            "📊 Showing {} of {} definitions",
-            symbols.len(),
-            symbols.len()
-        ));
-        lines.push(String::new());
-
-        // Token optimization: apply progressive reduction first, then early termination if needed
-        let token_estimator = TokenEstimator::new();
-        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
-        let progressive_reducer = ProgressiveReducer::new();
-
-        // Calculate initial header tokens
-        let header_text = lines.join("\n");
-        let header_tokens = token_estimator.estimate_string(&header_text);
-        let available_tokens = token_limit.saturating_sub(header_tokens);
-
-        // Create formatted symbol items
-        let mut all_items = Vec::new();
-        for symbol in symbols {
-            let mut item_lines = vec![
-                format!(
-                    "📍 {} [{}]",
-                    symbol.name,
-                    format!("{:?}", symbol.kind).to_lowercase()
-                ),
-                format!("   📄 File: {}", symbol.file_path),
-                format!(
-                    "   📍 Location: {}:{}",
-                    symbol.start_line, symbol.start_column
-                ),
-            ];
-
-            if let Some(signature) = &symbol.signature {
-                item_lines.push(format!("   🔧 Signature: {}", signature));
-            }
-
-            if let Some(doc_comment) = &symbol.doc_comment {
-                item_lines.push(format!("   📝 Documentation: {}", doc_comment));
-            }
-
-            if let Some(visibility) = &symbol.visibility {
-                item_lines.push(format!("   👁️  Visibility: {:?}", visibility));
-            }
-
-            if let Some(semantic_group) = &symbol.semantic_group {
-                item_lines.push(format!("   🏷️  Group: {}", semantic_group));
-            }
-
-            if let Some(confidence) = symbol.confidence {
-                item_lines.push(format!("   🎯 Confidence: {:.2}", confidence));
-            }
-
-            // Include code_context if available (this is what triggers token optimization)
-            if let Some(context) = &symbol.code_context {
-                use crate::utils::context_truncation::ContextTruncator;
-                item_lines.push("   📄 Context:".to_string());
-                let context_lines: Vec<String> = context.lines().map(|s| s.to_string()).collect();
-                let truncator = ContextTruncator::new();
-                let max_lines = 10; // Max 10 lines per symbol for token control
-                let final_lines = if context_lines.len() > max_lines {
-                    truncator.truncate_lines(&context_lines, max_lines)
-                } else {
-                    context_lines
-                };
-                for context_line in &final_lines {
-                    item_lines.push(format!("   {}", context_line));
-                }
-            }
-
-            item_lines.push(String::new());
-            all_items.push(item_lines.join("\n"));
-        }
-
-        // Define token estimator function for items
-        let estimate_items_tokens = |items: &[&String]| -> usize {
-            let mut total_tokens = 0;
-            for item in items {
-                total_tokens += token_estimator.estimate_string(item);
-            }
-            total_tokens
-        };
-
-        // Try progressive reduction first
-        let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs =
-            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
-
-        let (items_to_show, reduction_applied) = if reduced_item_refs.len() < all_items.len() {
-            // Progressive reduction was applied - update the count line using the correct index
-            lines[count_line_index] = format!(
-                "📊 Showing {} of {} definitions - Applied progressive reduction",
-                reduced_item_refs.len(),
-                symbols.len()
-            );
-            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
-            (items, true)
-        } else {
-            // No reduction needed
-            (all_items, false)
-        };
-
-        // Add the items we decided to show
-        for item in &items_to_show {
-            lines.push(item.clone());
-        }
-
-        // Add next actions if we have results
-        if !items_to_show.is_empty() {
-            lines.push("🎯 Suggested next actions:".to_string());
-            lines.push("   • Jump to definition and start editing".to_string());
-            lines.push("   • Use fast_refs to see all usages".to_string());
-            lines.push("   • Search for related symbols".to_string());
-        } else {
-            lines.push("❌ No definitions found".to_string());
-            lines.push("🎯 Try searching with fast_search for broader results".to_string());
-        }
-
-        // Add reduction warning if truncated significantly
-        if reduction_applied {
-            lines.push(String::new());
-            lines.push("⚠️  Response truncated to stay within token limits".to_string());
-            lines.push("💡 Use more specific search terms for focused results".to_string());
-        }
-
-        lines.join("\n")
+        format!(
+            "Found {} definitions for '{}'\n{}",
+            count,
+            self.symbol,
+            top_results.join(", ")
+        )
     }
+
 
     /// Find definitions in a reference workspace by opening its separate database
     /// 🔥 CRITICAL FIX: Reference workspaces have separate DB files at indexes/{workspace_id}/db/symbols.db
@@ -1224,118 +1094,43 @@ impl FastRefsTool {
         Ok((definitions, references))
     }
 
-    /// Format optimized results with token optimization for FastRefsTool
+    /// Format minimal summary for AI agents (structured_content has all data)
     pub fn format_optimized_results(
         &self,
         symbols: &[Symbol],
         relationships: &[Relationship],
     ) -> String {
-        let mut lines = vec![format!("🔗 References for: '{}'", self.symbol)];
-
-        // Token optimization: apply progressive reduction first, then early termination if needed
-        let token_estimator = TokenEstimator::new();
-        let token_limit: usize = 15000; // 15K token limit to stay within Claude's context window
-        let progressive_reducer = ProgressiveReducer::new();
-
-        // Calculate initial header tokens
-        let header_text = lines.join("\n");
-        let header_tokens = token_estimator.estimate_string(&header_text);
-        let available_tokens = token_limit.saturating_sub(header_tokens);
-
-        // Combine all items (symbols + relationships) for unified processing
-        let mut all_items = Vec::new();
-
-        // Add definitions if included
-        if self.include_definition && !symbols.is_empty() {
-            for symbol in symbols {
-                all_items.push(format!(
-                    "📍 Definition: {} [{}] - {}:{}:{}",
-                    symbol.name,
-                    format!("{:?}", symbol.kind).to_lowercase(),
-                    symbol.file_path,
-                    symbol.start_line,
-                    symbol.start_column
-                ));
-            }
-        }
-
-        // HIGH PRIORITY FIX: Build lookup map from symbol ID to name for O(1) access
-        // This fixes the bug where we showed query string instead of actual symbol names
         use std::collections::HashMap;
         let symbol_id_to_name: HashMap<String, String> = symbols
             .iter()
             .map(|s| (s.id.clone(), s.name.clone()))
             .collect();
 
-        // Add references
-        for relationship in relationships {
-            // HIGH PRIORITY FIX: Look up actual symbol name from relationship's to_symbol_id
-            // Previously showed self.symbol (user's query) - now shows actual referenced symbol
-            let symbol_name = symbol_id_to_name
-                .get(&relationship.to_symbol_id)
-                .cloned()
-                .unwrap_or_else(|| relationship.to_symbol_id.clone());
+        let count = relationships.len();
+        let top_results: Vec<String> = relationships
+            .iter()
+            .take(5)
+            .map(|rel| {
+                symbol_id_to_name
+                    .get(&rel.to_symbol_id)
+                    .cloned()
+                    .unwrap_or_else(|| self.symbol.clone())
+            })
+            .collect();
 
-            all_items.push(format!(
-                "🔗 Reference: {} - {}:{} (confidence: {:.2})",
-                symbol_name,
-                relationship.file_path,
-                relationship.line_number,
-                relationship.confidence
-            ));
-        }
-
-        // Define token estimator function for items
-        let estimate_items_tokens = |items: &[&String]| -> usize {
-            let mut total_tokens = 0;
-            for item in items {
-                total_tokens += token_estimator.estimate_string(item);
+        let mut unique_names: Vec<String> = Vec::new();
+        for name in top_results {
+            if !unique_names.contains(&name) {
+                unique_names.push(name);
             }
-            total_tokens
-        };
-
-        // Try progressive reduction first
-        let item_refs: Vec<&String> = all_items.iter().collect();
-        let reduced_item_refs =
-            progressive_reducer.reduce(&item_refs, available_tokens, estimate_items_tokens);
-
-        let (items_to_show, reduction_message) = if reduced_item_refs.len() < all_items.len() {
-            // Progressive reduction was applied
-            let items: Vec<String> = reduced_item_refs.into_iter().cloned().collect();
-            let total_items = symbols.len() + relationships.len();
-            let message = format!(
-                "📊 Showing {} of {} results - Applied progressive reduction {} → {}",
-                items.len(),
-                total_items,
-                all_items.len(),
-                items.len()
-            );
-            (items, message)
-        } else {
-            // No reduction needed
-            let total_items = symbols.len() + relationships.len();
-            let message = format!("📊 Showing {} of {} results", all_items.len(), total_items);
-            (all_items, message)
-        };
-
-        lines.push(reduction_message);
-        lines.push(String::new());
-
-        // Add the items we decided to show
-        for item in &items_to_show {
-            lines.push(item.clone());
         }
 
-        // Add next actions if we have results
-        if !items_to_show.is_empty() {
-            lines.push(String::new());
-            lines.push("🎯 Suggested next actions:".to_string());
-            lines.push("   • Use fast_goto to see full definitions".to_string());
-            lines.push("   • Edit files to refactor symbol usage".to_string());
-            lines.push("   • Search for related symbols".to_string());
-        }
-
-        lines.join("\n")
+        format!(
+            "Found {} references for '{}'\n{}",
+            count,
+            self.symbol,
+            unique_names.join(", ")
+        )
     }
 
     /// Resolve workspace parameter to specific workspace ID
