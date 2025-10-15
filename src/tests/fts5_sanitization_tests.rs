@@ -81,6 +81,10 @@ fn test_fts5_special_characters() {
         "C++",          // Plus signs
         "async/await",  // Forward slash
         "foo:bar",      // Colon (column specifier)
+        "println!",     // Exclamation mark (Rust macro)
+        "eprintln!",    // Exclamation mark
+        "func(arg)",    // Parentheses (function call)
+        "(a || b)",     // Parentheses (grouping)
     ];
 
     for query in special_queries {

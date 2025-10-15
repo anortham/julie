@@ -83,7 +83,7 @@ async fn main() -> SdkResult<()> {
             fmt::layer()
                 .with_writer(non_blocking_console)
                 .with_target(false)
-                .with_ansi(true),
+                .with_ansi(false), // Disabled: MCP uses stdio for JSON-RPC, ANSI codes break protocol parsing
         )
         .with(
             fmt::layer()
