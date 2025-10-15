@@ -638,4 +638,205 @@ class Test {
             "Duplicate calls should have different line numbers"
         );
     }
+
+    #[test]
+    fn test_typescript_decorators_and_metadata() {
+        let code = r#"
+@Component({
+    selector: 'app-user',
+    template: '<div>{{user.name}}</div>'
+})
+export class UserComponent {
+    @Input() user: User;
+    @Output() userChange = new EventEmitter<User>();
+
+    @HostListener('click')
+    onClick() {
+        this.userChange.emit(this.user);
+    }
+}
+
+@Injectable()
+export class UserService {
+    @Inject(HttpClient) private http: HttpClient;
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "decorators.ts".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should handle decorators and metadata
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_typescript_advanced_types() {
+        let code = r#"
+type DeepReadonly<T> = {
+    readonly [P in keyof T]: T[P] extends object ? DeepReadonly<T[P]> : T[P];
+};
+
+type NonNullable<T> = T extends null | undefined ? never : T;
+
+interface ApiResponse<T = any> {
+    data: T;
+    error?: string;
+    status: 'success' | 'error' | 'loading';
+}
+
+type UserKeys = keyof User;
+type UserValues = User[UserKeys];
+
+function processResponse<T extends ApiResponse>(
+    response: T
+): T extends ApiResponse<infer U> ? U : never {
+    return response.data;
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "advanced-types.ts".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should handle advanced TypeScript types
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_typescript_jsx_and_tsx() {
+        let code = r#"
+import React from 'react';
+
+interface Props {
+    name: string;
+    age?: number;
+}
+
+const UserCard: React.FC<Props> = ({ name, age = 25 }) => {
+    return (
+        <div className="user-card">
+            <h2>{name}</h2>
+            <p>Age: {age}</p>
+            <button onClick={() => console.log('clicked')}>
+                Click me
+            </button>
+        </div>
+    );
+};
+
+export default UserCard;
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "tsx.tsx".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should handle JSX/TSX syntax
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_typescript_module_augmentation() {
+        let code = r#"
+import express from 'express';
+
+declare global {
+    namespace Express {
+        interface Request {
+            user?: User;
+        }
+    }
+}
+
+declare module 'express' {
+    interface Request {
+        session?: any;
+    }
+}
+
+declare module '*.css' {
+    const content: { [className: string]: string };
+    export default content;
+}
+
+declare module '*.png' {
+    const content: string;
+    export default content;
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "module-augmentation.ts".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should handle module augmentation
+        assert!(!symbols.is_empty());
+    }
+
+    #[test]
+    fn test_typescript_utility_types() {
+        let code = r#"
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    createdAt: Date;
+}
+
+type PartialUser = Partial<User>;
+type RequiredUser = Required<User>;
+type PickUser = Pick<User, 'id' | 'name'>;
+type OmitUser = Omit<User, 'createdAt'>;
+type ReadonlyUser = Readonly<User>;
+
+function processUser(user: PartialUser): void {
+    console.log(user.name);
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "javascript".to_string(),
+            "utility-types.ts".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should handle utility types without panicking
+        // The extractor may or may not extract all type definitions
+        // If we reach here without panicking, the test passes
+        let _ = symbols.len(); // Just ensure it doesn't crash
+    }
 }

@@ -4,7 +4,7 @@ mod zig_extractor_tests {
     use crate::extractors::zig::ZigExtractor;
     use crate::tests::test_utils::init_parser;
 
-    fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
+    pub(crate) fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
         let tree = init_parser(code, "zig");
         let mut extractor =
             ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string());
@@ -1355,5 +1355,517 @@ fn run() void {
             process_calls[0].start_line, process_calls[1].start_line,
             "Duplicate calls should have different line numbers"
         );
+    }
+
+    mod async_and_concurrency {
+        use crate::SymbolKind;
+        use crate::tests::zig_tests::zig_extractor_tests::extract_symbols;
+
+        #[test]
+        fn test_extract_async_functions_and_event_loops() {
+            let zig_code = r#"
+// Async function
+fn asyncOperation() !void {
+    const frame = async doAsyncWork();
+    try await frame;
+}
+
+fn doAsyncWork() !void {
+    // Simulate async work
+    std.time.sleep(100 * std.time.ns_per_ms);
+}
+
+// Event loop
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Create event loop
+    var loop = try std.event.Loop.init(allocator);
+    defer loop.deinit();
+
+    // Run async operations
+    try loop.runDetached(allocator, asyncMain, .{});
+    try loop.run();
+}
+
+fn asyncMain() !void {
+    const result1 = async asyncOperation();
+    const result2 = async asyncOperation();
+
+    const frame1 = async await result1;
+    const frame2 = async await result2;
+
+    try await frame1;
+    try await frame2;
+}
+
+// Coroutine-like behavior with suspend/resume
+fn coroutineExample() !void {
+    var frame = async coroutineFunction();
+    try await frame;
+}
+
+fn coroutineFunction() !void {
+    suspend; // Yield control
+    // Resume here after being called again
+    suspend;
+    // Final execution
+}
+
+// Channel-based concurrency
+const Channel = struct {
+    const Self = @This();
+
+    mutex: std.Thread.Mutex,
+    queue: std.ArrayList([]const u8),
+    semaphore: std.Thread.Semaphore,
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return Self{
+            .mutex = std.Thread.Mutex{},
+            .queue = std.ArrayList([]const u8).init(allocator),
+            .semaphore = std.Thread.Semaphore{},
+        };
+    }
+
+    pub fn send(self: *Self, message: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        try self.queue.append(try self.queue.allocator.dupe(u8, message));
+        self.semaphore.post();
+    }
+
+    pub fn receive(self: *Self) ![]const u8 {
+        self.semaphore.wait();
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.queue.orderedRemove(0);
+    }
+};
+
+// Thread pool
+const ThreadPool = struct {
+    const Self = @This();
+
+    threads: []std.Thread,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, thread_count: usize) !Self {
+        const threads = try allocator.alloc(std.Thread, thread_count);
+
+        for (threads) |*thread| {
+            thread.* = try std.Thread.spawn(.{}, workerFunction, .{});
+        }
+
+        return Self{
+            .threads = threads,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.threads) |*thread| {
+            thread.join();
+        }
+        self.allocator.free(self.threads);
+    }
+};
+
+fn workerFunction() !void {
+    // Worker thread implementation
+    while (true) {
+        // Process work items
+        std.time.sleep(10 * std.time.ns_per_ms);
+    }
+}
+"#;
+
+            let symbols = extract_symbols(zig_code);
+
+            // Test async functions
+            let async_operation = symbols.iter().find(|s| s.name == "asyncOperation");
+            assert!(async_operation.is_some());
+            assert_eq!(async_operation.unwrap().kind, SymbolKind::Function);
+
+            let do_async_work = symbols.iter().find(|s| s.name == "doAsyncWork");
+            assert!(do_async_work.is_some());
+
+            let main = symbols.iter().find(|s| s.name == "main");
+            assert!(main.is_some());
+
+            let async_main = symbols.iter().find(|s| s.name == "asyncMain");
+            assert!(async_main.is_some());
+
+            // Test coroutine functions
+            let coroutine_example = symbols.iter().find(|s| s.name == "coroutineExample");
+            assert!(coroutine_example.is_some());
+
+            let coroutine_function = symbols.iter().find(|s| s.name == "coroutineFunction");
+            assert!(coroutine_function.is_some());
+
+            // Test concurrency types
+            let channel = symbols.iter().find(|s| s.name == "Channel");
+            assert!(channel.is_some());
+            assert_eq!(channel.unwrap().kind, SymbolKind::Class);
+
+            let thread_pool = symbols.iter().find(|s| s.name == "ThreadPool");
+            assert!(thread_pool.is_some());
+            assert_eq!(thread_pool.unwrap().kind, SymbolKind::Class);
+
+            // Test worker function
+            let worker_function = symbols.iter().find(|s| s.name == "workerFunction");
+            assert!(worker_function.is_some());
+        }
+    }
+
+    mod comptime_and_metaprogramming {
+        use crate::SymbolKind;
+        use crate::tests::zig_tests::zig_extractor_tests::extract_symbols;
+
+        #[test]
+        fn test_extract_comptime_metaprogramming_and_generics() {
+            let zig_code = r#"
+// Comptime function
+fn fibonacci(comptime n: usize) usize {
+    if (n <= 1) return n;
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+const fib_10 = fibonacci(10);
+
+// Generic function
+fn max(comptime T: type, a: T, b: T) T {
+    return if (a > b) a else b;
+}
+
+const int_max = max(i32, 10, 20);
+const float_max = max(f32, 1.5, 2.7);
+
+// Comptime struct
+fn Vector(comptime T: type, comptime len: usize) type {
+    return struct {
+        data: [len]T,
+
+        const Self = @This();
+
+        pub fn init(value: T) Self {
+            return Self{
+                .data = [_]T{value} ** len,
+            };
+        }
+
+        pub fn get(self: Self, index: usize) T {
+            return self.data[index];
+        }
+
+        pub fn set(self: *Self, index: usize, value: T) void {
+            self.data[index] = value;
+        }
+    };
+}
+
+const Vec3f = Vector(f32, 3);
+const Vec2i = Vector(i32, 2);
+
+// Comptime hash map
+fn HashMap(comptime K: type, comptime V: type) type {
+    return struct {
+        entries: []Entry,
+
+        const Entry = struct {
+            key: K,
+            value: V,
+        };
+
+        const Self = @This();
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return Self{
+                .entries = &[_]Entry{},
+            };
+        }
+    };
+}
+
+// Compile-time type reflection
+const TypeInfo = struct {
+    name: []const u8,
+    size: usize,
+    alignment: usize,
+};
+
+fn getTypeInfo(comptime T: type) TypeInfo {
+    return TypeInfo{
+        .name = @typeName(T),
+        .size = @sizeOf(T),
+        .alignment = @alignOf(T),
+    };
+}
+
+const i32_info = getTypeInfo(i32);
+const point_info = getTypeInfo(struct { x: f32, y: f32 });
+
+// Comptime string manipulation
+fn shout(comptime str: []const u8) []const u8 {
+    comptime var result: [str.len]u8 = undefined;
+    for (str, 0..) |char, i| {
+        result[i] = std.ascii.toUpper(char);
+    }
+    return &result ++ "!!!";
+}
+
+const message = shout("hello world");
+
+// Conditional compilation
+const is_debug = @import("builtin").mode == .Debug;
+
+fn log(comptime message: []const u8) void {
+    if (is_debug) {
+        std.debug.print("{s}\n", .{message});
+    }
+}
+
+// Comptime assertions
+comptime {
+    assert(fibonacci(5) == 5);
+    assert(max(i32, 10, 20) == 20);
+    assert(std.mem.eql(u8, shout("hi"), "HI!!!"));
+}
+"#;
+
+            let symbols = extract_symbols(zig_code);
+
+            // Test comptime functions
+            let fibonacci = symbols.iter().find(|s| s.name == "fibonacci");
+            assert!(fibonacci.is_some());
+            assert_eq!(fibonacci.unwrap().kind, SymbolKind::Function);
+
+            let max_fn = symbols.iter().find(|s| s.name == "max");
+            assert!(max_fn.is_some());
+
+            // Test generic types
+            let vector = symbols.iter().find(|s| s.name == "Vector");
+            assert!(vector.is_some());
+            assert_eq!(vector.unwrap().kind, SymbolKind::Function);
+
+            let hash_map = symbols.iter().find(|s| s.name == "HashMap");
+            assert!(hash_map.is_some());
+
+            // Test type info function
+            let get_type_info = symbols.iter().find(|s| s.name == "getTypeInfo");
+            assert!(get_type_info.is_some());
+
+            // Test string manipulation
+            let shout = symbols.iter().find(|s| s.name == "shout");
+            assert!(shout.is_some());
+
+            // Test conditional function
+            let log = symbols.iter().find(|s| s.name == "log");
+            assert!(log.is_some());
+        }
+    }
+
+    mod error_handling_and_optionals {
+        use crate::SymbolKind;
+        use crate::tests::zig_tests::zig_extractor_tests::extract_symbols;
+
+        #[test]
+        fn test_extract_error_handling_unions_and_optionals() {
+            let zig_code = r#"
+// Error set
+const FileError = error{
+    FileNotFound,
+    AccessDenied,
+    OutOfMemory,
+    DiskFull,
+};
+
+// Error union
+fn readFile(filename: []const u8) ![]u8 {
+    const file = try std.fs.openFileAbsolute(filename, .{});
+    defer file.close();
+
+    return try file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
+}
+
+// Optional types
+fn findUser(id: u32) ?User {
+    for (users) |user| {
+        if (user.id == id) {
+            return user;
+        }
+    }
+    return null;
+}
+
+// Error handling with optionals
+fn processUser(id: u32) !void {
+    const user = findUser(id) orelse return error.UserNotFound;
+    try processUserData(user);
+}
+
+// Custom error with payload
+const ParseError = struct {
+    position: usize,
+    expected: []const u8,
+    found: []const u8,
+
+    fn format(
+        self: ParseError,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try writer.print("Parse error at position {}: expected '{}', found '{}'", .{
+            self.position,
+            self.expected,
+            self.found,
+        });
+    }
+};
+
+const ParserError = error{
+    UnexpectedToken,
+    UnexpectedEOF,
+    InvalidSyntax,
+};
+
+// Error union with custom error
+fn parseExpression(input: []const u8) ParserError!Expression {
+    var parser = Parser.init(input);
+    return try parser.parse() orelse error.UnexpectedEOF;
+}
+
+// Try-catch with error sets
+fn safeOperation() !void {
+    const result = try riskyOperation();
+    try processResult(result);
+}
+
+fn riskyOperation() !i32 {
+    if (std.rand.boolean()) {
+        return 42;
+    } else {
+        return error.RandomFailure;
+    }
+}
+
+// Error tracing
+fn tracedOperation() !void {
+    errdefer |err| std.debug.print("Operation failed: {}\n", .{err});
+    try riskyOperation();
+}
+
+// Optional chaining simulation
+fn getNestedValue(obj: anytype) ?i32 {
+    const first = obj.first orelse return null;
+    const second = first.second orelse return null;
+    return second.value;
+}
+
+// Result type simulation
+fn Result(comptime T: type, comptime E: type) type {
+    return union(enum) {
+        ok: T,
+        err: E,
+    };
+}
+
+const StringResult = Result([]const u8, FileError);
+
+fn readFileResult(filename: []const u8) StringResult {
+    const content = readFile(filename) catch |err| {
+        return StringResult{ .err = err };
+    };
+    return StringResult{ .ok = content };
+}
+
+// Error aggregation
+fn processFiles(filenames: []const []const u8) !void {
+    var errors = std.ArrayList(FileError).init(std.heap.page_allocator);
+    defer errors.deinit();
+
+    for (filenames) |filename| {
+        readFile(filename) catch |err| {
+            try errors.append(err);
+        };
+    }
+
+    if (errors.items.len > 0) {
+        // Return first error or aggregate them
+        return errors.items[0];
+    }
+}
+
+// Unwrap operators simulation
+fn example() !void {
+    const user = findUser(123) orelse return error.UserNotFound;
+    const data = try readFile("data.txt");
+    const result = riskyOperation() catch |err| {
+        std.debug.print("Operation failed: {}\n", .{err});
+        return err;
+    };
+}
+"#;
+
+            let symbols = extract_symbols(zig_code);
+
+            // Test error types
+            let file_error = symbols.iter().find(|s| s.name == "FileError");
+            assert!(file_error.is_some());
+            assert_eq!(file_error.unwrap().kind, SymbolKind::Class);
+
+            let parser_error = symbols.iter().find(|s| s.name == "ParserError");
+            assert!(parser_error.is_some());
+
+            // Test error handling functions
+            let read_file = symbols.iter().find(|s| s.name == "readFile");
+            assert!(read_file.is_some());
+            assert_eq!(read_file.unwrap().kind, SymbolKind::Function);
+
+            let find_user = symbols.iter().find(|s| s.name == "findUser");
+            assert!(find_user.is_some());
+
+            let process_user = symbols.iter().find(|s| s.name == "processUser");
+            assert!(process_user.is_some());
+
+            let parse_expression = symbols.iter().find(|s| s.name == "parseExpression");
+            assert!(parse_expression.is_some());
+
+            let safe_operation = symbols.iter().find(|s| s.name == "safeOperation");
+            assert!(safe_operation.is_some());
+
+            let risky_operation = symbols.iter().find(|s| s.name == "riskyOperation");
+            assert!(risky_operation.is_some());
+
+            let traced_operation = symbols.iter().find(|s| s.name == "tracedOperation");
+            assert!(traced_operation.is_some());
+
+            // Test custom error struct
+            let parse_error = symbols.iter().find(|s| s.name == "ParseError");
+            assert!(parse_error.is_some());
+            assert_eq!(parse_error.unwrap().kind, SymbolKind::Class);
+
+            // Test result type
+            let result = symbols.iter().find(|s| s.name == "Result");
+            assert!(result.is_some());
+
+            let string_result = symbols.iter().find(|s| s.name == "StringResult");
+            assert!(string_result.is_some());
+
+            let read_file_result = symbols.iter().find(|s| s.name == "readFileResult");
+            assert!(read_file_result.is_some());
+
+            let process_files = symbols.iter().find(|s| s.name == "processFiles");
+            assert!(process_files.is_some());
+
+            let example = symbols.iter().find(|s| s.name == "example");
+            assert!(example.is_some());
+        }
     }
 }
