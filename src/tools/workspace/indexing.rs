@@ -158,17 +158,51 @@ impl ManageWorkspaceTool {
         debug!("🐛 [INDEX TRACE T] process_files_optimized completed");
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
-        // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
-        let (total_symbols, total_relationships) = if let Some(db_arc) = &workspace.db {
-            let db = db_arc.lock().unwrap();
-            let symbols_count = db
-                .get_symbol_count_for_workspace(&workspace_id)
-                .unwrap_or(0);
-            // Debug output removed to prevent stdio flooding
-            let stats = db.get_stats().unwrap_or_default();
-            (symbols_count as usize, stats.total_relationships as usize)
-        } else {
-            (0, 0)
+        // 🔴 CRITICAL FIX: Query the CORRECT database for reference vs primary workspaces!
+        // Reference workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
+        let (total_symbols, total_relationships) = {
+            // Determine which database to query based on workspace type
+            let db_to_query = if is_primary_workspace {
+                // Primary workspace - use handler's database connection
+                workspace.db.clone()
+            } else {
+                // Reference workspace - must have been created in process_files_optimized
+                // Get the reference workspace database we just indexed
+                let ref_db_path = workspace.workspace_db_path(&workspace_id);
+                if ref_db_path.exists() {
+                    // Open the reference workspace database for reading final counts
+                    match tokio::task::spawn_blocking(move || {
+                        crate::database::SymbolDatabase::new(ref_db_path)
+                    })
+                    .await
+                    {
+                        Ok(Ok(db)) => Some(Arc::new(std::sync::Mutex::new(db))),
+                        Ok(Err(e)) => {
+                            warn!("Failed to open reference workspace DB for final count: {}", e);
+                            None
+                        }
+                        Err(e) => {
+                            warn!("Reference workspace DB open task failed: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    warn!("Reference workspace database not found at expected path");
+                    None
+                }
+            };
+
+            // Query the correct database
+            if let Some(db_arc) = db_to_query {
+                let db = db_arc.lock().unwrap();
+                let symbols_count = db
+                    .get_symbol_count_for_workspace(&workspace_id)
+                    .unwrap_or(0);
+                let stats = db.get_stats().unwrap_or_default();
+                (symbols_count as usize, stats.total_relationships as usize)
+            } else {
+                (0, 0)
+            }
         };
 
         info!(

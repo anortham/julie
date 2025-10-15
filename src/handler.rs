@@ -238,21 +238,48 @@ impl JulieServerHandler {
             if julie_dir.exists() {
                 info!("🗑️ Clearing search index and cache for force reindex (preserving database)");
 
-                // CRITICAL: Only clear derived data, NEVER the database!
-                // Database is source of truth and should be preserved for incremental updates
-                // With per-workspace structure, clear the entire indexes/ directory (all workspaces)
-                let paths_to_clear = [
-                    julie_dir.join("indexes"), // All per-workspace indexes (can be rebuilt)
-                    julie_dir.join("cache"),   // Parse cache (can be rebuilt)
-                ];
+                // 🔴 CRITICAL FIX: Only clear the PRIMARY workspace's index, NOT all workspaces!
+                // Reference workspaces must be preserved during force reindex
 
-                for path in &paths_to_clear {
-                    if path.exists() {
-                        if let Err(e) = std::fs::remove_dir_all(path) {
-                            warn!("Failed to clear derived data {}: {}", path.display(), e);
+                // Determine the primary workspace ID so we only clear its directory
+                use crate::workspace::registry::generate_workspace_id;
+                let workspace_path_str = target_path.to_string_lossy().to_string();
+
+                let primary_workspace_index_dir = match generate_workspace_id(&workspace_path_str) {
+                    Ok(workspace_id) => {
+                        // Successfully got workspace ID - construct path to primary workspace's index
+                        let workspace_name = target_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("workspace");
+                        let full_workspace_id = format!("{}_{}", workspace_name, &workspace_id[..8]);
+                        Some(julie_dir.join("indexes").join(full_workspace_id))
+                    }
+                    Err(e) => {
+                        warn!("Failed to generate workspace ID: {} - will skip index clearing", e);
+                        None
+                    }
+                };
+
+                // Clear primary workspace's index directory (NOT the entire indexes/ directory)
+                if let Some(primary_index_dir) = primary_workspace_index_dir {
+                    if primary_index_dir.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(&primary_index_dir) {
+                            warn!("Failed to clear primary workspace index {}: {}", primary_index_dir.display(), e);
                         } else {
-                            info!("Cleared derived data: {}", path.display());
+                            info!("✅ Cleared primary workspace index: {}", primary_index_dir.display());
+                            info!("✅ Reference workspaces preserved (workspace isolation maintained)");
                         }
+                    }
+                }
+
+                // Clear shared cache (applies to all workspaces, can be rebuilt)
+                let cache_path = julie_dir.join("cache");
+                if cache_path.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(&cache_path) {
+                        warn!("Failed to clear cache {}: {}", cache_path.display(), e);
+                    } else {
+                        info!("Cleared shared cache: {}", cache_path.display());
                     }
                 }
 

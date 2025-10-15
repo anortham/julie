@@ -195,6 +195,7 @@ pub mod watcher_tests;
 pub mod workspace_management_token_tests; // Tests for ManageWorkspaceTool token optimization (list & recent commands)
 pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
 pub mod get_symbols_token_tests; // Tests for GetSymbolsTool Smart Read token optimization (body truncation)
+pub mod workspace_isolation_tests; // TDD tests for workspace isolation (force reindex must not delete reference workspaces)
 
 // HNSW Vector Store Tests (TDD for semantic search infrastructure)
 pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search
