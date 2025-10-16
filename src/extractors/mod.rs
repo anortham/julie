@@ -87,6 +87,7 @@ impl ExtractorManager {
             "ts" => "typescript",
             "tsx" => "tsx",
             "js" => "javascript",
+            "jsx" => "jsx",
             "py" => "python",
             "go" => "go",
             "java" => "java",
@@ -165,7 +166,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_symbols(tree))
             }
-            "typescript" => {
+            "typescript" | "tsx" => {
                 let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
@@ -173,7 +174,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_symbols(tree))
             }
-            "javascript" => {
+            "javascript" | "jsx" => {
                 let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
@@ -387,6 +388,7 @@ impl ExtractorManager {
             "ts" => "typescript",
             "tsx" => "tsx",
             "js" => "javascript",
+            "jsx" => "jsx",
             "py" => "python",
             "go" => "go",
             "java" => "java",
@@ -480,7 +482,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
-            "javascript" => {
+            "javascript" | "jsx" => {
                 let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
@@ -488,7 +490,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
-            "typescript" => {
+            "typescript" | "tsx" => {
                 let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
@@ -704,6 +706,7 @@ impl ExtractorManager {
             "ts" => "typescript",
             "tsx" => "tsx",
             "js" => "javascript",
+            "jsx" => "jsx",
             "py" => "python",
             "go" => "go",
             "java" => "java",
@@ -791,7 +794,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
-            "javascript" => {
+            "javascript" | "jsx" => {
                 let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
@@ -799,7 +802,7 @@ impl ExtractorManager {
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
-            "typescript" => {
+            "typescript" | "tsx" => {
                 let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
                     language.to_string(),
                     file_path.to_string(),

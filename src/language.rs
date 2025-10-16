@@ -30,7 +30,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         // Web languages
         "typescript" => Ok(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
         "tsx" => Ok(tree_sitter_typescript::LANGUAGE_TSX.into()),
-        "javascript" => Ok(tree_sitter_javascript::LANGUAGE.into()),
+        "javascript" | "jsx" => Ok(tree_sitter_javascript::LANGUAGE.into()),
         "html" => Ok(tree_sitter_html::LANGUAGE.into()),
         "css" => Ok(tree_sitter_css::LANGUAGE.into()),
         "vue" => Ok(tree_sitter_html::LANGUAGE.into()), // Vue SFCs use HTML structure

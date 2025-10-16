@@ -1378,6 +1378,67 @@ end
         });
         assert!(circle_comparable.is_some());
     }
+
+    #[test]
+    fn test_no_duplicate_assignment_symbols() {
+        // REGRESSION TEST: Ensure is_part_of_assignment guard prevents duplicate symbols
+        // Without this guard, assignments like @foo = 42 create TWO symbols:
+        // 1. One from the assignment node
+        // 2. One from the instance_variable node itself
+        // With the guard, only the assignment creates the symbol (correct behavior)
+        let ruby_code = r#"
+class Example
+  def initialize
+    @foo = 42
+    @bar = "hello"
+    @@class_var = 100
+    $global_var = "world"
+  end
+
+  def update
+    @foo = 99  # Another assignment to same variable
+  end
+end
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(ruby_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Count occurrences of each variable
+        let foo_count = symbols.iter().filter(|s| s.name == "@foo").count();
+        let bar_count = symbols.iter().filter(|s| s.name == "@bar").count();
+        let class_var_count = symbols.iter().filter(|s| s.name == "@@class_var").count();
+        let global_var_count = symbols.iter().filter(|s| s.name == "$global_var").count();
+
+        // Each variable should appear EXACTLY the number of times it's assigned
+        // @foo is assigned twice (initialize and update), so should appear twice
+        // Others are assigned once, so should appear once
+        assert_eq!(
+            foo_count, 2,
+            "Instance variable @foo should appear exactly twice (two assignments)"
+        );
+        assert_eq!(
+            bar_count, 1,
+            "Instance variable @bar should appear exactly once (no duplicates)"
+        );
+        assert_eq!(
+            class_var_count, 1,
+            "Class variable @@class_var should appear exactly once (no duplicates)"
+        );
+        assert_eq!(
+            global_var_count, 1,
+            "Global variable $global_var should appear exactly once (no duplicates)"
+        );
+
+        // Verify they are all Variable kind
+        let foo = symbols.iter().find(|s| s.name == "@foo");
+        assert!(foo.is_some());
+        assert_eq!(foo.unwrap().kind, SymbolKind::Variable);
+
+        let bar = symbols.iter().find(|s| s.name == "@bar");
+        assert!(bar.is_some());
+        assert_eq!(bar.unwrap().kind, SymbolKind::Variable);
+    }
 }
 
 // ========================================================================

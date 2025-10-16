@@ -14,6 +14,7 @@ mod functions;
 mod helpers;
 mod identifiers;
 mod imports;
+mod relationships;
 mod signatures;
 mod types;
 mod variables;
@@ -33,6 +34,11 @@ impl JavaScriptExtractor {
         }
     }
 
+    /// Access base extractor (needed by relationship module)
+    pub(super) fn base(&self) -> &BaseExtractor {
+        &self.base
+    }
+
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
@@ -40,9 +46,7 @@ impl JavaScriptExtractor {
     }
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
-        let mut relationships = Vec::new();
-        self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
-        relationships
+        relationships::extract_relationships(self, tree, symbols)
     }
 
     /// Main tree traversal - ports Miller's visitNode function exactly
@@ -119,24 +123,6 @@ impl JavaScriptExtractor {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.visit_node(child, symbols, current_parent_id.clone());
-        }
-    }
-
-    /// Visit node for relationships - placeholder for relationship extraction
-    #[allow(clippy::only_used_in_recursion)] // &self, symbols, relationships all used in recursive calls
-    fn visit_node_for_relationships(
-        &self,
-        node: tree_sitter::Node,
-        symbols: &[Symbol],
-        relationships: &mut Vec<Relationship>,
-    ) {
-        // TODO: Implement relationship extraction following Miller's extractRelationships method
-        // This is a placeholder to make the interface complete
-
-        // Recursively visit children
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.visit_node_for_relationships(child, symbols, relationships);
         }
     }
 }

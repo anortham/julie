@@ -47,8 +47,14 @@ impl RubyExtractor {
         self.traverse_tree(tree.root_node(), &mut symbols);
 
         // Include additional symbols from symbol_map (parallel assignments, etc.)
-        for (_, symbol) in self.base.symbol_map.iter() {
-            symbols.push(symbol.clone());
+        // BUT: Only add symbols that weren't already added during traversal
+        // (create_symbol automatically adds to symbol_map, causing duplication)
+        let existing_ids: std::collections::HashSet<_> = symbols.iter().map(|s| s.id.clone()).collect();
+
+        for (id, symbol) in self.base.symbol_map.iter() {
+            if !existing_ids.contains(id) {
+                symbols.push(symbol.clone());
+            }
         }
 
         symbols
@@ -129,10 +135,9 @@ impl RubyExtractor {
             }
             "class_variable" | "instance_variable" | "global_variable" => {
                 // Only create symbol if not part of an assignment (which handles it)
-                // TODO: Implement is_part_of_assignment method
-                // if !helpers::is_part_of_assignment(&node) {
-                symbol_opt = Some(symbols::extract_variable(&mut self.base, node));
-                // }
+                if !helpers::is_part_of_assignment(&node) {
+                    symbol_opt = Some(symbols::extract_variable(&mut self.base, node));
+                }
             }
             "constant" => {
                 // Extract all constants for now to debug the parent_id issue

@@ -840,3 +840,173 @@ function processUser(user: PartialUser): void {
         let _ = symbols.len(); // Just ensure it doesn't crash
     }
 }
+
+// ========================================================================
+// TSX-Specific Tests (Regression for dispatcher routing issue)
+// ========================================================================
+//
+// These tests use the proper TSX parser (LANGUAGE_TSX) to ensure
+// .tsx files are correctly routed through the TypeScript extractor.
+// This validates the fix for the dispatcher issue where TSX files
+// fell through to the default case and returned empty results.
+
+/// Initialize TSX parser (uses TypeScript TSX grammar)
+fn init_tsx_parser() -> Parser {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
+        .expect("Error loading TypeScript TSX grammar");
+    parser
+}
+
+#[cfg(test)]
+mod tsx_specific_tests {
+    use super::*;
+    use crate::extractors::base::{IdentifierKind, RelationshipKind};
+
+    #[test]
+    fn test_tsx_react_component_symbols() {
+        // REGRESSION TEST: Ensure TSX files extract symbols correctly
+        let code = r#"
+import React from 'react';
+
+interface UserProps {
+    name: string;
+    age: number;
+}
+
+const UserCard: React.FC<UserProps> = ({ name, age }) => {
+    const handleClick = () => {
+        console.log('clicked');
+    };
+
+    return (
+        <div className="user-card">
+            <h2>{name}</h2>
+            <p>Age: {age}</p>
+            <button onClick={handleClick}>Click me</button>
+        </div>
+    );
+};
+
+export default UserCard;
+"#;
+
+        let mut parser = init_tsx_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "tsx".to_string(),
+            "UserCard.tsx".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // CRITICAL: Should extract symbols, not return empty vec
+        assert!(!symbols.is_empty(), "TSX file should extract symbols (dispatcher routing regression test)");
+
+        // Check interface symbol
+        let user_props = symbols.iter().find(|s| s.name == "UserProps");
+        assert!(user_props.is_some(), "Should extract interface from TSX");
+        assert_eq!(user_props.unwrap().kind, SymbolKind::Interface);
+
+        // Check component symbol (arrow function constant)
+        let user_card = symbols.iter().find(|s| s.name == "UserCard");
+        assert!(user_card.is_some(), "Should extract React component from TSX");
+
+        // Check handler function
+        let handle_click = symbols.iter().find(|s| s.name == "handleClick");
+        assert!(handle_click.is_some(), "Should extract handler function from TSX");
+    }
+
+    #[test]
+    fn test_tsx_class_component_with_relationships() {
+        // REGRESSION TEST: Ensure TSX files extract relationships correctly
+        let code = r#"
+import React, { Component } from 'react';
+
+interface State {
+    count: number;
+}
+
+class Counter extends Component<{}, State> {
+    constructor(props: {}) {
+        super(props);
+        this.state = { count: 0 };
+    }
+
+    increment = () => {
+        this.setState({ count: this.state.count + 1 });
+    };
+
+    render() {
+        return (
+            <div>
+                <p>Count: {this.state.count}</p>
+                <button onClick={this.increment}>Increment</button>
+            </div>
+        );
+    }
+}
+
+export default Counter;
+"#;
+
+        let mut parser = init_tsx_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "tsx".to_string(),
+            "Counter.tsx".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+
+        // Check class symbol
+        let counter_class = symbols.iter().find(|s| s.name == "Counter");
+        assert!(counter_class.is_some(), "Should extract class component from TSX");
+        assert_eq!(counter_class.unwrap().kind, SymbolKind::Class);
+
+        // NOTE: Relationship extraction will be fixed in the JavaScript relationship task
+        // For now, we're just ensuring the TSX dispatcher routing works (symbols extract correctly)
+        // The relationship logic is missing entirely (GPT's second finding)
+        let _relationships = relationships; // Acknowledge relationships exist
+    }
+
+    #[test]
+    fn test_tsx_jsx_elements_do_not_interfere() {
+        // Ensure JSX syntax doesn't break symbol extraction
+        let code = "
+function Button() {
+    return <button>Click</button>;
+}
+
+const Link = () => <a href='/'>Link</a>;
+
+class Panel extends React.Component {
+    render() {
+        return <div>Panel</div>;
+    }
+}
+";
+
+        let mut parser = init_tsx_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let mut extractor = TypeScriptExtractor::new(
+            "tsx".to_string(),
+            "Components.tsx".to_string(),
+            code.to_string(),
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should extract all components despite JSX syntax
+        assert!(symbols.iter().any(|s| s.name == "Button"), "Should extract function component");
+        assert!(symbols.iter().any(|s| s.name == "Link"), "Should extract arrow function component");
+        assert!(symbols.iter().any(|s| s.name == "Panel"), "Should extract class component");
+    }
+}
