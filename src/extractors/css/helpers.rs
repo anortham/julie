@@ -91,9 +91,14 @@ impl PropertyHelper {
             if child.kind() == "declaration" {
                 let prop_text = base.get_node_text(&child).trim().to_string();
 
-                // Remove trailing semicolon
-                let clean_prop = if prop_text.ends_with(';') {
-                    prop_text[..prop_text.len() - 1].to_string()
+                // Remove trailing semicolon (';' is ASCII, safe to slice)
+                let clean_prop = if prop_text.ends_with(';') && prop_text.len() > 0 {
+                    let new_len = prop_text.len() - 1;
+                    if prop_text.is_char_boundary(new_len) {
+                        prop_text[..new_len].to_string()
+                    } else {
+                        prop_text
+                    }
                 } else {
                     prop_text
                 };

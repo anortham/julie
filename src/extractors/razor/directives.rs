@@ -1,5 +1,5 @@
 /// Razor-specific directive extraction (e.g., @page, @model, @using, @inject)
-use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -235,11 +235,8 @@ impl super::RazorExtractor {
     pub(super) fn extract_code_block(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let block_type = self.get_code_block_type(node);
         let content = self.base.get_node_text(&node);
-        let truncated_content = if content.len() > 50 {
-            format!("{}...", &content[..50])
-        } else {
-            content.clone()
-        };
+        // Safely truncate UTF-8 string at character boundary
+        let truncated_content = BaseExtractor::truncate_string(&content, 50);
 
         let signature = format!("@{{ {} }}", truncated_content);
 

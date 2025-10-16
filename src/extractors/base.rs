@@ -868,6 +868,17 @@ impl BaseExtractor {
             .map(|field_node| self.get_node_text(&field_node))
     }
 
+    /// Safely truncate a string to a maximum number of characters (not bytes)
+    /// This handles UTF-8 multi-byte characters correctly by truncating at character boundaries
+    pub fn truncate_string(text: &str, max_chars: usize) -> String {
+        let char_count = text.chars().count();
+        if char_count <= max_chars {
+            text.to_string()
+        } else {
+            text.chars().take(max_chars).collect::<String>() + "..."
+        }
+    }
+
     /// Reset extractor state - exact port of Miller's reset
     pub fn reset(&mut self) {
         self.symbol_map.clear();
