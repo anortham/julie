@@ -131,14 +131,3 @@ pub(super) fn extract_local_function_definition_statement(
     symbols.push(symbol.clone());
     Some(symbol)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_function_extraction_basic() {
-        // Tests are run through the integration test suite
-        // This ensures consistency with full extraction pipeline
-    }
-}

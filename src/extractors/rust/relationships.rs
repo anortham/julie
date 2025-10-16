@@ -240,13 +240,3 @@ fn extract_call_relationships(
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_relationship_extraction() {
-        // Relationship extraction is tested through integration tests
-    }
-}

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships from Python code
-pub fn extract_relationships(
+pub(crate) fn extract_relationships(
     extractor: &PythonExtractor,
     tree: &Tree,
     symbols: &[Symbol],
@@ -186,15 +186,4 @@ fn find_containing_function<'a>(
         current = parent;
     }
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_relationships_placeholder() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
 }

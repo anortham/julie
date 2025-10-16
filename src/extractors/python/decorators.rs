@@ -49,14 +49,3 @@ pub fn extract_decorators(extractor: &PythonExtractor, node: &Node) -> Vec<Strin
 
     decorators
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_decorator_extraction() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
-}

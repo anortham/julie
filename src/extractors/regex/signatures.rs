@@ -1,7 +1,7 @@
 use super::groups;
 
 /// Build signature for a basic pattern
-pub(super) fn build_pattern_signature(pattern: &str) -> String {
+pub fn build_pattern_signature(pattern: &str) -> String {
     if pattern.len() <= 100 {
         pattern.to_string()
     } else {
@@ -10,7 +10,7 @@ pub(super) fn build_pattern_signature(pattern: &str) -> String {
 }
 
 /// Build signature for a character class
-pub(super) fn build_character_class_signature(class_text: &str) -> String {
+pub fn build_character_class_signature(class_text: &str) -> String {
     format!("Character class: {}", class_text)
 }
 
@@ -86,24 +86,4 @@ pub(super) fn build_literal_signature(literal_text: &str) -> String {
 /// Build signature for a generic pattern
 pub(super) fn build_generic_signature(pattern_text: &str) -> String {
     pattern_text.to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_pattern_signature() {
-        assert_eq!(build_pattern_signature("abc"), "abc");
-        let long = "a".repeat(150);
-        assert!(build_pattern_signature(&long).ends_with("..."));
-    }
-
-    #[test]
-    fn test_build_character_class_signature() {
-        assert_eq!(
-            build_character_class_signature("[a-z]"),
-            "Character class: [a-z]"
-        );
-    }
 }

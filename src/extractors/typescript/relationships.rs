@@ -8,7 +8,7 @@ use crate::extractors::typescript::TypeScriptExtractor;
 use tree_sitter::{Node, Tree};
 
 /// Extract all relationships from the syntax tree
-pub(super) fn extract_relationships(
+pub(crate) fn extract_relationships(
     extractor: &TypeScriptExtractor,
     tree: &Tree,
     symbols: &[Symbol],
@@ -156,55 +156,4 @@ fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a
     }
 
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_call_relationships() {
-        let code = r#"
-        function caller() {
-            callee();
-        }
-        function callee() {}
-        "#;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
-        let tree = parser.parse(code, None).unwrap();
-
-        let mut extractor = TypeScriptExtractor::new(
-            "typescript".to_string(),
-            "test.ts".to_string(),
-            code.to_string(),
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let relationships = extract_relationships(&extractor, &tree, &symbols);
-
-        assert!(!relationships.is_empty());
-        assert!(relationships.iter().any(|r| r.kind == RelationshipKind::Calls));
-    }
-
-    #[test]
-    fn test_extract_inheritance_relationships() {
-        let code = r#"
-        class Animal {}
-        class Dog extends Animal {}
-        "#;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
-        let tree = parser.parse(code, None).unwrap();
-
-        let mut extractor = TypeScriptExtractor::new(
-            "typescript".to_string(),
-            "test.ts".to_string(),
-            code.to_string(),
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let relationships = extract_relationships(&extractor, &tree, &symbols);
-
-        assert!(!relationships.is_empty());
-        assert!(relationships.iter().any(|r| r.kind == RelationshipKind::Extends));
-    }
 }

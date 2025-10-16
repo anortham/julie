@@ -396,13 +396,3 @@ pub(super) fn extract_type_alias(extractor: &mut RustExtractor, node: Node, pare
         },
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_type_extraction() {
-        // Type extraction is tested through integration tests
-    }
-}

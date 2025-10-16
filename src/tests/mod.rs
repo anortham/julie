@@ -2,30 +2,98 @@
 //
 // This module contains test utilities and infrastructure for testing extractors,
 // search functionality, editing tools, and other Julie components.
+//
+// 📝 NOTE: 7 SafeEditTool integration test files (3,714 lines) have been preserved
+// in src/tests/tools/editing/disabled/ for migration to FuzzyReplaceTool and
+// EditLinesTool integration tests. See README.md in that directory for details.
+//
+// Current coverage: 24 unit tests passing (fuzzy_replace.rs + edit_lines.rs)
+// TODO: Add integration tests for concurrency, permissions, UTF-8, security
 
-// TODO: Update these tests to use FuzzyReplaceTool instead of deleted SafeEditTool
-// pub mod editing_safety_tests; // CRITICAL safety tests for editing tools - DISABLED: uses SafeEditTool
-// pub mod editing_tests; // DISABLED: uses SafeEditTool
-// pub mod fast_edit_search_replace_tests; // DISABLED: uses SafeEditTool
-pub mod cli_codesearch_tests; // CLI integration tests for julie-codesearch (scan/update)
-pub mod cli_semantic_tests; // CLI integration tests for julie-semantic (embed with HNSW)
-pub mod edit_lines_tests; // TDD tests for EditLinesTool (surgical line editing - insert/replace/delete)
-pub mod fts5_sanitization_tests; // TDD tests for FTS5 query sanitization (fixes special character bugs)
-pub mod fuzzy_replace_tests; // Comprehensive tests for FuzzyReplaceTool
-pub mod get_symbols_target_filtering_tests; // GetSymbolsTool target filtering tests (TDD) - methods in impl blocks
-pub mod get_symbols_tests; // GetSymbolsTool path normalization tests (TDD)
-pub mod lock_contention_tests; // Regression tests for lock contention during indexing (prevents 30s hangs)
-pub mod search_race_condition_tests;
-pub mod stale_index_detection_tests; // TDD tests for stale index detection (file mtime + new file checks)
-pub mod smart_read_tests; // Smart Read tests - validate 70-90% token savings
-pub mod syntax_validation_tests; // AST Syntax validation tests (ValidateSyntax - reports errors for agent to fix)
-                                 // pub mod line_edit_control_tests; // SOURCE/CONTROL tests for LineEditTool - DISABLED: uses SafeEditTool
-                                 // pub mod line_edit_tests; // DISABLED: uses SafeEditTool
-pub mod refactoring_tests; // Smart refactoring tool tests
-pub mod smart_refactor_control_tests; // SOURCE/CONTROL tests for SmartRefactorTool
-pub mod trace_call_path_tests; // Comprehensive tests for TraceCallPathTool
-                               // pub mod transactional_editing_tests; // TDD tests for transactional editing safety (memory-based, no .backup files) - DISABLED: uses SafeEditTool
-                               // pub mod transactional_integration_tests; // Integration tests for transactional safety in FastEditTool and LineEditTool - DISABLED: uses SafeEditTool
+// ============================================================================
+// CLI TESTS - Command-line interface integration tests
+// ============================================================================
+pub mod cli {
+    pub mod codesearch;      // CLI integration tests for julie-codesearch (scan/update)
+    pub mod semantic;        // CLI integration tests for julie-semantic (embed with HNSW)
+    pub mod output;          // CLI output formatting tests
+    pub mod parallel;        // CLI parallel execution tests
+    pub mod progress;        // CLI progress indicator tests
+}
+
+// ============================================================================
+// CORE SYSTEM TESTS - Database, embeddings, handlers, language support
+// ============================================================================
+pub mod core {
+    pub mod database;        // Database operations and SQLite tests
+    pub mod handler;         // MCP handler tests
+    pub mod language;        // Language detection and support tests
+    pub mod tracing;         // Tracing and logging tests
+
+    pub mod embeddings;  // Embedding tests with cross-language support
+}
+
+// ============================================================================
+// TOOLS TESTS - Search, editing, refactoring, navigation, exploration
+// ============================================================================
+pub mod tools {
+    pub mod ast_symbol_finder;                // AST symbol finder tests
+    pub mod get_symbols;                      // GetSymbolsTool tests
+    pub mod get_symbols_target_filtering;     // GetSymbolsTool target filtering tests
+    pub mod get_symbols_token;                // GetSymbolsTool token optimization tests
+    pub mod smart_read;                       // Smart Read token optimization tests
+    pub mod syntax_validation;                // Syntax validation tests
+
+    pub mod editing;  // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
+
+    pub mod search;  // Search tool tests (line mode, quality, race conditions)
+
+    pub mod refactoring;  // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
+
+    pub mod workspace {
+        pub mod mod_tests;           // Workspace module functionality tests
+        pub mod utils;               // Workspace utilities tests
+        pub mod isolation;           // Workspace isolation tests
+        pub mod management_token;    // ManageWorkspaceTool token optimization tests
+        pub mod registry;            // Workspace registry tests
+        pub mod registry_service;    // Registry service tests
+    }
+
+    pub mod navigation;  // Navigation tool tests (FastRefsTool, FastGotoTool)
+
+    pub mod exploration;  // Exploration tool tests (FastExploreTool, FindLogicTool)
+
+    pub mod trace_call_path;  // TraceCallPathTool tests (core + comprehensive)
+}
+
+// ============================================================================
+// UTILS TESTS - Cross-language intelligence, scoring, optimization utilities
+// ============================================================================
+pub mod utils {
+    pub mod context_truncation;            // Context truncation tests
+    pub mod cross_language_intelligence;   // Cross-language intelligence tests
+    pub mod progressive_reduction;         // Progressive reduction tests
+    pub mod query_expansion;               // Query expansion tests
+    pub mod token_estimation;              // Token estimation tests
+
+    pub mod exact_match_boost;  // Exact match boost tests
+
+    pub mod path_relevance;  // Path relevance scoring tests
+}
+
+// ============================================================================
+// INTEGRATION TESTS - End-to-end and cross-component tests
+// ============================================================================
+pub mod integration {
+    pub mod real_world_validation;      // Real-world code validation tests
+    pub mod reference_workspace;        // Reference workspace tests
+    pub mod lock_contention;            // Lock contention regression tests
+    pub mod stale_index_detection;      // Stale index detection tests
+    pub mod fts5_sanitization;          // FTS5 query sanitization tests
+    pub mod watcher;                    // File watcher tests
+    // pub mod tracing;                 // Tracing integration tests - DISABLED
+    // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
+}
 
 #[cfg(test)]
 pub mod test_helpers {
@@ -142,64 +210,85 @@ impl UserService {
 // Test utilities
 pub mod test_utils;
 
-// ALL 26 Extractor test modules - NO EXCEPTIONS, ALL MUST PASS
-pub mod bash_tests; // Bash extractor tests
-pub mod c; // C extractor tests
-pub mod cpp; // C++ extractor tests
-pub mod csharp; // C# extractor tests (modularized)
-pub mod css; // CSS extractor tests
-pub mod dart_tests; // Dart extractor tests
-pub mod gdscript; // GDScript extractor tests
-pub mod go_tests; // Go extractor tests
-pub mod html; // HTML extractor tests
-pub mod java; // Java extractor tests (split into modules)
-pub mod javascript_tests; // JavaScript extractor tests
-pub mod kotlin_tests; // Kotlin extractor tests
-pub mod lua; // Lua extractor tests
-pub mod php_tests; // PHP extractor tests
-pub mod powershell_tests; // PowerShell extractor tests
-pub mod python_tests; // Python extractor tests
-pub mod razor_tests; // Razor extractor tests
-pub mod regex_tests; // Regex extractor tests
-pub mod ruby_tests; // Ruby extractor tests
-pub mod rust_tests; // Rust extractor tests
-pub mod sql; // SQL extractor tests
-pub mod swift_tests; // Swift extractor tests
-pub mod typescript_tests; // TypeScript extractor tests
-pub mod vue_tests; // Vue extractor tests
-pub mod zig_tests; // Zig extractor tests
+// ============================================================================
+// EXTRACTOR TESTS - All 26 language extractors (100% Miller parity)
+// ============================================================================
+pub mod extractors {
+    pub mod base;    // BaseExtractor tests
 
-// Debug-specific test modules for troubleshooting
-// pub mod debug_c_failures;       // Debug C extractor specific failures - TEMP DISABLED
+    // Bash extractor tests (single mod.rs file)
+    pub mod bash;
 
-// Real-World Validation Tests (following Miller's proven methodology)
-pub mod real_world_validation; // Tests all extractors against real-world code files
+    // C extractor tests (multiple submodules)
+    pub mod c;
 
-// Cross-Language Tracing Tests (Phase 5 - The Revolutionary Feature)
-// pub mod tracing_tests; // Tests the killer feature - cross-language data flow tracing - TEMP DISABLED
+    // C++ extractor tests (multiple submodules)
+    pub mod cpp;
 
-// Phase 6.1 Intelligence Tools Tests (Heart of Codebase)
-// pub mod intelligence_tools_tests; // Tests for AI-native code intelligence tools - TEMP DISABLED
+    // C# extractor tests (has own mod.rs with submodule declarations)
+    pub mod csharp;
 
-// Token Optimization Tests (CRITICAL - Fixes 149K token explosion)
-pub mod exact_match_boost_tests; // Tests for exact match boost with logarithmic scoring
-pub mod exploration_tools_tests; // Tests for exploration tool token optimization (FastExploreTool, FindLogicTool)
-pub mod find_logic_tests; // Tests for FindLogicTool token optimization
-pub mod navigation_tools_tests; // Tests for navigation tool token optimization (FastRefsTool, FastGotoTool)
-pub mod path_relevance_tests; // Tests for path relevance scoring system
-pub mod reference_workspace_tests; // End-to-end tests for reference workspace indexing and search
-pub mod search_line_mode_tests; // TDD tests for line-level search output (grep-style results)
-pub mod search_quality_tests; // Tests for PathRelevanceScorer integration into search tools
-pub mod search_tools_tests; // Tests for search tool token optimization and response formatting
-pub mod watcher_tests;
-pub mod workspace_management_token_tests; // Tests for ManageWorkspaceTool token optimization (list & recent commands)
-pub mod workspace_mod_tests; // Tests for workspace module functionality // Tests extracted from the watcher implementation
-pub mod get_symbols_token_tests; // Tests for GetSymbolsTool Smart Read token optimization (body truncation)
-pub mod workspace_isolation_tests; // TDD tests for workspace isolation (force reindex must not delete reference workspaces)
+    // CSS extractor tests (multiple submodules)
+    pub mod css;
 
-// HNSW Vector Store Tests (TDD for semantic search infrastructure)
-pub mod hnsw_vector_store_tests; // Tests for HNSW-based fast similarity search
+    // Dart extractor tests (has own mod.rs with submodule declarations)
+    pub mod dart;
 
-// CASCADE Architecture Integration Tests (Phase 1-4 validation)
-// DISABLED: Tantivy removed from CASCADE architecture (now SQLite FTS5 → HNSW Semantic only)
-// pub mod cascade_integration_tests; // Tests for SQLite → Tantivy → Semantic cascade flow
+    // GDScript extractor tests (multiple submodules)
+    pub mod gdscript;
+
+    // Go extractor tests (single mod.rs file)
+    pub mod go;
+
+    // HTML extractor tests (multiple submodules)
+    pub mod html;
+
+    // Java extractor tests
+    pub mod java;
+
+    // JavaScript extractor tests
+    pub mod javascript;
+
+    // Kotlin extractor tests (single mod.rs file)
+    pub mod kotlin;
+
+    // Lua extractor tests (multiple submodules)
+    pub mod lua;
+
+    // PHP extractor tests (single mod.rs file)
+    pub mod php;
+
+    // PowerShell extractor tests (single mod.rs file)
+    pub mod powershell;
+
+    // Python extractor tests (multiple submodules - declarations in python/mod.rs)
+    pub mod python;
+
+    // Razor extractor tests (single mod.rs file)
+    pub mod razor;
+
+    // Regex extractor tests (multiple submodules)
+    pub mod regex;
+
+    // Ruby extractor tests
+    pub mod ruby;
+
+    // Rust extractor tests (multiple submodules)
+    pub mod rust;
+
+    // SQL extractor tests (multiple submodules)
+    pub mod sql;
+
+    // Swift extractor tests (single mod.rs file)
+    pub mod swift;
+
+    // TypeScript extractor tests (multiple submodules - declarations in typescript/mod.rs)
+    pub mod typescript;
+
+    // Vue extractor tests
+    pub mod vue;
+
+    // Zig extractor tests
+    pub mod zig;
+}
+

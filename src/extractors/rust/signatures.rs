@@ -221,13 +221,3 @@ pub(super) fn extract_use(
 
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_signature_extraction() {
-        // Signature extraction is tested through integration tests
-    }
-}

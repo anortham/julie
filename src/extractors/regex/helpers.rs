@@ -37,7 +37,7 @@ pub(super) fn clean_regex_line(line: &str) -> String {
 }
 
 /// Check if text is a valid regex pattern
-pub(super) fn is_valid_regex_pattern(text: &str) -> bool {
+pub(crate) fn is_valid_regex_pattern(text: &str) -> bool {
     // Skip very short patterns or obvious non-regex content
     if text.is_empty() {
         return false;
@@ -109,7 +109,7 @@ pub(super) fn is_valid_regex_pattern(text: &str) -> bool {
 }
 
 /// Determine the symbol kind for a pattern
-pub(super) fn determine_pattern_kind(pattern: &str) -> SymbolKind {
+pub(crate) fn determine_pattern_kind(pattern: &str) -> SymbolKind {
     // Lookarounds (check first, before groups)
     if pattern.contains("(?=")
         || pattern.contains("(?!")
@@ -169,7 +169,7 @@ pub(super) fn determine_pattern_kind(pattern: &str) -> SymbolKind {
 }
 
 /// Calculate complexity score of a pattern
-pub(super) fn calculate_complexity(pattern: &str) -> u32 {
+pub(crate) fn calculate_complexity(pattern: &str) -> u32 {
     let mut complexity = 0;
 
     // Basic complexity indicators
@@ -185,31 +185,4 @@ pub(super) fn calculate_complexity(pattern: &str) -> u32 {
 /// Check if a literal is escaped
 pub(super) fn is_escaped_literal(literal_text: &str) -> bool {
     literal_text.starts_with('\\')
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_valid_regex_pattern() {
-        assert!(is_valid_regex_pattern("\\d+"));
-        assert!(is_valid_regex_pattern("[a-z]"));
-        assert!(is_valid_regex_pattern("(?=test)"));
-        assert!(!is_valid_regex_pattern(""));
-    }
-
-    #[test]
-    fn test_calculate_complexity() {
-        assert_eq!(calculate_complexity("a"), 0);
-        assert_eq!(calculate_complexity("a*"), 1);
-        assert_eq!(calculate_complexity("[a-z]+"), 3);
-    }
-
-    #[test]
-    fn test_determine_pattern_kind() {
-        assert_eq!(determine_pattern_kind("[abc]"), SymbolKind::Class);
-        assert_eq!(determine_pattern_kind("a*"), SymbolKind::Function);
-        assert_eq!(determine_pattern_kind("^"), SymbolKind::Constant);
-    }
 }

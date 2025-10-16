@@ -12,10 +12,10 @@
 /// - identifiers: LSP identifier tracking for references
 /// - helpers: Type inference and utility functions
 
-mod classes;
+pub(crate) mod classes;
 mod core;
 mod functions;
-mod helpers;
+pub(crate) mod helpers;
 mod identifiers;
 mod tables;
 mod variables;
@@ -71,28 +71,13 @@ impl LuaExtractor {
     // Accessors for sub-modules
     // ========================================================================
 
-    pub(super) fn base(&self) -> &BaseExtractor {
+    pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base
     }
 
-    pub(super) fn base_mut(&mut self) -> &mut BaseExtractor {
+    pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
     }
 
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_lua_extractor_initialization() {
-        let extractor = LuaExtractor::new(
-            "lua".to_string(),
-            "test.lua".to_string(),
-            "function hello() end".to_string(),
-        );
-        assert_eq!(extractor.base.file_path, "test.lua");
-    }
 }

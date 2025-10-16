@@ -177,14 +177,3 @@ fn find_containing_symbol_id(
         .find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_identifier_extraction_basic() {
-        // Tests are run through the integration test suite
-        // This ensures consistency with full extraction pipeline
-    }
-}

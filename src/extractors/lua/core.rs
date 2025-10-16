@@ -49,12 +49,3 @@ pub(super) fn traverse_tree(
         traverse_tree(symbols, base, child, current_parent_id.clone());
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_tree_traversal_basic() {
-        // Basic tree traversal is tested through public API in integration tests
-        // This ensures consistency with full extraction pipeline
-    }
-}

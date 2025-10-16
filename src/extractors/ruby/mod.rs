@@ -185,17 +185,3 @@ impl RubyExtractor {
         self.current_visibility = old_visibility; // Restore previous visibility
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ruby_extractor_creation() {
-        let extractor = RubyExtractor::new(
-            "test.rb".to_string(),
-            "class MyClass\nend".to_string(),
-        );
-        assert_eq!(extractor.base.file_path, "test.rb");
-    }
-}

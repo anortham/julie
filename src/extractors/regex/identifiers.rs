@@ -112,7 +112,7 @@ fn extract_identifier_from_node(
 }
 
 /// Extract the name from a named group (?<name>...) or (?P<name>...)
-fn extract_group_name(group_text: &str) -> Option<String> {
+pub(crate) fn extract_group_name(group_text: &str) -> Option<String> {
     if let Some(start) = group_text.find("(?<") {
         if let Some(end) = group_text[start + 3..].find('>') {
             return Some(group_text[start + 3..start + 3 + end].to_string());
@@ -143,16 +143,4 @@ fn find_containing_symbol_id(
 
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_group_name() {
-        assert_eq!(extract_group_name("(?<name>...)"), Some("name".to_string()));
-        assert_eq!(extract_group_name("(?P<name>...)"), Some("name".to_string()));
-        assert_eq!(extract_group_name("(abc)"), None);
-    }
 }

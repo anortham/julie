@@ -122,8 +122,8 @@ impl RustExtractor {
         identifiers::extract_identifiers(self, tree, symbols)
     }
 
-    // Accessors for use by submodules
-    pub(super) fn get_base_mut(&mut self) -> &mut BaseExtractor {
+    // Accessors for use by submodules and tests
+    pub(crate) fn get_base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
     }
 
@@ -133,20 +133,5 @@ impl RustExtractor {
 
     pub(super) fn add_impl_block(&mut self, block: ImplBlockInfo) {
         self.impl_blocks.push(block);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_rust_extractor_creation() {
-        let mut extractor = RustExtractor::new(
-            "rust".to_string(),
-            "test.rs".to_string(),
-            "fn main() {}".to_string(),
-        );
-        assert_eq!(extractor.get_base_mut().file_path, "test.rs");
     }
 }

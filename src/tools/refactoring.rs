@@ -377,7 +377,7 @@ impl SmartRefactorTool {
     }
 
     /// Parse the result from fast_refs to extract file locations
-    fn parse_refs_result(&self, refs_result: &CallToolResult) -> Result<HashMap<String, Vec<u32>>> {
+    pub(crate) fn parse_refs_result(&self, refs_result: &CallToolResult) -> Result<HashMap<String, Vec<u32>>> {
         let mut file_locations: HashMap<String, Vec<u32>> = HashMap::new();
 
         // Extract text content from the result
@@ -3054,62 +3054,3 @@ where
 const DOC_COMMENT_LOOKBACK_BYTES: usize = 256;
 const TOP_OF_SCOPE_COMMENT_LINE_WINDOW: usize = 2;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn parse_refs_result_handles_confidence_suffix() {
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: "{}".to_string(),
-            dry_run: true,
-        };
-
-        let content = "🔗 Reference: OldSymbol - src/lib.rs:42 (confidence: 0.95)";
-        let result = CallToolResult::text_content(vec![TextContent::from(content)]);
-
-        let parsed = tool
-            .parse_refs_result(&result)
-            .expect("parse should succeed");
-        let lines = parsed.get("src/lib.rs").expect("file should be captured");
-        assert_eq!(lines, &vec![42]);
-    }
-
-    #[test]
-    fn parse_refs_result_prefers_structured_content() {
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: "{}".to_string(),
-            dry_run: true,
-        };
-
-        let structured = json!({
-            "references": [
-                {
-                    "file_path": "src/main.rs",
-                    "line_number": 128
-                }
-            ],
-            "definitions": [
-                {
-                    "file_path": "src/lib.rs",
-                    "start_line": 12
-                }
-            ]
-        });
-
-        let result = if let serde_json::Value::Object(map) = structured {
-            CallToolResult::text_content(vec![]).with_structured_content(map)
-        } else {
-            panic!("expected structured object");
-        };
-
-        let parsed = tool
-            .parse_refs_result(&result)
-            .expect("parse should succeed");
-        assert_eq!(parsed.get("src/main.rs"), Some(&vec![128]));
-        assert_eq!(parsed.get("src/lib.rs"), Some(&vec![12]));
-    }
-}

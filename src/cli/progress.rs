@@ -77,20 +77,3 @@ impl ProgressReporter {
         eprintln!("❌ Error: {}", message);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_progress_reporter() {
-        let mut reporter = ProgressReporter::new(100);
-
-        // Simulate progress
-        for i in (0..=100).step_by(10) {
-            reporter.report(i);
-        }
-
-        reporter.complete(500);
-    }
-}

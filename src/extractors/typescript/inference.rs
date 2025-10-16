@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Infer types from variable assignments and function returns
-pub(super) fn infer_types(
+pub(crate) fn infer_types(
     extractor: &TypeScriptExtractor,
     symbols: &[Symbol],
 ) -> HashMap<String, String> {
@@ -33,7 +33,7 @@ fn parse_content(extractor: &TypeScriptExtractor) -> Result<tree_sitter::Tree, B
 }
 
 /// Recursively infer types from tree nodes
-fn infer_types_from_tree(
+pub(crate) fn infer_types_from_tree(
     extractor: &TypeScriptExtractor,
     node: Node,
     symbols: &[Symbol],
@@ -78,7 +78,7 @@ fn infer_types_from_tree(
 }
 
 /// Infer type from a value node
-fn infer_type_from_value(extractor: &TypeScriptExtractor, value_node: &Node) -> String {
+pub(crate) fn infer_type_from_value(extractor: &TypeScriptExtractor, value_node: &Node) -> String {
     match value_node.kind() {
         "string" => "string".to_string(),
         "number" => "number".to_string(),
@@ -108,7 +108,7 @@ fn infer_type_from_value(extractor: &TypeScriptExtractor, value_node: &Node) -> 
 }
 
 /// Infer return type of a function
-fn infer_function_return_type(extractor: &TypeScriptExtractor, func_node: &Node) -> String {
+pub(crate) fn infer_function_return_type(extractor: &TypeScriptExtractor, func_node: &Node) -> String {
     // Check for async functions
     let is_async = func_node
         .children(&mut func_node.walk())
@@ -142,7 +142,7 @@ fn infer_function_return_type(extractor: &TypeScriptExtractor, func_node: &Node)
 }
 
 /// Collect return types from a node's tree
-fn collect_return_types(
+pub(crate) fn collect_return_types(
     extractor: &TypeScriptExtractor,
     node: &Node,
     return_types: &mut Vec<String>,
@@ -158,76 +158,5 @@ fn collect_return_types(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_return_types(extractor, &child, return_types);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_infer_basic_types() {
-        let code = r#"
-        const str = "hello";
-        const num = 42;
-        const bool = true;
-        "#;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
-        let tree = parser.parse(code, None).unwrap();
-
-        let mut extractor = TypeScriptExtractor::new(
-            "typescript".to_string(),
-            "test.ts".to_string(),
-            code.to_string(),
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let types = infer_types(&extractor, &symbols);
-
-        assert!(!types.is_empty());
-    }
-
-    #[test]
-    fn test_infer_function_return_type() {
-        let code = r#"
-        function getString(): string {
-            return "hello";
-        }
-        "#;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
-        let tree = parser.parse(code, None).unwrap();
-
-        let mut extractor = TypeScriptExtractor::new(
-            "typescript".to_string(),
-            "test.ts".to_string(),
-            code.to_string(),
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let types = infer_types(&extractor, &symbols);
-
-        assert!(!types.is_empty());
-    }
-
-    #[test]
-    fn test_infer_async_function() {
-        let code = r#"
-        async function fetchData() {
-            return await fetch('/api');
-        }
-        "#;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
-        let tree = parser.parse(code, None).unwrap();
-
-        let mut extractor = TypeScriptExtractor::new(
-            "typescript".to_string(),
-            "test.ts".to_string(),
-            code.to_string(),
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let types = infer_types(&extractor, &symbols);
-
-        assert!(!types.is_empty());
     }
 }

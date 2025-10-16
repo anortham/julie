@@ -102,14 +102,3 @@ pub(super) fn extract_assignment(
         },
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_assignment_placeholder() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
-}

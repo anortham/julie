@@ -7,13 +7,13 @@ use std::fmt;
 
 /// Represents a section within a Vue SFC file (template, script, or style)
 #[derive(Debug, Clone)]
-pub(super) struct VueSection {
-    pub(super) section_type: String, // "template", "script", "style"
-    pub(super) content: String,
-    pub(super) start_line: usize,
+pub(crate) struct VueSection {
+    pub(crate) section_type: String, // "template", "script", "style"
+    pub(crate) content: String,
+    pub(crate) start_line: usize,
     #[allow(dead_code)]
-    pub(super) end_line: usize,
-    pub(super) lang: Option<String>, // e.g., 'ts', 'scss'
+    pub(crate) end_line: usize,
+    pub(crate) lang: Option<String>, // e.g., 'ts', 'scss'
 }
 
 impl fmt::Display for VueSection {
@@ -30,14 +30,14 @@ impl fmt::Display for VueSection {
 
 /// Helper struct for building VueSection during parsing
 #[derive(Debug)]
-pub(super) struct VueSectionBuilder {
-    pub(super) section_type: String,
-    pub(super) start_line: usize,
-    pub(super) lang: Option<String>,
+pub(crate) struct VueSectionBuilder {
+    pub(crate) section_type: String,
+    pub(crate) start_line: usize,
+    pub(crate) lang: Option<String>,
 }
 
 impl VueSectionBuilder {
-    pub(super) fn build(self, content: String, end_line: usize) -> VueSection {
+    pub(crate) fn build(self, content: String, end_line: usize) -> VueSection {
         VueSection {
             section_type: self.section_type,
             content,
@@ -50,7 +50,7 @@ impl VueSectionBuilder {
 
 /// Parse Vue SFC structure to extract template, script, and style sections
 /// Port of Miller's parseVueSFC logic
-pub(super) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn std::error::Error>> {
+pub(crate) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn std::error::Error>> {
     let mut sections = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
 
@@ -127,69 +127,4 @@ pub(super) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn st
     }
 
     Ok(sections)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_vue_sfc_basic() {
-        let content = r#"<template>
-  <div>Hello</div>
-</template>
-
-<script>
-export default {
-  name: 'App'
-}
-</script>
-
-<style>
-div { color: blue; }
-</style>"#;
-
-        let sections = parse_vue_sfc(content).unwrap();
-        assert_eq!(sections.len(), 3);
-        assert_eq!(sections[0].section_type, "template");
-        assert_eq!(sections[1].section_type, "script");
-        assert_eq!(sections[2].section_type, "style");
-    }
-
-    #[test]
-    fn test_parse_vue_sfc_with_lang_attributes() {
-        let content = r#"<template lang="html">
-  <div>Content</div>
-</template>
-
-<script lang="ts">
-export default {}
-</script>
-
-<style lang="scss">
-$color: blue;
-</style>"#;
-
-        let sections = parse_vue_sfc(content).unwrap();
-        assert_eq!(sections.len(), 3);
-        assert_eq!(sections[0].lang.as_deref(), Some("html"));
-        assert_eq!(sections[1].lang.as_deref(), Some("ts"));
-        assert_eq!(sections[2].lang.as_deref(), Some("scss"));
-    }
-
-    #[test]
-    fn test_parse_vue_sfc_without_closing_tags() {
-        let content = r#"<template>
-  <div>Hello</div>
-
-<script>
-export default {
-  name: 'App'
-}"#;
-
-        let sections = parse_vue_sfc(content).unwrap();
-        assert!(sections.len() >= 2);
-        assert_eq!(sections[0].section_type, "template");
-        assert_eq!(sections[1].section_type, "script");
-    }
 }

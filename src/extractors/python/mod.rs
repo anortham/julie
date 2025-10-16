@@ -12,15 +12,15 @@
 /// - relationships: Inheritance and call relationship extraction
 /// - identifiers: LSP identifier tracking for references
 
-mod decorators;
-mod functions;
-mod helpers;
-mod identifiers;
-mod imports;
-mod relationships;
-mod signatures;
-mod types;
-mod assignments;
+pub(crate) mod decorators;
+pub(crate) mod functions;
+pub(crate) mod helpers;
+pub(crate) mod identifiers;
+pub(crate) mod imports;
+pub(crate) mod relationships;
+pub(crate) mod signatures;
+pub(crate) mod types;
+pub(crate) mod assignments;
 
 use crate::extractors::base::{
     BaseExtractor, Identifier, Relationship, Symbol, SymbolKind,
@@ -145,25 +145,11 @@ impl PythonExtractor {
     // Accessors for sub-modules
     // ========================================================================
 
-    pub(super) fn base(&self) -> &BaseExtractor {
+    pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base
     }
 
-    pub(super) fn base_mut(&mut self) -> &mut BaseExtractor {
+    pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_python_extractor_initialization() {
-        let extractor = PythonExtractor::new(
-            "test.py".to_string(),
-            "def hello(): pass".to_string(),
-        );
-        assert_eq!(extractor.base.file_path, "test.py");
     }
 }

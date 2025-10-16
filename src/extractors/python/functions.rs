@@ -168,14 +168,3 @@ fn determine_function_kind(
     // Not inside a class, so it's a standalone function
     (SymbolKind::Function, None)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_determine_function_kind_placeholder() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
-}

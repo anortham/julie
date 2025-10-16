@@ -124,26 +124,11 @@ impl JavaExtractor {
     // Accessors for sub-modules
     // ========================================================================
 
-    pub(super) fn base(&self) -> &BaseExtractor {
+    pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base
     }
 
-    pub(super) fn base_mut(&mut self) -> &mut BaseExtractor {
+    pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_java_extractor_initialization() {
-        let extractor = JavaExtractor::new(
-            "java".to_string(),
-            "Test.java".to_string(),
-            "class Test {}".to_string(),
-        );
-        assert_eq!(extractor.base.file_path, "Test.java");
     }
 }

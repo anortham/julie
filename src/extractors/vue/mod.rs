@@ -16,7 +16,7 @@ use tree_sitter::Tree;
 mod component;
 mod helpers;
 mod identifiers;
-mod parsing;
+pub(crate) mod parsing;
 mod script;
 mod style;
 mod template;

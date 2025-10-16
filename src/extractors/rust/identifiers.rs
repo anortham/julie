@@ -160,13 +160,3 @@ fn find_containing_symbol_id(
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_identifier_extraction() {
-        // Identifier extraction is tested through integration tests
-    }
-}

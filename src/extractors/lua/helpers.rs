@@ -12,7 +12,7 @@ use tree_sitter::Node;
 ///
 /// Searches immediate children for a node of the specified type.
 /// Uses manual loop instead of iterator for borrow checker compatibility.
-pub(super) fn find_child_by_type<'a>(node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
+pub(crate) fn find_child_by_type<'a>(node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == node_type {
@@ -23,7 +23,7 @@ pub(super) fn find_child_by_type<'a>(node: Node<'a>, node_type: &str) -> Option<
 }
 
 /// Check if a node contains a function definition child
-pub(super) fn contains_function_definition(node: Node) -> bool {
+pub(crate) fn contains_function_definition(node: Node) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "function_definition" {
@@ -37,7 +37,7 @@ pub(super) fn contains_function_definition(node: Node) -> bool {
 ///
 /// Handles various expression types and returns a string representation
 /// of the inferred type (e.g., "string", "number", "function", "table", "import").
-pub(super) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> String {
+pub(crate) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> String {
     match node.kind() {
         "string" => "string".to_string(),
         "number" => "number".to_string(),
@@ -58,13 +58,3 @@ pub(super) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> St
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_helper_functions() {
-        // Tests are integrated with the full extraction pipeline
-        // This ensures consistency with the main extraction logic
-    }
-}

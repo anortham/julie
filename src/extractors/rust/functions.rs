@@ -172,12 +172,3 @@ pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, sy
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_function_extraction() {
-        // Function extraction is tested through integration tests
-    }
-}

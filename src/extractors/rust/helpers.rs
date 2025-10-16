@@ -195,18 +195,3 @@ pub(super) fn find_containing_function(base: &BaseExtractor, node: Node) -> Opti
 
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_visibility_public() {
-        // Visibility extraction is tested through integration tests
-    }
-
-    #[test]
-    fn test_is_inside_impl() {
-        // is_inside_impl is tested through integration tests
-    }
-}

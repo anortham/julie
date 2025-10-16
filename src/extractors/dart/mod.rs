@@ -40,7 +40,7 @@ static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)
 /// - Imports and library dependencies
 #[allow(dead_code)] // TODO: Implement Dart/Flutter extraction
 pub struct DartExtractor {
-    base: BaseExtractor,
+    pub(crate) base: BaseExtractor,
 }
 
 #[allow(dead_code)] // TODO: Implement Dart extraction methods
@@ -433,17 +433,3 @@ fn find_containing_symbol_id(
         .map(|s| s.id.clone())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_dart_extractor_creation() {
-        let extractor = DartExtractor::new(
-            "dart".to_string(),
-            "test.dart".to_string(),
-            "void main() {}".to_string(),
-        );
-        assert_eq!(extractor.base.language, "dart");
-    }
-}

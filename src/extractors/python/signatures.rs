@@ -111,26 +111,3 @@ pub(super) fn find_type_annotation<'a>(node: &'a Node<'a>) -> Option<Node<'a>> {
     }
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_infer_visibility_dunder() {
-        let vis = infer_visibility("__init__");
-        assert_eq!(vis, Visibility::Public);
-    }
-
-    #[test]
-    fn test_infer_visibility_private() {
-        let vis = infer_visibility("_private_method");
-        assert_eq!(vis, Visibility::Private);
-    }
-
-    #[test]
-    fn test_infer_visibility_public() {
-        let vis = infer_visibility("public_method");
-        assert_eq!(vis, Visibility::Public);
-    }
-}

@@ -170,13 +170,3 @@ pub(super) fn is_inside_enum_class(extractor: &PythonExtractor, node: &Node) -> 
     false
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_inside_enum_class() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
-}

@@ -76,14 +76,3 @@ fn extract_table_field_symbol(
 
     Some(base.create_symbol(&name_node, name, kind, options))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_table_extraction_basic() {
-        // Tests are run through the integration test suite
-        // This ensures consistency with full extraction pipeline
-    }
-}

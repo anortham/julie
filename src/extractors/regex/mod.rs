@@ -1,17 +1,17 @@
-mod classes;
-mod flags;
-mod groups;
-mod helpers;
-mod identifiers;
+pub(crate) mod classes;
+pub(crate) mod flags;
+pub(crate) mod groups;
+pub(crate) mod helpers;
+pub(crate) mod identifiers;
 mod patterns;
-mod signatures;
+pub(crate) mod signatures;
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 pub struct RegexExtractor {
-    base: BaseExtractor,
+    pub(crate) base: BaseExtractor,
 }
 
 impl RegexExtractor {
@@ -186,20 +186,5 @@ impl RegexExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_regex_extractor_creation() {
-        let extractor = RegexExtractor::new(
-            "regex".to_string(),
-            "/test/file.regex".to_string(),
-            "[a-z]+".to_string(),
-        );
-        assert_eq!(extractor.base.language, "regex");
     }
 }

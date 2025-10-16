@@ -452,14 +452,3 @@ pub(super) fn extract_variable_assignment(
 
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_variable_extraction_basic() {
-        // Tests are run through the integration test suite
-        // This ensures consistency with full extraction pipeline
-    }
-}

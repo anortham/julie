@@ -147,14 +147,3 @@ fn find_containing_symbol_id(
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_identifiers_placeholder() {
-        // This test is placeholder - actual testing requires tree-sitter
-        // Real tests are in the integration tests
-    }
-}

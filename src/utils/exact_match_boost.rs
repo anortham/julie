@@ -163,7 +163,7 @@ impl ExactMatchBoost {
     }
 
     /// Tokenize query into words (split on spaces and normalize)
-    fn tokenize_query(query: &str) -> Vec<String> {
+    pub(crate) fn tokenize_query(query: &str) -> Vec<String> {
         query
             .split_whitespace()
             .map(|word| word.to_lowercase())
@@ -222,46 +222,5 @@ impl ExactMatchBoost {
         }
 
         words.into_iter().filter(|word| !word.is_empty()).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tokenize_symbol() {
-        assert_eq!(
-            ExactMatchBoost::tokenize_symbol("getUserData"),
-            vec!["get", "user", "data"]
-        );
-
-        assert_eq!(
-            ExactMatchBoost::tokenize_symbol("user_service_impl"),
-            vec!["user", "service", "impl"]
-        );
-
-        assert_eq!(
-            ExactMatchBoost::tokenize_symbol("get-user-name"),
-            vec!["get", "user", "name"]
-        );
-
-        assert_eq!(
-            ExactMatchBoost::tokenize_symbol("XMLParser"),
-            vec!["xml", "parser"]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_query() {
-        assert_eq!(
-            ExactMatchBoost::tokenize_query("get user data"),
-            vec!["get", "user", "data"]
-        );
-
-        assert_eq!(
-            ExactMatchBoost::tokenize_query("  hello   world  "),
-            vec!["hello", "world"]
-        );
     }
 }
