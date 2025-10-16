@@ -1,0 +1,492 @@
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use serde_json::Value;
+use std::collections::HashMap;
+use tree_sitter::Node;
+
+use super::{classes, flags, groups, helpers, signatures};
+
+/// Create metadata with JSON values
+pub(super) fn create_metadata(pairs: &[(&str, &str)]) -> HashMap<String, Value> {
+    pairs
+        .iter()
+        .map(|(key, value)| (key.to_string(), Value::String(value.to_string())))
+        .collect()
+}
+
+/// Extract a basic pattern symbol
+pub(super) fn extract_pattern(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let pattern_text = base.get_node_text(&node);
+    let signature = signatures::build_pattern_signature(&pattern_text);
+    let symbol_kind = helpers::determine_pattern_kind(&pattern_text);
+
+    let metadata = create_metadata(&[
+        ("type", "regex-pattern"),
+        ("pattern", &pattern_text),
+        (
+            "complexity",
+            &helpers::calculate_complexity(&pattern_text).to_string(),
+        ),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        pattern_text,
+        symbol_kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a character class symbol
+pub(super) fn extract_character_class(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let class_text = base.get_node_text(&node);
+    let signature = signatures::build_character_class_signature(&class_text);
+
+    let metadata = create_metadata(&[
+        ("type", "character-class"),
+        ("pattern", &class_text),
+        ("negated", &classes::is_negated_class(&class_text).to_string()),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        class_text,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a group symbol
+pub(super) fn extract_group(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let group_text = base.get_node_text(&node);
+    let signature = signatures::build_group_signature(&group_text);
+
+    let mut metadata = create_metadata(&[
+        ("type", "group"),
+        ("pattern", &group_text),
+        (
+            "capturing",
+            &groups::is_capturing_group(&group_text).to_string(),
+        ),
+    ]);
+
+    if let Some(name) = groups::extract_group_name(&group_text) {
+        metadata.insert("named".to_string(), Value::String(name));
+    }
+
+    Some(base.create_symbol(
+        &node,
+        group_text,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a quantifier symbol
+pub(super) fn extract_quantifier(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let quantifier_text = base.get_node_text(&node);
+    let signature = signatures::build_quantifier_signature(&quantifier_text);
+
+    let metadata = create_metadata(&[
+        ("type", "quantifier"),
+        ("pattern", &quantifier_text),
+        ("lazy", &quantifier_text.contains('?').to_string()),
+        ("possessive", &quantifier_text.contains('+').to_string()),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        quantifier_text,
+        SymbolKind::Function,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract an anchor symbol
+pub(super) fn extract_anchor(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let anchor_text = base.get_node_text(&node);
+    let anchor_type = flags::get_anchor_type(&anchor_text);
+    let signature = signatures::build_anchor_signature(&anchor_text, &anchor_type);
+
+    let metadata = create_metadata(&[
+        ("type", "anchor"),
+        ("pattern", &anchor_text),
+        ("position", &anchor_type),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        anchor_text,
+        SymbolKind::Constant,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a lookaround symbol
+pub(super) fn extract_lookaround(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let lookaround_text = base.get_node_text(&node);
+    let direction = flags::get_lookaround_direction(&lookaround_text);
+    let polarity = if flags::is_positive_lookaround(&lookaround_text) {
+        "positive"
+    } else {
+        "negative"
+    };
+    let signature = signatures::build_lookaround_signature(&lookaround_text, &direction, polarity);
+
+    let metadata = create_metadata(&[
+        ("type", "lookaround"),
+        ("pattern", &lookaround_text),
+        ("direction", &direction),
+        ("positive", &flags::is_positive_lookaround(&lookaround_text).to_string()),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        lookaround_text,
+        SymbolKind::Method,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract an alternation symbol
+pub(super) fn extract_alternation(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let alternation_text = base.get_node_text(&node);
+    let signature = signatures::build_alternation_signature(&alternation_text);
+
+    let metadata = create_metadata(&[
+        ("type", "alternation"),
+        ("pattern", &alternation_text),
+        (
+            "options",
+            &flags::extract_alternation_options(&alternation_text).join(","),
+        ),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        alternation_text,
+        SymbolKind::Variable,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a predefined character class symbol
+pub(super) fn extract_predefined_class(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let class_text = base.get_node_text(&node);
+    let category = flags::get_predefined_class_category(&class_text);
+    let signature = signatures::build_predefined_class_signature(&class_text, &category);
+
+    let metadata = create_metadata(&[
+        ("type", "predefined-class"),
+        ("pattern", &class_text),
+        ("category", &category),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        class_text,
+        SymbolKind::Constant,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a unicode property symbol
+pub(super) fn extract_unicode_property(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let property_text = base.get_node_text(&node);
+    let property = flags::extract_unicode_property_name(&property_text);
+    let signature = signatures::build_unicode_property_signature(&property_text, &property);
+
+    let metadata = create_metadata(&[
+        ("type", "unicode-property"),
+        ("pattern", &property_text),
+        ("property", &property),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        property_text,
+        SymbolKind::Constant,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a backreference symbol
+pub(super) fn extract_backreference(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let backref_text = base.get_node_text(&node);
+    let group_number = flags::extract_group_number(&backref_text);
+    let group_name = flags::extract_backref_group_name(&backref_text);
+    let signature = signatures::build_backreference_signature(
+        &backref_text,
+        group_name.as_deref(),
+        group_number.as_deref(),
+    );
+
+    let mut metadata = create_metadata(&[("type", "backreference"), ("pattern", &backref_text)]);
+
+    if let Some(num) = group_number {
+        metadata.insert("groupNumber".to_string(), Value::String(num));
+    }
+
+    if let Some(name) = group_name {
+        metadata.insert("groupName".to_string(), Value::String(name));
+    }
+
+    Some(base.create_symbol(
+        &node,
+        backref_text,
+        SymbolKind::Variable,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a conditional symbol
+pub(super) fn extract_conditional(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let conditional_text = base.get_node_text(&node);
+    let condition = flags::extract_condition(&conditional_text);
+    let signature = signatures::build_conditional_signature(&conditional_text, &condition);
+
+    let metadata = create_metadata(&[
+        ("type", "conditional"),
+        ("pattern", &conditional_text),
+        ("condition", &condition),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        conditional_text,
+        SymbolKind::Method,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract an atomic group symbol
+pub(super) fn extract_atomic_group(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let atomic_text = base.get_node_text(&node);
+    let signature = signatures::build_atomic_group_signature(&atomic_text);
+
+    let metadata = create_metadata(&[
+        ("type", "atomic-group"),
+        ("pattern", &atomic_text),
+        ("possessive", "true"),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        atomic_text,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a comment symbol
+pub(super) fn extract_comment(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let comment_text = base.get_node_text(&node);
+    let clean_comment = comment_text
+        .strip_prefix("(?#")
+        .or_else(|| comment_text.strip_prefix("#"))
+        .unwrap_or(&comment_text)
+        .strip_suffix(")")
+        .unwrap_or(&comment_text)
+        .trim()
+        .to_string();
+
+    let metadata = create_metadata(&[("type", "comment"), ("content", &clean_comment)]);
+
+    Some(base.create_symbol(
+        &node,
+        comment_text.clone(),
+        SymbolKind::Property,
+        SymbolOptions {
+            signature: Some(comment_text),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a literal symbol
+pub(super) fn extract_literal(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let literal_text = base.get_node_text(&node);
+    let signature = signatures::build_literal_signature(&literal_text);
+
+    let metadata = create_metadata(&[
+        ("type", "literal"),
+        ("pattern", &literal_text),
+        (
+            "escaped",
+            &helpers::is_escaped_literal(&literal_text).to_string(),
+        ),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        literal_text,
+        SymbolKind::Variable,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract a generic pattern symbol
+pub(super) fn extract_generic_pattern(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let pattern_text = base.get_node_text(&node);
+    let signature = signatures::build_generic_signature(&pattern_text);
+    let symbol_kind = helpers::determine_pattern_kind(&pattern_text);
+
+    let metadata = create_metadata(&[
+        ("type", "generic-pattern"),
+        ("pattern", &pattern_text),
+        ("nodeType", node.kind()),
+    ]);
+
+    Some(base.create_symbol(
+        &node,
+        pattern_text,
+        symbol_kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
+}

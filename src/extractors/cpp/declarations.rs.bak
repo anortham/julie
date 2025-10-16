@@ -1,0 +1,658 @@
+//! Declaration extraction for C++ symbols
+//! Handles extraction of declarations, fields, friend declarations, and using declarations
+
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use tree_sitter::Node;
+
+use super::functions;
+use super::helpers;
+
+/// Extract namespace declaration
+pub(super) fn extract_namespace(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let mut cursor = node.walk();
+    let name_node = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "namespace_identifier")?;
+
+    let name = base.get_node_text(&name_node);
+    let signature = format!("namespace {}", name);
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Namespace,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract using declarations and namespace aliases
+pub(super) fn extract_using(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let mut name = String::new();
+    let mut signature = String::new();
+
+    if node.kind() == "using_declaration" {
+        let mut cursor = node.walk();
+        let qualified_id_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "qualified_identifier" || c.kind() == "identifier")?;
+
+        let full_path = base.get_node_text(&qualified_id_node);
+
+        // Check if it's "using namespace"
+        let is_namespace = node
+            .children(&mut node.walk())
+            .any(|c| c.kind() == "namespace");
+
+        if is_namespace {
+            name = full_path.clone();
+            signature = format!("using namespace {}", full_path);
+        } else {
+            // Extract the last part for the symbol name
+            let parts: Vec<&str> = full_path.split("::").collect();
+            name = (*parts.last().unwrap_or(&full_path.as_str())).to_string();
+            signature = format!("using {}", full_path);
+        }
+    } else if node.kind() == "namespace_alias_definition" {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+
+        let alias_node = children
+            .iter()
+            .find(|c| c.kind() == "namespace_identifier")?;
+        let target_node = children.iter().find(|c| {
+            c.kind() == "nested_namespace_specifier" || c.kind() == "qualified_identifier"
+        })?;
+
+        name = base.get_node_text(alias_node);
+        let target = base.get_node_text(target_node);
+        signature = format!("namespace {} = {}", name, target);
+    }
+
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Import,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract template declaration
+pub(super) fn extract_template(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let mut cursor = node.walk();
+    let declaration = node.children(&mut cursor).find(|c| {
+        matches!(
+            c.kind(),
+            "class_specifier" | "struct_specifier" | "function_definition" | "declaration"
+        )
+    })?;
+
+    // Extract template parameters if present
+    if let Some(template_params) = helpers::extract_template_parameters(base, Some(node)) {
+        if let Some(mut symbol) = base.extract_symbol(&declaration, parent_id) {
+            if let Some(ref mut sig) = symbol.signature {
+                *sig = format!("{}\n{}", template_params, sig);
+            } else {
+                symbol.signature = Some(template_params);
+            }
+            return Some(symbol);
+        }
+    }
+
+    None
+}
+
+/// Extract declaration (which may contain variables, functions, etc.)
+pub(super) fn extract_declaration(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    // Check if this is a friend declaration first
+    let node_text = base.get_node_text(&node);
+    let has_friend = node
+        .children(&mut node.walk())
+        .any(|c| c.kind() == "friend" || base.get_node_text(&c) == "friend");
+
+    let has_friend_text = node_text.starts_with("friend") || node_text.contains(" friend ");
+
+    if has_friend || has_friend_text {
+        return extract_friend_declaration(base, node, parent_id);
+    }
+
+    // Check if this is a conversion operator (e.g., operator double())
+    let operator_cast = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "operator_cast");
+    if operator_cast.is_some() {
+        return extract_conversion_operator(base, node, parent_id);
+    }
+
+    // Check if this is a function declaration
+    let func_declarator = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "function_declarator");
+    if let Some(func_declarator) = func_declarator {
+        // Check if this is a destructor by looking for destructor_name
+        let destructor_name = func_declarator
+            .children(&mut func_declarator.walk())
+            .find(|c| c.kind() == "destructor_name");
+        if destructor_name.is_some() {
+            return extract_destructor_from_declaration(base, node, func_declarator, parent_id);
+        }
+
+        // Check if this is a constructor (function name matches class name)
+        let name_node = functions::extract_function_name(func_declarator)?;
+        let name = base.get_node_text(&name_node);
+
+        if functions::is_constructor(&name, node) {
+            return extract_constructor_from_declaration(base, node, func_declarator, parent_id);
+        }
+
+        // This is a function declaration, treat it as a function
+        return functions::extract_function(base, node, parent_id);
+    }
+
+    // Handle variable declarations
+    let declarators: Vec<Node> = node
+        .children(&mut node.walk())
+        .filter(|c| c.kind() == "init_declarator")
+        .collect();
+
+    // Check for direct identifier declarations (e.g., extern variables)
+    if declarators.is_empty() {
+        let identifier_node = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "identifier")?;
+
+        let name = base.get_node_text(&identifier_node);
+
+        // Get storage class and type specifiers
+        let storage_class = helpers::extract_storage_class(base, node);
+        let type_specifiers = helpers::extract_type_specifiers(base, node);
+        let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
+
+        // Check if this is a static member variable inside a class
+        let is_static_member = helpers::is_static_member_variable(node, &storage_class);
+
+        let kind = if is_constant || is_static_member {
+            SymbolKind::Constant
+        } else {
+            SymbolKind::Variable
+        };
+
+        // Build signature
+        let signature = build_direct_variable_signature(base, node, &name);
+        let visibility = extract_visibility_from_node(base, node);
+
+        return Some(base.create_symbol(
+            &node,
+            name,
+            kind,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility),
+                parent_id: parent_id.map(String::from),
+                metadata: None,
+                doc_comment: None,
+            },
+        ));
+    }
+
+    // For now, handle the first declarator
+    let declarator = declarators.first()?;
+    let name_node = helpers::extract_declarator_name(*declarator)?;
+    let name = base.get_node_text(&name_node);
+
+    // Get storage class and type specifiers
+    let storage_class = helpers::extract_storage_class(base, node);
+    let type_specifiers = helpers::extract_type_specifiers(base, node);
+    let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
+
+    let kind = if is_constant {
+        SymbolKind::Constant
+    } else {
+        SymbolKind::Variable
+    };
+
+    // Build signature
+    let signature = build_variable_signature(base, node, &name);
+    let visibility = extract_visibility_from_node(base, node);
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract field declaration (class member variable)
+pub(super) fn extract_field(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let declarators: Vec<Node> = node
+        .children(&mut node.walk())
+        .filter(|c| matches!(c.kind(), "field_declarator" | "init_declarator"))
+        .collect();
+
+    if declarators.is_empty() {
+        // Check for field_identifier directly
+        let field_id = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "field_identifier");
+
+        if let Some(field_node) = field_id {
+            let name = base.get_node_text(&field_node);
+
+            // Get storage class and type specifiers
+            let storage_class = helpers::extract_storage_class(base, node);
+            let type_specifiers = helpers::extract_type_specifiers(base, node);
+            let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
+
+            // Check if this is a static member variable inside a class
+            let is_static_member = helpers::is_static_member_variable(node, &storage_class);
+
+            let kind = if is_constant || is_static_member {
+                SymbolKind::Constant
+            } else {
+                SymbolKind::Field
+            };
+
+            // Build signature
+            let signature = build_field_signature(base, node, &name);
+            let visibility = extract_field_visibility(base, node);
+
+            return Some(base.create_symbol(
+                &node,
+                name,
+                kind,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(visibility),
+                    parent_id: parent_id.map(String::from),
+                    metadata: None,
+                    doc_comment: None,
+                },
+            ));
+        }
+
+        return None;
+    }
+
+    // For now, handle the first declarator
+    let declarator = declarators.first()?;
+    let name_node = helpers::extract_field_name(*declarator)?;
+    let name = base.get_node_text(&name_node);
+
+    // Get storage class and type specifiers
+    let storage_class = helpers::extract_storage_class(base, node);
+    let type_specifiers = helpers::extract_type_specifiers(base, node);
+    let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
+
+    // Check if this is a static member variable inside a class
+    let is_static_member = helpers::is_static_member_variable(node, &storage_class);
+
+    let kind = if is_constant || is_static_member {
+        SymbolKind::Constant
+    } else {
+        SymbolKind::Field
+    };
+
+    // Build signature
+    let signature = build_field_signature(base, node, &name);
+    let visibility = extract_field_visibility(base, node);
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+/// Extract friend declaration
+pub(super) fn extract_friend_declaration(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let mut cursor = node.walk();
+
+    // Look for the inner declaration node
+    let inner_declaration = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "declaration")?;
+
+    // Look for function_declarator in the declaration
+    let function_declarator = helpers::find_function_declarator_in_node(inner_declaration)?;
+
+    // Extract name - handle both operator_name and regular identifier
+    let (name, symbol_kind) = if let Some(operator_name) = function_declarator
+        .children(&mut function_declarator.walk())
+        .find(|c| c.kind() == "operator_name")
+    {
+        // This is a friend operator
+        (
+            base.get_node_text(&operator_name),
+            SymbolKind::Operator,
+        )
+    } else if let Some(identifier) = function_declarator
+        .children(&mut function_declarator.walk())
+        .find(|c| c.kind() == "identifier")
+    {
+        // This is a friend function
+        (base.get_node_text(&identifier), SymbolKind::Function)
+    } else {
+        return None;
+    };
+
+    // Build friend signature
+    let return_type = functions::extract_basic_return_type(base, inner_declaration);
+    let parameters = functions::extract_function_parameters(base, function_declarator);
+
+    let signature = format!("friend {} {}{}", return_type, name, parameters)
+        .trim()
+        .to_string();
+
+    // Create the symbol
+    let symbol = base.create_symbol(
+        &node,
+        name,
+        symbol_kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    );
+
+    Some(symbol)
+}
+
+// Helper functions
+
+fn extract_conversion_operator(
+    base: &BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    // Find the operator_cast node
+    let operator_cast = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "operator_cast")?;
+
+    // Extract the target type from operator_cast
+    let mut operator_name = "operator".to_string();
+
+    let mut cursor = operator_cast.walk();
+    for child in operator_cast.children(&mut cursor) {
+        if matches!(
+            child.kind(),
+            "primitive_type" | "type_identifier" | "qualified_identifier"
+        ) {
+            let target_type = base.get_node_text(&child);
+            operator_name.push(' ');
+            operator_name.push_str(&target_type);
+            break;
+        }
+    }
+
+    let signature = base.get_node_text(&node);
+
+    Some(base.create_symbol(
+        &node,
+        operator_name,
+        SymbolKind::Operator,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+fn extract_destructor_from_declaration(
+    base: &BaseExtractor,
+    node: Node,
+    _func_declarator: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let signature = base.get_node_text(&node);
+    let name_start = signature.find('~')?;
+    let name_end = signature[name_start..].find('(').map(|i| name_start + i)?;
+    let name = signature[name_start..name_end].to_string();
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Destructor,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+fn extract_constructor_from_declaration(
+    base: &BaseExtractor,
+    node: Node,
+    func_declarator: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let name_node = functions::extract_function_name(func_declarator)?;
+    let name = base.get_node_text(&name_node);
+
+    // Build signature
+    let mut signature = String::new();
+
+    // Add modifiers
+    let modifiers = functions::extract_function_modifiers(base, node);
+    if !modifiers.is_empty() {
+        signature.push_str(&modifiers.join(" "));
+        signature.push(' ');
+    }
+
+    // Add constructor name and parameters
+    signature.push_str(&name);
+    let parameters = functions::extract_function_parameters(base, func_declarator);
+    signature.push_str(&parameters);
+
+    // Check for noexcept
+    let noexcept_spec = functions::extract_noexcept_specifier(base, func_declarator);
+    if !noexcept_spec.is_empty() {
+        signature.push(' ');
+        signature.push_str(&noexcept_spec);
+    }
+
+    // Check for = delete, = default
+    let children: Vec<Node> = node.children(&mut node.walk()).collect();
+    for (i, child) in children.iter().enumerate() {
+        if child.kind() == "=" && i + 1 < children.len() {
+            let next_child = &children[i + 1];
+            if matches!(next_child.kind(), "delete" | "default") {
+                signature.push_str(&format!(" = {}", base.get_node_text(next_child)));
+                break;
+            }
+        }
+    }
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Constructor,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    ))
+}
+
+fn extract_storage_class_decl(base: &BaseExtractor, node: Node) -> Vec<String> {
+    let mut storage_classes = Vec::new();
+    let storage_types = ["static", "extern", "mutable", "thread_local"];
+
+    for child in node.children(&mut node.walk()) {
+        if storage_types.contains(&child.kind()) || child.kind() == "storage_class_specifier" {
+            storage_classes.push(base.get_node_text(&child));
+        }
+    }
+
+    storage_classes
+}
+
+fn build_direct_variable_signature(base: &BaseExtractor, node: Node, name: &str) -> String {
+    let mut signature = String::new();
+
+    // Add storage class
+    let storage_class = extract_storage_class_decl(base, node);
+    if !storage_class.is_empty() {
+        signature.push_str(&storage_class.join(" "));
+        signature.push(' ');
+    }
+
+    // Add type specifiers
+    let type_specifiers = helpers::extract_type_specifiers(base, node);
+    if !type_specifiers.is_empty() {
+        signature.push_str(&type_specifiers.join(" "));
+        signature.push(' ');
+    }
+
+    // Add type
+    for child in node.children(&mut node.walk()) {
+        if matches!(
+            child.kind(),
+            "primitive_type" | "type_identifier" | "qualified_identifier"
+        ) {
+            signature.push_str(&base.get_node_text(&child));
+            signature.push(' ');
+            break;
+        }
+    }
+
+    signature.push_str(name);
+    signature
+}
+
+fn build_variable_signature(base: &BaseExtractor, node: Node, name: &str) -> String {
+    let mut signature = String::new();
+
+    // Add storage class and type specifiers
+    let storage_class = extract_storage_class_decl(base, node);
+    let type_specifiers = helpers::extract_type_specifiers(base, node);
+
+    let mut parts = Vec::new();
+    parts.extend(storage_class);
+    parts.extend(type_specifiers);
+
+    // Add type from node
+    for child in node.children(&mut node.walk()) {
+        if matches!(
+            child.kind(),
+            "primitive_type" | "type_identifier" | "qualified_identifier"
+        ) {
+            parts.push(base.get_node_text(&child));
+            break;
+        }
+    }
+
+    if !parts.is_empty() {
+        signature.push_str(&parts.join(" "));
+        signature.push(' ');
+    }
+
+    signature.push_str(name);
+    signature
+}
+
+fn build_field_signature(base: &BaseExtractor, node: Node, name: &str) -> String {
+    let mut signature = String::new();
+
+    // Add storage class and type specifiers
+    let storage_class = extract_storage_class_decl(base, node);
+    let type_specifiers = helpers::extract_type_specifiers(base, node);
+
+    let mut parts = Vec::new();
+    parts.extend(storage_class);
+    parts.extend(type_specifiers);
+
+    // Add type from node
+    for child in node.children(&mut node.walk()) {
+        if matches!(
+            child.kind(),
+            "primitive_type" | "type_identifier" | "qualified_identifier"
+        ) {
+            parts.push(base.get_node_text(&child));
+            break;
+        }
+    }
+
+    if !parts.is_empty() {
+        signature.push_str(&parts.join(" "));
+        signature.push(' ');
+    }
+
+    signature.push_str(name);
+    signature
+}
+
+fn extract_visibility_from_node(_base: &BaseExtractor, _node: Node) -> Visibility {
+    // For now, return Public - TODO: Implement proper visibility extraction
+    Visibility::Public
+}
+
+fn extract_field_visibility(_base: &BaseExtractor, _node: Node) -> Visibility {
+    // For now, return Public - TODO: Implement proper access specifier extraction
+    Visibility::Public
+}
