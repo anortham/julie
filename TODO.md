@@ -1,13 +1,33 @@
-# Julie Search Issues & Solutions
+# Julie Development TODO
 
-## 🔍 Root Cause Analysis (2025-10-15)
+## 🔥 Recently Completed (2025-10-15)
 
-### Issue 1: Multi-word query failure ✅ FIXED
+### ✅ Issue: 8GB Memory Leak from ONNX Embedding Engine
+**Problem:** Memory grew to 8GB during embedding generation and was never released
+**Root Cause:** `EmbeddingEngine` (containing ONNX `TextEmbedding` model) stored in handler forever
+**Solution:** Implemented lazy cleanup with 5-minute inactivity timeout
+- Engine stays alive during active development (fast incremental updates, no 2-3s reinit overhead)
+- Drops automatically after 5 minutes of inactivity (releases ~8GB)
+- Periodic background task checks every 60s
+- Auto-reinitializes on next use when needed
+
+**Files Modified:**
+- `src/handler.rs` - Added timestamp tracking and cleanup task
+- `src/tools/workspace/indexing.rs` - Integrated timestamp updates
+- `src/main.rs` - Started cleanup task at server init
+
+**Status:** ✅ Compiled successfully, ready for testing
+
+### ✅ Issue: Multi-word FTS5 Query Failure
 **Problem:** `"refresh workspace embedding"` returned no results (implicit AND required ALL words)
-**Fix Applied:** Changed from implicit AND to explicit OR in `sanitize_fts5_query()`
+**Solution:** Changed from implicit AND to explicit OR in `sanitize_fts5_query()`
 **Status:** ✅ Working - now returns 15 results
 
-### Issue 2: Underscore tokenization ❌ NOT FIXED
+---
+
+## 🚧 Known Search Issues
+
+### Issue 1: Underscore tokenization ❌ NOT FIXED
 **Problem:**
 - Query: `generate_embeddings_async` → No results
 - Actual function: `generate_embeddings_from_sqlite`
@@ -21,51 +41,14 @@ FTS5's `porter unicode61` tokenizer doesn't split on underscores. Tokens are:
 
 **Workaround:** Use wildcards: `generate_embeddings*` → 15 results ✅
 
-### Issue 3: Scope resolution operator ❌ NOT FIXED
+### Issue 2: Scope resolution operator ❌ NOT FIXED
 **Problem:**
 - Query: `WorkspaceOperation::Refresh` → No results
 - `::` treated as special character, might be getting filtered
 
 ---
 
-## 🚀 Lessons from coa-codesearch-mcp (Lucene-based)
-
-Your C# coa-codesearch-mcp project has **significantly more sophisticated** code search:
-
-### 1. **Multi-Field Indexing Strategy**
-Three specialized fields with different analyzers:
-- `content` → Standard code search with CamelCase splitting
-- `content_symbols` → Symbol-only (identifiers, class names)
-- `content_patterns` → Pattern-preserving (special chars intact)
-
-### 2. **Smart Query Routing** (`SmartQueryPreprocessor`)
-Routes queries to optimal field based on content:
-```csharp
-// Detects special chars (::, ->, []) → content_patterns field
-// Detects symbols (CamelCase, identifiers) → content_symbols field
-// Standard text → content field
-
-// Removes noise words: "class UserService" → "UserService"
-```
-
-### 3. **Code-Aware Tokenizer** (`CodeTokenizer`)
-Recognizes and preserves code patterns as **single tokens**:
-- `std::cout` → 1 token (not 3!)
-- `->method` → 1 token
-- `[Fact]` → 1 token
-- `: IRepository` → 1 token
-- `List<T>` → 1 token with generic handling
-
-### 4. **CamelCase Splitting** (`CamelCaseFilter`)
-Smart splitting for better searchability:
-- `UserService` → `["UserService", "User", "Service"]` (3 tokens!)
-- `OAuth2Provider` → `["OAuth2Provider", "OAuth", "2", "Provider"]`
-- `user_service` → `["user_service", "user", "service"]` ← **Splits on underscores!**
-- `McpToolBase<TParams, TResult>` → Extracts and splits all parts
-
----
-
-## 💡 Proposed Solutions for Julie
+## 💡 Proposed Solutions for Search Issues
 
 ### Option A: Enhance FTS5 Tokenization (Medium Complexity)
 **Problem:** Can't customize FTS5 tokenizer beyond built-in options
@@ -95,28 +78,15 @@ Index as:
   - Individual words: "generate", "embeddings", "from", "sqlite"
 ```
 
-### Option D: Lucene Migration (High Complexity, High Value)
-**Full Lucene port from coa-codesearch-mcp:**
-- Use `tantivy` (Lucene-like Rust library)
-- Port CodeAnalyzer, CamelCaseFilter, SmartQueryPreprocessor
-- Get sophisticated code search that already works!
+### Option D: Learn from coa-codesearch-mcp (Lucene/Tantivy Migration)
+Your C# coa-codesearch-mcp project has significantly more sophisticated code search:
+- **Multi-Field Indexing**: 3 fields (content, content_symbols, content_patterns)
+- **Smart Query Routing**: Routes queries to optimal field
+- **Code-Aware Tokenizer**: Preserves code patterns like `std::cout`, `->method`
+- **CamelCase Splitting**: `UserService` → `["UserService", "User", "Service"]`
+- **Underscore Splitting**: `user_service` → splits on underscores! ✅
 
----
-
-## 🎯 Recommendation
-
-**Short-term (TODAY):** Option B - Query enhancement with automatic wildcards
-- Low complexity, immediate improvement
-- Handles 80% of cases where users type underscored names
-
-**Medium-term (NEXT SPRINT):** Option C - Symbol name normalization
-- Better UX than requiring wildcards
-- Works with existing FTS5 infrastructure
-
-**Long-term (BACKLOG):** Option D - Consider Tantivy migration
-- Your coa-codesearch-mcp code is battle-tested and sophisticated
-- Tantivy gives us Lucene-quality search in Rust
-- Can reuse the proven multi-field strategy
+**Consider:** Port to Tantivy (Lucene-like Rust library) with proven multi-field strategy
 
 ---
 
@@ -135,7 +105,19 @@ We need to reorganize the codebase. Tests are scattered:
 
 ## ✅ Action Items
 
-1. [ ] **IMMEDIATE:** Commit the multi-word OR fix (already done)
-2. [ ] **TODAY:** Implement Option B (automatic wildcard injection for `_` and `::`)
-3. [ ] **THIS WEEK:** Test organization cleanup per CLAUDE.md
-4. [ ] **NEXT:** Evaluate Option C (symbol normalization) vs Option D (Tantivy migration)
+### TOMORROW (2025-10-16)
+- [ ] **Test lazy drop memory cleanup** - Verify engine drops after 5min idle, memory is released
+- [ ] **Test incremental updates** - Verify fast updates during active development (no reinit overhead)
+
+### THIS WEEK
+- [ ] **Implement Option B** - Automatic wildcard injection for `_` and `::`
+- [ ] **Test organization cleanup** - Consolidate tests per CLAUDE.md structure
+- [ ] **Clean up .backup files** - Remove temporary artifacts
+
+### NEXT SPRINT
+- [ ] **Evaluate search improvements** - Option C (symbol normalization) vs Option D (Tantivy migration)
+- [ ] **Real-world validation** - Test Julie on large codebases (10k+ files)
+
+---
+
+**Last Updated:** 2025-10-15

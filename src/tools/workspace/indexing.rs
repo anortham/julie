@@ -210,22 +210,51 @@ impl ManageWorkspaceTool {
             total_symbols, total_relationships
         );
 
+        // 🔥 STALENESS CHECK: Only generate embeddings for symbols that don't have them yet
+        // This fixes the bug where embeddings were regenerated on EVERY startup
+        let symbols_needing_embeddings = if let Some(db_arc) = if is_primary_workspace {
+            workspace.db.clone()
+        } else {
+            let ref_db_path = workspace.workspace_db_path(&workspace_id);
+            if ref_db_path.exists() {
+                match tokio::task::spawn_blocking(move || {
+                    crate::database::SymbolDatabase::new(ref_db_path)
+                })
+                .await
+                {
+                    Ok(Ok(db)) => Some(Arc::new(std::sync::Mutex::new(db))),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } {
+            let db_lock = db_arc.lock().unwrap();
+            db_lock
+                .get_symbols_without_embeddings(&workspace_id)
+                .unwrap_or_default()
+                .len()
+        } else {
+            0
+        };
+
         // 🔥 BACKGROUND TASK: Generate embeddings from SQLite (optional, compute-intensive)
-        // Now runs for ALL workspaces (primary and reference)
-        if total_symbols > 0 {
+        // Now runs for ALL workspaces (primary and reference) - BUT ONLY IF NEEDED!
+        if symbols_needing_embeddings > 0 {
             let workspace_type = if is_primary_workspace {
                 "primary"
             } else {
                 "reference"
             };
             info!(
-                "🚀 Starting background embedding generation from SQLite for {} workspace: {}",
-                workspace_type, workspace_id
+                "🚀 Starting background embedding generation for {} new symbols in {} workspace: {}",
+                symbols_needing_embeddings, workspace_type, workspace_id
             );
 
             // Clone necessary references for background task
             // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
             let embedding_engine = handler.embedding_engine.clone();
+            let embedding_engine_last_used = handler.embedding_engine_last_used.clone();
 
             // 🔴 CRITICAL FIX: Pass correct database for reference vs primary workspaces!
             // Reference workspaces need their own database, not the primary's
@@ -275,6 +304,7 @@ impl ManageWorkspaceTool {
                     std::time::Duration::from_secs(300), // 5 minute timeout
                     generate_embeddings_from_sqlite(
                         embedding_engine,
+                        embedding_engine_last_used,
                         workspace_db,
                         workspace_root,
                         workspace_id_clone.clone(),
@@ -1216,6 +1246,7 @@ impl ManageWorkspaceTool {
 /// This runs asynchronously to provide fast indexing response times
 async fn generate_embeddings_from_sqlite(
     embedding_engine: Arc<tokio::sync::RwLock<Option<crate::embeddings::EmbeddingEngine>>>,
+    embedding_engine_last_used: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
     workspace_db: Option<Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
     workspace_root: Option<std::path::PathBuf>,
     workspace_id: String,
@@ -1254,23 +1285,30 @@ async fn generate_embeddings_from_sqlite(
         }
     };
 
-    // Read symbols from SQLite
-    info!("🐛 About to acquire database lock for reading symbols...");
+    // 🚀 INCREMENTAL UPDATES: Only process symbols that don't have embeddings yet
+    // This fixes the performance problem where ALL symbols were reprocessed every startup
+    info!("🐛 About to acquire database lock for reading symbols without embeddings...");
     let symbols = {
         let db_lock = db.lock().unwrap();
         info!("🐛 Database lock acquired successfully!");
         db_lock
-            .get_symbols_for_workspace(&workspace_id)
-            .context("Failed to read symbols from database")?
+            .get_symbols_without_embeddings(&workspace_id)
+            .context("Failed to read symbols without embeddings from database")?
     };
-    info!("🐛 Read {} symbols from database", symbols.len());
+    info!(
+        "🐛 Read {} symbols WITHOUT embeddings (incremental update)",
+        symbols.len()
+    );
 
     if symbols.is_empty() {
-        debug!("No symbols to embed");
+        info!("✅ All symbols already have embeddings - nothing to do!");
         return Ok(());
     }
 
-    info!("🧠 Generating embeddings for {} symbols...", symbols.len());
+    info!(
+        "🧠 Generating embeddings for {} new symbols (incremental)...",
+        symbols.len()
+    );
 
     // 🔥 CRITICAL FIX: Initialize embedding engine with write lock, then release immediately
     // This allows multiple workspaces to generate embeddings in parallel
@@ -1352,6 +1390,11 @@ async fn generate_embeddings_from_sqlite(
     let mut total_failures = 0;
     let mut successful_batches = 0;
 
+    // 🔥 MEMORY OPTIMIZATION: Write to DB incrementally during generation
+    // This avoids accumulating all embeddings in a Vec (saves memory)
+    let mut model_name = String::from("bge-small");
+    let mut dimensions = 384;
+
     for (batch_idx, chunk) in symbols.chunks(BATCH_SIZE).enumerate() {
         info!(
             "🔄 Processing embedding batch {}/{} ({} symbols)",
@@ -1368,9 +1411,16 @@ async fn generate_embeddings_from_sqlite(
                 // Generate embeddings for this batch with write lock held
                 match engine.embed_symbols_batch(chunk) {
                     Ok(batch_embeddings) => {
-                        let model_name = engine.model_name();
-                        let dimensions = engine.dimensions();
-                        Some(Ok((batch_embeddings, model_name.to_string(), dimensions)))
+                        model_name = engine.model_name().to_string();
+                        dimensions = engine.dimensions();
+
+                        // 🕐 Update last_used timestamp after successful engine use
+                        {
+                            let mut last_used = embedding_engine_last_used.lock().await;
+                            *last_used = Some(std::time::Instant::now());
+                        }
+
+                        Some(Ok(batch_embeddings))
                     }
                     Err(e) => Some(Err(e)),
                 }
@@ -1381,16 +1431,17 @@ async fn generate_embeddings_from_sqlite(
 
         // Process the batch result without holding the embedding engine lock
         match batch_result {
-            Some(Ok((batch_embeddings, model_name, dimensions))) => {
+            Some(Ok(batch_embeddings)) => {
                 // Reset consecutive failure counter on success
                 consecutive_failures = 0;
                 successful_batches += 1;
 
-                // 🚀 BLAZING-FAST: Persist embeddings in bulk using single transaction
+                // 🔥 MEMORY OPTIMIZATION: Write to DB immediately (incremental persistence)
+                // This avoids accumulating embeddings in memory
                 {
                     let mut db_guard = db.lock().unwrap();
 
-                    // Use bulk insert instead of individual inserts
+                    // Use bulk insert for this batch
                     if let Err(e) = db_guard.bulk_store_embeddings(
                         &batch_embeddings,
                         dimensions,
@@ -1466,34 +1517,37 @@ async fn generate_embeddings_from_sqlite(
 
     let duration = start_time.elapsed();
     info!(
-        "✅ Embedding generation complete in {:.2}s",
-        duration.as_secs_f64()
+        "✅ Embedding generation complete in {:.2}s ({} total symbols)",
+        duration.as_secs_f64(),
+        symbols.len()
     );
 
-    // 🏗️ BUILD AND SAVE HNSW INDEX
-    info!("🏗️ Building HNSW index from fresh embeddings...");
+    // 🏗️ BUILD AND SAVE HNSW INDEX FROM DATABASE
+    // Embeddings are already persisted - now load them to build HNSW
+    info!("🏗️ Building HNSW index from database embeddings...");
     let hnsw_start = std::time::Instant::now();
 
     let mut vector_store = crate::embeddings::vector_store::VectorStore::new(384)?;
 
-    // 🚨 DEADLOCK FIX: Load all embeddings while holding the database lock, then drop it
+    // Load all embeddings from database for HNSW building
     let embeddings_result = {
         let db_lock = db.lock().unwrap();
-        db_lock.load_all_embeddings("bge-small")
-    }; // 🔓 Database lock released before HNSW build/save
+        db_lock.load_all_embeddings(&model_name)
+    }; // Drop lock before HNSW build
 
     match embeddings_result {
         Ok(embeddings) => {
             let count = embeddings.len();
-            info!("📥 Loading {} embeddings for HNSW", count);
+            info!("📥 Loaded {} embeddings from database for HNSW", count);
 
+            // Store in VectorStore for HNSW building
             for (symbol_id, vector) in embeddings {
                 if let Err(e) = vector_store.store_vector(symbol_id.clone(), vector) {
                     warn!("Failed to store vector {}: {}", symbol_id, e);
                 }
             }
 
-            // Build HNSW index without holding DB lock
+            // Build HNSW index
             match vector_store.build_hnsw_index() {
                 Ok(_) => {
                     info!(
@@ -1502,14 +1556,12 @@ async fn generate_embeddings_from_sqlite(
                     );
 
                     // Save to disk for lazy loading on next startup
-                    // Use per-workspace vectors path
                     let vectors_path = if let Some(ref root) = workspace_root {
                         root.join(".julie")
                             .join("indexes")
                             .join(&workspace_id)
                             .join("vectors")
                     } else {
-                        // Fallback to current directory if workspace root not available
                         std::path::PathBuf::from("./.julie/indexes")
                             .join(&workspace_id)
                             .join("vectors")
@@ -1519,6 +1571,11 @@ async fn generate_embeddings_from_sqlite(
                         warn!("Failed to save HNSW index to disk: {}", e);
                     } else {
                         info!("💾 HNSW index saved to {}", vectors_path.display());
+
+                        // 🔥 CRITICAL MEMORY FIX: Immediately release memory after save
+                        // VectorStore + HNSW graph are no longer needed - data is on disk
+                        vector_store.clear();
+                        info!("🧹 VectorStore memory released after successful save");
                     }
                 }
                 Err(e) => {
@@ -1538,6 +1595,12 @@ async fn generate_embeddings_from_sqlite(
         .semantic_ready
         .store(true, std::sync::atomic::Ordering::Release);
     debug!("🧠 CASCADE: Semantic search now available");
+
+    // 🕐 LAZY ENGINE CLEANUP: Engine will be dropped after 5 minutes of inactivity
+    // The periodic cleanup task (started at server init) checks last_used timestamp
+    // and drops the engine if it's been idle for >5 minutes
+    // This balances fast incremental updates during development with memory cleanup when done
+    info!("✅ Embedding engine will be dropped after 5 minutes of inactivity");
 
     // 🐛 SKIP REGISTRY UPDATE: Causes deadlock - main thread holds registry lock
     // The in-memory indexing_status.semantic_ready flag is sufficient for runtime status

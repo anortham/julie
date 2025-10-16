@@ -57,6 +57,8 @@ pub struct JulieServerHandler {
     pub is_indexed: Arc<RwLock<bool>>,
     /// Cached embedding engine for semantic search (expensive to initialize)
     pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
+    /// Timestamp of last embedding engine use (for lazy cleanup)
+    pub embedding_engine_last_used: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
     /// 🔒 CRITICAL FIX: Serializes tool execution to prevent stdout interleaving
@@ -77,6 +79,7 @@ impl JulieServerHandler {
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
             embedding_engine: Arc::new(RwLock::new(None)),
+            embedding_engine_last_used: Arc::new(tokio::sync::Mutex::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
             tool_execution_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
@@ -339,6 +342,54 @@ impl JulieServerHandler {
             self.initialize_workspace(None).await?;
         }
         Ok(())
+    }
+
+    /// Start the periodic embedding engine cleanup task
+    /// This task checks every minute if the engine has been idle for >5 minutes and drops it to free memory
+    pub fn start_embedding_cleanup_task(&self) {
+        let engine = self.embedding_engine.clone();
+        let last_used = self.embedding_engine_last_used.clone();
+
+        tokio::spawn(async move {
+            const CHECK_INTERVAL_SECS: u64 = 60; // Check every minute
+            const IDLE_TIMEOUT_SECS: u64 = 300; // Drop after 5 minutes of inactivity
+
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+
+                // Check if engine exists and is idle
+                let should_drop = {
+                    let last_used_guard = last_used.lock().await;
+                    if let Some(last_use_time) = *last_used_guard {
+                        let idle_duration = last_use_time.elapsed().as_secs();
+                        idle_duration > IDLE_TIMEOUT_SECS
+                    } else {
+                        false // Never used, don't drop
+                    }
+                };
+
+                if should_drop {
+                    // Check if engine actually exists before trying to drop
+                    let engine_exists = {
+                        let engine_guard = engine.read().await;
+                        engine_guard.is_some()
+                    };
+
+                    if engine_exists {
+                        // Drop the engine to release memory
+                        let mut engine_guard = engine.write().await;
+                        *engine_guard = None;
+                        info!("🧹 Dropped embedding engine after 5 minutes of inactivity - ONNX model memory released");
+
+                        // Reset last_used timestamp
+                        let mut last_used_guard = last_used.lock().await;
+                        *last_used_guard = None;
+                    }
+                }
+            }
+        });
+
+        info!("🕐 Started periodic embedding engine cleanup task (checks every 60s, drops after 5min idle)");
     }
 
     #[cfg(test)]

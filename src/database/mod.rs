@@ -2868,6 +2868,31 @@ impl SymbolDatabase {
         Ok(count)
     }
 
+    /// Get symbols that don't have embeddings yet (for incremental embedding generation)
+    pub fn get_symbols_without_embeddings(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature,
+                   s.start_line, s.start_col, s.end_line, s.end_col, s.start_byte, s.end_byte,
+                   s.doc_comment, s.visibility, s.code_context, s.parent_id,
+                   s.metadata, s.semantic_group, s.confidence
+            FROM symbols s
+            LEFT JOIN embeddings e ON s.id = e.symbol_id
+            WHERE s.workspace_id = ?1 AND e.symbol_id IS NULL
+            ORDER BY s.file_path, s.start_line
+        ",
+        )?;
+
+        let rows = stmt.query_map([workspace_id], |row| self.row_to_symbol(row))?;
+
+        let mut symbols = Vec::new();
+        for row_result in rows {
+            symbols.push(row_result?);
+        }
+
+        Ok(symbols)
+    }
+
     /// Get symbols for a specific workspace (optimized for background tasks)
     pub fn get_symbols_for_workspace(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(

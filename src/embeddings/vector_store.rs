@@ -423,6 +423,36 @@ impl VectorStore {
             "HNSW vector removal not supported - HNSW is immutable after building"
         ))
     }
+
+    /// Clear all in-memory data to release memory
+    /// This is critical for avoiding memory leaks after HNSW index is persisted to disk
+    ///
+    /// Clears:
+    /// - All vectors (can be 8GB+ for large codebases)
+    /// - HNSW index (large graph structure)
+    /// - ID mapping
+    ///
+    /// Call this after save_hnsw_index() to immediately release ~8GB of RAM
+    pub fn clear(&mut self) {
+        tracing::info!("🧹 Clearing VectorStore in-memory data to release memory...");
+
+        let vectors_count = self.vectors.len();
+        let vectors_bytes = vectors_count * self.dimensions * std::mem::size_of::<f32>();
+
+        self.vectors.clear();
+        self.vectors.shrink_to_fit(); // Release the HashMap's backing memory
+
+        self.hnsw_index = None; // Drop the HNSW graph
+
+        self.id_mapping.clear();
+        self.id_mapping.shrink_to_fit();
+
+        tracing::info!(
+            "✅ Cleared {} vectors (~{:.2} MB) + HNSW index from memory",
+            vectors_count,
+            vectors_bytes as f64 / 1_048_576.0
+        );
+    }
 }
 
 #[cfg(test)]

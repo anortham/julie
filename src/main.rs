@@ -124,6 +124,10 @@ async fn main() -> SdkResult<()> {
         .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(e.to_string())))?;
     debug!("✓ Julie server handler initialized");
 
+    // STEP 3.1: 🕐 Start the periodic embedding engine cleanup task
+    // This task checks every minute if the engine has been idle >5 minutes and drops it
+    handler.start_embedding_cleanup_task();
+
     // STEP 3.5: 🚀 AUTO-INDEXING - Initialize workspace and check if indexing is needed
     info!("🔍 Performing workspace auto-detection and quick indexing check...");
 
