@@ -2,6 +2,8 @@
 /target
 **/*.rs.bk
 *.pdb
+*.rlib
+*.rmeta
 Cargo.lock
 
 # IDE
