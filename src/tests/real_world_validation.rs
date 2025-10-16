@@ -11,7 +11,7 @@ mod real_world_tests {
     use std::path::{Path, PathBuf};
     use tree_sitter::{Parser, Tree};
 
-    const REAL_WORLD_TEST_DIR: &str = "tests/real-world";
+    const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world";
 
     /// Initialize a tree-sitter parser for the given language
     fn init_parser(code: &str, language: &str) -> Tree {
@@ -884,7 +884,7 @@ mod real_world_refactoring_tests {
     use std::path::Path;
     use tempfile::TempDir;
 
-    const REAL_WORLD_TEST_DIR: &str = "tests/real-world";
+    const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world";
 
     /// Test SmartRefactorTool against real TypeScript files
     #[tokio::test]

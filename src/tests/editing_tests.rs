@@ -75,7 +75,7 @@ fn setup_test_environment() -> Result<PathBuf> {
 
 /// Copy source file to test location (SOURCE files are never edited)
 fn setup_test_file(source_file: &str, temp_dir: &Path) -> Result<PathBuf> {
-    let source_path = Path::new("tests/editing/sources").join(source_file);
+    let source_path = Path::new("fixtures/editing/sources").join(source_file);
     let test_path = temp_dir.join(source_file);
 
     fs::copy(&source_path, &test_path)?;
@@ -84,7 +84,7 @@ fn setup_test_file(source_file: &str, temp_dir: &Path) -> Result<PathBuf> {
 
 /// Load control file for comparison (CONTROL files are expected results)
 fn load_control_file(control_file: &str) -> Result<String> {
-    let control_path = Path::new("tests/editing/controls/fast-edit").join(control_file);
+    let control_path = Path::new("fixtures/editing/controls/fast-edit").join(control_file);
     Ok(fs::read_to_string(control_path)?)
 }
 

@@ -100,7 +100,7 @@ fn setup_smart_refactor_test_file(
     test_case_name: &str,
     temp_dir: &Path,
 ) -> Result<PathBuf> {
-    let source_path = Path::new("tests/editing/sources").join(source_file);
+    let source_path = Path::new("fixtures/editing/sources").join(source_file);
 
     // Create unique filename using test case name to prevent contamination
     let file_stem = Path::new(source_file)
@@ -123,7 +123,7 @@ fn setup_smart_refactor_test_file(
 
 /// Load control file for comparison (CONTROL files are expected results)
 fn load_smart_refactor_control_file(control_file: &str) -> Result<String> {
-    let control_path = Path::new("tests/editing/controls/refactor").join(control_file);
+    let control_path = Path::new("fixtures/editing/controls/refactor").join(control_file);
     Ok(fs::read_to_string(control_path)?)
 }
 
@@ -633,8 +633,8 @@ async fn test_ast_aware_rename_preserves_strings_and_comments() {
     async fn inner_test() -> Result<()> {
         println!("🌳 CRITICAL TEST: AST-aware rename (tree-sitter, not regex!)");
 
-        let source_path = "tests/editing/sources/ast-aware/user_service.ts";
-        let control_path = "tests/editing/controls/refactor/user_service_to_account_service.ts";
+        let source_path = "fixtures/editing/sources/ast-aware/user_service.ts";
+        let control_path = "fixtures/editing/controls/refactor/user_service_to_account_service.ts";
 
         // Read SOURCE file
         let source_content = std::fs::read_to_string(source_path).expect("SOURCE file must exist");

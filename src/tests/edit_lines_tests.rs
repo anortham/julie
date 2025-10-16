@@ -12,7 +12,7 @@ mod edit_lines_tests {
     // Test helper: Copy source file to temp directory
     fn setup_test_file(source_filename: &str) -> Result<(TempDir, PathBuf)> {
         let temp_dir = TempDir::new()?;
-        let source_path = PathBuf::from("tests/editing/sources").join(source_filename);
+        let source_path = PathBuf::from("fixtures/editing/sources").join(source_filename);
         let dest_path = temp_dir.path().join(source_filename);
 
         fs::copy(&source_path, &dest_path)?;
@@ -21,7 +21,7 @@ mod edit_lines_tests {
 
     // Test helper: Load control file
     fn load_control_file(control_filename: &str) -> Result<String> {
-        let control_path = PathBuf::from("tests/editing/controls/line-edit").join(control_filename);
+        let control_path = PathBuf::from("fixtures/editing/controls/line-edit").join(control_filename);
         Ok(fs::read_to_string(control_path)?)
     }
 

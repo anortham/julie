@@ -1,5 +1,64 @@
 # CLAUDE.md - Project Julie Development Guidelines
 
+## 🚨 PROJECT ORGANIZATION STANDARDS (NON-NEGOTIABLE)
+
+### File Size Limits
+**MANDATORY**: No implementation file shall exceed **500 lines**.
+
+- Implementation files: **≤ 500 lines** (strictly enforced)
+- Test files: **≤ 1000 lines** (acceptable for comprehensive test suites)
+- **Any file exceeding these limits MUST be refactored into smaller modules**
+
+**Rationale**: Files larger than 500 lines:
+- Cannot be fully read by AI agents (token limits)
+- Are difficult to understand and maintain
+- Violate single responsibility principle
+- Make refactoring and testing harder
+
+### Test Organization (Option A - Enforced)
+**All tests in `src/tests/`, all fixtures in `fixtures/`**
+
+```
+src/tests/              # ALL test code (.rs files with #[test] functions)
+├── database_tests.rs   # Tests for database module
+├── search_tests.rs     # Tests for search functionality
+└── ...
+
+fixtures/               # ALL test data (SOURCE/CONTROL files, samples)
+├── editing/           # SOURCE/CONTROL for editing tools
+└── real-world/        # Real-world code samples for validation
+```
+
+**Rules:**
+- ✅ ALL test code goes in `src/tests/`
+- ✅ ALL test data/fixtures goes in `fixtures/`
+- ❌ NO inline `#[cfg(test)] mod tests` in implementation files
+- ❌ NO test data in `tests/` directory (that's a Rust convention for integration tests)
+
+### Module Boundaries
+**Each module MUST have a single, clear responsibility:**
+
+```rust
+// ✅ GOOD: Clear, focused responsibility
+src/database/
+├── mod.rs          # Public API, re-exports
+├── schema.rs       # Schema definitions only
+├── migrations.rs   # Migration logic only
+└── queries.rs      # Query operations only
+
+// ❌ BAD: God object with multiple responsibilities
+src/database/
+└── mod.rs          # 4,837 lines of everything
+```
+
+**Enforcement:**
+- Each module does ONE thing
+- Related functionality grouped logically
+- Clear boundaries prevent coupling
+- Public API minimal and well-documented
+
+---
+
 ## Project Overview
 
 **Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
