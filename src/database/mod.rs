@@ -4017,7 +4017,7 @@ mod tests {
 
         // Use a real Go fixture to mirror the production failure scenario
         let fixture_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/real-world/go/main.go");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/real-world/go/main.go");
         let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
         let file_info = crate::database::create_file_info(&fixture_path, "go").unwrap();
