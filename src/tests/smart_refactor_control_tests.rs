@@ -501,7 +501,13 @@ mod smart_refactor_control_tests {
                     .canonicalize()
                     .unwrap_or_else(|_| test_file_path.clone());
                 let absolute_path = canonical_path_for_params.to_string_lossy();
-                params = params.replace("refactor_source.ts", &absolute_path);
+
+                // Escape the path for JSON (Windows backslashes need to become \\)
+                let json_escaped_path = serde_json::to_string(&absolute_path.as_ref())?;
+                // Remove the surrounding quotes that serde_json adds
+                let escaped_path = json_escaped_path.trim_matches('"');
+
+                params = params.replace("refactor_source.ts", escaped_path);
                 println!("🔧 Updated SmartRefactorTool params: {}", params);
 
                 // Create SmartRefactorTool with updated parameters

@@ -489,8 +489,15 @@ impl SmartRefactorTool {
         let original_content = fs::read_to_string(file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
 
+        // Detect original line ending style (CRLF vs LF)
+        let has_crlf = original_content.contains("\r\n");
+        debug!("🔍 Original file has CRLF: {}, total CRLF count: {}, total LF count: {}",
+               has_crlf,
+               original_content.matches("\r\n").count(),
+               original_content.matches('\n').count());
+
         // AST-aware replacement using SearchEngine to find exact symbol matches
-        let new_content = match self
+        let mut new_content = match self
             .ast_aware_replace(
                 &original_content,
                 file_path,
@@ -512,6 +519,26 @@ impl SmartRefactorTool {
             }
         };
 
+        // Log state after AST replacement
+        debug!("🔍 After AST replacement - new_content has CRLF: {}, CRLF count: {}, LF count: {}",
+               new_content.contains("\r\n"),
+               new_content.matches("\r\n").count(),
+               new_content.matches('\n').count());
+
+        // Preserve original line ending style (critical for Windows CRLF preservation)
+        if has_crlf && !new_content.contains("\r\n") {
+            // Original had CRLF but new content only has LF - restore CRLF
+            debug!("🔧 Restoring CRLF line endings to match original file");
+            new_content = new_content.replace('\n', "\r\n");
+            debug!("🔍 After CRLF restoration - CRLF count: {}, LF count: {}",
+                   new_content.matches("\r\n").count(),
+                   new_content.matches('\n').count());
+        } else if !has_crlf && new_content.contains("\r\n") {
+            // Original had LF but new content has CRLF - restore LF
+            debug!("🔧 Restoring LF line endings to match original file");
+            new_content = new_content.replace("\r\n", "\n");
+        }
+
         if original_content == new_content {
             return Ok(0); // No changes needed
         }
@@ -520,25 +547,20 @@ impl SmartRefactorTool {
         let changes_count = original_content.matches(old_name).count();
 
         if !self.dry_run {
-            // Use diff-match-patch for atomic writing
+            // Validate changes using diff-match-patch (but don't use its output - preserves line endings)
             let diffs = dmp
                 .diff_main::<Efficient>(&original_content, &new_content)
                 .map_err(|e| anyhow::anyhow!("Failed to generate diff: {:?}", e))?;
-            let patches = dmp
-                .patch_make(PatchInput::new_diffs(&diffs))
-                .map_err(|e| anyhow::anyhow!("Failed to create patches: {:?}", e))?;
-            let (final_content, patch_results) = dmp
-                .patch_apply(&patches, &original_content)
-                .map_err(|e| anyhow::anyhow!("Failed to apply patches: {:?}", e))?;
 
-            // Ensure all patches applied successfully
-            if patch_results.iter().any(|&success| !success) {
-                return Err(anyhow::anyhow!("Some patches failed to apply"));
+            // Ensure we actually have changes (safety check)
+            if diffs.is_empty() {
+                return Ok(0);
             }
 
-            // Write the final content atomically using EditingTransaction
-        let transaction = EditingTransaction::begin(&file_path)?;
-            transaction.commit(&final_content)?;
+            // Write the new content directly (EditingTransaction provides atomicity)
+            // This preserves line endings exactly as they are in new_content
+            let transaction = EditingTransaction::begin(&file_path)?;
+            transaction.commit(&new_content)?;
         }
 
         Ok(changes_count)
@@ -1692,6 +1714,13 @@ impl SmartRefactorTool {
         let file_content = fs::read_to_string(&file_path)
             .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?;
 
+        // Detect original line ending style (CRLF vs LF) for preservation
+        let has_crlf = file_content.contains("\r\n");
+        debug!("🔍 Original file has CRLF: {}, CRLF count: {}, LF count: {}",
+               has_crlf,
+               file_content.matches("\r\n").count(),
+               file_content.matches('\n').count());
+
         debug!(
             "📍 Found symbol '{}' at lines {}-{}",
             symbol_name, start_line, end_line
@@ -1720,8 +1749,27 @@ impl SmartRefactorTool {
         }
 
         // Replace the symbol body
-        let new_content =
+        let mut new_content =
             self.replace_symbol_in_file(&file_content, start_line, end_line, &new_body)?;
+
+        // Preserve original line ending style (critical for Windows CRLF preservation)
+        debug!("🔍 After replacement - new_content has CRLF: {}, CRLF count: {}, LF count: {}",
+               new_content.contains("\r\n"),
+               new_content.matches("\r\n").count(),
+               new_content.matches('\n').count());
+
+        if has_crlf && !new_content.contains("\r\n") {
+            // Original had CRLF but new content only has LF - restore CRLF
+            debug!("🔧 Restoring CRLF line endings to match original file");
+            new_content = new_content.replace('\n', "\r\n");
+            debug!("🔍 After CRLF restoration - CRLF count: {}, LF count: {}",
+                   new_content.matches("\r\n").count(),
+                   new_content.matches('\n').count());
+        } else if !has_crlf && new_content.contains("\r\n") {
+            // Original had LF but new content has CRLF - restore LF
+            debug!("🔧 Restoring LF line endings to match original file");
+            new_content = new_content.replace("\r\n", "\n");
+        }
 
         // Write the modified file atomically using EditingTransaction
         let transaction = EditingTransaction::begin(&file_path)?;

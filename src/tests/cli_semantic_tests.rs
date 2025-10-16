@@ -368,6 +368,7 @@ mod error_handling_tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "Windows permissions for C:\\ are unpredictable")]
     fn test_embed_readonly_output() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();

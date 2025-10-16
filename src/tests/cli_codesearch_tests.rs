@@ -370,6 +370,7 @@ mod error_handling_tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "Windows permissions for C:\\ are unpredictable")]
     fn test_scan_readonly_db_path() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
