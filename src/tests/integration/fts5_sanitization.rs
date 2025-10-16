@@ -85,6 +85,8 @@ fn test_fts5_special_characters() {
         "eprintln!",    // Exclamation mark
         "func(arg)",    // Parentheses (function call)
         "(a || b)",     // Parentheses (grouping)
+        "System.Collections.Generic", // Dot (namespace/qualified name)
+        "CurrentUserService.ApplicationUser", // Dot (qualified name)
     ];
 
     for query in special_queries {
