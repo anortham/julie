@@ -135,7 +135,7 @@ pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id
 /// Extracts methods from impl blocks and links them to their parent types
 pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, symbols: &mut Vec<Symbol>) {
     let impl_blocks = extractor.get_impl_blocks().to_vec();
-    let base = extractor.get_base_mut();
+    let _base = extractor.get_base_mut();
 
     for impl_block in impl_blocks {
         // Find the struct/enum this impl is for

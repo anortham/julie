@@ -4,8 +4,6 @@
 
 use tree_sitter::Node;
 
-pub(super) struct DartHelpers;
-
 /// Find a child node by its type/kind
 pub(super) fn find_child_by_type<'a>(node: &Node<'a>, node_type: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
@@ -45,17 +43,7 @@ pub(super) fn get_node_text(node: &Node) -> String {
     })
 }
 
-/// Get text content of a node using content bytes (UTF-8 safe)
-pub(super) fn get_node_text_with_bytes(node: &Node, content_bytes: &[u8]) -> String {
-    let start_byte = node.start_byte();
-    let end_byte = node.end_byte();
 
-    if start_byte >= content_bytes.len() || end_byte > content_bytes.len() {
-        return String::new();
-    }
-
-    String::from_utf8_lossy(&content_bytes[start_byte..end_byte]).to_string()
-}
 
 /// Recursively traverse tree and call callback on each node
 pub(super) fn traverse_tree<F>(node: Node, callback: &mut F)
@@ -76,7 +64,7 @@ pub(super) fn is_abstract_class(node: &Node) -> bool {
 }
 
 /// Check if a function is async
-pub(super) fn is_async_function(node: &Node, content: &str) -> bool {
+pub(super) fn is_async_function(node: &Node, _content: &str) -> bool {
     // Check if the node text contains async (fallback)
     if get_node_text(node).contains("async") {
         return true;

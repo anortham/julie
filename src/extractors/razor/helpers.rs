@@ -1,6 +1,5 @@
 /// Helper utilities for AST navigation and common extraction patterns
-use crate::extractors::base::{BaseExtractor, Visibility};
-use std::collections::HashMap;
+use crate::extractors::base::Visibility;
 use tree_sitter::Node;
 
 /// Common helper methods for finding and extracting node information

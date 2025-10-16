@@ -9,7 +9,7 @@
 //! can perform complex transformations safely across entire codebases.
 
 use anyhow::Result;
-use diff_match_patch_rs::{DiffMatchPatch, Efficient, PatchInput};
+use diff_match_patch_rs::{DiffMatchPatch, Efficient};
 use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};

@@ -10,7 +10,7 @@ mod identifiers;
 mod namespaces;
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, Relationship, Symbol,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -18,9 +18,9 @@ use tree_sitter::{Node, Tree};
 // Import functions for use in this module
 use helpers::{find_child, find_child_text, extract_modifiers, determine_visibility};
 use types::{extract_class, extract_interface, extract_trait, extract_enum, extract_enum_case};
-use functions::{extract_function, find_return_type};
-use members::{extract_property, extract_constant, find_type_node, extract_property_value};
-use relationships::{extract_class_relationships, extract_interface_relationships, find_class_symbol, find_interface_symbol};
+use functions::extract_function;
+use members::{extract_property, extract_constant};
+use relationships::{extract_class_relationships, extract_interface_relationships};
 use identifiers::extract_identifier_from_node;
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
 

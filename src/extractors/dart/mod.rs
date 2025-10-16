@@ -16,7 +16,7 @@ mod types;
 use crate::extractors::base::{
     BaseExtractor, Identifier, Relationship, Symbol, SymbolOptions, Visibility,
 };
-use helpers::{DartHelpers, find_child_by_type, get_node_text};
+use helpers::{find_child_by_type, get_node_text};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;

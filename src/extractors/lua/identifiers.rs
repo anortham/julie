@@ -6,7 +6,7 @@
 /// - Member access: `obj.field`, `obj.field.nested`
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Symbol,
+    Identifier, IdentifierKind, Symbol,
 };
 use super::helpers;
 use std::collections::HashMap;

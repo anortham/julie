@@ -103,7 +103,7 @@ pub(super) fn extract_function(
 }
 
 /// Find return type node after colon
-pub(super) fn find_return_type<'a>(extractor: &PhpExtractor, node: &Node<'a>) -> Option<Node<'a>> {
+pub(super) fn find_return_type<'a>(_extractor: &PhpExtractor, node: &Node<'a>) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     let mut found_colon = false;
 

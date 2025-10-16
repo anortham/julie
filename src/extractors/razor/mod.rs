@@ -8,7 +8,6 @@
 /// - Event handlers (@onclick, etc.)
 
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
-use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 // Module declarations

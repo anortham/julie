@@ -36,7 +36,7 @@ pub(super) fn extract_visibility(base: &BaseExtractor, node: Node) -> String {
 }
 
 /// Get preceding attributes (like #[derive(...)]) for a node
-pub(super) fn get_preceding_attributes<'a>(base: &BaseExtractor, node: Node<'a>) -> Vec<Node<'a>> {
+pub(super) fn get_preceding_attributes<'a>(_base: &BaseExtractor, node: Node<'a>) -> Vec<Node<'a>> {
     let mut attributes = Vec::new();
 
     if let Some(parent) = node.parent() {

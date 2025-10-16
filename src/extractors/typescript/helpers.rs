@@ -3,29 +3,11 @@
 //! This module provides utility functions for tree traversal, node inspection,
 //! and common extraction patterns used across other modules.
 
-use crate::extractors::base::Symbol;
 use tree_sitter::Node;
 
 /// Find the containing symbol for a given node
 ///
-/// Searches through the provided symbols to find one that contains the given node
-/// by comparing line/column ranges. Only searches symbols from the same file.
-pub(super) fn find_containing_symbol<'a>(
-    node: Node,
-    symbols: &'a [Symbol],
-) -> Option<&'a Symbol> {
-    let position = node.start_position();
-    let pos_line = (position.row + 1) as u32;
 
-    // Find symbols that contain this position
-    for symbol in symbols {
-        if symbol.start_line <= pos_line && symbol.end_line >= pos_line {
-            return Some(symbol);
-        }
-    }
-
-    None
-}
 
 /// Check if a node has a modifier child of the given kind
 ///

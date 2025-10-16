@@ -3,7 +3,7 @@
 //! This module handles the main tree traversal and symbol type routing.
 //! It delegates to specialized modules for specific symbol kinds.
 
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::Symbol;
 use crate::extractors::typescript::TypeScriptExtractor;
 use super::{classes, functions, interfaces, imports_exports};
 use tree_sitter::{Node, Tree};
@@ -91,7 +91,7 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractors::base::BaseExtractor;
+    use crate::extractors::base::{BaseExtractor, SymbolKind};
 
     #[test]
     fn test_visit_all_symbol_kinds() {

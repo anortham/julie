@@ -2,7 +2,7 @@
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::extractors::base::{Symbol, SymbolKind, Relationship, RelationshipKind};
+use crate::extractors::base::{Symbol, Relationship, RelationshipKind};
 use crate::extractors::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};

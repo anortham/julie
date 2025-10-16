@@ -7,8 +7,7 @@
 ///
 /// Port of Miller's comprehensive Rust extractor
 use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, Relationship, Identifier,
-    RelationshipKind, IdentifierKind,
+    BaseExtractor, Symbol, Relationship, Identifier,
 };
 use tree_sitter::{Node, Tree};
 
@@ -128,28 +127,12 @@ impl RustExtractor {
         &mut self.base
     }
 
-    pub(super) fn get_base(&self) -> &BaseExtractor {
-        &self.base
-    }
-
     pub(super) fn get_impl_blocks(&self) -> &[ImplBlockInfo] {
         &self.impl_blocks
     }
 
     pub(super) fn add_impl_block(&mut self, block: ImplBlockInfo) {
         self.impl_blocks.push(block);
-    }
-
-    pub(super) fn clear_impl_blocks(&mut self) {
-        self.impl_blocks.clear();
-    }
-
-    pub(super) fn set_processing_impl_blocks(&mut self, value: bool) {
-        self.is_processing_impl_blocks = value;
-    }
-
-    pub(super) fn is_processing_impl_blocks(&self) -> bool {
-        self.is_processing_impl_blocks
     }
 }
 
@@ -159,11 +142,11 @@ mod tests {
 
     #[test]
     fn test_rust_extractor_creation() {
-        let extractor = RustExtractor::new(
+        let mut extractor = RustExtractor::new(
             "rust".to_string(),
             "test.rs".to_string(),
             "fn main() {}".to_string(),
         );
-        assert_eq!(extractor.get_base().file_path, "test.rs");
+        assert_eq!(extractor.get_base_mut().file_path, "test.rs");
     }
 }

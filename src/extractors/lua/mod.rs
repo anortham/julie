@@ -79,13 +79,7 @@ impl LuaExtractor {
         &mut self.base
     }
 
-    pub(super) fn symbols(&self) -> &[Symbol] {
-        &self.symbols
-    }
 
-    pub(super) fn symbols_mut(&mut self) -> &mut Vec<Symbol> {
-        &mut self.symbols
-    }
 }
 
 #[cfg(test)]

@@ -21,8 +21,7 @@ pub(super) static SECTION_END_RE: LazyLock<Regex> =
 pub(super) static LANG_ATTR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"lang=["']?([^"'\s>]+)"#).unwrap());
 
-pub(super) static COMPONENT_NAME_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"name\s*:\s*['"`]([^'"`]+)['"`]"#).unwrap());
+
 
 pub(super) static DATA_FUNCTION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*data\s*\(\s*\)\s*\{").unwrap());

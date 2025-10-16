@@ -11,8 +11,6 @@
 //! - `identifiers` - Identifier usage tracking (calls, member access)
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
-use serde_json::Value;
-use std::collections::HashMap;
 use tree_sitter::Tree;
 
 // Internal modules
@@ -133,11 +131,5 @@ impl CExtractor {
         }
     }
 
-    /// Helper for converting string metadata to serde_json::Value metadata
-    pub(super) fn create_metadata_map(&self, metadata: HashMap<String, String>) -> HashMap<String, Value> {
-        metadata
-            .into_iter()
-            .map(|(k, v)| (k, Value::String(v)))
-            .collect()
-    }
+
 }

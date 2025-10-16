@@ -1,7 +1,7 @@
 // PHP Extractor - Relationship extraction (inheritance, implementation)
 
 use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use super::{PhpExtractor, find_child, find_child_text};
+use super::{PhpExtractor, find_child};
 use std::collections::HashMap;
 use tree_sitter::Node;
 

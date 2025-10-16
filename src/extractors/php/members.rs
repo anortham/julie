@@ -158,7 +158,7 @@ pub(super) fn extract_constant(
 }
 
 /// Find type node in property declaration
-pub(super) fn find_type_node<'a>(extractor: &PhpExtractor, node: &Node<'a>) -> Option<Node<'a>> {
+pub(super) fn find_type_node<'a>(_extractor: &PhpExtractor, node: &Node<'a>) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {

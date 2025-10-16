@@ -3,7 +3,7 @@
 //! Extracts function calls, member access, and other identifier usages
 //! from C++ source code for precise code navigation.
 
-use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
+use crate::extractors::base::{IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
 

@@ -1,6 +1,6 @@
 // PHP Extractor - Identifier extraction (function calls, member access)
 
-use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
+use crate::extractors::base::{IdentifierKind, Symbol};
 use super::PhpExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;

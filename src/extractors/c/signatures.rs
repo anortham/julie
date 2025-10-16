@@ -301,5 +301,6 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct EnumValue {
     pub name: String,
+    #[allow(dead_code)]
     pub value: Option<String>,
 }
