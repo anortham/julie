@@ -12,7 +12,7 @@ pub use self::query::preprocess_fallback_query;
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
-mod formatting;
+pub(crate) mod formatting; // Exposed for testing
 mod hybrid_search;
 mod line_mode;
 mod query;
@@ -178,8 +178,15 @@ impl FastSearchTool {
         // Check output format - if "lines" mode, use FTS5 directly for line-level results
         if self.output.as_deref() == Some("lines") {
             debug!("📄 Line-level output mode requested");
-            return line_mode::line_mode_search(&self.query, self.limit, &self.workspace, handler)
-                .await;
+            return line_mode::line_mode_search(
+                &self.query,
+                &self.language,
+                &self.file_pattern,
+                self.limit,
+                &self.workspace,
+                handler,
+            )
+            .await;
         }
 
         // Perform search based on mode

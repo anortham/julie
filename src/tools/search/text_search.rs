@@ -181,38 +181,93 @@ async fn sqlite_fts_search(
         )
     })?;
 
-    // Convert FileSearchResult → Symbol (FILE_CONTENT symbols for consistency)
+    // Convert FileSearchResult → Symbol with precise line locations
+    // CRITICAL FIX: Parse file content to find actual line numbers instead of fake positions
     let mut symbols = Vec::new();
     for result in file_results {
-        // Create a FILE_CONTENT symbol from the FTS result
-        let symbol = crate::extractors::Symbol {
-            id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
-            name: format!(
-                "FILE_CONTENT: {}",
-                std::path::Path::new(&result.path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            ),
-            kind: crate::extractors::SymbolKind::Module,
-            language: "text".to_string(),
-            file_path: result.path.clone(),
-            start_line: 1,
-            start_column: 0,
-            end_line: 1,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 0,
-            signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
-            doc_comment: Some(result.snippet.clone()),
-            visibility: None,
-            parent_id: None,
-            metadata: None,
-            semantic_group: Some("file_content".to_string()),
-            confidence: Some(result.rank),
-            code_context: Some(result.snippet),
-        };
-        symbols.push(symbol);
+        // Get file content to find the actual line number of the match
+        let db_lock = db.lock().unwrap();
+        if let Ok(Some(content)) = db_lock.get_file_content(&result.path, Some(&workspace_id)) {
+            // Find the line containing the snippet text
+            // Remove FTS highlighting markers (...) from snippet for matching
+            let clean_snippet = result.snippet
+                .replace("...", "")
+                .trim()
+                .to_string();
+
+            // Search for the snippet in file content
+            let mut found_line: Option<(usize, String)> = None;
+            for (line_idx, line) in content.lines().enumerate() {
+                if line.contains(&clean_snippet) || clean_snippet.contains(line.trim()) {
+                    found_line = Some((line_idx + 1, line.to_string()));
+                    break;
+                }
+            }
+
+            if let Some((line_num, line_content)) = found_line {
+                // Create a proper symbol with real line location
+                let symbol = crate::extractors::Symbol {
+                    id: format!("fts_{}_{}", result.path.replace(['/', '\\'], "_"), line_num),
+                    name: format!(
+                        "{}:{}",
+                        std::path::Path::new(&result.path)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy(),
+                        line_num
+                    ),
+                    kind: crate::extractors::SymbolKind::Module,
+                    language: "text".to_string(),
+                    file_path: result.path.clone(),
+                    start_line: line_num as u32,
+                    start_column: 0,
+                    end_line: line_num as u32,
+                    end_column: line_content.len() as u32,
+                    start_byte: 0,
+                    end_byte: 0,
+                    signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: Some("fts_match".to_string()),
+                    confidence: Some(result.rank),
+                    code_context: Some(line_content.trim().to_string()),
+                };
+                symbols.push(symbol);
+            } else {
+                // Fallback: couldn't find exact line, use snippet as context
+                debug!("⚠️ Could not locate exact line for FTS match in {}", result.path);
+                let symbol = crate::extractors::Symbol {
+                    id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
+                    name: format!(
+                        "FILE_CONTENT: {}",
+                        std::path::Path::new(&result.path)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                    ),
+                    kind: crate::extractors::SymbolKind::Module,
+                    language: "text".to_string(),
+                    file_path: result.path.clone(),
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
+                    doc_comment: Some(result.snippet.clone()),
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: Some("file_content".to_string()),
+                    confidence: Some(result.rank),
+                    code_context: Some(result.snippet),
+                };
+                symbols.push(symbol);
+            }
+        }
     }
 
     debug!(

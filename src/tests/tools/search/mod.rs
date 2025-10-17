@@ -1,6 +1,11 @@
 // Tests extracted from src/tools/search.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod line_mode;
+mod quality;
+mod race_condition;
+mod tools;
+
 use crate::tools::search::*;
 
 #[test]

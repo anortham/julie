@@ -65,6 +65,7 @@ mod tests {
             language: None,
             workspace: None,
             output: None,
+            context_lines: None,
         };
 
         // Search MUST complete within 5 seconds or it's the lock contention bug
@@ -122,6 +123,7 @@ mod tests {
                     language: None,
                     workspace: None,
                     output: None,
+                    context_lines: None,
                 };
 
                 timeout(
@@ -172,6 +174,7 @@ mod tests {
             language: None,
             workspace: None,
             output: None,
+            context_lines: None,
         };
 
         let result = timeout(Duration::from_secs(5), search_tool.call_tool(&handler)).await??;
@@ -245,6 +248,7 @@ pub fn helper_function() {}
                 language: None,
                 workspace: None,
                 output: None,
+                context_lines: None,
             };
 
             let fast_search_query_b = FastSearchTool {
@@ -255,20 +259,21 @@ pub fn helper_function() {}
                 language: None,
                 workspace: None,
                 output: None,
+                context_lines: None,
             };
 
             let get_symbols_main = GetSymbolsTool {
                 file_path: "src/lib.rs".to_string(),
                 max_depth: 2,
                 target: None,
-                mode: None,
+                limit: None,
             };
 
             let get_symbols_extra = GetSymbolsTool {
                 file_path: "src/extra.rs".to_string(),
                 max_depth: 2,
                 target: None,
-                mode: None,
+                limit: None,
             };
 
             let handler_a = handler.clone();
@@ -357,6 +362,7 @@ pub fn embedding_vector_semantic() {}
             language: None,
             workspace: None,
             output: None,
+            context_lines: None,
         };
 
         let result = timeout(
@@ -496,6 +502,7 @@ pub fn embedding_vector_semantic() {}
             language: None,
             workspace: Some(workspace_id.clone()),
             output: None,
+            context_lines: None,
         };
 
         println!("🐛 TEST TRACE 10: About to call fast_search with 5s timeout");

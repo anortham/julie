@@ -9,14 +9,17 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 
-use super::query::{line_match_strategy, line_matches, preprocess_fallback_query};
+use super::query::{line_match_strategy, line_matches, matches_glob_pattern, preprocess_fallback_query};
 use super::types::{LineMatch, LineMatchStrategy};
 
 /// Line-level search mode (grep-style output with line numbers)
 ///
 /// Returns every line matching the query with file:line_number:line_content format.
+/// Supports language and file pattern filtering for targeted searches.
 pub async fn line_mode_search(
     query: &str,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
     limit: u32,
     workspace: &Option<String>,
     handler: &JulieServerHandler,
@@ -147,7 +150,46 @@ pub async fn line_mode_search(
         .map_err(|e| anyhow::anyhow!("Failed to spawn reference workspace search: {}", e))??
     };
 
-    if all_line_matches.is_empty() {
+    // Apply language and file pattern filtering
+    let filtered_matches: Vec<LineMatch> = all_line_matches
+        .into_iter()
+        .filter(|line_match| {
+            // Apply language filter if specified
+            let language_match = if let Some(ref lang) = language {
+                // Extract file extension and match against language
+                let path = std::path::Path::new(&line_match.file_path);
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    // Simple extension matching - could be enhanced with language detection
+                    match lang.to_lowercase().as_str() {
+                        "rust" => ext_str == "rs",
+                        "typescript" => ext_str == "ts" || ext_str == "tsx",
+                        "javascript" => ext_str == "js" || ext_str == "jsx" || ext_str == "mjs",
+                        "python" => ext_str == "py",
+                        "java" => ext_str == "java",
+                        "csharp" | "c#" => ext_str == "cs",
+                        "cpp" | "c++" => ext_str == "cpp" || ext_str == "cc" || ext_str == "cxx",
+                        "c" => ext_str == "c" || ext_str == "h",
+                        _ => ext_str == lang.to_lowercase(),
+                    }
+                } else {
+                    false
+                }
+            } else {
+                true // No language filter, accept all
+            };
+
+            // Apply file pattern filter if specified
+            let file_match = file_pattern
+                .as_ref()
+                .map(|pattern| matches_glob_pattern(&line_match.file_path, pattern))
+                .unwrap_or(true);
+
+            language_match && file_match
+        })
+        .collect();
+
+    if filtered_matches.is_empty() {
         let message = format!(
             "🔍 No lines found matching: '{}'\n\
             💡 Try a broader search term or different query",
@@ -163,11 +205,11 @@ pub async fn line_mode_search(
         "📄 Line-level search in [{}]: '{}' (found {} lines)",
         target_workspace_id,
         query,
-        all_line_matches.len()
+        filtered_matches.len()
     )];
     lines.push(String::new());
 
-    for entry in &all_line_matches {
+    for entry in &filtered_matches {
         lines.push(format!(
             "{}:{}:{}",
             entry.file_path, entry.line_number, entry.line_content

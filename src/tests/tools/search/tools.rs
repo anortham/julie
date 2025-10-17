@@ -7,6 +7,7 @@ mod search_tools_tests {
     use crate::extractors::{Symbol, SymbolKind};
     use crate::tools::search::FastSearchTool;
     use crate::tools::shared::OptimizedResponse;
+    use crate::tools::search::formatting::format_optimized_results;
 
     #[test]
     fn test_short_response_unchanged() {
@@ -18,6 +19,7 @@ mod search_tools_tests {
             limit: 10,
             workspace: Some("primary".to_string()),
             output: None,
+            context_lines: None,
         };
 
         let symbols = vec![Symbol {
@@ -51,7 +53,7 @@ mod search_tools_tests {
             next_actions: vec!["Examine implementation".to_string()],
         };
 
-        let result = search_tool.format_optimized_results(&optimized);
+        let result = format_optimized_results(&search_tool.query, &optimized);
 
         // NEW FORMAT: Minimal 2-line output for AI agents
         // Line 1: Summary with count and confidence
@@ -77,6 +79,7 @@ mod search_tools_tests {
             limit: 10,
             workspace: Some("primary".to_string()),
             output: None,
+            context_lines: None,
         };
 
         // Create a symbol with more than 10 lines of context
@@ -116,7 +119,7 @@ mod search_tools_tests {
             next_actions: vec![],
         };
 
-        let result = search_tool.format_optimized_results(&optimized);
+        let result = format_optimized_results(&search_tool.query, &optimized);
 
         // NEW FORMAT: Minimal output regardless of context length
         assert!(result.contains("Found 1 results for 'longFunction'"));
@@ -142,6 +145,7 @@ mod search_tools_tests {
             limit: 100,
             workspace: Some("primary".to_string()),
             output: None,
+            context_lines: None,
         };
 
         // Create many symbols - text output will remain minimal
@@ -181,7 +185,7 @@ mod search_tools_tests {
             next_actions: vec![],
         };
 
-        let result = search_tool.format_optimized_results(&optimized);
+        let result = format_optimized_results(&search_tool.query, &optimized);
 
         // NEW FORMAT: Minimal output shows top 5 names only
         assert!(result.contains("Found 70 results for 'manyResults'"));
@@ -211,6 +215,7 @@ mod search_tools_tests {
             limit: 100,
             workspace: Some("primary".to_string()),
             output: None,
+            context_lines: None,
         };
 
         // Create 80 symbols - text output will remain minimal
@@ -250,7 +255,7 @@ mod search_tools_tests {
             next_actions: vec![],
         };
 
-        let result = search_tool.format_optimized_results(&optimized);
+        let result = format_optimized_results(&search_tool.query, &optimized);
 
         // NEW FORMAT: Minimal 2-line output
         assert!(result.contains("Found 80 results for 'manyResults'"));
@@ -287,6 +292,7 @@ mod search_tools_tests {
             limit: 10,
             workspace: Some("primary".to_string()),
             output: None,
+            context_lines: None,
         };
 
         // Test 2: workspace="all" - this works because it routes to Tantivy
@@ -298,6 +304,7 @@ mod search_tools_tests {
             limit: 10,
             workspace: Some("all".to_string()),
             output: None,
+            context_lines: None,
         };
 
         // Note: This test documents the bug but doesn't actually test the routing logic
