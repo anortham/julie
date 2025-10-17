@@ -497,7 +497,7 @@ impl ServerHandler for JulieServerHandler {
 
         match result {
             Ok(call_result) => {
-                info!("✅ Tool executed successfully");
+                debug!("✅ Tool executed successfully");
                 Ok(call_result)
             }
             Err(e) => {

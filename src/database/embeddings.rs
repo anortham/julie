@@ -163,7 +163,7 @@ impl SymbolDatabase {
         tx.commit()?;
 
         let duration = start_time.elapsed();
-        info!(
+        debug!(
             "✅ Bulk embedding storage complete! {} embeddings in {:.2}ms ({:.0} embeddings/sec)",
             embeddings.len(),
             duration.as_millis(),
