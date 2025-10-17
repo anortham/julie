@@ -45,8 +45,8 @@ impl SymbolDatabase {
 
         debug!("📁 Inserting {} unique file records", unique_files.len());
         let mut file_stmt = tx.prepare(
-            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed, workspace_id)
-             VALUES (?1, ?2, '', 0, 0, ?3, ?4)"
+            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+             VALUES (?1, ?2, '', 0, 0, ?3)"
         )?;
 
         let timestamp = chrono::Utc::now().timestamp();
@@ -54,8 +54,7 @@ impl SymbolDatabase {
             file_stmt.execute(rusqlite::params![
                 file_path,
                 language,
-                timestamp,
-                workspace_id
+                timestamp
             ])?;
         }
         drop(file_stmt);
@@ -65,8 +64,8 @@ impl SymbolDatabase {
             "INSERT OR REPLACE INTO symbols
              (id, name, kind, language, file_path, signature, start_line, start_col,
               end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-              parent_id, metadata, semantic_group, confidence, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+              parent_id, metadata, semantic_group, confidence)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         )?;
 
         // STEP 5: Sort symbols in parent-first order to avoid foreign key violations
@@ -191,8 +190,7 @@ impl SymbolDatabase {
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
-                    symbol.confidence,
-                    workspace_id
+                    symbol.confidence
                 ]) {
                     Ok(_) => {}
                     Err(e) => {
@@ -251,7 +249,6 @@ impl SymbolDatabase {
             "idx_symbols_file",
             "idx_symbols_semantic",
             "idx_symbols_parent",
-            "idx_symbols_workspace",
         ];
 
         for index in &indexes {
@@ -291,10 +288,6 @@ impl SymbolDatabase {
         )?;
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
-            [],
-        )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id)",
             [],
         )?;
 

@@ -17,12 +17,20 @@ use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
 
+// Import VectorStore type
+use tokio::sync::RwLock;
+type VectorIndex = crate::embeddings::vector_store::VectorStore;
+
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
     embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
     extractor_manager: Arc<ExtractorManager>,
+
+    // Vector store for HNSW semantic search (kept in sync with incremental updates)
+    #[allow(dead_code)]
+    vector_store: Option<Arc<RwLock<VectorIndex>>>,
 
     // Processing queues
     index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -69,6 +77,7 @@ impl IncrementalIndexer {
         db: Arc<StdMutex<SymbolDatabase>>,
         embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
         extractor_manager: Arc<ExtractorManager>,
+        vector_store: Option<Arc<RwLock<VectorIndex>>>,
     ) -> Result<Self> {
         let supported_extensions = Self::build_supported_extensions();
         let ignore_patterns = Self::build_ignore_patterns()?;
@@ -78,6 +87,7 @@ impl IncrementalIndexer {
             db,
             embedding_engine,
             extractor_manager,
+            vector_store,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             supported_extensions,
             ignore_patterns,
@@ -392,6 +402,7 @@ impl IncrementalIndexer {
         drop(db);
 
         // 5. Update embeddings using mutex-protected engine
+        let _symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         {
             let mut embedding_engine = self.embedding_engine.lock().unwrap();
             if let Err(e) = embedding_engine
@@ -406,9 +417,13 @@ impl IncrementalIndexer {
                     path_str
                 );
             }
-        }
+        } // Release embedding_engine lock
 
-        info!("Successfully updated all indexes for {}", path.display());
+        // 🔧 REFACTOR: Removed incremental VectorStore updates
+        // SQLite is now the single source of truth - HNSW rebuilt from SQLite on demand
+        // File watcher only updates SQLite; semantic search lazy-loads from disk
+
+        info!("Successfully updated SQLite indexes for {}", path.display());
         Ok(())
     }
 
@@ -444,7 +459,11 @@ impl IncrementalIndexer {
             }
         }
 
-        info!("Successfully removed all indexes for {}", path.display());
+        // 🔧 REFACTOR: Removed incremental VectorStore updates
+        // SQLite is now the single source of truth - HNSW rebuilt from SQLite on demand
+        // File watcher only updates SQLite; semantic search lazy-loads from disk
+
+        info!("Successfully removed SQLite indexes for {}", path.display());
         Ok(())
     }
 

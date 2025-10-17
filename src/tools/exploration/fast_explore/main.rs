@@ -168,13 +168,12 @@ impl FastExploreTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
-        let workspace_id =
+        let _workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
-        let workspace_ids = vec![workspace_id];
 
         let relationship_counts = tokio::task::block_in_place(|| {
             let db_lock = db.lock().unwrap();
-            db_lock.get_relationship_type_statistics(&workspace_ids)
+            db_lock.get_relationship_type_statistics()
         })?;
 
         let total_relationships: i64 = relationship_counts.values().sum();
@@ -208,7 +207,7 @@ impl FastExploreTool {
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
         let workspace_ids = vec![workspace_id];
         let file_symbol_counts = db_lock.get_file_statistics(&workspace_ids)?;
-        let file_rel_counts = db_lock.get_file_relationship_statistics(&workspace_ids)?;
+        let file_rel_counts = db_lock.get_file_relationship_statistics()?;
 
         let mut complexity_scores: Vec<(String, i64)> = Vec::new();
         for (file, symbol_count) in file_symbol_counts.iter() {

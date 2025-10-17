@@ -63,48 +63,19 @@ pub async fn semantic_search_impl(
             debug!("🧠 Loading vector store from: {}", vectors_dir.display());
 
             let vector_store = if vectors_dir.exists() {
-                // Create a new vector store (384 dimensions for BGE-Small model)
+                // 🔧 REFACTOR: NEW ARCHITECTURE - No embedding loading, just HNSW index
+                // SQLite is the single source of truth. We only load the HNSW graph structure
+                // and fetch vectors from SQLite on-demand during search for re-ranking.
                 let mut store = crate::embeddings::vector_store::VectorStore::new(384)?;
 
-                // Load embeddings from database
-                let embeddings_result = {
-                    let db_lock = db.lock().map_err(|_| {
-                        anyhow::anyhow!("Could not acquire database lock for reference workspace")
-                    })?;
-                    let model_name = "bge-small"; // Match the embedding model
-                    db_lock.load_all_embeddings(model_name)
-                };
-
-                match embeddings_result {
-                    Ok(embeddings) => {
-                        let count = embeddings.len();
-                        if count > 0 {
-                            debug!("📥 Loading {} embeddings into vector store", count);
-
-                            // Store each embedding in the vector store
-                            for (symbol_id, vector) in embeddings {
-                                if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
-                                    warn!("Failed to store embedding for symbol {}: {}", symbol_id, e);
-                                }
-                            }
-
-                            debug!("✅ Loaded {} embeddings into vector store", count);
-
-                            // Load HNSW index from disk
-                            match store.load_hnsw_index(&vectors_dir) {
-                                Ok(_) => {
-                                    debug!("✅ HNSW index loaded from disk for workspace '{}'", workspace_id);
-                                }
-                                Err(e) => {
-                                    warn!("⚠️ Failed to load HNSW from disk: {}. Will use brute-force search.", e);
-                                }
-                            }
-                        }
-
+                // Load HNSW index from disk (just the graph structure + id_mapping)
+                match store.load_hnsw_index(&vectors_dir) {
+                    Ok(_) => {
+                        debug!("✅ HNSW index loaded from disk for workspace '{}'", workspace_id);
                         Some(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
                     }
                     Err(e) => {
-                        warn!("Could not load embeddings from database: {}. Semantic search not available.", e);
+                        warn!("⚠️ Failed to load HNSW from disk: {}. Semantic search not available.", e);
                         None
                     }
                 }
@@ -215,8 +186,10 @@ pub async fn semantic_search_impl(
     let similarity_threshold = 0.3; // Minimum similarity score
 
     let store_guard = vector_store.read().await;
-    if store_guard.is_empty() {
-        debug!("⚠️ Semantic vector store empty - falling back to text search");
+
+    // 🔧 REFACTOR: Check if HNSW index is built instead of checking if HashMap is empty
+    if !store_guard.has_hnsw_index() {
+        debug!("⚠️ HNSW index not available - falling back to text search");
         return crate::tools::search::text_search::text_search_impl(
             query,
             language,
@@ -228,9 +201,13 @@ pub async fn semantic_search_impl(
         .await;
     }
 
-    let (semantic_results, used_hnsw) = match store_guard
-        .search_with_fallback(&query_embedding, search_limit, similarity_threshold)
-    {
+    // 🔧 REFACTOR: Use new architecture - fetch vectors from SQLite during search
+    // We need to access the database within the async context, so use tokio::task::block_in_place
+    let semantic_results = match tokio::task::block_in_place(|| {
+        let db_lock = db.lock().unwrap();
+        let model_name = "bge-small"; // Match the embedding model
+        store_guard.search_similar_hnsw(&*db_lock, &query_embedding, search_limit, similarity_threshold, model_name)
+    }) {
         Ok(results) => results,
         Err(e) => {
             warn!("Semantic similarity search failed: {} - falling back to text search", e);
@@ -246,6 +223,8 @@ pub async fn semantic_search_impl(
         }
     };
     drop(store_guard);
+
+    let used_hnsw = true; // Always using HNSW in the new architecture
 
     if used_hnsw {
         debug!(

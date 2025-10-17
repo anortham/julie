@@ -8,7 +8,7 @@ use std::path::Path;
 use tracing::{debug, info};
 
 impl SymbolDatabase {
-    pub fn store_file_info(&self, file_info: &FileInfo, workspace_id: &str) -> Result<()> {
+    pub fn store_file_info(&self, file_info: &FileInfo, _workspace_id: &str) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -16,8 +16,8 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 file_info.path,
                 file_info.language,
@@ -25,8 +25,7 @@ impl SymbolDatabase {
                 file_info.size,
                 file_info.last_modified,
                 now, // Use calculated timestamp instead of unixepoch()
-                file_info.symbol_count,
-                workspace_id
+                file_info.symbol_count
             ],
         )?;
 
@@ -35,7 +34,7 @@ impl SymbolDatabase {
     }
 
     /// 🚀 BLAZING-FAST bulk file storage for initial indexing
-    pub fn bulk_store_files(&self, files: &[FileInfo], workspace_id: &str) -> Result<()> {
+    pub fn bulk_store_files(&self, files: &[FileInfo], _workspace_id: &str) -> Result<()> {
         if files.is_empty() {
             return Ok(());
         }
@@ -57,8 +56,8 @@ impl SymbolDatabase {
         let tx = self.conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id, content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )?;
 
         for file in files {
@@ -70,7 +69,6 @@ impl SymbolDatabase {
                 file.last_modified,
                 now,
                 file.symbol_count,
-                workspace_id,
                 file.content.as_deref().unwrap_or("") // CASCADE: Include content
             ])?;
         }
@@ -122,10 +120,6 @@ impl SymbolDatabase {
             "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
             [],
         )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id)",
-            [],
-        )?;
 
         Ok(())
     }
@@ -144,7 +138,7 @@ impl SymbolDatabase {
         size: u64,
         last_modified: u64,
         content: &str,
-        workspace_id: &str,
+        _workspace_id: &str,
     ) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -153,53 +147,34 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, content, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
-            params![path, language, hash, size as i64, last_modified as i64, now, content, workspace_id],
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)",
+            params![path, language, hash, size as i64, last_modified as i64, now, content],
         )?;
 
         Ok(())
     }
 
     /// CASCADE: Get file content from database
-    pub fn get_file_content(
-        &self,
-        path: &str,
-        workspace_id: Option<&str>,
-    ) -> Result<Option<String>> {
-        match workspace_id {
-            Some(ws_id) => {
-                let mut stmt = self
-                    .conn
-                    .prepare("SELECT content FROM files WHERE path = ?1 AND workspace_id = ?2")?;
+    pub fn get_file_content(&self, path: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content FROM files WHERE path = ?1")?;
 
-                match stmt.query_row(params![path, ws_id], |row| row.get::<_, Option<String>>(0)) {
-                    Ok(content) => Ok(content),
-                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(anyhow!("Database error: {}", e)),
-                }
-            }
-            None => {
-                let mut stmt = self
-                    .conn
-                    .prepare("SELECT content FROM files WHERE path = ?1")?;
-
-                match stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0)) {
-                    Ok(content) => Ok(content),
-                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(anyhow!("Database error: {}", e)),
-                }
-            }
+        match stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0)) {
+            Ok(content) => Ok(content),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow!("Database error: {}", e)),
         }
     }
 
-    /// CASCADE: Get all file contents for workspace (for rebuilding Tantivy)
-    pub fn get_all_file_contents(&self, workspace_id: &str) -> Result<Vec<(String, String)>> {
+    /// CASCADE: Get all file contents for workspace
+    pub fn get_all_file_contents(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT path, content FROM files WHERE workspace_id = ?1 AND content IS NOT NULL",
+            "SELECT path, content FROM files WHERE content IS NOT NULL",
         )?;
 
-        let rows = stmt.query_map(params![workspace_id], |row| {
+        let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
@@ -212,12 +187,7 @@ impl SymbolDatabase {
     }
 
     /// Get recently modified files (last N days)
-    pub fn get_recent_files(
-        &self,
-        workspace_id: Option<&str>,
-        days: u32,
-        limit: usize,
-    ) -> Result<Vec<FileInfo>> {
+    pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -225,70 +195,37 @@ impl SymbolDatabase {
 
         let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
 
+        let mut stmt = self.conn.prepare(
+            "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+             FROM files
+             WHERE last_modified >= ?1
+             ORDER BY last_modified DESC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![cutoff_time, limit], |row| {
+            Ok(FileInfo {
+                path: row.get(0)?,
+                language: row.get(1)?,
+                hash: row.get(2)?,
+                size: row.get(3)?,
+                last_modified: row.get(4)?,
+                last_indexed: row.get(5)?,
+                symbol_count: row.get(6)?,
+                content: row.get(7)?,
+            })
+        })?;
+
         let mut results = Vec::new();
-
-        if let Some(ws_id) = workspace_id {
-            let mut stmt = self.conn.prepare(
-                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
-                 FROM files
-                 WHERE workspace_id = ?1 AND last_modified >= ?2
-                 ORDER BY last_modified DESC
-                 LIMIT ?3",
-            )?;
-
-            let rows = stmt.query_map(params![ws_id, cutoff_time, limit], |row| {
-                Ok(FileInfo {
-                    path: row.get(0)?,
-                    language: row.get(1)?,
-                    hash: row.get(2)?,
-                    size: row.get(3)?,
-                    last_modified: row.get(4)?,
-                    last_indexed: row.get(5)?,
-                    symbol_count: row.get(6)?,
-                    content: row.get(7)?,
-                })
-            })?;
-
-            for row in rows {
-                results.push(row?);
-            }
-        } else {
-            let mut stmt = self.conn.prepare(
-                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
-                 FROM files
-                 WHERE last_modified >= ?1
-                 ORDER BY last_modified DESC
-                 LIMIT ?2",
-            )?;
-
-            let rows = stmt.query_map(params![cutoff_time, limit], |row| {
-                Ok(FileInfo {
-                    path: row.get(0)?,
-                    language: row.get(1)?,
-                    hash: row.get(2)?,
-                    size: row.get(3)?,
-                    last_modified: row.get(4)?,
-                    last_indexed: row.get(5)?,
-                    symbol_count: row.get(6)?,
-                    content: row.get(7)?,
-                })
-            })?;
-
-            for row in rows {
-                results.push(row?);
-            }
+        for row in rows {
+            results.push(row?);
         }
 
         Ok(results)
     }
 
     /// CASCADE: Search file content using FTS5
-    pub fn search_file_content_fts(
-        &self,
-        query: &str,
-        workspace_id: Option<&str>,
-        limit: usize,
-    ) -> Result<Vec<FileSearchResult>> {
+    pub fn search_file_content_fts(&self, query: &str, limit: usize) -> Result<Vec<FileSearchResult>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
         // This prevents errors like "fts5: syntax error near '.'" when searching for dotted names
         let sanitized_query = Self::sanitize_fts5_query(query);
@@ -297,49 +234,25 @@ impl SymbolDatabase {
             query, sanitized_query
         );
 
+        let mut stmt = self.conn.prepare(
+            "SELECT path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
+             FROM files_fts
+             WHERE files_fts MATCH ?1
+             ORDER BY rank DESC
+             LIMIT ?2"
+        )?;
+
+        let rows = stmt.query_map(params![sanitized_query, limit], |row| {
+            Ok(FileSearchResult {
+                path: row.get(0)?,
+                snippet: row.get(1)?,
+                rank: row.get::<_, f64>(2)? as f32,
+            })
+        })?;
+
         let mut results = Vec::new();
-
-        if let Some(ws_id) = workspace_id {
-            let mut stmt = self.conn.prepare(
-                "SELECT files_fts.path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
-                 FROM files_fts
-                 JOIN files ON files_fts.path = files.path
-                 WHERE files_fts MATCH ?1 AND files.workspace_id = ?2
-                 ORDER BY rank DESC
-                 LIMIT ?3"
-            )?;
-
-            let rows = stmt.query_map(params![sanitized_query, ws_id, limit], |row| {
-                Ok(FileSearchResult {
-                    path: row.get(0)?,
-                    snippet: row.get(1)?,
-                    rank: row.get::<_, f64>(2)? as f32,
-                })
-            })?;
-
-            for row in rows {
-                results.push(row?);
-            }
-        } else {
-            let mut stmt = self.conn.prepare(
-                "SELECT path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
-                 FROM files_fts
-                 WHERE files_fts MATCH ?1
-                 ORDER BY rank DESC
-                 LIMIT ?2"
-            )?;
-
-            let rows = stmt.query_map(params![sanitized_query, limit], |row| {
-                Ok(FileSearchResult {
-                    path: row.get(0)?,
-                    snippet: row.get(1)?,
-                    rank: row.get::<_, f64>(2)? as f32,
-                })
-            })?;
-
-            for row in rows {
-                results.push(row?);
-            }
+        for row in rows {
+            results.push(row?);
         }
 
         Ok(results)
@@ -406,38 +319,28 @@ impl SymbolDatabase {
     }
 
     /// Delete file record for a specific workspace (workspace-aware cleanup)
-    pub fn delete_file_record_in_workspace(
-        &self,
-        file_path: &str,
-        workspace_id: &str,
-    ) -> Result<()> {
+    pub fn delete_file_record_in_workspace(&self, file_path: &str) -> Result<()> {
         let count = self.conn.execute(
-            "DELETE FROM files WHERE path = ?1 AND workspace_id = ?2",
-            params![file_path, workspace_id],
+            "DELETE FROM files WHERE path = ?1",
+            params![file_path],
         )?;
 
         debug!(
-            "Deleted file record for '{}' in workspace '{}' ({} rows affected)",
-            file_path, workspace_id, count
+            "Deleted file record for '{}' ({} rows affected)",
+            file_path, count
         );
         Ok(())
     }
 
     /// Store symbols in a transaction (regular method for incremental updates)
-    pub fn get_file_hashes_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Result<std::collections::HashMap<String, String>> {
+    pub fn get_file_hashes_for_workspace(&self) -> Result<std::collections::HashMap<String, String>> {
         let mut stmt = self.conn.prepare(
-            "
-            SELECT path, hash
-            FROM files
-            WHERE workspace_id = ?1
-            ORDER BY path
-        ",
+            "SELECT path, hash
+             FROM files
+             ORDER BY path",
         )?;
 
-        let rows = stmt.query_map([workspace_id], |row| {
+        let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?, // path
                 row.get::<_, String>(1)?, // hash
@@ -451,9 +354,8 @@ impl SymbolDatabase {
         }
 
         debug!(
-            "Retrieved {} file hashes for workspace '{}' from database",
-            file_hashes.len(),
-            workspace_id
+            "Retrieved {} file hashes from database",
+            file_hashes.len()
         );
         Ok(file_hashes)
     }

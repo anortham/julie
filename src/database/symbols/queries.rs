@@ -181,10 +181,11 @@ impl SymbolDatabase {
     /// 🔥 CASCADE FTS5: Find symbols using full-text search with BM25 ranking
     /// Replaces slow LIKE queries with fast FTS5 MATCH queries
     /// Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
+    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn find_symbols_by_pattern(
         &self,
         pattern: &str,
-        workspace_ids: Option<Vec<String>>,
+        _workspace_ids: Option<Vec<String>>,
     ) -> Result<Vec<Symbol>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
         let sanitized_pattern = Self::sanitize_fts5_query(pattern);
@@ -192,56 +193,19 @@ impl SymbolDatabase {
             "🔍 FTS5 query sanitization: '{}' -> '{}'",
             pattern, sanitized_pattern
         );
-        let (query, params) = if let Some(ws_ids) = workspace_ids {
-            if ws_ids.is_empty() {
-                return Ok(Vec::new());
-            }
 
-            let placeholders = ws_ids
-                .iter()
-                .enumerate()
-                .map(|(i, _)| format!("?{}", i + 2))
-                .collect::<Vec<_>>()
-                .join(",");
+        // 🔥 FTS5 MATCH with BM25 ranking - no workspace filter needed
+        // Prioritize exact name matches with 10x weight, then signature (5x), doc_comment (2x), code_context (1x)
+        let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
+                           s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
+                           s.parent_id, s.metadata, s.semantic_group, s.confidence
+                     FROM symbols s
+                     INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
+                     WHERE symbols_fts MATCH ?1
+                     ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)";
 
-            // 🔥 FTS5 MATCH with BM25 ranking and workspace filtering
-            // Prioritize exact name matches with 10x weight, then signature (5x), doc_comment (2x), code_context (1x)
-            let query = format!(
-                "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
-                        s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
-                        s.parent_id, s.metadata, s.semantic_group, s.confidence, s.workspace_id
-                 FROM symbols s
-                 INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
-                 WHERE symbols_fts MATCH ?1 AND s.workspace_id IN ({})
-                 ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)",
-                placeholders
-            );
-
-            let mut params = vec![sanitized_pattern.clone()];
-            params.extend(ws_ids);
-            (query, params)
-        } else {
-            // 🔥 FTS5 MATCH with BM25 ranking - no workspace filter
-            let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
-                               s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
-                               s.parent_id, s.metadata, s.semantic_group, s.confidence, s.workspace_id
-                         FROM symbols s
-                         INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
-                         WHERE symbols_fts MATCH ?1
-                         ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)".to_string();
-            (query, vec![sanitized_pattern])
-        };
-
-        let mut stmt = self.conn.prepare(&query)?;
-
-        let symbol_iter = stmt.query_map(
-            params
-                .iter()
-                .map(|p| p as &dyn rusqlite::ToSql)
-                .collect::<Vec<_>>()
-                .as_slice(),
-            |row| self.row_to_symbol(row),
-        )?;
+        let mut stmt = self.conn.prepare(query)?;
+        let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
 
         let mut symbols = Vec::new();
         for symbol_result in symbol_iter {

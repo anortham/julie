@@ -512,21 +512,9 @@ impl JulieWorkspace {
                 let count = embeddings.len();
                 if count > 0 {
                     info!(
-                        "📥 Loading {} embeddings from database into vector store",
+                        "📥 Loaded {} embeddings from database for HNSW",
                         count
                     );
-
-                    // Store each embedding in the vector store
-                    for (symbol_id, vector) in embeddings {
-                        if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
-                            warn!(
-                                "Failed to store embedding for symbol {}: {}",
-                                symbol_id, e
-                            );
-                        }
-                    }
-
-                    info!("✅ Loaded {} embeddings into vector store", count);
 
                     // Now try to load HNSW index from disk (fast path)
                     let vectors_dir = self.workspace_vectors_path(&workspace_id);
@@ -550,9 +538,10 @@ impl JulieWorkspace {
 
                     // If disk load failed, build HNSW from embeddings (slower path)
                     // 🚀 CRITICAL: This 30-60s operation now runs WITHOUT holding database lock!
+                    // 🔧 REFACTOR: Pass embeddings directly to build_hnsw_index (no HashMap storage)
                     if !loaded_from_disk {
                         info!("🏗️  Building HNSW index from {} embeddings...", count);
-                        match store.build_hnsw_index() {
+                        match store.build_hnsw_index(&embeddings) {
                             Ok(_) => {
                                 info!("✅ HNSW index built successfully - semantic search ready!");
 
@@ -603,6 +592,17 @@ impl JulieWorkspace {
             ));
         }
 
+        // 🔧 FIX: Initialize VectorStore for incremental updates BEFORE file watcher starts
+        // This loads HNSW from disk (if exists) so file watcher can update it incrementally
+        // For primary workspace, keeping ~11MB in memory is acceptable for incremental updates
+        if self.vector_store.is_none() {
+            info!("🧠 Lazy-loading VectorStore for incremental updates");
+            if let Err(e) = self.initialize_vector_store() {
+                warn!("Failed to initialize VectorStore for file watcher: {}. Incremental semantic updates disabled.", e);
+                // Continue anyway - file watcher will work for SQLite updates
+            }
+        }
+
         info!("Initializing file watcher for: {}", self.root.display());
 
         // Create placeholder extractor manager for now
@@ -613,6 +613,7 @@ impl JulieWorkspace {
             self.db.as_ref().unwrap().clone(),
             self.embeddings.as_ref().unwrap().clone(),
             extractor_manager,
+            self.vector_store.clone(), // Pass vector_store for incremental HNSW updates
         )?;
 
         self.watcher = Some(file_watcher);

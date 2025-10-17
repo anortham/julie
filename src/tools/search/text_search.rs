@@ -65,25 +65,62 @@ async fn database_search_with_workspace_filter(
         .await?
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-    let db = workspace
-        .db
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+    // Determine if searching primary or reference workspace
+    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
+        workspace.root.clone(),
+    );
+    let primary_workspace_id = registry_service
+        .get_primary_workspace_id()
+        .await?
+        .unwrap_or_else(|| "primary".to_string());
+
+    let target_workspace_id = workspace_ids.first().ok_or_else(|| {
+        anyhow::anyhow!("No workspace ID provided")
+    })?;
+
+    let is_primary = target_workspace_id == &primary_workspace_id;
 
     // Apply query preprocessing for better fallback search quality
     let processed_query = preprocess_fallback_query(query);
     debug!(
-        "📝 Workspace filter query preprocessed: '{}' -> '{}'",
-        query, processed_query
+        "📝 Workspace filter query preprocessed: '{}' -> '{}' (workspace: {}, is_primary: {})",
+        query, processed_query, target_workspace_id, is_primary
     );
 
-    // Use the workspace-aware database search with processed query
-    // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-    let mut results = tokio::task::block_in_place(|| {
-        let db_lock = db.lock().unwrap();
-        db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
-    })?;
+    // Get the correct database (primary or reference workspace)
+    let mut results = if is_primary {
+        // Use primary workspace database
+        let db = workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+
+        tokio::task::block_in_place(|| {
+            let db_lock = db.lock().unwrap();
+            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
+        })?
+    } else {
+        // Open reference workspace database
+        let ref_db_path = workspace.workspace_db_path(target_workspace_id);
+        if !ref_db_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Reference workspace database not found: {}",
+                target_workspace_id
+            ));
+        }
+
+        debug!(
+            "📂 Opening reference workspace DB: {:?}",
+            ref_db_path
+        );
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
+            let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+            ref_db.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to search reference workspace: {}", e))??
+    };
 
     // Apply language filtering if specified
     if let Some(ref lang) = language {
@@ -150,7 +187,7 @@ async fn sqlite_fts_search(
         .ok_or_else(|| anyhow::anyhow!("No database available for FTS search"))?;
 
     // Get workspace ID for filtering
-    let workspace_id = {
+    let _workspace_id = {
         let registry_service =
             crate::workspace::registry_service::WorkspaceRegistryService::new(
                 workspace.root.clone(),
@@ -176,7 +213,6 @@ async fn sqlite_fts_search(
         let db_lock = db.lock().unwrap();
         db_lock.search_file_content_fts(
             &processed_query,
-            Some(&workspace_id),
             limit as usize,
         )
     })?;
@@ -187,7 +223,7 @@ async fn sqlite_fts_search(
     for result in file_results {
         // Get file content to find the actual line number of the match
         let db_lock = db.lock().unwrap();
-        if let Ok(Some(content)) = db_lock.get_file_content(&result.path, Some(&workspace_id)) {
+        if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
             // Find the line containing the snippet text
             // Remove FTS highlighting markers (...) from snippet for matching
             let clean_snippet = result.snippet

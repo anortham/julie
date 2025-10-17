@@ -60,7 +60,8 @@ mod hnsw_tests {
         }
 
         // WHEN: We build an HNSW index
-        let result = store.build_hnsw_index();
+        let embeddings = store.get_all_vectors();
+        let result = store.build_hnsw_index(&embeddings);
 
         // THEN: Index should be built successfully
         assert!(result.is_ok(), "HNSW index building should succeed");
@@ -89,7 +90,8 @@ mod hnsw_tests {
         }
 
         // AND: HNSW index is built
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
 
         // WHEN: We perform similarity search
         let query = generate_test_vector(384, 9999);
@@ -147,7 +149,8 @@ mod hnsw_tests {
         );
 
         // HNSW search
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
         let hnsw_results = store.search_similar_hnsw(&query, 5, 0.0)?;
         println!(
             "HNSW results: {:?}",
@@ -226,7 +229,8 @@ mod hnsw_tests {
         store.store_vector("symbol_a".to_string(), vec![1.0, 0.0, 0.0])?;
         store.store_vector("symbol_b".to_string(), vec![0.0, 1.0, 0.0])?;
 
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
 
         let (results, used_hnsw) = store.search_with_fallback(&[1.0, 0.0, 0.0], 5, 0.5)?;
 
@@ -260,7 +264,8 @@ mod hnsw_tests {
             store.store_vector(id.clone(), vector.clone())?;
         }
 
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
 
         // WHEN: We save the index to disk
         let result = store.save_hnsw_index(&index_path);
@@ -297,7 +302,7 @@ mod hnsw_tests {
             store1.store_vector(id.clone(), vector.clone())?;
         }
 
-        store1.build_hnsw_index()?;
+        { let embeddings = store1.get_all_vectors(); store1.build_hnsw_index(&embeddings) }?;
         store1.save_hnsw_index(&index_path)?;
 
         // Perform a search to get baseline results
@@ -352,7 +357,8 @@ mod hnsw_tests {
             store.store_vector(id.clone(), vector.clone())?;
         }
 
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
 
         // WHEN: We add new vectors after index is built
         let new_vector_id = "symbol_new".to_string();
@@ -389,7 +395,8 @@ mod hnsw_tests {
             store.store_vector(id.clone(), vector.clone())?;
         }
 
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
 
         // WHEN: We remove a vector
         let removed_id = "symbol_50".to_string();
@@ -425,7 +432,8 @@ mod hnsw_tests {
         let mut store = VectorStore::new(384)?;
 
         // WHEN: We try to build an index with no vectors
-        let result = store.build_hnsw_index();
+        let embeddings = store.get_all_vectors();
+        let result = store.build_hnsw_index(&embeddings);
 
         // THEN: Should handle gracefully (either error or succeed with empty index)
         // This test documents the expected behavior
@@ -472,7 +480,8 @@ mod hnsw_tests {
         // WHEN: We build index and search
         println!("Building HNSW index for 50k vectors...");
         let build_start = Instant::now();
-        store.build_hnsw_index()?;
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings)?;
         let build_duration = build_start.elapsed();
 
         println!("Index built in {:?}", build_duration);

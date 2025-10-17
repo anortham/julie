@@ -58,7 +58,7 @@ pub async fn generate_embeddings_from_sqlite(
         let db_lock = db.lock().unwrap();
         info!("🐛 Database lock acquired successfully!");
         db_lock
-            .get_symbols_without_embeddings(&workspace_id)
+            .get_symbols_without_embeddings()
             .context("Failed to read symbols without embeddings from database")?
     };
     info!(
@@ -332,15 +332,8 @@ async fn build_and_save_hnsw_index(
             let count = embeddings.len();
             info!("📥 Loaded {} embeddings from database for HNSW", count);
 
-            // Store in VectorStore for HNSW building
-            for (symbol_id, vector) in embeddings {
-                if let Err(e) = vector_store.store_vector(symbol_id.clone(), vector) {
-                    warn!("Failed to store vector {}: {}", symbol_id, e);
-                }
-            }
-
-            // Build HNSW index
-            match vector_store.build_hnsw_index() {
+            // Build HNSW index directly from embeddings (no HashMap storage needed)
+            match vector_store.build_hnsw_index(&embeddings) {
                 Ok(_) => {
                     info!(
                         "✅ HNSW index built in {:.2}s",
@@ -364,10 +357,11 @@ async fn build_and_save_hnsw_index(
                     } else {
                         info!("💾 HNSW index saved to {}", vectors_path.display());
 
-                        // 🔥 CRITICAL MEMORY FIX: Immediately release memory after save
-                        // VectorStore + HNSW graph are no longer needed - data is on disk
-                        vector_store.clear();
-                        info!("🧹 VectorStore memory released after successful save");
+                        // 🔧 FIX: DON'T clear VectorStore for primary workspace
+                        // File watcher needs it in memory for incremental updates (~11MB is acceptable)
+                        // NOTE: This VectorStore is LOCAL to this function and will be dropped anyway
+                        // The real VectorStore that file watcher uses is lazy-loaded from disk in initialize_file_watcher()
+                        info!("✅ HNSW index persisted - file watcher will lazy-load for incremental updates");
                     }
                 }
                 Err(e) => {

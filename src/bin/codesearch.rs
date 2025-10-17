@@ -370,7 +370,7 @@ fn scan_directory(
     // Get existing file hashes for change detection
     eprintln!("📊 Loading existing file hashes...");
     let existing_hashes = database
-        .get_file_hashes_for_workspace(&workspace_id)
+        .get_file_hashes_for_workspace()
         .unwrap_or_default();
     eprintln!(
         "📊 Found {} existing files in database",
@@ -600,7 +600,7 @@ fn scan_directory(
                 "💾 Writing {} relationships to database...",
                 relationships.len()
             );
-            database.bulk_store_relationships(&relationships, &workspace_id)?;
+            database.bulk_store_relationships(&relationships)?;
             eprintln!(
                 "✅ Phase 3 complete: {} relationships extracted and stored",
                 relationships.len()

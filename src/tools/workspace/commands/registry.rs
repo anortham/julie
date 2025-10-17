@@ -1004,7 +1004,7 @@ impl ManageWorkspaceTool {
 
         // Resolve primary workspace ID for workspace-scoped query
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
-        let workspace_id = registry_service
+        let _workspace_id = registry_service
             .get_primary_workspace_id()
             .await?
             .unwrap_or_else(|| "primary".to_string());
@@ -1017,7 +1017,7 @@ impl ManageWorkspaceTool {
         let db_lock = db.lock().unwrap();
 
         // Query recent files from database
-        match db_lock.get_recent_files(Some(&workspace_id), days, limit as usize) {
+        match db_lock.get_recent_files(days, limit as usize) {
             Ok(files) => {
                 if files.is_empty() {
                     let message = format!("📭 No files found modified in the last {} days.", days);

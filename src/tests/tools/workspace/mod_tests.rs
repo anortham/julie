@@ -208,22 +208,9 @@ async fn test_manage_workspace_recent_files() {
         )
         .unwrap();
 
-    // File from another workspace (should be excluded)
-    db_lock
-        .store_file_info(
-            &crate::database::FileInfo {
-                path: "other_workspace.rs".to_string(),
-                language: "rust".to_string(),
-                hash: "hash4".to_string(),
-                size: 175,
-                last_modified: now,
-                last_indexed: now,
-                symbol_count: 4,
-                content: Some("fn external() {}".to_string()),
-            },
-            "secondary",
-        )
-        .unwrap();
+    // NOTE: In per-workspace architecture, each workspace has its own database file.
+    // We don't test cross-workspace filtering here - that's enforced at the filesystem level.
+    // This test focuses on the primary workspace only.
 
     drop(db_lock);
     drop(workspace);
@@ -285,10 +272,6 @@ async fn test_manage_workspace_recent_files() {
     assert!(
         !response_text.contains("old_file.rs"),
         "Should NOT include file modified 7 days ago"
-    );
-    assert!(
-        !response_text.contains("other_workspace.rs"),
-        "Should NOT include files from other workspaces"
     );
 }
 

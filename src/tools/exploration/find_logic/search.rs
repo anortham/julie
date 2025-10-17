@@ -264,10 +264,10 @@ impl FindLogicTool {
             embedding_engine.embed_symbol(&query_symbol, &context)?
         };
 
-        // Search using HNSW (fast) → brute-force fallback (correctness)
+        // 🔧 REFACTOR: Search using HNSW with SQLite on-demand vector fetching
         let store_guard = vector_store.read().await;
-        if store_guard.is_empty() {
-            debug!("🧠 Semantic store empty - skipping business logic similarity search");
+        if !store_guard.has_hnsw_index() {
+            debug!("🧠 HNSW index not available - skipping business logic similarity search");
             return Ok(semantic_matches);
         }
 
@@ -275,27 +275,23 @@ impl FindLogicTool {
         let search_limit = (self.max_results * 3) as usize; // Get more candidates for filtering
         let similarity_threshold = 0.2; // Lower threshold for business logic discovery
 
-        let (semantic_results, used_hnsw) =
-            match store_guard.search_with_fallback(&query_embedding, search_limit, similarity_threshold) {
-                Ok(results) => results,
-                Err(e) => {
-                    debug!("🧠 Semantic similarity search failed: {}", e);
-                    return Ok(semantic_matches);
-                }
-            };
+        let semantic_results = match tokio::task::block_in_place(|| {
+            let db_lock = db.lock().unwrap();
+            let model_name = "bge-small";
+            store_guard.search_similar_hnsw(&*db_lock, &query_embedding, search_limit, similarity_threshold, model_name)
+        }) {
+            Ok(results) => results,
+            Err(e) => {
+                debug!("🧠 Semantic similarity search failed: {}", e);
+                return Ok(semantic_matches);
+            }
+        };
         drop(store_guard);
 
-        if used_hnsw {
-            debug!(
-                "🚀 HNSW search returned {} business-logic candidates",
-                semantic_results.len()
-            );
-        } else {
-            debug!(
-                "⚠️ Using brute-force semantic search ({} candidates)",
-                semantic_results.len()
-            );
-        }
+        debug!(
+            "🚀 HNSW search returned {} business-logic candidates",
+            semantic_results.len()
+        );
 
         // Fetch actual symbols from database
         let db_lock = db.lock().unwrap();

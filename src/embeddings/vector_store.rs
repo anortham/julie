@@ -4,7 +4,7 @@
 // using HNSW (Hierarchical Navigable Small World) algorithm for fast nearest neighbor search.
 
 use super::SimilarityResult;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use hnsw_rs::prelude::*; // Includes Hnsw, DistCosine, and other distance metrics
                          // use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
 use std::collections::HashMap;
@@ -14,10 +14,16 @@ const HNSW_MAX_LAYERS: usize = 16; // hnsw_rs NB_LAYER_MAX; required for dump pe
 
 use hnsw_rs::hnswio::{HnswIo, ReloadOptions};
 
-/// High-performance vector store for embedding similarity search
+/// HNSW Index Manager (SQLite is the single source of truth)
+///
+/// This is a pure HNSW index manager - it does NOT store vectors in memory.
+/// All embedding vectors are stored in SQLite. This structure only manages:
+/// - The HNSW graph structure for fast approximate nearest neighbor search
+/// - ID mapping between HNSW numeric IDs and symbol_id strings
+///
+/// During search, vectors are fetched from SQLite on-demand for re-ranking.
 pub struct VectorStore {
     dimensions: usize,
-    vectors: HashMap<String, Vec<f32>>,
     /// HNSW index for fast approximate nearest neighbor search
     /// Stored alongside HnswIo to satisfy lifetime requirements for disk-loaded indexes
     hnsw_index: Option<Hnsw<'static, f32, DistCosine>>,
@@ -30,131 +36,14 @@ pub struct VectorStore {
 }
 
 impl VectorStore {
-    /// Create a new vector store for embeddings of the given dimensions
+    /// Create a new HNSW index manager for embeddings of the given dimensions
     pub fn new(dimensions: usize) -> Result<Self> {
         Ok(Self {
             dimensions,
-            vectors: HashMap::new(),
             hnsw_index: None,
             _hnsw_io: None,
             id_mapping: Vec::new(),
         })
-    }
-
-    /// Store a vector with associated symbol ID
-    pub fn store_vector(&mut self, symbol_id: String, vector: Vec<f32>) -> Result<()> {
-        if vector.len() != self.dimensions {
-            return Err(anyhow::anyhow!(
-                "Vector dimensions {} do not match expected {}",
-                vector.len(),
-                self.dimensions
-            ));
-        }
-
-        self.vectors.insert(symbol_id, vector);
-        Ok(())
-    }
-
-    /// Update an existing vector
-    pub fn update_vector(&mut self, symbol_id: &str, vector: Vec<f32>) -> Result<()> {
-        if vector.len() != self.dimensions {
-            return Err(anyhow::anyhow!(
-                "Vector dimensions {} do not match expected {}",
-                vector.len(),
-                self.dimensions
-            ));
-        }
-
-        self.vectors.insert(symbol_id.to_string(), vector);
-        Ok(())
-    }
-
-    /// Remove a vector
-    pub fn remove_vector(&mut self, symbol_id: &str) -> Result<()> {
-        self.vectors.remove(symbol_id);
-        Ok(())
-    }
-
-    /// Get all vectors (for bulk operations like writing to SQLite)
-    pub fn get_all_vectors(&self) -> HashMap<String, Vec<f32>> {
-        self.vectors.clone()
-    }
-
-    /// Search for similar vectors using cosine similarity
-    pub fn search_similar(
-        &self,
-        query_vector: &[f32],
-        limit: usize,
-        threshold: f32,
-    ) -> Result<Vec<SimilarityResult>> {
-        if query_vector.len() != self.dimensions {
-            return Err(anyhow::anyhow!(
-                "Query vector dimensions {} do not match expected {}",
-                query_vector.len(),
-                self.dimensions
-            ));
-        }
-
-        let mut results = Vec::new();
-
-        for (symbol_id, vector) in &self.vectors {
-            let similarity = super::cosine_similarity(query_vector, vector);
-
-            if similarity >= threshold {
-                results.push(SimilarityResult {
-                    symbol_id: symbol_id.clone(),
-                    similarity_score: similarity,
-                    embedding: vector.clone(),
-                });
-            }
-        }
-
-        // Sort by similarity score (highest first)
-        results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
-
-        // Limit results
-        results.truncate(limit);
-
-        Ok(results)
-    }
-
-    /// Search using HNSW when available, otherwise fall back to brute-force search.
-    /// Returns the similarity results and whether the HNSW index was used.
-    pub fn search_with_fallback(
-        &self,
-        query_vector: &[f32],
-        limit: usize,
-        threshold: f32,
-    ) -> Result<(Vec<SimilarityResult>, bool)> {
-        if self.has_hnsw_index() {
-            match self.search_similar_hnsw(query_vector, limit, threshold) {
-                Ok(results) => return Ok((results, true)),
-                Err(hnsw_err) => {
-                    let fallback = self.search_similar(query_vector, limit, threshold).map_err(
-                        |brute_err| {
-                            anyhow!(
-                                "HNSW search failed ({}), and brute-force fallback also failed ({})",
-                                hnsw_err,
-                                brute_err
-                            )
-                        },
-                    )?;
-                    return Ok((fallback, false));
-                }
-            }
-        }
-
-        Ok((self.search_similar(query_vector, limit, threshold)?, false))
-    }
-
-    /// Get the number of stored vectors
-    pub fn len(&self) -> usize {
-        self.vectors.len()
-    }
-
-    /// Check if the store is empty
-    pub fn is_empty(&self) -> bool {
-        self.vectors.is_empty()
     }
 
     /// Get the dimensions of vectors stored in this store
@@ -163,26 +52,25 @@ impl VectorStore {
         self.dimensions
     }
 
-    /// Get vector by symbol ID
-    pub fn get_vector(&self, symbol_id: &str) -> Option<&Vec<f32>> {
-        self.vectors.get(symbol_id)
-    }
-
     // ========================================================================
     // HNSW Index Methods (TDD Implementation - Start with stubs that fail)
     // ========================================================================
 
-    /// Build HNSW index from stored vectors
-    pub fn build_hnsw_index(&mut self) -> Result<()> {
-        if self.vectors.is_empty() {
+    /// Build HNSW index from provided embeddings (loaded from SQLite)
+    ///
+    /// This is the NEW architecture where SQLite is the single source of truth.
+    /// No in-memory HashMap needed - embeddings are loaded from SQLite, HNSW is built,
+    /// and then the embeddings can be discarded from memory.
+    pub fn build_hnsw_index(&mut self, embeddings: &HashMap<String, Vec<f32>>) -> Result<()> {
+        if embeddings.is_empty() {
             return Err(anyhow::anyhow!(
-                "Cannot build HNSW index: no vectors stored"
+                "Cannot build HNSW index: no embeddings provided"
             ));
         }
 
         // HNSW construction parameters (based on hnsw_rs best practices)
         let max_nb_connection = 32; // Typical: 16-64, good balance for code search
-        let nb_elem = self.vectors.len();
+        let nb_elem = embeddings.len();
         // hnsw_rs persistence requires using the full layer budget (NB_LAYER_MAX)
         let nb_layer = HNSW_MAX_LAYERS;
         let ef_construction = 400; // Higher = better quality, slower build (typical: 200-800)
@@ -211,7 +99,7 @@ impl VectorStore {
         self.id_mapping.clear();
         self.id_mapping.reserve(nb_elem);
 
-        let mut sorted_vectors: Vec<_> = self.vectors.iter().collect();
+        let mut sorted_vectors: Vec<_> = embeddings.iter().collect();
         sorted_vectors.sort_by(|a, b| a.0.cmp(b.0)); // Sort by symbol ID
 
         let mut data_for_insertion = Vec::with_capacity(nb_elem);
@@ -243,11 +131,17 @@ impl VectorStore {
     }
 
     /// Search for similar vectors using HNSW index (fast approximate search)
+    ///
+    /// NEW ARCHITECTURE: Vectors are fetched from SQLite on-demand for re-ranking.
+    /// HNSW provides fast approximate k-NN search, then we fetch actual vectors
+    /// from the database to calculate exact cosine similarity for re-ranking.
     pub fn search_similar_hnsw(
         &self,
+        db: &crate::database::SymbolDatabase,
         query_vector: &[f32],
         limit: usize,
         threshold: f32,
+        model_name: &str,
     ) -> Result<Vec<SimilarityResult>> {
         if query_vector.len() != self.dimensions {
             return Err(anyhow::anyhow!(
@@ -281,17 +175,18 @@ impl VectorStore {
 
             let symbol_id = &self.id_mapping[idx];
 
-            // Get the actual vector for this symbol
-            let vector = match self.vectors.get(symbol_id) {
+            // 🔧 REFACTOR: Fetch vector from SQLite instead of HashMap
+            // This is the key change - SQLite is now the single source of truth
+            let vector = match db.get_embedding_for_symbol(symbol_id, model_name)? {
                 Some(v) => v,
                 None => {
-                    tracing::warn!("Symbol ID {} not found in vectors", symbol_id);
+                    tracing::warn!("Symbol ID {} not found in database", symbol_id);
                     continue;
                 }
             };
 
             // Calculate actual cosine similarity
-            let similarity = super::cosine_similarity(query_vector, vector);
+            let similarity = super::cosine_similarity(query_vector, &vector);
 
             // Apply threshold filter
             if similarity >= threshold {
@@ -310,7 +205,10 @@ impl VectorStore {
     }
 
     /// Save HNSW index to disk using hnsw_rs file_dump
-    /// Creates two files: {path}/hnsw_index.hnsw.graph and {path}/hnsw_index.hnsw.data
+    /// Creates three files:
+    /// - {path}/hnsw_index.hnsw.graph
+    /// - {path}/hnsw_index.hnsw.data
+    /// - {path}/hnsw_index.id_mapping.json (NEW: symbol_id array)
     pub fn save_hnsw_index(&mut self, path: &Path) -> Result<()> {
         let hnsw = self.hnsw_index.as_mut().ok_or_else(|| {
             anyhow::anyhow!("Cannot save: HNSW index not built. Call build_hnsw_index() first")
@@ -325,7 +223,7 @@ impl VectorStore {
         tracing::info!("💾 Saving HNSW index to {}", path.display());
         tracing::debug!(
             "Index has {} vectors, dimensions: {}",
-            self.vectors.len(),
+            self.id_mapping.len(),
             self.dimensions
         );
 
@@ -345,6 +243,10 @@ impl VectorStore {
         match dump_result {
             Ok(dumped_file) => {
                 tracing::info!("✅ HNSW index saved successfully: {}", dumped_file);
+
+                // Save id_mapping alongside HNSW files
+                self.save_id_mapping(path)?;
+
                 Ok(())
             }
             Err(e) => {
@@ -352,6 +254,34 @@ impl VectorStore {
                 Err(anyhow::anyhow!("Failed to save HNSW index: {}", e))
             }
         }
+    }
+
+    /// Save id_mapping to JSON file alongside HNSW index
+    /// Creates {path}/hnsw_index.id_mapping.json
+    fn save_id_mapping(&self, path: &Path) -> Result<()> {
+        let mapping_file = path.join("hnsw_index.id_mapping.json");
+        let json = serde_json::to_string(&self.id_mapping)?;
+        std::fs::write(&mapping_file, json)?;
+        tracing::debug!("💾 Saved id_mapping with {} entries", self.id_mapping.len());
+        Ok(())
+    }
+
+    /// Load id_mapping from JSON file
+    /// Expects {path}/hnsw_index.id_mapping.json
+    fn load_id_mapping(&mut self, path: &Path) -> Result<()> {
+        let mapping_file = path.join("hnsw_index.id_mapping.json");
+
+        if !mapping_file.exists() {
+            return Err(anyhow::anyhow!(
+                "ID mapping file not found at {}",
+                mapping_file.display()
+            ));
+        }
+
+        let json = std::fs::read_to_string(&mapping_file)?;
+        self.id_mapping = serde_json::from_str(&json)?;
+        tracing::debug!("📂 Loaded id_mapping with {} entries", self.id_mapping.len());
+        Ok(())
     }
 
     /// Load HNSW index from disk using hnsw_rs HnswIo
@@ -395,15 +325,12 @@ impl VectorStore {
         let static_hnsw: Hnsw<'static, f32, DistCosine> =
             unsafe { std::mem::transmute(loaded_hnsw) };
 
-        // Load the ID mapping from vectors HashMap keys (sorted for determinism)
-        self.id_mapping.clear();
-        let mut sorted_ids: Vec<_> = self.vectors.keys().cloned().collect();
-        sorted_ids.sort();
-        self.id_mapping = sorted_ids;
+        // Load the ID mapping from persisted JSON file
+        self.load_id_mapping(path)?;
 
         tracing::info!(
-            "✅ HNSW index loaded from disk with {} vectors",
-            self.vectors.len()
+            "✅ HNSW index loaded from disk with {} symbol mappings",
+            self.id_mapping.len()
         );
 
         // Store the loaded index
@@ -430,23 +357,29 @@ impl VectorStore {
         ))
     }
 
-    /// Clear all in-memory data to release memory
-    /// This is critical for avoiding memory leaks after HNSW index is persisted to disk
+    /// Clear the HNSW index
+    ///
+    /// This is used when HNSW index rebuild fails or needs to be invalidated.
+    /// After calling this, the HNSW index must be rebuilt from SQLite before searching.
+    pub fn clear_hnsw_index(&mut self) {
+        self.hnsw_index = None;
+        self.id_mapping.clear();
+        tracing::warn!("⚠️  HNSW index cleared. Must rebuild from SQLite before searching.");
+    }
+
+    /// Clear all in-memory index data to release memory
     ///
     /// Clears:
-    /// - All vectors (can be 8GB+ for large codebases)
     /// - HNSW index (large graph structure)
     /// - ID mapping
     ///
-    /// Call this after save_hnsw_index() to immediately release ~8GB of RAM
+    /// Note: Since VectorStore no longer stores embeddings in memory,
+    /// this only clears the HNSW graph structure (~11MB for typical workspace).
+    /// All embedding data lives in SQLite.
     pub fn clear(&mut self) {
-        tracing::info!("🧹 Clearing VectorStore in-memory data to release memory...");
+        tracing::info!("🧹 Clearing VectorStore in-memory index data...");
 
-        let vectors_count = self.vectors.len();
-        let vectors_bytes = vectors_count * self.dimensions * std::mem::size_of::<f32>();
-
-        self.vectors.clear();
-        self.vectors.shrink_to_fit(); // Release the HashMap's backing memory
+        let mapping_count = self.id_mapping.len();
 
         self.hnsw_index = None; // Drop the HNSW graph
 
@@ -454,9 +387,8 @@ impl VectorStore {
         self.id_mapping.shrink_to_fit();
 
         tracing::info!(
-            "✅ Cleared {} vectors (~{:.2} MB) + HNSW index from memory",
-            vectors_count,
-            vectors_bytes as f64 / 1_048_576.0
+            "✅ Cleared HNSW index ({} symbol mappings) from memory",
+            mapping_count
         );
     }
 }

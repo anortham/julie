@@ -204,7 +204,7 @@ impl ManageWorkspaceTool {
             if let Some(db_arc) = db_to_query {
                 let db = db_arc.lock().unwrap();
                 let symbols_count = db
-                    .get_symbol_count_for_workspace(&workspace_id)
+                    .get_symbol_count_for_workspace()
                     .unwrap_or(0);
                 let stats = db.get_stats().unwrap_or_default();
                 (symbols_count as usize, stats.total_relationships as usize)
@@ -239,7 +239,7 @@ impl ManageWorkspaceTool {
         } {
             let db_lock = db_arc.lock().unwrap();
             db_lock
-                .get_symbols_without_embeddings(&workspace_id)
+                .get_symbols_without_embeddings()
                 .unwrap_or_default()
                 .len()
         } else {

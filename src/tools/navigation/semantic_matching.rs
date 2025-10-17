@@ -27,13 +27,14 @@ pub async fn find_semantic_references(
     if let Ok(()) = handler.ensure_vector_store().await {
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(vector_store) = workspace.vector_store.as_ref() {
-                let has_vectors = {
+                // 🔧 REFACTOR: Check if HNSW index is built
+                let has_hnsw = {
                     let store_guard = vector_store.read().await;
-                    !store_guard.is_empty()
+                    store_guard.has_hnsw_index()
                 };
 
-                if !has_vectors {
-                    debug!("⚠️ Semantic store empty - skipping embedding similarity search");
+                if !has_hnsw {
+                    debug!("⚠️ HNSW index not available - skipping embedding similarity search");
                     return Ok((Vec::new(), Vec::new()));
                 }
 
@@ -53,32 +54,37 @@ pub async fn find_semantic_references(
                         let similarity_threshold = 0.75;
                         let max_semantic_matches = 5;
 
+                        // 🔧 REFACTOR: Use new architecture with SQLite on-demand fetching
                         let store_guard = vector_store.read().await;
-                        let (semantic_results, used_hnsw) =
-                            match store_guard.search_with_fallback(
-                                &embedding,
-                                max_semantic_matches,
-                                similarity_threshold,
-                            ) {
+                        let db = workspace.db.as_ref().cloned();
+
+                        let semantic_results = if let Some(db_arc) = db {
+                            match tokio::task::block_in_place(|| {
+                                let db_lock = db_arc.lock().unwrap();
+                                let model_name = "bge-small";
+                                store_guard.search_similar_hnsw(
+                                    &*db_lock,
+                                    &embedding,
+                                    max_semantic_matches,
+                                    similarity_threshold,
+                                    model_name
+                                )
+                            }) {
                                 Ok(results) => results,
                                 Err(e) => {
                                     debug!("Semantic reference search failed: {}", e);
-                                    (Vec::new(), false)
+                                    Vec::new()
                                 }
-                            };
+                            }
+                        } else {
+                            Vec::new()
+                        };
                         drop(store_guard);
 
-                        if used_hnsw {
-                            debug!(
-                                "🚀 Using HNSW index to find semantic references ({} results)",
-                                semantic_results.len()
-                            );
-                        } else {
-                            debug!(
-                                "⚠️ Using brute-force semantic search for references ({} results)",
-                                semantic_results.len()
-                            );
-                        }
+                        debug!(
+                            "🚀 HNSW search found {} semantic references",
+                            semantic_results.len()
+                        );
 
                         if !semantic_results.is_empty() {
                             if let Some(db) = workspace.db.as_ref() {
@@ -118,12 +124,11 @@ pub async fn find_semantic_references(
                                                     "similarity".to_string(),
                                                     serde_json::json!(similarity_score),
                                                 );
-                                                if !used_hnsw {
-                                                    metadata.insert(
-                                                        "search_strategy".to_string(),
-                                                        serde_json::json!("brute-force"),
-                                                    );
-                                                }
+                                                // 🔧 REFACTOR: Always HNSW in new architecture
+                                                metadata.insert(
+                                                    "search_strategy".to_string(),
+                                                    serde_json::json!("hnsw"),
+                                                );
 
                                                 // Create semantic reference relationship
                                                 let semantic_ref = Relationship {
@@ -172,14 +177,14 @@ pub async fn find_semantic_definitions(
     // Check store readiness FIRST before acquiring expensive resources
     if let Ok(Some(workspace)) = handler.get_workspace().await {
         if let Some(vector_store_arc) = &workspace.vector_store {
-            // Capture current store state
-            let has_vectors = {
+            // 🔧 REFACTOR: Check if HNSW index is built
+            let has_hnsw = {
                 let store_guard = vector_store_arc.read().await;
-                !store_guard.is_empty()
+                store_guard.has_hnsw_index()
             };
 
-            if !has_vectors {
-                debug!("⚠️ Semantic store empty - skipping embedding search fallback");
+            if !has_hnsw {
+                debug!("⚠️ HNSW index not available - skipping embedding search fallback");
                 return Ok(Vec::new());
             }
 
@@ -188,28 +193,31 @@ pub async fn find_semantic_definitions(
                 let mut embedding_guard = handler.embedding_engine.write().await;
                 if let Some(embedding_engine) = embedding_guard.as_mut() {
                     if let Ok(query_embedding) = embedding_engine.embed_text(symbol_name) {
+                        // 🔧 REFACTOR: Use new architecture with SQLite on-demand fetching
                         let store_guard = vector_store_arc.read().await;
-                        let (similar_symbols, used_hnsw) =
-                            match store_guard.search_with_fallback(&query_embedding, 10, 0.7) {
+                        let db = workspace.db.as_ref().cloned();
+
+                        let similar_symbols = if let Some(db_arc) = db {
+                            match tokio::task::block_in_place(|| {
+                                let db_lock = db_arc.lock().unwrap();
+                                let model_name = "bge-small";
+                                store_guard.search_similar_hnsw(&*db_lock, &query_embedding, 10, 0.7, model_name)
+                            }) {
                                 Ok(results) => results,
                                 Err(e) => {
                                     debug!("Semantic search failed: {}", e);
-                                    (Vec::new(), false)
+                                    Vec::new()
                                 }
-                            };
+                            }
+                        } else {
+                            Vec::new()
+                        };
                         drop(store_guard);
 
-                        if used_hnsw {
-                            debug!(
-                                "🚀 Using HNSW index for fast semantic search ({} results)",
-                                similar_symbols.len()
-                            );
-                        } else {
-                            debug!(
-                                "⚠️ Using brute-force semantic search ({} results)",
-                                similar_symbols.len()
-                            );
-                        }
+                        debug!(
+                            "🚀 HNSW search found {} similar definitions",
+                            similar_symbols.len()
+                        );
 
                         // Get actual symbol data from database
                         if !similar_symbols.is_empty() {

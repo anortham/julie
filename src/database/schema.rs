@@ -72,10 +72,7 @@ impl SymbolDatabase {
                 last_indexed INTEGER DEFAULT 0,
                 parse_cache BLOB,
                 symbol_count INTEGER DEFAULT 0,
-                content TEXT,  -- CASCADE: Full file content for FTS
-
-                -- For multi-workspace support
-                workspace_id TEXT NOT NULL DEFAULT 'primary'
+                content TEXT  -- CASCADE: Full file content for FTS
             )",
             [],
         )?;
@@ -91,10 +88,6 @@ impl SymbolDatabase {
             [],
         )?;
 
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id)",
-            [],
-        )?;
 
         debug!("Created files table and indexes");
 
@@ -181,10 +174,7 @@ impl SymbolDatabase {
 
                 -- For cross-language linking
                 semantic_group TEXT,
-                confidence REAL DEFAULT 1.0,
-
-                -- For multi-workspace support
-                workspace_id TEXT NOT NULL DEFAULT 'primary'
+                confidence REAL DEFAULT 1.0
             )",
             [],
         )?;
@@ -217,11 +207,6 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
-            [],
-        )?;
-
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id)",
             [],
         )?;
 
@@ -316,7 +301,6 @@ impl SymbolDatabase {
                 code_context TEXT,
 
                 -- Infrastructure
-                workspace_id TEXT NOT NULL DEFAULT 'primary',
                 last_indexed INTEGER DEFAULT 0
             )",
             [],
@@ -348,11 +332,6 @@ impl SymbolDatabase {
             [],
         )?;
 
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_identifiers_workspace ON identifiers(workspace_id)",
-            [],
-        )?;
-
         debug!("Created identifiers table and indexes");
         Ok(())
     }
@@ -369,10 +348,7 @@ impl SymbolDatabase {
                 line_number INTEGER NOT NULL DEFAULT 0,  -- Line number where relationship occurs (1-based)
                 confidence REAL DEFAULT 1.0,
                 metadata TEXT,  -- JSON blob
-                created_at INTEGER DEFAULT 0,
-
-                -- For multi-workspace support
-                workspace_id TEXT NOT NULL DEFAULT 'primary'
+                created_at INTEGER DEFAULT 0
             )",
             [],
         )?;
@@ -390,11 +366,6 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
-            [],
-        )?;
-
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rel_workspace ON relationships(workspace_id)",
             [],
         )?;
 

@@ -6,22 +6,22 @@ use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    pub fn delete_relationships_for_file(&self, file_path: &str, workspace_id: &str) -> Result<()> {
+    pub fn delete_relationships_for_file(&self, file_path: &str) -> Result<()> {
         // Delete relationships where either the from_symbol or to_symbol belongs to the file
         let count = self.conn.execute(
             "DELETE FROM relationships
              WHERE from_symbol_id IN (
-                 SELECT id FROM symbols WHERE file_path = ?1 AND workspace_id = ?2
+                 SELECT id FROM symbols WHERE file_path = ?1
              )
              OR to_symbol_id IN (
-                 SELECT id FROM symbols WHERE file_path = ?1 AND workspace_id = ?2
+                 SELECT id FROM symbols WHERE file_path = ?1
              )",
-            params![file_path, workspace_id],
+            params![file_path],
         )?;
 
         debug!(
-            "Deleted {} relationships for file '{}' in workspace '{}'",
-            count, file_path, workspace_id
+            "Deleted {} relationships for file '{}'",
+            count, file_path
         );
         Ok(())
     }
@@ -127,59 +127,26 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
-    pub fn get_file_relationship_statistics(
-        &self,
-        workspace_ids: &[String],
-    ) -> Result<std::collections::HashMap<String, usize>> {
+    pub fn get_file_relationship_statistics(&self) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
         let mut by_file = HashMap::new();
 
         // This is a more complex query: count relationships per file
         // We need to join symbols with relationships to count how many relationships involve symbols from each file
-        if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids
-                .iter()
-                .map(|_| "?")
-                .collect::<Vec<_>>()
-                .join(",");
-            let rel_query = format!(
-                "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
-                 FROM symbols s \
-                 LEFT JOIN relationships r ON (r.from_symbol_id = s.id OR r.to_symbol_id = s.id) \
-                 WHERE s.workspace_id IN ({}) \
-                 GROUP BY s.file_path",
-                workspace_placeholders
-            );
+        let rel_query = "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
+                         FROM symbols s \
+                         LEFT JOIN relationships r ON (r.from_symbol_id = s.id OR r.to_symbol_id = s.id) \
+                         GROUP BY s.file_path";
 
-            let mut stmt = self.conn.prepare(&rel_query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
-                .iter()
-                .map(|id| id as &dyn rusqlite::ToSql)
-                .collect();
-            let rows = stmt.query_map(params.as_slice(), |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-            })?;
+        let mut stmt = self.conn.prepare(rel_query)?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+        })?;
 
-            for row in rows {
-                let (file_path, count) = row?;
-                by_file.insert(file_path, count);
-            }
-        } else {
-            let rel_query = "SELECT s.file_path, COUNT(DISTINCT r.id) as count \
-                             FROM symbols s \
-                             LEFT JOIN relationships r ON (r.from_symbol_id = s.id OR r.to_symbol_id = s.id) \
-                             GROUP BY s.file_path";
-
-            let mut stmt = self.conn.prepare(rel_query)?;
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-            })?;
-
-            for row in rows {
-                let (file_path, count) = row?;
-                by_file.insert(file_path, count);
-            }
+        for row in rows {
+            let (file_path, count) = row?;
+            by_file.insert(file_path, count);
         }
 
         Ok(by_file)
@@ -188,55 +155,22 @@ impl SymbolDatabase {
     /// Get relationship type statistics using SQL aggregation (avoids loading all relationships into memory)
     /// Returns HashMap<relationship_kind, count> grouped by relationship type
     /// Used by FastExploreTool's intelligent_dependencies mode
-    pub fn get_relationship_type_statistics(
-        &self,
-        workspace_ids: &[String],
-    ) -> Result<HashMap<String, i64>> {
+    pub fn get_relationship_type_statistics(&self) -> Result<HashMap<String, i64>> {
         let mut by_kind = HashMap::new();
 
         // SQL GROUP BY aggregation - counts relationships by kind without loading data into memory
-        if !workspace_ids.is_empty() {
-            let workspace_placeholders = workspace_ids
-                .iter()
-                .map(|_| "?")
-                .collect::<Vec<_>>()
-                .join(",");
-            let query = format!(
-                "SELECT kind, COUNT(*) as count \
-                 FROM relationships \
-                 WHERE workspace_id IN ({}) \
-                 GROUP BY kind",
-                workspace_placeholders
-            );
+        let query = "SELECT kind, COUNT(*) as count \
+                     FROM relationships \
+                     GROUP BY kind";
 
-            let mut stmt = self.conn.prepare(&query)?;
-            let params: Vec<&dyn rusqlite::ToSql> = workspace_ids
-                .iter()
-                .map(|id| id as &dyn rusqlite::ToSql)
-                .collect();
-            let rows = stmt.query_map(params.as_slice(), |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?;
+        let mut stmt = self.conn.prepare(query)?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
 
-            for row in rows {
-                let (kind, count) = row?;
-                by_kind.insert(kind, count);
-            }
-        } else {
-            // No workspace filter - count all relationships
-            let query = "SELECT kind, COUNT(*) as count \
-                         FROM relationships \
-                         GROUP BY kind";
-
-            let mut stmt = self.conn.prepare(query)?;
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?;
-
-            for row in rows {
-                let (kind, count) = row?;
-                by_kind.insert(kind, count);
-            }
+        for row in rows {
+            let (kind, count) = row?;
+            by_kind.insert(kind, count);
         }
 
         Ok(by_kind)

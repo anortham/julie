@@ -231,13 +231,11 @@ async fn generate_embeddings(
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
     eprintln!("⚡ Batch size: {}", batch_size);
 
-    // 3. Create VectorStore for collecting embeddings
-    let mut vector_store = VectorStore::new(engine.dimensions())?;
-
-    // 4. Process in batches and collect embeddings into VectorStore
+    // 3. Process in batches and collect embeddings into HashMap (NEW ARCHITECTURE)
     let start_time = Instant::now();
     let mut total_embedded = 0;
     let batch_count = (symbols.len() + batch_size - 1) / batch_size;
+    let mut all_embeddings = std::collections::HashMap::new();
 
     for (i, batch) in symbols.chunks(batch_size).enumerate() {
         let batch_start = Instant::now();
@@ -246,9 +244,9 @@ async fn generate_embeddings(
         let embeddings = engine.embed_symbols_batch(batch)?;
         total_embedded += embeddings.len();
 
-        // Store embeddings in VectorStore
-        for (symbol_id, vector) in &embeddings {
-            vector_store.store_vector(symbol_id.clone(), vector.clone())?;
+        // 🔧 REFACTOR: Collect embeddings into HashMap instead of VectorStore
+        for (symbol_id, vector) in embeddings {
+            all_embeddings.insert(symbol_id, vector);
         }
 
         let batch_time = batch_start.elapsed();
@@ -257,14 +255,14 @@ async fn generate_embeddings(
             "⚡ Batch {}/{}: {} embeddings in {:.2}ms ({:.0} emb/sec)",
             i + 1,
             batch_count,
-            embeddings.len(),
+            total_embedded,
             batch_time.as_secs_f64() * 1000.0,
-            embeddings.len() as f64 / batch_time.as_secs_f64()
+            total_embedded as f64 / batch_time.as_secs_f64()
         );
 
         // Sample output for first batch (show embedding dimensions)
-        if i == 0 && !embeddings.is_empty() {
-            let (sample_id, sample_vec) = &embeddings[0];
+        if i == 0 && !all_embeddings.is_empty() {
+            let (sample_id, sample_vec) = all_embeddings.iter().next().unwrap();
             eprintln!(
                 "   📝 Sample: symbol_id={}, vector_len={}",
                 sample_id,
@@ -291,20 +289,19 @@ async fn generate_embeddings(
         // Get database connection back from Arc<Mutex<>>
         let mut db = db_arc.lock().unwrap();
 
-        // Convert VectorStore's HashMap to Vec for bulk_store_embeddings
-        // We need to access the internal vectors HashMap - add a getter method
-        let all_embeddings: Vec<(String, Vec<f32>)> =
-            vector_store.get_all_vectors().into_iter().collect();
+        // 🔧 REFACTOR: Use all_embeddings HashMap directly instead of VectorStore
+        let embeddings_vec: Vec<(String, Vec<f32>)> =
+            all_embeddings.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         // Store in database using the existing bulk method
-        db.bulk_store_embeddings(&all_embeddings, engine.dimensions(), model)?;
+        db.bulk_store_embeddings(&embeddings_vec, engine.dimensions(), model)?;
 
         let db_write_time = db_write_start.elapsed();
         eprintln!(
             "✅ {} embeddings written to database in {:.2}s ({:.0} embeddings/sec)",
-            all_embeddings.len(),
+            embeddings_vec.len(),
             db_write_time.as_secs_f64(),
-            all_embeddings.len() as f64 / db_write_time.as_secs_f64()
+            embeddings_vec.len() as f64 / db_write_time.as_secs_f64()
         );
     }
 
@@ -313,7 +310,11 @@ async fn generate_embeddings(
         eprintln!("\n🏗️  Building HNSW index...");
         let hnsw_start = Instant::now();
 
-        vector_store.build_hnsw_index()?;
+        // 🔧 REFACTOR: Create VectorStore as pure HNSW Index Manager
+        let mut vector_store = VectorStore::new(engine.dimensions())?;
+
+        // Build HNSW index from collected embeddings HashMap
+        vector_store.build_hnsw_index(&all_embeddings)?;
 
         let hnsw_time = hnsw_start.elapsed();
         eprintln!("✅ HNSW index built in {:.2}s", hnsw_time.as_secs_f64());
@@ -395,47 +396,26 @@ async fn update_file_embeddings(
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
 
-    // 3. Load existing HNSW index
+    // 3. Verify HNSW index directory exists
     let index_path = std::path::Path::new(output_dir);
     if !index_path.exists() {
         anyhow::bail!("HNSW index directory does not exist: {}", output_dir);
     }
 
-    let mut vector_store = VectorStore::new(engine.dimensions())?;
-
-    eprintln!("📂 Loading existing HNSW index from {}...", output_dir);
-    let load_start = Instant::now();
-    vector_store.load_hnsw_index(index_path)?;
-    eprintln!(
-        "✅ Index loaded in {:.2}ms",
-        load_start.elapsed().as_secs_f64() * 1000.0
-    );
-
-    // 4. Remove old vectors for this file's symbols
-    eprintln!("🗑️  Removing old vectors for {} symbols...", symbols.len());
-    for symbol in &symbols {
-        vector_store.remove_vector(&symbol.id)?;
-    }
-
-    // 5. Generate new embeddings
+    // 4. Generate new embeddings for changed file
     eprintln!("⚡ Generating new embeddings...");
     let embed_start = Instant::now();
-    let embeddings = engine.embed_symbols_batch(&symbols)?;
+    let new_embeddings = engine.embed_symbols_batch(&symbols)?;
     let embed_time = embed_start.elapsed();
 
     eprintln!(
         "✅ Generated {} embeddings in {:.2}ms ({:.0} emb/sec)",
-        embeddings.len(),
+        new_embeddings.len(),
         embed_time.as_secs_f64() * 1000.0,
-        embeddings.len() as f64 / embed_time.as_secs_f64()
+        new_embeddings.len() as f64 / embed_time.as_secs_f64()
     );
 
-    // 6. Add new vectors to index
-    for (symbol_id, vector) in &embeddings {
-        vector_store.store_vector(symbol_id.clone(), vector.clone())?;
-    }
-
-    // 7. Write embeddings to SQLite if requested (for cross-language access)
+    // 5. Write embeddings to SQLite if requested (for cross-language access)
     if write_db {
         eprintln!("\n💾 Writing embeddings to SQLite database...");
         let db_write_start = Instant::now();
@@ -444,21 +424,34 @@ async fn update_file_embeddings(
         let mut db = db_arc.lock().unwrap();
 
         // Store only the new embeddings for this file
-        db.bulk_store_embeddings(&embeddings, engine.dimensions(), model)?;
+        db.bulk_store_embeddings(&new_embeddings, engine.dimensions(), model)?;
 
         let db_write_time = db_write_start.elapsed();
         eprintln!(
             "✅ {} embeddings written to database in {:.2}s ({:.0} embeddings/sec)",
-            embeddings.len(),
+            new_embeddings.len(),
             db_write_time.as_secs_f64(),
-            embeddings.len() as f64 / db_write_time.as_secs_f64()
+            new_embeddings.len() as f64 / db_write_time.as_secs_f64()
         );
     }
 
-    // 8. Rebuild HNSW index with updated vectors
+    // 6. 🔧 REFACTOR: Load ALL embeddings from SQLite for HNSW rebuild
+    eprintln!("📖 Loading all embeddings from database for HNSW rebuild...");
+    let load_all_start = Instant::now();
+    let db = db_arc.lock().unwrap();
+    let all_embeddings = db.load_all_embeddings(model)?;
+    drop(db); // Release lock
+    eprintln!(
+        "✅ Loaded {} embeddings in {:.2}ms",
+        all_embeddings.len(),
+        load_all_start.elapsed().as_secs_f64() * 1000.0
+    );
+
+    // 7. Rebuild HNSW index with ALL embeddings (new architecture)
     eprintln!("🏗️  Rebuilding HNSW index...");
     let rebuild_start = Instant::now();
-    vector_store.build_hnsw_index()?;
+    let mut vector_store = VectorStore::new(engine.dimensions())?;
+    vector_store.build_hnsw_index(&all_embeddings)?;
     eprintln!(
         "✅ Index rebuilt in {:.2}s",
         rebuild_start.elapsed().as_secs_f64()
@@ -478,7 +471,7 @@ async fn update_file_embeddings(
     let stats = EmbeddingStats {
         success: true,
         symbols_processed: symbols.len(),
-        embeddings_generated: embeddings.len(),
+        embeddings_generated: new_embeddings.len(),
         model: model.to_string(),
         dimensions: engine.dimensions(),
         avg_embedding_time_ms: avg_time_ms,
@@ -565,68 +558,44 @@ async fn search_hnsw(
         query_vector.len()
     );
 
-    // 2. Load vectors from database
-    eprintln!("📖 Loading vectors from database: {}...", db_path);
+    // 2. Open database connection (will be used for on-demand vector fetching)
+    eprintln!("📖 Opening database: {}...", db_path);
     let db = SymbolDatabase::new(db_path)?;
-    let load_vectors_start = Instant::now();
-    let all_embeddings = db.load_all_embeddings(model)?;
-    eprintln!(
-        "✅ Loaded {} vectors in {:.2}ms",
-        all_embeddings.len(),
-        load_vectors_start.elapsed().as_secs_f64() * 1000.0
-    );
 
-    // 3. Create vector store and populate with vectors
-    let mut vector_store = VectorStore::new(engine.dimensions())?;
-    for (symbol_id, vector) in all_embeddings {
-        vector_store.store_vector(symbol_id, vector)?;
-    }
-
-    // 4. Load HNSW index
+    // 3. 🔧 REFACTOR: Load HNSW index structure only (new architecture)
     let index_path_obj = std::path::Path::new(index_path);
     eprintln!("📂 Loading HNSW index from {}...", index_path);
     let load_start = Instant::now();
-    let hnsw_loaded = match vector_store.load_hnsw_index(index_path_obj) {
+
+    let mut vector_store = VectorStore::new(engine.dimensions())?;
+    match vector_store.load_hnsw_index(index_path_obj) {
         Ok(_) => {
             eprintln!(
                 "✅ HNSW index loaded in {:.2}ms",
                 load_start.elapsed().as_secs_f64() * 1000.0
             );
-            true
         }
         Err(e) => {
-            eprintln!(
-                "⚠️  Failed to load HNSW index ({}). Falling back to brute-force search.",
-                e
-            );
-            false
+            anyhow::bail!("Failed to load HNSW index: {}", e);
         }
     };
 
-    // 5. Search using HNSW
+    // 4. Search using HNSW with on-demand SQLite vector fetching
     eprintln!(
         "🔍 Searching for top {} results (threshold: {})...",
         limit, threshold
     );
     let search_start = Instant::now();
-    let (results, used_hnsw) =
-        vector_store.search_with_fallback(&query_vector, limit, threshold)?;
+    let results = vector_store.search_similar_hnsw(&db, &query_vector, limit, threshold, model)?;
     let search_time = search_start.elapsed();
 
     eprintln!(
-        "✅ Found {} results in {:.2}ms{}",
+        "✅ Found {} results in {:.2}ms (HNSW + SQLite on-demand)",
         results.len(),
-        search_time.as_secs_f64() * 1000.0,
-        if used_hnsw && hnsw_loaded {
-            ""
-        } else if used_hnsw {
-            " (HNSW rebuilt in-memory)"
-        } else {
-            " (brute-force fallback)"
-        }
+        search_time.as_secs_f64() * 1000.0
     );
 
-    // 6. Fetch complete symbol data for results
+    // 5. Fetch complete symbol data for results
     let symbol_ids: Vec<String> = results.iter().map(|r| r.symbol_id.clone()).collect();
     eprintln!(
         "📥 Fetching {} symbol records from database...",
@@ -639,13 +608,13 @@ async fn search_hnsw(
         fetch_start.elapsed().as_secs_f64() * 1000.0
     );
 
-    // 7. Create lookup map for similarity scores
+    // 6. Create lookup map for similarity scores
     let similarity_map: std::collections::HashMap<_, _> = results
         .iter()
         .map(|r| (r.symbol_id.clone(), r.similarity_score))
         .collect();
 
-    // 8. Output complete symbol data with similarity scores as JSON
+    // 7. Output complete symbol data with similarity scores as JSON
     let output: Vec<_> = symbols
         .iter()
         .map(|symbol| {

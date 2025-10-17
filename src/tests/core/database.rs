@@ -413,7 +413,7 @@ async fn test_relationship_with_id_field() {
     };
 
     // Store the relationship
-    db.store_relationships(&[relationship.clone()], "test")
+    db.store_relationships(&[relationship.clone()])
         .unwrap();
 
     // Retrieve relationships for the from_symbol
@@ -707,7 +707,7 @@ fn test_store_file_with_content() {
     .unwrap();
 
     let content = db
-        .get_file_content("test.md", Some("test_workspace"))
+        .get_file_content("test.md")
         .unwrap();
     assert_eq!(content, Some("# Test\nThis is test content".to_string()));
 }
@@ -731,7 +731,7 @@ fn test_fts_search_file_content() {
 
     // Search for "SQLite"
     let results = db
-        .search_file_content_fts("SQLite", Some("test_workspace"), 10)
+        .search_file_content_fts("SQLite", 10)
         .unwrap();
 
     assert_eq!(results.len(), 1);
@@ -774,7 +774,7 @@ fn test_fts_search_ranks_by_relevance() {
     .unwrap();
 
     let results = db
-        .search_file_content_fts("cascade", Some("test_workspace"), 10)
+        .search_file_content_fts("cascade", 10)
         .unwrap();
 
     // Verify both files are found
@@ -789,42 +789,11 @@ fn test_fts_search_ranks_by_relevance() {
     assert_ne!(results[0].rank, results[1].rank);
 }
 
-#[test]
-fn test_fts_respects_workspace_filter() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
-
-    db.store_file_with_content(
-        "file1.md",
-        "markdown",
-        "abc1",
-        1024,
-        1234567890,
-        "workspace A content",
-        "workspace_a",
-    )
-    .unwrap();
-
-    db.store_file_with_content(
-        "file2.md",
-        "markdown",
-        "abc2",
-        1024,
-        1234567890,
-        "workspace B content",
-        "workspace_b",
-    )
-    .unwrap();
-
-    // Search only workspace A
-    let results = db
-        .search_file_content_fts("content", Some("workspace_a"), 10)
-        .unwrap();
-
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].path, "file1.md");
-}
+// REMOVED: test_fts_respects_workspace_filter
+// This test is obsolete with per-workspace database architecture.
+// Each workspace now has its own isolated SQLite database file,
+// so workspace filtering is at the file system level, not in SQL.
+// The new architecture enforces isolation by design.
 
 // ============================================================
 // SCHEMA MIGRATION TESTS
@@ -998,7 +967,7 @@ fn test_fts_triggers_work_after_migration() {
     .unwrap();
 
     // Verify FTS5 search works (triggers populated FTS table)
-    let results = db.search_file_content_fts("main", None, 10).unwrap();
+    let results = db.search_file_content_fts("main", 10).unwrap();
     assert_eq!(results.len(), 1, "FTS search should work after migration");
     assert_eq!(results[0].path, "test.rs");
 }

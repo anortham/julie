@@ -94,7 +94,7 @@ async fn cross_language_callers_found_via_naming_variant() {
         };
 
         db_guard
-            .store_relationships(&[rel], workspace_id)
+            .store_relationships(&[rel])
             .expect("store relationships");
     }
 

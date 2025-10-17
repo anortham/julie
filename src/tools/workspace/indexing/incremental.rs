@@ -52,7 +52,7 @@ impl ManageWorkspaceTool {
         let existing_file_hashes = if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = &workspace.db {
                 let db_lock = db.lock().unwrap();
-                match db_lock.get_file_hashes_for_workspace(&workspace_id) {
+                match db_lock.get_file_hashes_for_workspace() {
                     Ok(hashes) => hashes,
                     Err(e) => {
                         warn!(
@@ -182,7 +182,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         existing_file_hashes: &HashMap<String, String>,
         current_disk_files: &[PathBuf],
-        workspace_id: &str,
+        _workspace_id: &str,
     ) -> Result<usize> {
         // Build set of current disk file paths for fast lookup
         let current_files: HashSet<String> = current_disk_files
@@ -221,7 +221,7 @@ impl ManageWorkspaceTool {
 
             for file_path in &orphaned_files {
                 // Delete relationships first (referential integrity)
-                if let Err(e) = db_lock.delete_relationships_for_file(file_path, workspace_id) {
+                if let Err(e) = db_lock.delete_relationships_for_file(file_path) {
                     warn!(
                         "Failed to delete relationships for orphaned file {}: {}",
                         file_path, e
@@ -231,7 +231,7 @@ impl ManageWorkspaceTool {
 
                 // Delete symbols
                 if let Err(e) =
-                    db_lock.delete_symbols_for_file_in_workspace(file_path, workspace_id)
+                    db_lock.delete_symbols_for_file_in_workspace(file_path)
                 {
                     warn!(
                         "Failed to delete symbols for orphaned file {}: {}",
@@ -241,7 +241,7 @@ impl ManageWorkspaceTool {
                 }
 
                 // Delete file record
-                if let Err(e) = db_lock.delete_file_record_in_workspace(file_path, workspace_id) {
+                if let Err(e) = db_lock.delete_file_record_in_workspace(file_path) {
                     warn!(
                         "Failed to delete file record for orphaned file {}: {}",
                         file_path, e

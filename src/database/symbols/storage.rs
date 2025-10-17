@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    pub fn store_symbols(&self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
+    pub fn store_symbols(&self, symbols: &[Symbol], _workspace_id: &str) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
@@ -33,8 +33,8 @@ impl SymbolDatabase {
                 "INSERT OR REPLACE INTO symbols
                  (id, name, kind, language, file_path, signature, start_line, start_col,
                   end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                  parent_id, metadata, semantic_group, confidence, workspace_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                  parent_id, metadata, semantic_group, confidence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     symbol.id,
                     symbol.name,
@@ -54,8 +54,7 @@ impl SymbolDatabase {
                     symbol.parent_id,
                     metadata_json,
                     symbol.semantic_group,
-                    symbol.confidence,
-                    workspace_id,
+                    symbol.confidence
                 ],
             )?;
         }
@@ -73,19 +72,15 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    pub fn delete_symbols_for_file_in_workspace(
-        &self,
-        file_path: &str,
-        workspace_id: &str,
-    ) -> Result<()> {
+    pub fn delete_symbols_for_file_in_workspace(&self, file_path: &str) -> Result<()> {
         let count = self.conn.execute(
-            "DELETE FROM symbols WHERE file_path = ?1 AND workspace_id = ?2",
-            params![file_path, workspace_id],
+            "DELETE FROM symbols WHERE file_path = ?1",
+            params![file_path],
         )?;
 
         debug!(
-            "Deleted {} symbols for file '{}' in workspace '{}'",
-            count, file_path, workspace_id
+            "Deleted {} symbols for file '{}'",
+            count, file_path
         );
         Ok(())
     }

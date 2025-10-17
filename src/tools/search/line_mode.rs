@@ -79,7 +79,6 @@ pub async fn line_mode_search(
             let db_lock = db.lock().unwrap();
             let file_results = db_lock.search_file_content_fts(
                 &processed_query,
-                Some(&primary_workspace_id),
                 fetch_limit,
             )?;
 
@@ -90,7 +89,7 @@ pub async fn line_mode_search(
                 }
 
                 if let Some(content) = db_lock
-                    .get_file_content(&file_result.path, Some(&primary_workspace_id))?
+                    .get_file_content(&file_result.path)?
                 {
                     collect_line_matches(
                         &mut matches,
@@ -120,7 +119,6 @@ pub async fn line_mode_search(
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
             let file_results = ref_db.search_file_content_fts(
                 &query_clone,
-                Some(&workspace_id_clone),
                 fetch_limit,
             )?;
 
@@ -131,7 +129,7 @@ pub async fn line_mode_search(
                 }
 
                 if let Some(content) = ref_db
-                    .get_file_content(&file_result.path, Some(&workspace_id_clone))?
+                    .get_file_content(&file_result.path)?
                 {
                     collect_line_matches(
                         &mut matches,

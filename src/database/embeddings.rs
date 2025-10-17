@@ -284,12 +284,11 @@ impl SymbolDatabase {
     }
 
     /// Count total embeddings for a workspace (for registry status reconciliation)
-    pub fn count_embeddings(&self, workspace_id: &str) -> Result<i64> {
+    /// Note: workspace_id kept for API, DB file is already workspace-specific
+    pub fn count_embeddings(&self, _workspace_id: &str) -> Result<i64> {
         let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM embeddings e
-             JOIN symbols s ON e.symbol_id = s.id
-             WHERE s.workspace_id = ?1",
-            params![workspace_id],
+            "SELECT COUNT(*) FROM embeddings",
+            [],
             |row| row.get(0),
         )?;
 

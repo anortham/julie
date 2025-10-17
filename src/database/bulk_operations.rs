@@ -39,8 +39,8 @@ impl SymbolDatabase {
             "INSERT OR REPLACE INTO identifiers
              (id, name, kind, language, file_path, start_line, start_col,
               end_line, end_col, start_byte, end_byte, containing_symbol_id,
-              target_symbol_id, confidence, code_context, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+              target_symbol_id, confidence, code_context)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
 
         // STEP 5: Batch insert for optimal performance
@@ -64,8 +64,7 @@ impl SymbolDatabase {
                     identifier.containing_symbol_id,
                     identifier.target_symbol_id, // NULL until resolved on-demand
                     identifier.confidence,
-                    identifier.code_context,
-                    workspace_id
+                    identifier.code_context
                 ])?;
 
                 processed += 1;
@@ -112,7 +111,6 @@ impl SymbolDatabase {
             "idx_identifiers_containing",
             "idx_identifiers_target",
             "idx_identifiers_kind",
-            "idx_identifiers_workspace",
         ];
 
         for index in &indexes {
@@ -149,10 +147,6 @@ impl SymbolDatabase {
             "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
             [],
         )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_identifiers_workspace ON identifiers(workspace_id)",
-            [],
-        )?;
 
         Ok(())
     }
@@ -161,7 +155,6 @@ impl SymbolDatabase {
     pub fn store_relationships(
         &self,
         relationships: &[Relationship],
-        workspace_id: &str,
     ) -> Result<()> {
         if relationships.is_empty() {
             return Ok(());
@@ -180,8 +173,8 @@ impl SymbolDatabase {
 
             tx.execute(
                 "INSERT OR REPLACE INTO relationships
-                 (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata, workspace_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     rel.id,
                     rel.from_symbol_id,
@@ -190,8 +183,7 @@ impl SymbolDatabase {
                     rel.file_path,
                     rel.line_number,
                     rel.confidence,
-                    metadata_json,
-                    workspace_id
+                    metadata_json
                 ],
             )?;
         }
@@ -205,7 +197,6 @@ impl SymbolDatabase {
     pub fn bulk_store_relationships(
         &mut self,
         relationships: &[Relationship],
-        workspace_id: &str,
     ) -> Result<()> {
         if relationships.is_empty() {
             return Ok(());
@@ -224,8 +215,8 @@ impl SymbolDatabase {
         let tx = self.conn.transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO relationships
-             (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata, workspace_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )?;
 
         let mut inserted_count = 0;
@@ -247,8 +238,7 @@ impl SymbolDatabase {
                 rel.file_path,
                 rel.line_number,
                 rel.confidence,
-                metadata_json,
-                workspace_id
+                metadata_json
             ]) {
                 Ok(_) => inserted_count += 1,
                 Err(rusqlite::Error::SqliteFailure(err, _))
@@ -297,7 +287,6 @@ impl SymbolDatabase {
             "idx_rel_from",
             "idx_rel_to",
             "idx_rel_kind",
-            "idx_rel_workspace",
         ];
 
         for index in &indexes {
@@ -324,10 +313,6 @@ impl SymbolDatabase {
         )?;
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
-            [],
-        )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rel_workspace ON relationships(workspace_id)",
             [],
         )?;
 

@@ -56,7 +56,7 @@ impl HealthChecker {
 
             let symbol_count = match db.try_lock() {
                 Ok(db_lock) => db_lock
-                    .get_symbol_count_for_workspace(&target_workspace_id)
+                    .get_symbol_count_for_workspace()
                     .unwrap_or(0),
                 Err(_busy) => {
                     debug!(
@@ -88,7 +88,7 @@ impl HealthChecker {
 
             let symbol_count = tokio::task::spawn_blocking(move || -> Result<i64> {
                 let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-                ref_db.get_symbol_count_for_workspace(&target_workspace_id)
+                ref_db.get_symbol_count_for_workspace()
             })
             .await
             .map_err(|e| anyhow!("Failed to open reference workspace database: {}", e))??;

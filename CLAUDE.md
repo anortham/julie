@@ -173,6 +173,31 @@ Julie distinguishes between two types of workspaces:
 - **Primary workspace data**: `<project>/.julie/` (e.g., `/Users/murphy/source/julie/.julie/`)
 - **NOT** at `~/.julie/` (this is a common mistake!)
 
+### 🚨 LOG LOCATION (STOP LOOKING IN THE WRONG PLACE!)
+**Logs are PROJECT-LEVEL, not user-level!**
+
+**CORRECT log location:**
+```
+/Users/murphy/source/julie/.julie/logs/julie.log.2025-10-17
+```
+
+**WRONG** (don't look here):
+```
+~/.julie/logs/  ← THIS DOES NOT EXIST!
+```
+
+**When checking logs, ALWAYS use:**
+```bash
+# Primary workspace logs
+ls -lh /Users/murphy/source/julie/.julie/logs/
+
+# Or use relative path from project root
+ls -lh .julie/logs/
+
+# Tail latest log
+tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
+```
+
 **Directory Structure (Actual Example from System):**
 ```
 /Users/murphy/source/julie/.julie/

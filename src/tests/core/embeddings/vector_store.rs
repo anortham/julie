@@ -95,7 +95,8 @@ mod tests {
             .store_vector("c".to_string(), vec![0.0, 0.0, 1.0])
             .unwrap();
 
-        store.build_hnsw_index().unwrap();
+        let embeddings = store.get_all_vectors();
+        store.build_hnsw_index(&embeddings).unwrap();
 
         let temp_dir = TempDir::new().unwrap();
 

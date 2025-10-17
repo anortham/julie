@@ -119,7 +119,7 @@ mod workspace_isolation {
             "Reference workspace database should exist before force reindex"
         );
         let ref_db_before = SymbolDatabase::new(&ref_db_path)?;
-        let symbols_before = ref_db_before.get_symbol_count_for_workspace(&reference_id)?;
+        let symbols_before = ref_db_before.get_symbol_count_for_workspace()?;
         assert_eq!(
             symbols_before, 1,
             "Reference workspace should have 1 symbol before force reindex"
@@ -145,7 +145,7 @@ mod workspace_isolation {
 
         // Verify reference workspace still has its data
         let ref_db_after = SymbolDatabase::new(&ref_db_path)?;
-        let symbols_after = ref_db_after.get_symbol_count_for_workspace(&reference_id)?;
+        let symbols_after = ref_db_after.get_symbol_count_for_workspace()?;
         assert_eq!(
             symbols_after, 1,
             "🔴 BUG: Reference workspace lost its symbols during primary force reindex! \
