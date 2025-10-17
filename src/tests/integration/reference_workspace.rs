@@ -56,7 +56,7 @@ mod reference_workspace_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_reference_workspace_end_to_end() -> Result<()> {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        // Note: Don't skip search index - we need the workspace to be registered!
 
         // Create primary workspace
         let primary_temp = TempDir::new()?;
@@ -98,8 +98,8 @@ pub fn reference_function() {
             .initialize_workspace(Some(primary_path.to_string_lossy().to_string()))
             .await?;
 
-        // Index primary workspace
-        let primary_index_tool = ManageWorkspaceTool {
+        // Index primary workspace (this registers it as Primary, not Reference)
+        let index_primary_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
             path: Some(primary_path.to_string_lossy().to_string()),
             force: Some(false),
@@ -111,9 +111,24 @@ pub fn reference_function() {
             detailed: None,
             limit: None,
         };
-        primary_index_tool.call_tool(&handler).await?;
-        sleep(Duration::from_millis(500)).await;
+        let index_result = index_primary_tool.call_tool(&handler).await?;
+        let index_response = extract_text_from_result(&index_result);
+        println!("Index primary workspace response:\n{}", index_response);
+
+        // Wait longer for background workspace registration to complete
+        sleep(Duration::from_millis(2000)).await;
         mark_index_ready(&handler).await;
+
+        // Debug: Check if primary workspace is registered
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            use crate::workspace::registry_service::WorkspaceRegistryService;
+            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+            match registry_service.get_primary_workspace_id().await {
+                Ok(Some(id)) => println!("✅ Primary workspace registered with ID: {}", id),
+                Ok(None) => println!("❌ Primary workspace NOT found in registry!"),
+                Err(e) => println!("❌ Error getting primary workspace ID: {}", e),
+            }
+        }
 
         // Add reference workspace
         let add_reference_tool = ManageWorkspaceTool {
@@ -132,6 +147,17 @@ pub fn reference_function() {
         let add_response = extract_text_from_result(&add_result);
 
         println!("Add reference workspace response:\n{}", add_response);
+
+        // Debug: Check if primary workspace is STILL registered after adding reference
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            use crate::workspace::registry_service::WorkspaceRegistryService;
+            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+            match registry_service.get_primary_workspace_id().await {
+                Ok(Some(id)) => println!("✅ After adding reference, primary workspace still registered: {}", id),
+                Ok(None) => println!("❌❌❌ PRIMARY WORKSPACE LOST after adding reference workspace!"),
+                Err(e) => println!("❌ Error getting primary workspace ID: {}", e),
+            }
+        }
 
         // Extract workspace ID from response
         let reference_workspace_id = extract_workspace_id(&add_result)

@@ -32,3 +32,20 @@
    This tool can't help reduce tokens if by default it blows through the hard token limit. 
    We have to figure out a better way to make this tool work. Either with summary modes or paging or idk what.
    We're trying to refactor to get this codebase into more manageable sized files but other user will need this tool to work no matter what conidtion their files are in.
+
+
+   # MANAGE_WORKSPACE
+   I think we still have an issue with reference workspaces being deleted when they shouldn't be. If you look at the workspace registry right now and compare it to the files on disk, you'll see they're missing. I think maybe they are being deleted at startup.
+
+#FAST_SEARCH
+   ⏺ julie - fast_search (MCP)(query: "get_symbols", mode: "text", limit: 20)
+  ⎿  ⚠ Large MCP response (~14.0k tokens), this can fill up context quickly
+  ⎿  {
+       "confidence": 1,
+       "insights": "Mostly Methods (14 of 20)",
+     … +723 lines (ctrl+o to expand)
+
+     we fixed the context issues with fast_search, I think we need to spend some time find tuning our results. The better the results are, the fewer we need to return by default.
+
+# missing implementations
+  - look for "coming soon", "TODO", "Stub" , etc
