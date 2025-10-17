@@ -92,7 +92,7 @@ impl PropertyHelper {
                 let prop_text = base.get_node_text(&child).trim().to_string();
 
                 // Remove trailing semicolon (';' is ASCII, safe to slice)
-                let clean_prop = if prop_text.ends_with(';') && prop_text.len() > 0 {
+                let clean_prop = if prop_text.ends_with(';') {
                     let new_len = prop_text.len() - 1;
                     if prop_text.is_char_boundary(new_len) {
                         prop_text[..new_len].to_string()
