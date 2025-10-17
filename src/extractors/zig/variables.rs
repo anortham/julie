@@ -337,7 +337,7 @@ fn extract_standard_variable(
     if let Some(switch_node) = switch_node {
         let switch_text = base.get_node_text(&switch_node);
         // Safely truncate UTF-8 string at character boundary
-        if switch_text.len() > 50 {
+        if switch_text.chars().count() > 20 {
             var_type = format!("switch({}...)", BaseExtractor::truncate_string(&switch_text, 20));
         } else {
             var_type = switch_text;
