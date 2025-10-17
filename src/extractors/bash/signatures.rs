@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use tree_sitter::Node;
+use crate::extractors::base::BaseExtractor;
 
 impl super::BashExtractor {
     /// Build signature for a function definition
@@ -40,12 +41,8 @@ impl super::BashExtractor {
         // Get the full command with arguments
         let command_text = self.base.get_node_text(&node);
 
-        // Limit length for readability
-        if command_text.len() > 100 {
-            format!("{}...", &command_text[..97])
-        } else {
-            command_text
-        }
+        // Limit length for readability - safely handle UTF-8
+        BaseExtractor::truncate_string(&command_text, 97)
     }
 
     /// Build signature for control flow constructs (if, while, for)
@@ -57,11 +54,8 @@ impl super::BashExtractor {
         for child in node.children(&mut cursor) {
             if matches!(child.kind(), "test_command" | "condition") {
                 let condition = self.base.get_node_text(&child);
-                let condition = if condition.len() > 50 {
-                    format!("{}...", &condition[..47])
-                } else {
-                    condition
-                };
+                // Safely truncate UTF-8 string at character boundary
+                let condition = BaseExtractor::truncate_string(&condition, 47);
                 return format!("{} ({})", control_type, condition);
             }
         }

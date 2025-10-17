@@ -5,6 +5,7 @@
 //! Signatures are the human-readable representations shown in IDEs.
 
 use tree_sitter::Node;
+use crate::extractors::base::BaseExtractor;
 
 impl super::JavaScriptExtractor {
     /// Build class signature - direct port of Miller's buildClassSignature
@@ -162,12 +163,8 @@ impl super::JavaScriptExtractor {
                 }
                 _ => {
                     let value_text = self.base.get_node_text(&value);
-                    // Truncate very long values (Miller's logic)
-                    let truncated_value = if value_text.len() > 50 {
-                        format!("{}...", &value_text[..50])
-                    } else {
-                        value_text
-                    };
+                    // Truncate very long values (Miller's logic) - safely handling UTF-8
+                    let truncated_value = BaseExtractor::truncate_string(&value_text, 50);
                     signature.push_str(&format!(" = {}", truncated_value));
                 }
             }
@@ -184,11 +181,8 @@ impl super::JavaScriptExtractor {
 
         if let Some(value) = value_node {
             let value_text = self.base.get_node_text(&value);
-            let truncated_value = if value_text.len() > 30 {
-                format!("{}...", &value_text[..30])
-            } else {
-                value_text
-            };
+            // Safely truncate UTF-8 string at character boundary
+            let truncated_value = BaseExtractor::truncate_string(&value_text, 30);
             signature.push_str(&format!(": {}", truncated_value));
         }
 

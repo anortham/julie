@@ -1,12 +1,10 @@
 use super::groups;
+use crate::extractors::base::BaseExtractor;
 
 /// Build signature for a basic pattern
 pub fn build_pattern_signature(pattern: &str) -> String {
-    if pattern.len() <= 100 {
-        pattern.to_string()
-    } else {
-        format!("{}...", &pattern[..97])
-    }
+    // Safely truncate UTF-8 string at character boundary
+    BaseExtractor::truncate_string(pattern, 97)
 }
 
 /// Build signature for a character class

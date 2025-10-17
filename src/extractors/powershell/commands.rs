@@ -145,11 +145,8 @@ pub(super) fn extract_dsc_configuration(
 /// Extract command signature
 fn extract_command_signature(base: &BaseExtractor, node: Node) -> String {
     let command_text = base.get_node_text(&node);
-    if command_text.len() > 100 {
-        format!("{}...", &command_text[..97])
-    } else {
-        command_text
-    }
+    // Safely truncate UTF-8 string at character boundary
+    BaseExtractor::truncate_string(&command_text, 97)
 }
 
 /// Extract configuration name from ERROR node containing DSC configuration

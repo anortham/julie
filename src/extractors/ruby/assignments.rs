@@ -264,6 +264,10 @@ pub(super) fn extract_parallel_assignment_fallback(
 ) {
     // Split by '=' to get left and right sides
     if let Some(eq_pos) = assignment_text.find('=') {
+        // Safe: '=' is ASCII, so this will be at a char boundary, but verify to be safe
+        if !assignment_text.is_char_boundary(eq_pos) {
+            return; // Skip malformed input
+        }
         let left_side = assignment_text[..eq_pos].trim();
 
         // Extract variable names from the left side
