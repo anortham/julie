@@ -112,9 +112,8 @@ pub const MAX_USERS: usize = 100;
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(), // RELATIVE path
         max_depth: 2,
-        include_body: false,
         target: None,
-        mode: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -189,9 +188,8 @@ pub fn process_data(input: &str) -> String {
     let tool = GetSymbolsTool {
         file_path: absolute_path,
         max_depth: 1,
-        include_body: false,
         target: None,
-        mode: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -255,9 +253,8 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
         let tool = GetSymbolsTool {
             file_path: path_variant.to_string(),
             max_depth: 1,
-            include_body: false,
-            target: None,
-            mode: None,
+                target: None,
+                limit: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -275,6 +272,111 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             path_variant
         );
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_symbols_with_limit_parameter() -> Result<()> {
+    // Test that the limit parameter truncates results correctly
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // Create a file with many symbols (20 functions)
+    let test_file = src_dir.join("many_symbols.rs");
+    let mut content = String::new();
+    for i in 1..=20 {
+        content.push_str(&format!("pub fn function_{}() -> i32 {{ {} }}\n\n", i, i));
+    }
+    fs::write(&test_file, content)?;
+
+    let handler = JulieServerHandler::new().await?;
+    handler
+        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .await?;
+
+    // Index the workspace
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        expired_only: None,
+        days: None,
+        max_size_mb: None,
+        detailed: None,
+        limit: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Test 1: No limit - should return all 20 symbols
+    let tool_no_limit = GetSymbolsTool {
+        file_path: "src/many_symbols.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+    };
+
+    let result_no_limit = tool_no_limit.call_tool(&handler).await?;
+    let structured_content_no_limit = result_no_limit
+        .structured_content
+        .expect("Should have structured content");
+
+    let total_symbols_no_limit = structured_content_no_limit
+        .get("total_symbols")
+        .and_then(|v| v.as_u64())
+        .expect("Should have total_symbols");
+
+    assert_eq!(total_symbols_no_limit, 20, "Should find all 20 symbols");
+
+    // Test 2: With limit=5 - should return only 5 symbols
+    let tool_with_limit = GetSymbolsTool {
+        file_path: "src/many_symbols.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: Some(5),
+    };
+
+    let result_with_limit = tool_with_limit.call_tool(&handler).await?;
+    let text_with_limit = extract_text_from_result(&result_with_limit);
+    let structured_content_with_limit = result_with_limit
+        .structured_content
+        .expect("Should have structured content");
+
+    let returned_symbols = structured_content_with_limit
+        .get("returned_symbols")
+        .and_then(|v| v.as_u64())
+        .expect("Should have returned_symbols");
+
+    let total_symbols = structured_content_with_limit
+        .get("total_symbols")
+        .and_then(|v| v.as_u64())
+        .expect("Should have total_symbols");
+
+    let truncated = structured_content_with_limit
+        .get("truncated")
+        .and_then(|v| v.as_bool())
+        .expect("Should have truncated flag");
+
+    assert_eq!(returned_symbols, 5, "Should return exactly 5 symbols");
+    assert_eq!(total_symbols, 20, "Total should still be 20");
+    assert!(truncated, "Should indicate truncation occurred");
+    assert!(
+        text_with_limit.contains("⚠️"),
+        "Text should show truncation warning"
+    );
+    assert!(
+        text_with_limit.contains("Showing 5 of 20"),
+        "Should show truncation summary: {}",
+        text_with_limit
+    );
 
     Ok(())
 }

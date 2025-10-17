@@ -152,6 +152,7 @@ pub fn reference_function() {
             limit: 10,
             workspace: Some("primary".to_string()),
             output: Some("lines".to_string()),
+            context_lines: None,
         };
 
         let primary_result = search_primary.call_tool(&handler).await?;
@@ -177,6 +178,7 @@ pub fn reference_function() {
             limit: 10,
             workspace: Some(reference_workspace_id.clone()),
             output: Some("lines".to_string()),
+            context_lines: None,
         };
 
         let reference_result = search_reference.call_tool(&handler).await?;
@@ -203,6 +205,7 @@ pub fn reference_function() {
             limit: 10,
             workspace: Some("primary".to_string()),
             output: Some("lines".to_string()),
+            context_lines: None,
         };
 
         let cross_result = cross_search.call_tool(&handler).await?;
@@ -244,6 +247,7 @@ pub fn reference_function() {
             limit: 10,
             workspace: Some("nonexistent_workspace_12345".to_string()),
             output: Some("lines".to_string()),
+            context_lines: None,
         };
 
         let result = search_tool.call_tool(&handler).await;

@@ -81,6 +81,11 @@ pub struct FastSearchTool {
     /// Perfect for finding ALL TODO comments, all usages of a pattern, etc.
     #[serde(default = "default_output")]
     pub output: Option<String>,
+    /// Number of context lines before/after match in code_context field (default: 1)
+    /// 0 = just match line, 1 = 1 before + match + 1 after (3 total), 3 = grep default (7 total)
+    /// Lower values save massive tokens in search results while maintaining usefulness
+    #[serde(default = "default_context_lines")]
+    pub context_lines: Option<u32>,
 }
 
 fn default_limit() -> u32 {
@@ -94,6 +99,9 @@ fn default_workspace() -> Option<String> {
 }
 fn default_output() -> Option<String> {
     Some("symbols".to_string())
+}
+fn default_context_lines() -> Option<u32> {
+    Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
 }
 
 impl FastSearchTool {
@@ -157,6 +165,9 @@ impl FastSearchTool {
             "hybrid" => self.hybrid_search(handler).await?,
             _ => self.text_search(handler).await?, // "text" or any other mode defaults to text search
         };
+
+        // Truncate code_context to save tokens (default: 3 lines total)
+        let symbols = self.truncate_code_context(symbols);
 
         // Create optimized response with confidence scoring
         let confidence = self.calculate_search_confidence(&symbols);
@@ -1165,6 +1176,36 @@ impl FastSearchTool {
                 required_ok && excluded_ok
             }
         }
+    }
+
+    /// Truncate code_context field to save massive tokens in search results
+    ///
+    /// Formula: max_lines = context_lines * 2 + 1
+    /// - context_lines=0 → 1 line total (just match)
+    /// - context_lines=1 → 3 lines total (1 before + match + 1 after) [DEFAULT]
+    /// - context_lines=3 → 7 lines total (grep default)
+    fn truncate_code_context(&self, symbols: Vec<Symbol>) -> Vec<Symbol> {
+        let context_lines = self.context_lines.unwrap_or(1) as usize;
+        let max_lines = context_lines * 2 + 1; // before + match + after
+
+        symbols
+            .into_iter()
+            .map(|mut symbol| {
+                if let Some(code_context) = symbol.code_context.take() {
+                    let lines: Vec<&str> = code_context.lines().collect();
+
+                    if lines.len() > max_lines {
+                        // Truncate to max_lines and add indicator
+                        let truncated: Vec<&str> = lines.into_iter().take(max_lines).collect();
+                        symbol.code_context = Some(format!("{}...", truncated.join("\n")));
+                    } else {
+                        // Keep as-is (within limit)
+                        symbol.code_context = Some(code_context);
+                    }
+                }
+                symbol
+            })
+            .collect()
     }
 }
 

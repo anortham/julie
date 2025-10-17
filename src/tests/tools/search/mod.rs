@@ -13,6 +13,7 @@ fn test_preprocess_fallback_query_multi_word() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -32,6 +33,7 @@ fn test_preprocess_fallback_query_single_word() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -51,6 +53,7 @@ fn test_preprocess_fallback_query_quoted() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -70,6 +73,7 @@ fn test_preprocess_fallback_query_exclusion() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -89,6 +93,7 @@ fn test_preprocess_fallback_query_wildcard() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -108,6 +113,7 @@ fn test_preprocess_fallback_query_explicit_or() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(
@@ -127,6 +133,7 @@ fn test_preprocess_fallback_query_explicit_and() {
         limit: 15,
         workspace: None,
         output: None,
+        context_lines: None,
     };
 
     assert_eq!(

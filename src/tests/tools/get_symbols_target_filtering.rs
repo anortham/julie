@@ -42,9 +42,8 @@ mod tests {
         let tool = GetSymbolsTool {
             file_path: "src/tools/symbols.rs".to_string(),
             max_depth: 2,
-            include_body: false,
             target: Some("call_tool".to_string()), // Method inside GetSymbolsTool
-            mode: None,
+            limit: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -113,9 +112,8 @@ mod tests {
         let tool = GetSymbolsTool {
             file_path: "src/tools/symbols.rs".to_string(),
             max_depth: 2,
-            include_body: false,
             target: Some("GetSymbolsTool".to_string()),
-            mode: None,
+            limit: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -176,9 +174,8 @@ mod tests {
         let tool = GetSymbolsTool {
             file_path: "src/tools/symbols.rs".to_string(),
             max_depth: 2,
-            include_body: false,
             target: Some("getsymbolstool".to_string()), // lowercase
-            mode: None,
+            limit: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -231,9 +228,8 @@ mod tests {
         let tool = GetSymbolsTool {
             file_path: "src/tools/symbols.rs".to_string(),
             max_depth: 2,
-            include_body: false,
             target: Some("format".to_string()), // Should match "format_symbol"
-            mode: None,
+            limit: None,
         };
 
         let result = tool.call_tool(&handler).await?;

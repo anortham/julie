@@ -260,7 +260,6 @@ pub fn helper_function() {}
             let get_symbols_main = GetSymbolsTool {
                 file_path: "src/lib.rs".to_string(),
                 max_depth: 2,
-                include_body: false,
                 target: None,
                 mode: None,
             };
@@ -268,7 +267,6 @@ pub fn helper_function() {}
             let get_symbols_extra = GetSymbolsTool {
                 file_path: "src/extra.rs".to_string(),
                 max_depth: 2,
-                include_body: false,
                 target: None,
                 mode: None,
             };

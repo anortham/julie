@@ -47,6 +47,7 @@ pub mod tools {
     pub mod editing;  // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
 
     pub mod search;  // Search tool tests (line mode, quality, race conditions)
+    pub mod search_context_lines;  // FastSearchTool context_lines parameter tests (token optimization)
 
     pub mod refactoring;  // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 

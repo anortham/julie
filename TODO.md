@@ -25,3 +25,10 @@
    document the syntax for users.
    - Natural Language Evolution: Evaluate upgrading semantic tier with better embeddings or fine-tuned models to close Gemini’s NL gap once telemetry validates baseline
    stability.
+
+
+
+   # GET_SYMBOLS
+   This tool can't help reduce tokens if by default it blows through the hard token limit. 
+   We have to figure out a better way to make this tool work. Either with summary modes or paging or idk what.
+   We're trying to refactor to get this codebase into more manageable sized files but other user will need this tool to work no matter what conidtion their files are in.

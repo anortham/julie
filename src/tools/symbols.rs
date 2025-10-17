@@ -22,6 +22,10 @@ fn default_max_depth() -> u32 {
     1
 }
 
+fn default_limit() -> Option<u32> {
+    Some(50) // Default limit to prevent token overflow on large files
+}
+
 //**********************//
 //   Get Symbols Tool   //
 //**********************//
@@ -58,24 +62,19 @@ pub struct GetSymbolsTool {
     #[serde(default = "default_max_depth")]
     pub max_depth: u32,
 
-    /// Include full code bodies for symbols (default: false)
-    /// When true, shows complete function/class/method code
-    /// 70-90% token savings vs reading entire file
-    #[serde(default)]
-    pub include_body: bool,
-
     /// Filter to specific symbol(s) by name (optional)
     /// Example: "UserService" to show only UserService class
     /// Supports partial matching (case-insensitive)
     #[serde(default)]
     pub target: Option<String>,
 
-    /// Reading mode: "structure" (default), "minimal", "full"
-    /// - structure: No bodies, structure only (current behavior)
-    /// - minimal: Bodies for top-level symbols only
-    /// - full: Bodies for all symbols including nested methods
-    #[serde(default)]
-    pub mode: Option<String>,
+    /// Maximum number of symbols to return (default: 50)
+    /// When set, truncates results to first N symbols
+    /// Use 'target' parameter to filter to specific symbols instead of truncating
+    /// Set to None for unlimited, or specific value to override default
+    /// Example: limit=100 returns first 100 symbols
+    #[serde(default = "default_limit")]
+    pub limit: Option<u32>,
 }
 
 impl GetSymbolsTool {
@@ -156,27 +155,66 @@ impl GetSymbolsTool {
             }
         }
 
-        // Note: file_content no longer needed since we return raw Symbol objects in structured_content
-        // Agents get all symbol data including code_context from the database
+        // Apply limit if specified (truncate to avoid token overflow)
+        let total_symbols = all_symbols.len();
+        let top_level_count = all_symbols.iter().filter(|s| s.parent_id.is_none()).count();
+
+        let (symbols_to_return, was_truncated) = if let Some(limit) = self.limit {
+            let limit_usize = limit as usize;
+            if total_symbols > limit_usize {
+                info!(
+                    "⚠️  Truncating symbols: {} -> {} (use 'target' to filter instead)",
+                    total_symbols, limit
+                );
+                (all_symbols.into_iter().take(limit_usize).collect(), true)
+            } else {
+                (all_symbols, false)
+            }
+        } else {
+            (all_symbols, false)
+        };
+
+        // Strip code_context to save massive tokens (structure view doesn't need full context)
+        // This is critical for large files - code_context can be 50-100 lines per symbol!
+        let symbols_to_return: Vec<_> = symbols_to_return
+            .into_iter()
+            .map(|mut s| {
+                s.code_context = None; // Remove context - structure view only needs metadata
+                s
+            })
+            .collect();
+
+        // Note: Symbol metadata (name, kind, signature, location) returned in structured_content
+        // code_context is stripped to save tokens - use fast_search for context
         debug!(
-            "📋 Returning {} symbols (target: {:?})",
-            all_symbols.len(),
-            self.target
+            "📋 Returning {} symbols (target: {:?}, truncated: {})",
+            symbols_to_return.len(),
+            self.target,
+            was_truncated
         );
 
         // Minimal text output for AI agents (structured_content has all data)
-        let top_level_count = all_symbols.iter().filter(|s| s.parent_id.is_none()).count();
+        let truncation_warning = if was_truncated {
+            format!(
+                "\n\n⚠️  Showing {} of {} symbols (truncated)\n💡 Use 'target' parameter to filter to specific symbols",
+                symbols_to_return.len(),
+                total_symbols
+            )
+        } else {
+            String::new()
+        };
 
         let text_summary = if let Some(ref target) = self.target {
             format!(
-                "{} ({} total symbols, {} matching '{}')",
+                "{} ({} total symbols, {} matching '{}'){}",
                 self.file_path,
-                all_symbols.len(),
-                all_symbols.iter().filter(|s| s.name.to_lowercase().contains(&target.to_lowercase())).count(),
-                target
+                total_symbols,
+                symbols_to_return.iter().filter(|s| s.name.to_lowercase().contains(&target.to_lowercase())).count(),
+                target,
+                truncation_warning
             )
         } else {
-            let top_names: Vec<String> = all_symbols
+            let top_names: Vec<String> = symbols_to_return
                 .iter()
                 .filter(|s| s.parent_id.is_none())
                 .take(5)
@@ -184,22 +222,24 @@ impl GetSymbolsTool {
                 .collect();
 
             format!(
-                "{} ({} symbols)\nTop-level: {}",
+                "{} ({} symbols)\nTop-level: {}{}",
                 self.file_path,
-                all_symbols.len(),
-                top_names.join(", ")
+                symbols_to_return.len(),
+                top_names.join(", "),
+                truncation_warning
             )
         };
 
-        // Return structured content with ALL symbol data (agents parse this)
+        // Return structured content with symbol data (agents parse this)
         let structured_json = serde_json::json!({
             "file_path": self.file_path,
-            "total_symbols": all_symbols.len(),
+            "total_symbols": total_symbols,
+            "returned_symbols": symbols_to_return.len(),
             "top_level_count": top_level_count,
-            "symbols": all_symbols,
-            "mode": self.mode.as_deref().unwrap_or("structure"),
-            "include_body": self.include_body,
+            "symbols": symbols_to_return,
             "max_depth": self.max_depth,
+            "truncated": was_truncated,
+            "limit": self.limit,
         });
 
         let mut result = CallToolResult::text_content(vec![TextContent::from(text_summary)]);
