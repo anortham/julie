@@ -51,10 +51,33 @@ type Point struct {
         assert_eq!(user_struct.signature.as_ref().unwrap(), "type User struct");
         assert_eq!(user_struct.visibility, Some(Visibility::Public));
 
+        // NEW: Verify struct fields are extracted
+        let id_field = symbols.iter().find(|s| s.name == "ID");
+        assert!(id_field.is_some(), "Should extract ID field from User struct");
+        let id_field = id_field.unwrap();
+        assert_eq!(id_field.kind, SymbolKind::Field);
+        assert_eq!(id_field.visibility, Some(Visibility::Public)); // uppercase = public in Go
+        assert!(id_field.signature.as_ref().unwrap().contains("ID int64"));
+
+        let name_field = symbols.iter().find(|s| s.name == "Name");
+        assert!(name_field.is_some(), "Should extract Name field from User struct");
+        let name_field = name_field.unwrap();
+        assert_eq!(name_field.kind, SymbolKind::Field);
+        assert_eq!(name_field.visibility, Some(Visibility::Public));
+
+        let email_field = symbols.iter().find(|s| s.name == "Email");
+        assert!(email_field.is_some(), "Should extract Email field from User struct");
+
         let point_struct = symbols.iter().find(|s| s.name == "Point");
         assert!(point_struct.is_some());
         let point_struct = point_struct.unwrap();
         assert_eq!(point_struct.visibility, Some(Visibility::Public));
+
+        // Verify Point struct fields (X, Y on same line)
+        let x_field = symbols.iter().find(|s| s.name == "X");
+        assert!(x_field.is_some(), "Should extract X field from Point struct");
+        let y_field = symbols.iter().find(|s| s.name == "Y");
+        assert!(y_field.is_some(), "Should extract Y field from Point struct");
     }
 
     #[test]

@@ -292,6 +292,54 @@ class Config:
     }
 
     #[test]
+    fn test_extract_multiple_assignments() {
+        // Test multiple variable assignment: a, b = 1, 2
+        let python_code = r#"
+# Multiple assignment patterns
+a, b = 1, 2
+x, y, z = (10, 20, 30)
+first, second = func_returning_tuple()
+
+# Tuple unpacking
+coords = (5.0, 10.0)
+lat, lon = coords
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(python_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should extract all variables from multiple assignments
+        let a_var = symbols.iter().find(|s| s.name == "a");
+        assert!(a_var.is_some(), "Should extract 'a' from multiple assignment");
+        assert_eq!(a_var.unwrap().kind, SymbolKind::Variable);
+
+        let b_var = symbols.iter().find(|s| s.name == "b");
+        assert!(b_var.is_some(), "Should extract 'b' from multiple assignment");
+        assert_eq!(b_var.unwrap().kind, SymbolKind::Variable);
+
+        let x_var = symbols.iter().find(|s| s.name == "x");
+        assert!(x_var.is_some(), "Should extract 'x' from tuple assignment");
+
+        let y_var = symbols.iter().find(|s| s.name == "y");
+        assert!(y_var.is_some(), "Should extract 'y' from tuple assignment");
+
+        let z_var = symbols.iter().find(|s| s.name == "z");
+        assert!(z_var.is_some(), "Should extract 'z' from tuple assignment");
+
+        let first_var = symbols.iter().find(|s| s.name == "first");
+        assert!(first_var.is_some(), "Should extract 'first' from function result");
+
+        let second_var = symbols.iter().find(|s| s.name == "second");
+        assert!(second_var.is_some(), "Should extract 'second' from function result");
+
+        let lat_var = symbols.iter().find(|s| s.name == "lat");
+        assert!(lat_var.is_some(), "Should extract 'lat' from tuple unpacking");
+
+        let lon_var = symbols.iter().find(|s| s.name == "lon");
+        assert!(lon_var.is_some(), "Should extract 'lon' from tuple unpacking");
+    }
+
+    #[test]
     fn test_extract_import_statements() {
         let python_code = r#"
 import os

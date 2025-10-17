@@ -167,12 +167,6 @@ pub(super) fn extract_declarator_name(node: Node) -> Option<Node> {
         .find(|c| c.kind() == "identifier")
 }
 
-/// Find the field name in a field declarator
-pub(super) fn extract_field_name(node: Node) -> Option<Node> {
-    node.children(&mut node.walk())
-        .find(|c| c.kind() == "field_identifier" || c.kind() == "identifier")
-}
-
 /// Collect modifier keywords recursively from a node
 pub(super) fn collect_modifiers_recursive(
     base: &BaseExtractor,

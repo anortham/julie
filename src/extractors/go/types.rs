@@ -216,8 +216,80 @@ impl super::GoExtractor {
         None
     }
 
-    pub(super) fn extract_field(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        // Stub - will implement
-        None
+    pub(super) fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+        // Go field_declaration structure:
+        // field_declaration
+        //   field_identifier (name) - can have MULTIPLE on same line (X, Y float64)
+        //   primitive_type | slice_type | etc. (type)
+        //   [optional] field_tag (like `json:"id"`)
+
+        let mut cursor = node.walk();
+        let mut field_names = Vec::new();
+        let mut field_type = None;
+        let mut field_tag = None;
+
+        // Collect all field_identifier nodes (can have multiple on same line: X, Y float64)
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "field_identifier" => {
+                    field_names.push(child);
+                }
+                "primitive_type" | "type_identifier" | "pointer_type" | "slice_type"
+                | "map_type" | "array_type" | "channel_type" | "function_type"
+                | "qualified_type" | "generic_type" | "interface_type" | "struct_type" => {
+                    if field_type.is_none() {
+                        field_type = Some(child);
+                    }
+                }
+                "field_tag" => {
+                    field_tag = Some(child);
+                }
+                _ => {}
+            }
+        }
+
+        // Create a symbol for EACH field name (handles X, Y float64 pattern)
+        let mut symbols = Vec::new();
+
+        if let Some(type_node) = field_type {
+            let type_text = self.extract_type_from_node(type_node);
+            let tag_text = field_tag.map(|tag| self.get_node_text(tag));
+
+            for field_name_node in field_names {
+                let name = self.get_node_text(field_name_node);
+
+                // Build signature
+                let mut signature = format!("{} {}", name, type_text);
+                if let Some(ref tag) = tag_text {
+                    signature.push(' ');
+                    signature.push_str(tag);
+                }
+
+                // Determine visibility (Go rule: uppercase first letter = public)
+                let visibility = if self.is_public(&name) {
+                    Some(Visibility::Public)
+                } else {
+                    Some(Visibility::Private)
+                };
+
+                // Create symbol for this field
+                let symbol = self.base.create_symbol(
+                    &field_name_node,
+                    name,
+                    SymbolKind::Field,
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility,
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                );
+
+                symbols.push(symbol);
+            }
+        }
+
+        symbols
     }
 }

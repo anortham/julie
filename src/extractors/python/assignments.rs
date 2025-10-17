@@ -7,15 +7,24 @@ use super::PythonExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
-/// Extract an assignment statement
+/// Extract an assignment statement - can return multiple symbols for tuple unpacking
 pub(super) fn extract_assignment(
     extractor: &mut PythonExtractor,
     node: Node,
-) -> Option<Symbol> {
-    // Handle assignments like: x = 5, x: int = 5, self.x = 5
-    let left = node.child_by_field_name("left")?;
+) -> Vec<Symbol> {
+    // Handle assignments like: x = 5, x: int = 5, self.x = 5, a, b = 1, 2
+    let left = match node.child_by_field_name("left") {
+        Some(left) => left,
+        None => return vec![],
+    };
     let right = node.child_by_field_name("right");
 
+    // Handle multiple assignment patterns (a, b = 1, 2)
+    if left.kind() == "pattern_list" || left.kind() == "tuple_pattern" {
+        return extract_multiple_assignment_targets(extractor, left, right);
+    }
+
+    // Handle single assignments
     let (name, mut symbol_kind) = match left.kind() {
         "identifier" => {
             let name = extractor.base_mut().get_node_text(&left);
@@ -31,17 +40,13 @@ pub(super) fn extract_assignment(
                     let name = extractor.base_mut().get_node_text(&attribute_node);
                     (name, SymbolKind::Property)
                 } else {
-                    return None; // Skip non-self attributes for now
+                    return vec![]; // Skip non-self attributes for now
                 }
             } else {
-                return None;
+                return vec![];
             }
         }
-        "pattern_list" | "tuple_pattern" => {
-            // Handle multiple assignment: a, b = 1, 2
-            return None; // TODO: Handle multiple assignments
-        }
-        _ => return None,
+        _ => return vec![],
     };
 
     // Check if this is a special class attribute
@@ -89,7 +94,7 @@ pub(super) fn extract_assignment(
         serde_json::json!(!type_annotation.is_empty()),
     );
 
-    Some(extractor.base_mut().create_symbol(
+    vec![extractor.base_mut().create_symbol(
         &node,
         name,
         symbol_kind,
@@ -100,5 +105,61 @@ pub(super) fn extract_assignment(
             metadata: Some(metadata),
             doc_comment: None,
         },
-    ))
+    )]
+}
+
+/// Extract multiple assignment targets from pattern_list or tuple_pattern
+/// Example: a, b = 1, 2 extracts both 'a' and 'b' as separate variables
+fn extract_multiple_assignment_targets(
+    extractor: &mut PythonExtractor,
+    left_node: Node,
+    right: Option<Node>,
+) -> Vec<Symbol> {
+    let mut symbols = Vec::new();
+
+    // Extract the right-hand side value for signature
+    let value = if let Some(right) = right {
+        extractor.base_mut().get_node_text(&right)
+    } else {
+        String::new()
+    };
+
+    // Iterate through all identifiers in the pattern
+    let mut cursor = left_node.walk();
+    for child in left_node.children(&mut cursor) {
+        if child.kind() == "identifier" {
+            let name = extractor.base_mut().get_node_text(&child);
+
+            // Determine if it's a constant (uppercase) or variable
+            let symbol_kind = if name == name.to_uppercase() && name.len() > 1 {
+                SymbolKind::Constant
+            } else {
+                SymbolKind::Variable
+            };
+
+            // Build signature for this variable
+            let signature = format!("{} = {}", name, value);
+
+            // Infer visibility from name
+            let visibility = signatures::infer_visibility(&name);
+
+            // Create symbol for this variable
+            let symbol = extractor.base_mut().create_symbol(
+                &child,
+                name,
+                symbol_kind,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(visibility),
+                    parent_id: None,
+                    metadata: None,
+                    doc_comment: None,
+                },
+            );
+
+            symbols.push(symbol);
+        }
+    }
+
+    symbols
 }

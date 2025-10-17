@@ -1,10 +1,10 @@
 //! Function and method extraction for C++
 //! Handles extraction of functions, methods, constructors, destructors, and operators
 
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
 use tree_sitter::Node;
 
-use super::helpers;
+use super::{declarations, helpers};
 
 /// Extract function (definition or declaration)
 pub(super) fn extract_function(
@@ -118,13 +118,16 @@ pub(super) fn extract_function(
         }
     }
 
+    // Extract visibility based on access specifiers (private:/protected:/public:)
+    let visibility = declarations::extract_cpp_visibility(base, node);
+
     Some(base.create_symbol(
         &node,
         name,
         kind,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
@@ -179,13 +182,16 @@ fn extract_method(
         signature.push_str(" const");
     }
 
+    // Extract visibility based on access specifiers (private:/protected:/public:)
+    let visibility = declarations::extract_cpp_visibility(base, node);
+
     Some(base.create_symbol(
         &node,
         name.to_string(),
         kind,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,

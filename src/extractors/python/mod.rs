@@ -65,9 +65,9 @@ impl PythonExtractor {
                 symbols.push(symbol);
             }
             "assignment" => {
-                if let Some(symbol) = assignments::extract_assignment(self, node) {
-                    symbols.push(symbol);
-                }
+                // Can produce multiple symbols for tuple unpacking (a, b = 1, 2)
+                let assignment_symbols = assignments::extract_assignment(self, node);
+                symbols.extend(assignment_symbols);
             }
             "import_statement" | "import_from_statement" => {
                 let import_symbols = imports::extract_imports(self, node);

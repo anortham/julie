@@ -139,6 +139,12 @@ impl GoExtractor {
                 let const_symbols = self.extract_const_symbols(node, parent_id.as_deref());
                 symbols.extend(const_symbols);
             }
+            "field_declaration" => {
+                // Fields can have multiple names on same line (X, Y float64)
+                let field_symbols = self.extract_field(node, parent_id.as_deref());
+                symbols.extend(field_symbols);
+                return; // Don't walk children - fields are leaf nodes
+            }
             _ => {
                 if let Some(symbol) = self.extract_symbol(node, parent_id.as_deref()) {
                     let symbol_id = symbol.id.clone();
@@ -168,7 +174,7 @@ impl GoExtractor {
             "type_declaration" => self.extract_type_declaration(node, parent_id),
             "function_declaration" => Some(self.extract_function(node, parent_id)),
             "method_declaration" => Some(self.extract_method(node, parent_id)),
-            "field_declaration" => self.extract_field(node, parent_id),
+            // "field_declaration" handled in walk_tree (can produce multiple symbols)
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,
         }

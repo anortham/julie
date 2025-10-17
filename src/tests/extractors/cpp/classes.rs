@@ -368,8 +368,58 @@ mod tests {
         assert_eq!(vector_class.unwrap().kind, SymbolKind::Class);
 
         // Check access specifier handling
+
+        // Private fields (lines 307-308)
+        let data_field = symbols.iter().find(|s| s.name == "data");
+        assert!(data_field.is_some(), "Should extract 'data' field");
+        assert_eq!(
+            data_field.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Private),
+            "Field 'data' should be Private (declared in private: section)"
+        );
+
+        let size_field = symbols.iter().find(|s| s.name == "size");
+        assert!(size_field.is_some(), "Should extract 'size' field");
+        assert_eq!(
+            size_field.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Private),
+            "Field 'size' should be Private (declared in private: section)"
+        );
+
+        // Public constructor (line 311)
+        let ctor = symbols.iter().find(|s| s.name == "Vector" && s.kind == SymbolKind::Constructor);
+        assert!(ctor.is_some(), "Should extract Vector constructor");
+        assert_eq!(
+            ctor.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Public),
+            "Constructor should be Public (declared in public: section)"
+        );
+
+        // Public destructor (line 312)
+        let dtor = symbols.iter().find(|s| s.name == "~Vector");
+        assert!(dtor.is_some(), "Should extract Vector destructor");
+        assert_eq!(
+            dtor.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Public),
+            "Destructor should be Public (declared in public: section)"
+        );
+
+        // Protected method (line 324)
         let resize_method = symbols.iter().find(|s| s.name == "resize");
-        assert!(resize_method.is_some());
-        // Note: Visibility extraction will be tested in the implementation
+        assert!(resize_method.is_some(), "Should extract 'resize' method");
+        assert_eq!(
+            resize_method.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Protected),
+            "Method 'resize' should be Protected (declared in protected: section)"
+        );
+
+        // Private method (line 327)
+        let cleanup_method = symbols.iter().find(|s| s.name == "cleanup");
+        assert!(cleanup_method.is_some(), "Should extract 'cleanup' method");
+        assert_eq!(
+            cleanup_method.unwrap().visibility,
+            Some(crate::extractors::base::Visibility::Private),
+            "Method 'cleanup' should be Private (declared in private: section)"
+        );
     }
 }

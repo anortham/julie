@@ -81,6 +81,18 @@ impl CppExtractor {
 
     /// Walk the tree recursively
     fn walk_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+        // Handle field_declaration specially (can produce multiple symbols)
+        if node.kind() == "field_declaration" {
+            let field_symbols = declarations::extract_field(&mut self.base, node, parent_id.as_deref());
+            if !field_symbols.is_empty() {
+                symbols.extend(field_symbols);
+                // Don't walk children - field declarations are leaf nodes
+                return;
+            }
+            // If extract_field returned empty, this might be a method declaration
+            // Fall through to normal handling
+        }
+
         // Extract symbol from current node
         if let Some(symbol) = self.extract_symbol(node, parent_id.as_deref()) {
             let current_parent_id = Some(symbol.id.clone());
@@ -147,11 +159,14 @@ impl CppExtractor {
                 }
             }
             "declaration" => declarations::extract_declaration(&mut self.base, node, parent_id),
+            "field_declaration" => {
+                // Field declarations with function_declarators (method declarations) fall through here
+                declarations::extract_declaration(&mut self.base, node, parent_id)
+            }
             "friend_declaration" => {
                 declarations::extract_friend_declaration(&mut self.base, node, parent_id)
             }
             "template_declaration" => declarations::extract_template(&mut self.base, node, parent_id),
-            "field_declaration" => declarations::extract_field(&mut self.base, node, parent_id),
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,
         };
