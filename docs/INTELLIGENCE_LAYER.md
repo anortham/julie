@@ -12,7 +12,7 @@
 
 **Answer**: **THIS.** The Julie Intelligence Layer is what makes Julie more than just another code search tool. It's the convergence of everything we built:
 - 26 tree-sitter extractors → **Structural Understanding**
-- CASCADE architecture (SQLite → Tantivy → HNSW) → **Progressive Intelligence**
+- CASCADE architecture (SQLite FTS5 → HNSW Semantic) → **Progressive Intelligence**
 - ONNX embeddings → **Semantic Understanding**
 
 Traditional code search tools search for TEXT. Julie searches for MEANING.
@@ -74,7 +74,7 @@ TypeScript: interface UserService
 
 **How it works**:
 1. Generate all naming convention variants of a symbol
-2. Search each variant using Tantivy indexed search (<10ms)
+2. Search each variant using SQLite FTS5 indexed search (<10ms)
 3. Return matches from any language
 
 **Example**:
@@ -92,7 +92,7 @@ variants = [
 // Finds ALL implementations across ALL languages!
 ```
 
-**Performance**: <10ms using Tantivy indexed queries
+**Performance**: <10ms using SQLite FTS5 indexed queries
 
 **Code**: `src/utils/cross_language_intelligence.rs::generate_naming_variants()`
 
@@ -121,30 +121,32 @@ variants = [
 
 **Performance**: <50ms for similarity search with 6k+ vectors
 
-**Code**: `src/embeddings/mod.rs`, `src/search/engine/hnsw_vector_store.rs`
+**Code**: `src/embeddings/mod.rs`, `src/embeddings/vector_store.rs`
 
 ---
 
 ## How It All Works Together (CASCADE)
 
-The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to expensive ones:
+The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to expensive ones. As of 2025-10-12, Tantivy has been removed for a simplified 2-tier architecture:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ Strategy 1: Exact Match (Tantivy Index)        │ <5ms
+│ Strategy 1: Exact Match (SQLite FTS5)          │ <5ms
 │ ↓ If no results...                              │
 ├─────────────────────────────────────────────────┤
 │ Strategy 2: Relationships (SQLite Joins)        │ <10ms
 │ ↓ If still no results...                        │
 ├─────────────────────────────────────────────────┤
 │ Strategy 3: Cross-Language Intelligence         │
-│   3a. Naming Variants (Tantivy)         <10ms   │
+│   3a. Naming Variants (SQLite FTS5)     <10ms   │
 │   3b. Symbol Kind Equivalence          <1ms    │
 │ ↓ If still no results...                        │
 ├─────────────────────────────────────────────────┤
 │ Strategy 4: Semantic Similarity (HNSW)          │ <50ms
 └─────────────────────────────────────────────────┘
 ```
+
+**Architecture Change (2025-10-12)**: Tantivy removed, all indexed text search now uses SQLite FTS5 for simpler architecture and eliminated Arc<RwLock> deadlocks
 
 **Total worst-case**: ~75ms to find a symbol across languages with semantic fallback
 

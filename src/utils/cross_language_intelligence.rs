@@ -13,7 +13,7 @@
 //!    - Know that a Python class method ≈ C# instance method ≈ Rust impl function
 //!    - Extract semantic meaning, not just text
 //!
-//! 2. **Fast Intelligence** (CASCADE: SQLite → Tantivy)
+//! 2. **Fast Intelligence** (CASCADE: SQLite FTS5)
 //!    - Naming convention variants (snake_case, camelCase, PascalCase)
 //!    - Pattern matching across language conventions
 //!    - Sub-10ms indexed searches
@@ -100,7 +100,7 @@ pub enum NamingConvention {
 /// # Performance
 ///
 /// O(n) where n is the length of the input string. Extremely fast.
-/// These variants are then searched using indexed queries (Tantivy).
+/// These variants are then searched using indexed queries (SQLite FTS5).
 pub fn generate_naming_variants(symbol: &str) -> Vec<String> {
     let mut variants = Vec::with_capacity(5);
 
