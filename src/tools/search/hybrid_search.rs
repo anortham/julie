@@ -23,17 +23,29 @@ pub async fn hybrid_search_impl(
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
+    workspace_ids: Option<Vec<String>>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     debug!("🔄 Hybrid search mode (text + semantic fusion)");
 
     // Run both searches in parallel for optimal performance
+    // Both searches now respect workspace filtering
     let (text_results, semantic_results) = tokio::join!(
         crate::tools::search::text_search::text_search_impl(
-            query, language, file_pattern, limit, None, handler
+            query,
+            language,
+            file_pattern,
+            limit,
+            workspace_ids.clone(),
+            handler
         ),
         crate::tools::search::semantic_search::semantic_search_impl(
-            query, language, file_pattern, limit, handler
+            query,
+            language,
+            file_pattern,
+            limit,
+            workspace_ids.clone(),
+            handler
         )
     );
 

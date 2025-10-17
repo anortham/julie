@@ -393,6 +393,7 @@ impl JulieServerHandler {
     }
 
     /// Check if the tool execution lock is currently free (used in tests)
+    #[allow(dead_code)]
     pub(crate) fn tool_lock_is_free(&self) -> bool {
         match self.tool_execution_lock.try_lock() {
             Ok(guard) => {

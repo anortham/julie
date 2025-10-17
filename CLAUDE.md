@@ -145,28 +145,63 @@ We will be using Julie to develop Julie (eating our own dog food):
    - User restarts Claude Code with new Julie build
    - Test the new features in live MCP session
 
+### Workspace Storage Architecture
+
+**CRITICAL CONCEPT: Primary vs Reference Workspaces**
+
+Julie distinguishes between two types of workspaces:
+
+**Primary Workspace:**
+- The workspace where you're actively developing (where you run Julie)
+- Has its own `.julie/` directory at the workspace root
+- Stores indexes for ITSELF **and ALL reference workspaces** in `.julie/indexes/`
+- Full `JulieWorkspace` object with complete machinery
+- Example: `/Users/murphy/source/julie/.julie/`
+
+**Reference Workspaces:**
+- Other codebases you want to search/reference (e.g., dependencies, related projects)
+- Do **NOT** have their own `.julie/` directories
+- Indexes stored in **primary workspace's** `.julie/indexes/{workspace_id}/`
+- Just indexed data - not independent workspace objects
+- Accessed by loading database/vectors directly from primary workspace's indexes
+- Example: `~/source/coa-mcp-framework` is indexed, but data lives in `~/source/julie/.julie/indexes/coa-mcp-framework_c77f81e4/`
+
+**Key Implication:** All workspace data (primary + references) lives under ONE `.julie/` directory in the primary workspace. Reference workspaces are "annexed" into the primary workspace's storage.
+
 ### Workspace Storage Location
 **CRITICAL**: Julie stores workspace data at **project level**, not user home:
-- **Workspace data**: `<project>/.julie/` (e.g., `/Users/murphy/Source/julie/.julie/`)
+- **Primary workspace data**: `<project>/.julie/` (e.g., `/Users/murphy/source/julie/.julie/`)
 - **NOT** at `~/.julie/` (this is a common mistake!)
 
-**Directory Structure (Per-Workspace Architecture):**
+**Directory Structure (Actual Example from System):**
 ```
-<project>/.julie/
-├── indexes/                 # Per-workspace indexes (complete isolation)
-│   └── {workspace_id}/      # e.g., julie_316c0b08
-│       ├── vectors/         # Workspace-specific HNSW semantic vectors
+/Users/murphy/source/julie/.julie/
+├── indexes/
+│   ├── julie_316c0b08/              # Primary workspace indexes
+│   │   ├── vectors/                 # HNSW semantic vectors
+│   │   │   ├── hnsw_index.hnsw.graph
+│   │   │   └── hnsw_index.hnsw.data
+│   │   └── db/
+│   │       └── symbols.db           # SQLite database (includes FTS5 index)
+│   └── coa-mcp-framework_c77f81e4/  # Reference workspace indexes
+│       ├── vectors/                 # HNSW semantic vectors
+│       │   ├── hnsw_index.hnsw.graph
+│       │   └── hnsw_index.hnsw.data
 │       └── db/
-│           └── symbols.db   # Workspace-specific SQLite database (includes FTS5 index)
+│           └── symbols.db           # SQLite database (includes FTS5 index)
 ├── cache/
-│   └── embeddings/          # ONNX model cache (~128MB, shared, one-time download)
-├── models/                  # ML model files (shared)
-├── logs/                    # Debug logs (shared)
-└── workspace_registry.json  # Workspace metadata
+│   └── embeddings/                  # ONNX model cache (~128MB, shared)
+├── models/                          # ML model files (shared)
+├── logs/                            # Debug logs (shared)
+└── workspace_registry.json          # Workspace metadata
+
+Note: ~/source/coa-mcp-framework/ has NO .julie/ directory!
+      Its indexes live in the primary workspace above.
 ```
 
 **Key Benefits:**
 - ✅ **Complete workspace isolation** - Each workspace has own db/vectors
+- ✅ **Centralized storage** - All indexes in one location (primary workspace)
 - ✅ **Multi-word AND/OR search** - SQLite FTS5 supports boolean operators natively
 - ✅ **Trivial deletion** - `rm -rf indexes/{workspace_id}/` removes everything
 - ✅ **Smaller, faster indexes** - Simpler 2-tier architecture, less disk space

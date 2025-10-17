@@ -71,7 +71,7 @@ impl SmartRefactorTool {
         // Extract the complete symbol text (including signature and body)
         let symbol_start = symbol_node.start_byte();
         let symbol_end = symbol_node.end_byte();
-        let symbol_text = &source_content[symbol_start..symbol_end];
+        let _symbol_text = &source_content[symbol_start..symbol_end];
 
         // Find line boundaries for clean extraction
         let line_start = source_content[..symbol_start]
@@ -256,7 +256,7 @@ impl SmartRefactorTool {
     /// Handle replace symbol body operation
     pub async fn handle_replace_symbol_body(
         &self,
-        handler: &JulieServerHandler,
+        _handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
         use std::fs;
         use tree_sitter::Parser;
@@ -460,7 +460,7 @@ impl SmartRefactorTool {
     /// Handle insert relative to symbol operation
     pub async fn handle_insert_relative_to_symbol(
         &self,
-        handler: &JulieServerHandler,
+        _handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
         use std::fs;
         use tree_sitter::Parser;

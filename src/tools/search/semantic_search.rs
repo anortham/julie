@@ -20,6 +20,7 @@ pub async fn semantic_search_impl(
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
+    workspace_ids: Option<Vec<String>>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     debug!("🧠 Semantic search mode (using HNSW index)");
@@ -27,25 +28,128 @@ pub async fn semantic_search_impl(
     // Ensure vector store is initialized first (lazy-loads from disk or rebuilds)
     handler.ensure_vector_store().await?;
 
-    // PERF FIX: Get workspace once after initialization instead of twice
-    // Previous code called get_workspace() before and after ensure_vector_store()
-    let workspace = handler
+    // Get the primary workspace (needed for paths even when searching reference workspaces)
+    let primary_workspace = handler
         .get_workspace()
         .await?
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized for semantic search"))?;
 
-    let db = workspace
-        .db
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No database available for semantic search"))?;
+    // WORKSPACE FILTERING: Load database and vectors for the target workspace
+    // For reference workspaces, their indexes are stored in the primary workspace's
+    // .julie/indexes/{workspace_id}/ directory
+    let (db, vector_store, target_workspace_id) = if let Some(ref ids) = workspace_ids {
+        if ids.len() == 1 {
+            let workspace_id = &ids[0];
+            debug!("🔍 Semantic search targeting workspace: {}", workspace_id);
+
+            // Verify workspace exists in registry
+            use crate::workspace::registry_service::WorkspaceRegistryService;
+            let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+
+            if registry_service.get_workspace(workspace_id).await?.is_none() {
+                return Err(anyhow::anyhow!("Workspace '{}' not found in registry", workspace_id));
+            }
+
+            // Load the specific workspace's database from primary workspace's indexes
+            let db_path = primary_workspace.workspace_db_path(workspace_id);
+            debug!("📂 Loading database from: {}", db_path.display());
+            let db = std::sync::Arc::new(std::sync::Mutex::new(
+                crate::database::SymbolDatabase::new(&db_path)?
+            ));
+
+            // Load the specific workspace's vector store from primary workspace's indexes
+            // This replicates the logic from JulieWorkspace::initialize_vector_store()
+            let vectors_dir = primary_workspace.workspace_vectors_path(workspace_id);
+            debug!("🧠 Loading vector store from: {}", vectors_dir.display());
+
+            let vector_store = if vectors_dir.exists() {
+                // Create a new vector store (384 dimensions for BGE-Small model)
+                let mut store = crate::embeddings::vector_store::VectorStore::new(384)?;
+
+                // Load embeddings from database
+                let embeddings_result = {
+                    let db_lock = db.lock().map_err(|_| {
+                        anyhow::anyhow!("Could not acquire database lock for reference workspace")
+                    })?;
+                    let model_name = "bge-small"; // Match the embedding model
+                    db_lock.load_all_embeddings(model_name)
+                };
+
+                match embeddings_result {
+                    Ok(embeddings) => {
+                        let count = embeddings.len();
+                        if count > 0 {
+                            debug!("📥 Loading {} embeddings into vector store", count);
+
+                            // Store each embedding in the vector store
+                            for (symbol_id, vector) in embeddings {
+                                if let Err(e) = store.store_vector(symbol_id.clone(), vector) {
+                                    warn!("Failed to store embedding for symbol {}: {}", symbol_id, e);
+                                }
+                            }
+
+                            debug!("✅ Loaded {} embeddings into vector store", count);
+
+                            // Load HNSW index from disk
+                            match store.load_hnsw_index(&vectors_dir) {
+                                Ok(_) => {
+                                    debug!("✅ HNSW index loaded from disk for workspace '{}'", workspace_id);
+                                }
+                                Err(e) => {
+                                    warn!("⚠️ Failed to load HNSW from disk: {}. Will use brute-force search.", e);
+                                }
+                            }
+                        }
+
+                        Some(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
+                    }
+                    Err(e) => {
+                        warn!("Could not load embeddings from database: {}. Semantic search not available.", e);
+                        None
+                    }
+                }
+            } else {
+                debug!("Vector store directory does not exist for workspace '{}'", workspace_id);
+                None
+            };
+
+            (db, vector_store, workspace_id.clone())
+        } else {
+            // Multiple workspace IDs not supported for semantic search
+            return Err(anyhow::anyhow!(
+                "Semantic search only supports single workspace filtering"
+            ));
+        }
+    } else {
+        // No workspace filter - use primary workspace's database and vectors
+        let db = primary_workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available for semantic search"))?
+            .clone();
+
+        let vector_store = primary_workspace.vector_store.clone();
+
+        // Get primary workspace ID for logging
+        use crate::workspace::registry_service::WorkspaceRegistryService;
+        let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+        let primary_id = registry_service.get_primary_workspace_id().await?.unwrap_or_else(|| "primary".to_string());
+
+        (db, vector_store, primary_id)
+    };
 
     // Check if vector_store is ready
-    let vector_store = match workspace.vector_store.as_ref() {
+    let vector_store = match vector_store {
         Some(vs) => vs,
         None => {
-            warn!("Vector store initialization failed - falling back to text search");
+            warn!("Vector store not available for workspace '{}' - falling back to text search", target_workspace_id);
             return crate::tools::search::text_search::text_search_impl(
-                query, language, file_pattern, limit, None, handler,
+                query,
+                language,
+                file_pattern,
+                limit,
+                workspace_ids,
+                handler,
             )
             .await;
         }
@@ -62,7 +166,12 @@ pub async fn semantic_search_impl(
             None => {
                 warn!("Embedding engine not available - falling back to text search");
                 return crate::tools::search::text_search::text_search_impl(
-                    query, language, file_pattern, limit, None, handler,
+                    query,
+                    language,
+                    file_pattern,
+                    limit,
+                    workspace_ids,
+                    handler,
                 )
                 .await;
             }
@@ -109,7 +218,12 @@ pub async fn semantic_search_impl(
     if store_guard.is_empty() {
         debug!("⚠️ Semantic vector store empty - falling back to text search");
         return crate::tools::search::text_search::text_search_impl(
-            query, language, file_pattern, limit, None, handler,
+            query,
+            language,
+            file_pattern,
+            limit,
+            workspace_ids,
+            handler,
         )
         .await;
     }
@@ -121,7 +235,12 @@ pub async fn semantic_search_impl(
         Err(e) => {
             warn!("Semantic similarity search failed: {} - falling back to text search", e);
             return crate::tools::search::text_search::text_search_impl(
-                query, language, file_pattern, limit, None, handler,
+                query,
+                language,
+                file_pattern,
+                limit,
+                workspace_ids,
+                handler,
             )
             .await;
         }

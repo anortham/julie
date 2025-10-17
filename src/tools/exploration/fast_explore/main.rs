@@ -4,7 +4,6 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::extractors::base::Relationship;
 use crate::handler::JulieServerHandler;
 
 use crate::tools::exploration::types::FastExploreResult;

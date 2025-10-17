@@ -26,8 +26,6 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
-use std::collections::HashMap;
 use std::fs;
 use tracing::{debug, info};
 
@@ -330,5 +328,7 @@ impl SmartRefactorTool {
     }
 }
 
+#[allow(dead_code)]
 const DOC_COMMENT_LOOKBACK_BYTES: usize = 256;
+#[allow(dead_code)]
 const TOP_OF_SCOPE_COMMENT_LINE_WINDOW: usize = 2;

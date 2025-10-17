@@ -1,6 +1,5 @@
 //! Utility functions for refactoring operations
 
-use anyhow::Result;
 use super::SmartRefactorTool;
 
 impl SmartRefactorTool {

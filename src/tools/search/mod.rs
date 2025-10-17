@@ -185,21 +185,25 @@ impl FastSearchTool {
         // Perform search based on mode
         let symbols = match self.mode.as_str() {
             "semantic" => {
+                let workspace_ids = self.resolve_workspace_filter(handler).await?;
                 semantic_search::semantic_search_impl(
                     &self.query,
                     &self.language,
                     &self.file_pattern,
                     self.limit,
+                    workspace_ids,
                     handler,
                 )
                 .await?
             }
             "hybrid" => {
+                let workspace_ids = self.resolve_workspace_filter(handler).await?;
                 hybrid_search::hybrid_search_impl(
                     &self.query,
                     &self.language,
                     &self.file_pattern,
                     self.limit,
+                    workspace_ids,
                     handler,
                 )
                 .await?

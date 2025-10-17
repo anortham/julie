@@ -2,7 +2,7 @@
 
 use super::*;
 use anyhow::Result;
-use rusqlite::{params, Row};
+use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {

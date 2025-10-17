@@ -3,11 +3,10 @@
 //! Refactored into focused modules for maintainability (<500 lines each)
 
 use anyhow::{anyhow, Result};
-use rusqlite::{params, Connection, Row};
-use serde::{Deserialize, Serialize};
+use rusqlite::{Connection, Row};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 

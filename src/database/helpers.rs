@@ -2,7 +2,6 @@
 
 use super::*;
 use anyhow::Result;
-use rusqlite::{params, Row};
 
 impl SymbolDatabase {
     pub fn begin_transaction(&mut self) -> Result<()> {
