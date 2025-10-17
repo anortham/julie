@@ -350,9 +350,9 @@ smart_refactor(
 
 This handles:
 - Renaming symbols across workspace
-- Replacing function bodies
-- Extracting functions
-- Symbol-aware refactoring
+- Replacing function/method bodies
+- Inserting code before/after symbols
+- Moving symbols between files with import generation
 
 ### Step 4: Verify Impact (After Change)
 
@@ -604,16 +604,23 @@ Step 2: get_symbols(file="large.rs", target="UserService", include_body=true, mo
 
 ### smart_refactor - Your Semantic Editor
 
-**When to Use:** Renaming symbols, extracting functions, replacing symbol bodies
+**When to Use:** Renaming symbols, replacing function/method bodies, inserting code relative to symbols, moving symbols between files
+
+**Available Operations:**
+- `rename_symbol` - Rename symbols across workspace
+- `replace_symbol_body` - Replace function/method body
+- `insert_relative_to_symbol` - Insert code before/after symbols
+- `extract_symbol_to_file` - Move symbols between files with import updates
 
 **Critical Rules:**
-- Use for symbol-aware operations
+- Use for symbol-aware operations (not simple text edits)
+- Always check fast_refs BEFORE refactoring to understand impact
 - Built-in Edit tool for simple text replacement
-- Julie provides intelligence, tools provide mechanics
+- Julie provides intelligence (what to change), this tool provides mechanics (how to change it)
 
-**Performance:** Varies by operation complexity
+**Performance:** Varies by operation complexity (typically <1s)
 
-**Trust Level:** Complete. Symbol-aware refactoring with validation.
+**Trust Level:** Complete. Symbol-aware refactoring with tree-sitter validation and atomic file operations.
 
 ---
 

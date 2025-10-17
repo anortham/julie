@@ -1,0 +1,503 @@
+// File operations
+
+use super::*;
+use anyhow::Result;
+use blake3;
+use rusqlite::params;
+use std::path::Path;
+use tracing::{debug, info};
+
+impl SymbolDatabase {
+    pub fn store_file_info(&self, file_info: &FileInfo, workspace_id: &str) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO files
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                file_info.path,
+                file_info.language,
+                file_info.hash,
+                file_info.size,
+                file_info.last_modified,
+                now, // Use calculated timestamp instead of unixepoch()
+                file_info.symbol_count,
+                workspace_id
+            ],
+        )?;
+
+        debug!("Stored file info for: {}", file_info.path);
+        Ok(())
+    }
+
+    /// 🚀 BLAZING-FAST bulk file storage for initial indexing
+    pub fn bulk_store_files(&self, files: &[FileInfo], workspace_id: &str) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting blazing-fast bulk insert of {} files",
+            files.len()
+        );
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Drop file indexes
+        self.drop_file_indexes()?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO files
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, workspace_id, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )?;
+
+        for file in files {
+            stmt.execute(params![
+                file.path,
+                file.language,
+                file.hash,
+                file.size,
+                file.last_modified,
+                now,
+                file.symbol_count,
+                workspace_id,
+                file.content.as_deref().unwrap_or("") // CASCADE: Include content
+            ])?;
+        }
+
+        // Drop statement before committing transaction
+        drop(stmt);
+        tx.commit()?;
+
+        // Rebuild file indexes
+        self.create_file_indexes()?;
+
+        let duration = start_time.elapsed();
+        info!(
+            "✅ Bulk file insert complete! {} files in {:.2}ms",
+            files.len(),
+            duration.as_millis()
+        );
+
+        Ok(())
+    }
+
+    /// Drop all file table indexes for bulk operations
+    fn drop_file_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_files_language",
+            "idx_files_modified",
+            "idx_files_workspace",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recreate all file table indexes after bulk operations
+    fn create_file_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    // ========================================
+    // CASCADE ARCHITECTURE: File Content Storage & FTS
+    // ========================================
+
+    /// CASCADE: Store file with full content for FTS search
+    #[allow(clippy::too_many_arguments)] // Legacy API, refactor later
+    pub fn store_file_with_content(
+        &self,
+        path: &str,
+        language: &str,
+        hash: &str,
+        size: u64,
+        last_modified: u64,
+        content: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO files
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content, workspace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
+            params![path, language, hash, size as i64, last_modified as i64, now, content, workspace_id],
+        )?;
+
+        Ok(())
+    }
+
+    /// CASCADE: Get file content from database
+    pub fn get_file_content(
+        &self,
+        path: &str,
+        workspace_id: Option<&str>,
+    ) -> Result<Option<String>> {
+        match workspace_id {
+            Some(ws_id) => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT content FROM files WHERE path = ?1 AND workspace_id = ?2")?;
+
+                match stmt.query_row(params![path, ws_id], |row| row.get::<_, Option<String>>(0)) {
+                    Ok(content) => Ok(content),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(anyhow!("Database error: {}", e)),
+                }
+            }
+            None => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT content FROM files WHERE path = ?1")?;
+
+                match stmt.query_row(params![path], |row| row.get::<_, Option<String>>(0)) {
+                    Ok(content) => Ok(content),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(anyhow!("Database error: {}", e)),
+                }
+            }
+        }
+    }
+
+    /// CASCADE: Get all file contents for workspace (for rebuilding Tantivy)
+    pub fn get_all_file_contents(&self, workspace_id: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, content FROM files WHERE workspace_id = ?1 AND content IS NOT NULL",
+        )?;
+
+        let rows = stmt.query_map(params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    }
+
+    /// Get recently modified files (last N days)
+    pub fn get_recent_files(
+        &self,
+        workspace_id: Option<&str>,
+        days: u32,
+        limit: usize,
+    ) -> Result<Vec<FileInfo>> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
+
+        let mut results = Vec::new();
+
+        if let Some(ws_id) = workspace_id {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+                 FROM files
+                 WHERE workspace_id = ?1 AND last_modified >= ?2
+                 ORDER BY last_modified DESC
+                 LIMIT ?3",
+            )?;
+
+            let rows = stmt.query_map(params![ws_id, cutoff_time, limit], |row| {
+                Ok(FileInfo {
+                    path: row.get(0)?,
+                    language: row.get(1)?,
+                    hash: row.get(2)?,
+                    size: row.get(3)?,
+                    last_modified: row.get(4)?,
+                    last_indexed: row.get(5)?,
+                    symbol_count: row.get(6)?,
+                    content: row.get(7)?,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+                 FROM files
+                 WHERE last_modified >= ?1
+                 ORDER BY last_modified DESC
+                 LIMIT ?2",
+            )?;
+
+            let rows = stmt.query_map(params![cutoff_time, limit], |row| {
+                Ok(FileInfo {
+                    path: row.get(0)?,
+                    language: row.get(1)?,
+                    hash: row.get(2)?,
+                    size: row.get(3)?,
+                    last_modified: row.get(4)?,
+                    last_indexed: row.get(5)?,
+                    symbol_count: row.get(6)?,
+                    content: row.get(7)?,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// CASCADE: Search file content using FTS5
+    pub fn search_file_content_fts(
+        &self,
+        query: &str,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<FileSearchResult>> {
+        // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
+        // This prevents errors like "fts5: syntax error near '.'" when searching for dotted names
+        let sanitized_query = Self::sanitize_fts5_query(query);
+        debug!(
+            "🔍 FTS5 file content query sanitization: '{}' -> '{}'",
+            query, sanitized_query
+        );
+
+        let mut results = Vec::new();
+
+        if let Some(ws_id) = workspace_id {
+            let mut stmt = self.conn.prepare(
+                "SELECT files_fts.path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
+                 FROM files_fts
+                 JOIN files ON files_fts.path = files.path
+                 WHERE files_fts MATCH ?1 AND files.workspace_id = ?2
+                 ORDER BY rank DESC
+                 LIMIT ?3"
+            )?;
+
+            let rows = stmt.query_map(params![sanitized_query, ws_id, limit], |row| {
+                Ok(FileSearchResult {
+                    path: row.get(0)?,
+                    snippet: row.get(1)?,
+                    rank: row.get::<_, f64>(2)? as f32,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
+                 FROM files_fts
+                 WHERE files_fts MATCH ?1
+                 ORDER BY rank DESC
+                 LIMIT ?2"
+            )?;
+
+            let rows = stmt.query_map(params![sanitized_query, limit], |row| {
+                Ok(FileSearchResult {
+                    path: row.get(0)?,
+                    snippet: row.get(1)?,
+                    rank: row.get::<_, f64>(2)? as f32,
+                })
+            })?;
+
+            for row in rows {
+                results.push(row?);
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Get file hash for change detection
+    pub fn get_file_hash(&self, file_path: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM files WHERE path = ?1")?;
+
+        let result = stmt.query_row(params![file_path], |row| row.get::<_, String>(0));
+
+        match result {
+            Ok(hash) => Ok(Some(hash)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow!("Database error: {}", e)),
+        }
+    }
+
+    /// Get symbol count for a file (for detecting files that need FILE_CONTENT symbols)
+    pub fn get_file_symbol_count(&self, file_path: &str) -> Result<i32> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT symbol_count FROM files WHERE path = ?1")?;
+
+        let result = stmt.query_row(params![file_path], |row| row.get::<_, i32>(0));
+
+        match result {
+            Ok(count) => Ok(count),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
+            Err(e) => Err(anyhow!("Database error: {}", e)),
+        }
+    }
+
+    /// Update file hash for incremental change detection
+    pub fn update_file_hash(&self, file_path: &str, new_hash: &str) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "UPDATE files SET hash = ?1, last_indexed = ?2 WHERE path = ?3",
+            params![new_hash, now, file_path],
+        )?;
+
+        debug!("Updated hash for file: {}", file_path);
+        Ok(())
+    }
+
+    /// Delete file record and associated symbols
+    pub fn delete_file_record(&self, file_path: &str) -> Result<()> {
+        // Symbols will be cascade-deleted due to foreign key constraint
+        let count = self
+            .conn
+            .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
+
+        debug!(
+            "Deleted file record for: {} ({} rows affected)",
+            file_path, count
+        );
+        Ok(())
+    }
+
+    /// Delete file record for a specific workspace (workspace-aware cleanup)
+    pub fn delete_file_record_in_workspace(
+        &self,
+        file_path: &str,
+        workspace_id: &str,
+    ) -> Result<()> {
+        let count = self.conn.execute(
+            "DELETE FROM files WHERE path = ?1 AND workspace_id = ?2",
+            params![file_path, workspace_id],
+        )?;
+
+        debug!(
+            "Deleted file record for '{}' in workspace '{}' ({} rows affected)",
+            file_path, workspace_id, count
+        );
+        Ok(())
+    }
+
+    /// Store symbols in a transaction (regular method for incremental updates)
+    pub fn get_file_hashes_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT path, hash
+            FROM files
+            WHERE workspace_id = ?1
+            ORDER BY path
+        ",
+        )?;
+
+        let rows = stmt.query_map([workspace_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // path
+                row.get::<_, String>(1)?, // hash
+            ))
+        })?;
+
+        let mut file_hashes = std::collections::HashMap::new();
+        for row_result in rows {
+            let (path, hash) = row_result?;
+            file_hashes.insert(path, hash);
+        }
+
+        debug!(
+            "Retrieved {} file hashes for workspace '{}' from database",
+            file_hashes.len(),
+            workspace_id
+        );
+        Ok(file_hashes)
+    }
+
+}
+
+pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
+    let content = std::fs::read(file_path)?;
+    let hash = blake3::hash(&content);
+    Ok(hash.to_hex().to_string())
+}
+
+/// Create FileInfo from a file path
+/// CASCADE: Now reads and includes file content for FTS5 search
+pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<FileInfo> {
+    let path = file_path.as_ref();
+    let metadata = std::fs::metadata(path)?;
+    let hash = calculate_file_hash(path)?;
+
+    // CASCADE: Read file content for FTS5 search
+    let content = std::fs::read_to_string(path).ok(); // Binary files or read errors - skip content
+
+    let last_modified = metadata
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64;
+
+    // CRITICAL FIX: Canonicalize path to resolve symlinks (macOS /var vs /private/var)
+    // This ensures files table and symbols table use same canonical paths
+    // Without this: files table has /var/..., symbols have /private/var/... → FOREIGN KEY fail
+    let canonical_path = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+
+    Ok(FileInfo {
+        path: canonical_path, // Use canonical path, not original
+        language: language.to_string(),
+        hash,
+        size: metadata.len() as i64,
+        last_modified,
+        last_indexed: 0, // Will be set by database
+        symbol_count: 0, // Will be updated after extraction
+        content,         // CASCADE: File content for FTS5
+    })
+}

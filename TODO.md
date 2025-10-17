@@ -26,7 +26,7 @@
    - Natural Language Evolution: Evaluate upgrading semantic tier with better embeddings or fine-tuned models to close Gemini’s NL gap once telemetry validates baseline
    stability.
 
-
+/e
 
    # GET_SYMBOLS
    This tool can't help reduce tokens if by default it blows through the hard token limit. 
@@ -49,3 +49,9 @@
 
 # missing implementations
   - look for "coming soon", "TODO", "Stub" , etc
+
+
+
+⏺ julie - get_symbols (MCP)(file_path: "src/tools/refactoring/extract_function.rs", max_depth: 1, target: "apply_extraction", include_body: "true", mode:
+                           "minimal")
+  ⎿  No symbols found in: src/tools/refactoring/extract_function.rs

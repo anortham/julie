@@ -13,6 +13,7 @@ mod helpers;
 mod pending;
 mod utils;
 mod rename;
+mod indentation;
 
 pub use types::{
     AutoFixResult, DelimiterError, RefactorOperation, SmartRefactorResult, SyntaxError,
@@ -39,7 +40,7 @@ use crate::tools::editing::EditingTransaction; // Atomic file operations
     description = concat!(
         "SAFE SEMANTIC REFACTORING - Use this for symbol-aware code transformations. ",
         "This tool understands code structure and performs changes safely across the entire workspace.\n\n",
-        "You are EXCELLENT at using this for renaming symbols, extracting functions, and replacing code. ",
+        "You are EXCELLENT at using this for renaming symbols, replacing code bodies, inserting code, and moving symbols between files. ",
         "Always use fast_refs BEFORE refactoring to understand impact.\n\n",
         "Unlike simple text editing, this tool preserves code structure and updates all references. ",
         "For simple text replacements, use the built-in Edit tool. For semantic operations, use this.\n\n",
@@ -50,20 +51,40 @@ use crate::tools::editing::EditingTransaction; // Atomic file operations
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SmartRefactorTool {
     /// The refactoring operation to perform
-    /// Valid operations: "rename_symbol", "extract_function", "replace_symbol_body", "insert_relative_to_symbol", "extract_type", "update_imports", "inline_variable", "inline_function"
-    /// Examples: "rename_symbol" to rename classes/functions across workspace, "replace_symbol_body" to update method implementations
+    /// Valid operations: "rename_symbol", "replace_symbol_body", "insert_relative_to_symbol", "extract_symbol_to_file"
+    /// Examples: "rename_symbol" to rename classes/functions across workspace, "replace_symbol_body" to update method implementations, "extract_symbol_to_file" to move symbols between files
     pub operation: String,
 
     /// Operation-specific parameters as JSON string
-    /// • rename_symbol: old_name, new_name, scope, update_imports
-    /// • extract_function: file, start_line, end_line, function_name
-    /// • replace_symbol_body: file, symbol_name, new_body
-    /// • insert_relative_to_symbol: file, target_symbol, position, content
-    /// Example: {"old_name": "UserService", "new_name": "AccountService"} for rename_symbol
+    ///
+    /// **replace_symbol_body:**
+    /// - file (string, required): Path to file containing the symbol
+    /// - symbol_name (string, required): Name of function/method to modify
+    /// - new_body (string, required): New body content (indentation will be normalized)
+    ///
+    /// **insert_relative_to_symbol:**
+    /// - file (string, required): Path to file containing the symbol
+    /// - target_symbol (string, required): Symbol to insert relative to
+    /// - position (string, optional): "before" or "after" (default: "after")
+    /// - content (string, required): Code to insert (indentation will be normalized)
+    ///
+    /// **extract_symbol_to_file:**
+    /// - source_file (string, required): File containing symbol to extract
+    /// - target_file (string, required): Destination file (created if doesn't exist)
+    /// - symbol_name (string, required): Symbol to extract
+    /// - update_imports (bool, optional): Add import statement to source (default: false)
+    ///
+    /// **rename_symbol:**
+    /// - old_name (string, required): Current symbol name
+    /// - new_name (string, required): New symbol name
+    /// - scope (string, optional): Scope limitation
+    /// - update_imports (bool, optional): Update import statements (default: false)
+    ///
+    /// Example: {"file": "src/main.rs", "symbol_name": "calculate_total", "new_body": "items.iter().sum()"}
     #[serde(default = "default_empty_json")]
     pub params: String,
 
-    /// Preview changes without applying them
+    /// Preview changes without applying them (default: false)
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -118,23 +139,50 @@ impl SmartRefactorTool {
 
         match self.operation.as_str() {
             "rename_symbol" => self.handle_rename_symbol(handler).await,
-            "extract_function" => self.handle_extract_function(handler).await,
             "replace_symbol_body" => self.handle_replace_symbol_body(handler).await,
             "insert_relative_to_symbol" => self.handle_insert_relative_to_symbol(handler).await,
-            "extract_type" => self.handle_extract_type(handler).await,
-            "update_imports" => self.handle_update_imports(handler).await,
-            "inline_variable" => self.handle_inline_variable(handler).await,
-            "inline_function" => self.handle_inline_function(handler).await,
-            "validate_syntax" => self.handle_validate_syntax(handler).await,
-            "auto_fix_syntax" => self.handle_auto_fix_syntax(handler).await,
-            _ => {
+            "extract_symbol_to_file" => self.handle_extract_symbol_to_file(handler).await,
+
+            // Acknowledged but not yet implemented
+            "extract_function" => self.handle_extract_function(handler).await,
+
+            // Removed operations (not feasible for cross-language support)
+            "extract_type" | "update_imports" | "inline_variable" | "inline_function"
+            | "validate_syntax" | "auto_fix_syntax" => {
                 let message = format!(
-                    "❌ Unknown refactoring operation: '{}'\n\
-                    Valid operations: rename_symbol, extract_function, replace_symbol_body, insert_relative_to_symbol, extract_type, update_imports, inline_variable, inline_function, validate_syntax, auto_fix_syntax",
+                    "❌ Operation '{}' has been removed from Julie's API\n\n\
+                    This operation is not feasible for reliable cross-language support.\n\n\
+                    Available operations:\n\
+                    • rename_symbol - Rename symbols across workspace (all languages)\n\
+                    • replace_symbol_body - Replace function/method body (all languages)\n\
+                    • insert_relative_to_symbol - Insert code before/after symbols (all languages)\n\
+                    • extract_symbol_to_file - Move symbols between files with import updates (all languages)\n\n\
+                    For more sophisticated refactoring, consider using language-specific LSPs.",
                     self.operation
                 );
                 self.create_result(
-                    &self.operation, // Use the invalid operation name for debugging
+                    &self.operation,
+                    false,
+                    vec![],
+                    0,
+                    vec!["Use one of the available operations".to_string()],
+                    message,
+                    None,
+                )
+            }
+
+            _ => {
+                let message = format!(
+                    "❌ Unknown refactoring operation: '{}'\n\n\
+                    Valid operations:\n\
+                    • rename_symbol - Rename symbols across workspace\n\
+                    • replace_symbol_body - Replace function/method body\n\
+                    • insert_relative_to_symbol - Insert code before/after symbols\n\
+                    • extract_symbol_to_file - Move symbols between files",
+                    self.operation
+                );
+                self.create_result(
+                    &self.operation,
                     false,
                     vec![],
                     0,
