@@ -1,4 +1,4 @@
-//! Pending refactoring operations (not yet fully implemented)
+//! Refactoring operations - extract, replace, and insert operations
 
 use anyhow::{anyhow, Result};
 use serde_json::Value as JsonValue;
@@ -8,25 +8,6 @@ use super::SmartRefactorTool;
 use crate::handler::JulieServerHandler;
 
 impl SmartRefactorTool {
-    /// Handle extract function operation
-    pub async fn handle_extract_function(
-        &self,
-        _handler: &JulieServerHandler,
-    ) -> Result<CallToolResult> {
-        let message = "🚧 Extract function is not yet implemented\n\n\
-            This operation requires sophisticated type inference across 26 languages.\n\
-            Consider using rename_symbol, replace_symbol_body, or insert_relative_to_symbol instead.".to_string();
-        self.create_result(
-            "extract_function",
-            false,
-            vec![],
-            0,
-            vec![],
-            message,
-            None,
-        )
-    }
-
     /// Handle extract symbol to file operation
     pub async fn handle_extract_symbol_to_file(
         &self,

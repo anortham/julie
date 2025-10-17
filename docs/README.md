@@ -4,12 +4,8 @@ This directory contains **current** documentation for Julie. Code is the source 
 
 ## Architecture Documentation
 
-- **`SEARCH_FLOW.md`** - CASCADE architecture (SQLite → Tantivy → HNSW) and search flow
+- **`SEARCH_FLOW.md`** - CASCADE architecture (SQLite FTS5 → HNSW Semantic) and search flow
 - **`INTELLIGENCE_LAYER.md`** - Cross-language intelligence (tree-sitter + naming variants + semantic embeddings)
-
-## Roadmap
-
-- **`future/agent_first_tool_roadmap.md`** - Current roadmap for agent-first tools
 
 ## Primary Documentation
 
@@ -20,5 +16,5 @@ For development guidelines, TDD methodology, and current project status, see:
 
 ---
 
-**Last Updated**: 2025-10-02
+**Last Updated**: 2025-10-17
 **Philosophy**: Code is truth. Documentation describes how things work NOW and where we're going NEXT.

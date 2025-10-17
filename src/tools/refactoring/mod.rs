@@ -10,7 +10,7 @@
 
 mod types;
 mod helpers;
-mod pending;
+mod operations;
 mod utils;
 mod rename;
 mod indentation;
@@ -143,11 +143,8 @@ impl SmartRefactorTool {
             "insert_relative_to_symbol" => self.handle_insert_relative_to_symbol(handler).await,
             "extract_symbol_to_file" => self.handle_extract_symbol_to_file(handler).await,
 
-            // Acknowledged but not yet implemented
-            "extract_function" => self.handle_extract_function(handler).await,
-
             // Removed operations (not feasible for cross-language support)
-            "extract_type" | "update_imports" | "inline_variable" | "inline_function"
+            "extract_function" | "extract_type" | "update_imports" | "inline_variable" | "inline_function"
             | "validate_syntax" | "auto_fix_syntax" => {
                 let message = format!(
                     "❌ Operation '{}' has been removed from Julie's API\n\n\
