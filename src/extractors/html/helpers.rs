@@ -81,7 +81,10 @@ impl HTMLHelpers {
 }
 
 /// Extract attribute name and value from attribute node
-fn extract_attribute_name_value(base: &BaseExtractor, attr_node: Node) -> (Option<String>, Option<String>) {
+fn extract_attribute_name_value(
+    base: &BaseExtractor,
+    attr_node: Node,
+) -> (Option<String>, Option<String>) {
     let mut name = None;
     let mut value = None;
 

@@ -136,11 +136,7 @@ fn determine_function_kind(
     let is_implicit_class = parent_symbol
         .signature
         .as_ref()
-        .map(|s| {
-            s.contains("extends")
-                && !s.contains("class_name")
-                && !s.contains("class ")
-        })
+        .map(|s| s.contains("extends") && !s.contains("class_name") && !s.contains("class "))
         .unwrap_or(false);
 
     let is_explicit_class = parent_symbol
@@ -157,8 +153,10 @@ fn determine_function_kind(
 
     if is_implicit_class {
         // In implicit classes, only lifecycle callbacks and setget functions are methods
-        let is_lifecycle_callback =
-            name.starts_with('_') && LIFECYCLE_PREFIXES.iter().any(|prefix| name.starts_with(prefix));
+        let is_lifecycle_callback = name.starts_with('_')
+            && LIFECYCLE_PREFIXES
+                .iter()
+                .any(|prefix| name.starts_with(prefix));
 
         // Check if this function is associated with a property (setget)
         let is_setget_function = is_setget_function_in_symbols(name, symbols);

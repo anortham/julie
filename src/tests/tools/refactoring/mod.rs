@@ -1,9 +1,9 @@
 // Tests extracted from src/tools/refactoring.rs
 // These were previously inline tests that have been moved to follow project standards
 
-mod replace_symbol_body_tests;
-mod insert_relative_tests;
 mod extract_to_file_tests;
+mod insert_relative_tests;
+mod replace_symbol_body_tests;
 
 use crate::tools::refactoring::*;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};

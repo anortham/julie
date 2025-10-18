@@ -53,7 +53,8 @@ fn test_context_extraction_edge_cases() {
 
 #[test]
 fn test_context_configuration() {
-    let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 7\nline 8\nline 9\nline 10";
+    let content =
+        "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 7\nline 8\nline 9\nline 10";
     let mut extractor = BaseExtractor::new(
         "rust".to_string(),
         "test.rs".to_string(),

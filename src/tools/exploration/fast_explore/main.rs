@@ -212,17 +212,15 @@ impl FastExploreTool {
         let mut complexity_scores: Vec<(String, i64)> = Vec::new();
         for (file, symbol_count) in file_symbol_counts.iter() {
             let symbol_count_i64 = *symbol_count as i64;
-            let rel_count = file_rel_counts
-                .get(file)
-                .copied()
-                .unwrap_or(0) as i64;
+            let rel_count = file_rel_counts.get(file).copied().unwrap_or(0) as i64;
             let complexity = symbol_count_i64 * (1 + rel_count);
             complexity_scores.push((file.clone(), complexity));
         }
 
         complexity_scores.sort_by(|a, b| b.1.cmp(&a.1));
 
-        let top_files: Vec<String> = complexity_scores.iter()
+        let top_files: Vec<String> = complexity_scores
+            .iter()
             .take(5)
             .map(|(path, _)| {
                 std::path::Path::new(path)
@@ -276,7 +274,10 @@ impl FastExploreTool {
                 Ok(format!("Symbol '{}' not found", focus))
             }
         } else {
-            Ok("No focus symbol specified\nUse focus parameter to trace a specific symbol".to_string())
+            Ok(
+                "No focus symbol specified\nUse focus parameter to trace a specific symbol"
+                    .to_string(),
+            )
         }
     }
 }

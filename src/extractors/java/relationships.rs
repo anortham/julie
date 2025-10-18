@@ -1,5 +1,4 @@
 /// Inheritance and implementation relationship extraction
-
 use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::extractors::java::JavaExtractor;
 use serde_json;

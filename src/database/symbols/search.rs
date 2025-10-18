@@ -100,7 +100,7 @@ impl SymbolDatabase {
                     metadata, semantic_group, confidence
              FROM symbols
              WHERE name = ?1
-             ORDER BY file_path, start_line"
+             ORDER BY file_path, start_line",
         )?;
 
         let rows = stmt.query_map([name], |row| self.row_to_symbol(row))?;
@@ -191,10 +191,9 @@ impl SymbolDatabase {
         ",
         )?;
 
-        let rows = stmt.query_map(
-            [&limit.to_string(), &offset.to_string()],
-            |row| self.row_to_symbol(row),
-        )?;
+        let rows = stmt.query_map([&limit.to_string(), &offset.to_string()], |row| {
+            self.row_to_symbol(row)
+        })?;
 
         let mut symbols = Vec::new();
         for row_result in rows {
@@ -212,22 +211,18 @@ impl SymbolDatabase {
     }
 
     pub fn get_symbol_count_for_workspace(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         Ok(count)
     }
 
     /// Get total file count for a workspace (for registry statistics)
     pub fn get_file_count_for_workspace(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
         Ok(count)
     }
@@ -237,9 +232,7 @@ impl SymbolDatabase {
     /// Returns a vector of relative file paths that are currently indexed in the database
     /// Note: workspace_id kept for API, DB file is already workspace-specific
     pub fn get_all_indexed_files(&self, _workspace_id: &str) -> Result<Vec<String>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT path FROM files")?;
+        let mut stmt = self.conn.prepare("SELECT path FROM files")?;
 
         let file_paths: Vec<String> = stmt
             .query_map([], |row| row.get(0))?
@@ -251,11 +244,11 @@ impl SymbolDatabase {
     /// Check if workspace has any symbols (quick health check)
     /// Note: workspace_id kept for API, DB file is already workspace-specific
     pub fn has_symbols_for_workspace(&self, _workspace_id: &str) -> Result<bool> {
-        let exists: i64 = self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM symbols LIMIT 1)",
-            [],
-            |row| row.get(0),
-        )?;
+        let exists: i64 =
+            self.conn
+                .query_row("SELECT EXISTS(SELECT 1 FROM symbols LIMIT 1)", [], |row| {
+                    row.get(0)
+                })?;
 
         Ok(exists > 0)
     }
@@ -263,11 +256,9 @@ impl SymbolDatabase {
     /// Count total symbols for a workspace (for statistics)
     /// Note: workspace_id kept for API, DB file is already workspace-specific
     pub fn count_symbols_for_workspace(&self, _workspace_id: &str) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         Ok(count as usize)
     }
@@ -295,7 +286,8 @@ impl SymbolDatabase {
                  ORDER BY name, file_path
                  LIMIT 1000"
             )?;
-            let rows = stmt.query_map([&pattern_like as &str, lang], |row| self.row_to_symbol(row))?;
+            let rows =
+                stmt.query_map([&pattern_like as &str, lang], |row| self.row_to_symbol(row))?;
             for row in rows {
                 symbols.push(row?);
             }
@@ -358,7 +350,7 @@ impl SymbolDatabase {
                     parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE kind = ?1
-             ORDER BY file_path, start_line"
+             ORDER BY file_path, start_line",
         )?;
 
         let rows = stmt.query_map([&kind_str], |row| self.row_to_symbol(row))?;
@@ -385,7 +377,7 @@ impl SymbolDatabase {
                     parent_id, metadata, semantic_group, confidence
              FROM symbols
              WHERE language = ?1
-             ORDER BY file_path, start_line"
+             ORDER BY file_path, start_line",
         )?;
 
         let rows = stmt.query_map([language], |row| self.row_to_symbol(row))?;
@@ -467,11 +459,9 @@ impl SymbolDatabase {
     /// Get total symbol count using SQL COUNT (O(1) database operation)
     /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn get_total_symbol_count(&self, _workspace_ids: &[String]) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         Ok(count as usize)
     }
@@ -507,5 +497,4 @@ impl SymbolDatabase {
 
         Ok(results)
     }
-
 }

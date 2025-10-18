@@ -91,7 +91,8 @@ impl RuleExtractor {
         let declaration_block = PropertyHelper::find_declaration_block(node);
 
         if let Some(block) = declaration_block {
-            let key_properties = PropertyHelper::extract_key_properties(base, &block, Some(selector));
+            let key_properties =
+                PropertyHelper::extract_key_properties(base, &block, Some(selector));
             if !key_properties.is_empty() {
                 return format!("{} {{ {} }}", selector, key_properties.join("; "));
             }

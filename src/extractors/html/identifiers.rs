@@ -42,7 +42,8 @@ impl IdentifierExtractor {
                         }
                         "attribute_value" | "quoted_attribute_value" => {
                             let text = base.get_node_text(&child);
-                            attr_value = Some(text.trim_matches(|c| c == '"' || c == '\'').to_string());
+                            attr_value =
+                                Some(text.trim_matches(|c| c == '"' || c == '\'').to_string());
                         }
                         _ => {}
                     }
@@ -51,7 +52,8 @@ impl IdentifierExtractor {
                 if let (Some(name), Some(value)) = (attr_name, attr_value) {
                     // Event handlers and data-action attributes are "calls"
                     if name.starts_with("on") || name.starts_with("data-action") {
-                        let containing_symbol_id = Self::find_containing_symbol_id(base, node, symbol_map);
+                        let containing_symbol_id =
+                            Self::find_containing_symbol_id(base, node, symbol_map);
 
                         base.create_identifier(
                             &node,

@@ -704,11 +704,13 @@ function Invoke-ParallelOperations {
             let symbols = extractor.extract_symbols(&tree);
 
             // Test workflow functions
-            let test_parallel_processing = symbols.iter().find(|s| s.name == "Test-ParallelProcessing");
+            let test_parallel_processing =
+                symbols.iter().find(|s| s.name == "Test-ParallelProcessing");
             assert!(test_parallel_processing.is_some());
             assert_eq!(test_parallel_processing.unwrap().kind, SymbolKind::Function);
 
-            let process_items_in_parallel = symbols.iter().find(|s| s.name == "Process-ItemsInParallel");
+            let process_items_in_parallel =
+                symbols.iter().find(|s| s.name == "Process-ItemsInParallel");
             assert!(process_items_in_parallel.is_some());
 
             let long_running_process = symbols.iter().find(|s| s.name == "Long-RunningProcess");
@@ -717,7 +719,9 @@ function Invoke-ParallelOperations {
             let start_background_jobs = symbols.iter().find(|s| s.name == "Start-BackgroundJobs");
             assert!(start_background_jobs.is_some());
 
-            let invoke_parallel_operations = symbols.iter().find(|s| s.name == "Invoke-ParallelOperations");
+            let invoke_parallel_operations = symbols
+                .iter()
+                .find(|s| s.name == "Invoke-ParallelOperations");
             assert!(invoke_parallel_operations.is_some());
         }
     }
@@ -878,9 +882,9 @@ function Test-TargetResource {
             assert!(test_target_resource.is_some());
         }
 
-    #[test]
-    fn test_extract_powershell_devops_pipeline_commands() {
-        let powershell_code = r#"
+        #[test]
+        fn test_extract_powershell_devops_pipeline_commands() {
+            let powershell_code = r#"
 # DevOps pipeline commands
 function Run-DeploymentPipeline {
     # Docker operations
@@ -907,7 +911,10 @@ function Run-DeploymentPipeline {
 
             // Should extract the main deployment function
             let deployment_func = symbols.iter().find(|s| s.name == "Run-DeploymentPipeline");
-            assert!(deployment_func.is_some(), "Should extract Run-DeploymentPipeline function");
+            assert!(
+                deployment_func.is_some(),
+                "Should extract Run-DeploymentPipeline function"
+            );
             assert_eq!(deployment_func.unwrap().kind, SymbolKind::Function);
 
             // Should extract DevOps tool calls

@@ -2,9 +2,9 @@
 
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
+use rust_mcp_sdk::schema::CallToolResult;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use rust_mcp_sdk::schema::CallToolResult;
 use tracing::debug;
 
 use super::SmartRefactorTool;
@@ -13,7 +13,10 @@ use crate::tools::navigation::FastRefsTool;
 
 impl SmartRefactorTool {
     /// Handle rename symbol operation
-    pub async fn handle_rename_symbol(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    pub async fn handle_rename_symbol(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         debug!("🔄 Processing rename symbol operation");
 
         // Parse JSON parameters - return errors for invalid JSON or missing parameters
@@ -161,7 +164,10 @@ impl SmartRefactorTool {
     }
 
     /// Parse the result from fast_refs to extract file locations
-    pub(crate) fn parse_refs_result(&self, refs_result: &CallToolResult) -> Result<HashMap<String, Vec<u32>>> {
+    pub(crate) fn parse_refs_result(
+        &self,
+        refs_result: &CallToolResult,
+    ) -> Result<HashMap<String, Vec<u32>>> {
         let mut file_locations: HashMap<String, Vec<u32>> = HashMap::new();
 
         // Extract text content from the result

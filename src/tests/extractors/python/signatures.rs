@@ -1,7 +1,7 @@
 // Python signatures inline tests extracted from extractors/python/signatures.rs
 
-use crate::extractors::python::signatures;
 use crate::extractors::base::Visibility;
+use crate::extractors::python::signatures;
 
 #[test]
 fn test_infer_visibility_dunder() {

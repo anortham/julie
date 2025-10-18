@@ -55,7 +55,10 @@ pub async fn find_semantic_definitions_with_store(
             // This prevents AI agents from iterating through multiple thresholds and wasting context.
             store_guard_sync.search_similar_hnsw(&database, &query_embedding, 10, 0.7, model_name)
         } else {
-            Err(anyhow::anyhow!("Failed to open database at {:?}", db_path_for_search))
+            Err(anyhow::anyhow!(
+                "Failed to open database at {:?}",
+                db_path_for_search
+            ))
         }
     })
     .await
@@ -68,15 +71,20 @@ pub async fn find_semantic_definitions_with_store(
 
     // Get actual symbol data from database (also needs to be in blocking context)
     if !similar_symbols.is_empty() {
-        let symbol_ids: Vec<String> =
-            similar_symbols.iter().map(|r| r.symbol_id.clone()).collect();
+        let symbol_ids: Vec<String> = similar_symbols
+            .iter()
+            .map(|r| r.symbol_id.clone())
+            .collect();
 
         let db_path_for_fetch = db_path.clone();
         let symbols = tokio::task::spawn_blocking(move || {
             if let Ok(database) = SymbolDatabase::new(&db_path_for_fetch) {
                 database.get_symbols_by_ids(&symbol_ids)
             } else {
-                Err(anyhow::anyhow!("Failed to open database at {:?}", db_path_for_fetch))
+                Err(anyhow::anyhow!(
+                    "Failed to open database at {:?}",
+                    db_path_for_fetch
+                ))
             }
         })
         .await
@@ -148,7 +156,7 @@ pub async fn find_semantic_references(
                                     &embedding,
                                     max_semantic_matches,
                                     similarity_threshold,
-                                    model_name
+                                    model_name,
                                 )
                             }) {
                                 Ok(results) => results,
@@ -170,8 +178,10 @@ pub async fn find_semantic_references(
                         if !semantic_results.is_empty() {
                             if let Some(db) = workspace.db.as_ref() {
                                 // Collect symbol IDs for batch query
-                                let symbol_ids: Vec<String> =
-                                    semantic_results.iter().map(|r| r.symbol_id.clone()).collect();
+                                let symbol_ids: Vec<String> = semantic_results
+                                    .iter()
+                                    .map(|r| r.symbol_id.clone())
+                                    .collect();
                                 let db_arc = db.clone();
 
                                 let symbols = tokio::task::spawn_blocking(move || {
@@ -195,7 +205,8 @@ pub async fn find_semantic_references(
                                             && !existing_ref_ids.contains(&symbol.id)
                                         {
                                             // Get similarity score
-                                            if let Some(&similarity_score) = score_map.get(&symbol.id)
+                                            if let Some(&similarity_score) =
+                                                score_map.get(&symbol.id)
                                             {
                                                 semantic_symbols.push(symbol.clone());
 
@@ -282,7 +293,13 @@ pub async fn find_semantic_definitions(
                             match tokio::task::block_in_place(|| {
                                 let db_lock = db_arc.lock().unwrap();
                                 let model_name = "bge-small";
-                                store_guard.search_similar_hnsw(&*db_lock, &query_embedding, 10, 0.7, model_name)
+                                store_guard.search_similar_hnsw(
+                                    &*db_lock,
+                                    &query_embedding,
+                                    10,
+                                    0.7,
+                                    model_name,
+                                )
                             }) {
                                 Ok(results) => results,
                                 Err(e) => {
@@ -303,8 +320,10 @@ pub async fn find_semantic_definitions(
                         // Get actual symbol data from database
                         if !similar_symbols.is_empty() {
                             if let Some(db_arc) = &workspace.db {
-                                let symbol_ids: Vec<String> =
-                                    similar_symbols.iter().map(|r| r.symbol_id.clone()).collect();
+                                let symbol_ids: Vec<String> = similar_symbols
+                                    .iter()
+                                    .map(|r| r.symbol_id.clone())
+                                    .collect();
                                 let db_clone = db_arc.clone();
 
                                 let symbols = tokio::task::spawn_blocking(move || {

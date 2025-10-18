@@ -8,7 +8,11 @@ use super::SwiftExtractor;
 impl SwiftExtractor {
     /// Extract all identifier usages (function calls, member access, etc.)
     /// Following the Rust extractor reference implementation pattern
-    pub fn extract_identifiers(&mut self, tree: &tree_sitter::Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+    pub fn extract_identifiers(
+        &mut self,
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
+    ) -> Vec<Identifier> {
         // Create symbol map for fast lookup
         let symbol_map: HashMap<String, &Symbol> =
             symbols.iter().map(|s| (s.id.clone(), s)).collect();

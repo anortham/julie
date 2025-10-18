@@ -979,4 +979,3 @@ pub struct ExtractionResults {
     pub types: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // NEW: Include identifiers for LSP-quality tools
 }
-

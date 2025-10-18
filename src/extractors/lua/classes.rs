@@ -5,7 +5,6 @@
 /// - Variables created with setmetatable (local Dog = setmetatable({}, Animal))
 /// - Tables with __index pattern (Class.__index = Class)
 /// - Tables with new and colon methods (Class.new, Class:method)
-
 use crate::extractors::base::{Symbol, SymbolKind};
 use regex::Regex;
 use std::sync::LazyLock;
@@ -70,8 +69,7 @@ pub(crate) fn detect_lua_classes(symbols: &mut Vec<Symbol>) {
                 });
 
                 // If it has metatable patterns, upgrade to Class
-                if has_index_pattern || (has_new_method && has_colon_methods) || is_setmetatable
-                {
+                if has_index_pattern || (has_new_method && has_colon_methods) || is_setmetatable {
                     class_upgrades.push((index, is_setmetatable, symbol.signature.clone()));
                 }
             }
@@ -84,8 +82,7 @@ pub(crate) fn detect_lua_classes(symbols: &mut Vec<Symbol>) {
 
         // Extract inheritance information from setmetatable pattern
         if is_setmetatable {
-            if let Some(captures) = signature.as_ref().and_then(|s| SETMETATABLE_RE.captures(s))
-            {
+            if let Some(captures) = signature.as_ref().and_then(|s| SETMETATABLE_RE.captures(s)) {
                 if let Some(parent_class_name) = captures.get(1) {
                     let parent_class_name = parent_class_name.as_str();
                     // Verify the parent class exists in our symbols

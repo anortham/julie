@@ -10,9 +10,7 @@ use tracing::debug;
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use crate::utils::{
-    exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer,
-};
+use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 
 /// Hybrid search combining text and semantic methods
 ///
@@ -74,8 +72,7 @@ pub async fn hybrid_search_impl(
 
     // Create a scoring map for fusion
     // Key: symbol ID, Value: (symbol, text_rank, semantic_rank, combined_score)
-    let mut fusion_map: HashMap<String, (Symbol, Option<f32>, Option<f32>, f32)> =
-        HashMap::new();
+    let mut fusion_map: HashMap<String, (Symbol, Option<f32>, Option<f32>, f32)> = HashMap::new();
 
     // Add text search results with normalized scores
     for (rank, symbol) in text_symbols.iter().enumerate() {

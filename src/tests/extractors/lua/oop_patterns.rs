@@ -300,9 +300,9 @@ applyMixin(GameObject, Collidable)
         assert!(event_emitter.is_some());
         assert_eq!(event_emitter.unwrap().kind, SymbolKind::Class);
 
-        let emit = symbols.iter().find(|s| {
-            s.name == "emit" && s.parent_id == Some(event_emitter.unwrap().id.clone())
-        });
+        let emit = symbols
+            .iter()
+            .find(|s| s.name == "emit" && s.parent_id == Some(event_emitter.unwrap().id.clone()));
         assert!(emit.is_some());
 
         // Test Strategy pattern

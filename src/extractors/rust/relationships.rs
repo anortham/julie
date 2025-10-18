@@ -1,12 +1,12 @@
+use super::helpers::find_containing_function;
 /// Rust relationship extraction
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::extractors::base::{Symbol, Relationship, RelationshipKind};
+use crate::extractors::base::{Relationship, RelationshipKind, Symbol};
 use crate::extractors::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
-use super::helpers::find_containing_function;
 
 /// Extract all relationships between Rust symbols
 pub(super) fn extract_relationships(
@@ -113,9 +113,9 @@ fn extract_type_relationships(
         let type_name = base.get_node_text(&name_node);
         if let Some(type_symbol) = symbol_map.get(&type_name) {
             // Look for field types that reference other symbols
-            let declaration_list = node.children(&mut node.walk()).find(|c| {
-                c.kind() == "field_declaration_list" || c.kind() == "enum_variant_list"
-            });
+            let declaration_list = node
+                .children(&mut node.walk())
+                .find(|c| c.kind() == "field_declaration_list" || c.kind() == "enum_variant_list");
 
             if let Some(decl_list) = declaration_list {
                 for field in decl_list.children(&mut decl_list.walk()) {

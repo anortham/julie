@@ -134,11 +134,9 @@ pub async fn generate_embeddings_from_sqlite(
                     let mut db_guard = db.lock().unwrap();
 
                     // Use bulk insert for this batch
-                    if let Err(e) = db_guard.bulk_store_embeddings(
-                        &batch_embeddings,
-                        dimensions,
-                        &model_name,
-                    ) {
+                    if let Err(e) =
+                        db_guard.bulk_store_embeddings(&batch_embeddings, dimensions, &model_name)
+                    {
                         warn!(
                             "Failed to bulk store embeddings for batch {}: {}",
                             batch_idx + 1,

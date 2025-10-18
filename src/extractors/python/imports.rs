@@ -1,6 +1,5 @@
 /// Import statement extraction
 /// Handles import, from...import, and aliased imports
-
 use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use super::PythonExtractor;
 use tree_sitter::Node;
@@ -36,7 +35,8 @@ pub fn extract_imports(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbo
                                 // Simple import: from module import name
                                 let name = extractor.base_mut().get_node_text(&child);
                                 let import_text = format!("from {} import {}", module, name);
-                                let symbol = create_import_symbol(extractor, &node, name, import_text);
+                                let symbol =
+                                    create_import_symbol(extractor, &node, name, import_text);
                                 imports.push(symbol);
                             }
                             "aliased_import" => {
@@ -44,7 +44,8 @@ pub fn extract_imports(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbo
                                 if let Some((name, alias)) = extract_alias(extractor, &child) {
                                     let import_text =
                                         format!("from {} import {} as {}", module, name, alias);
-                                    let symbol = create_import_symbol(extractor, &node, alias, import_text);
+                                    let symbol =
+                                        create_import_symbol(extractor, &node, alias, import_text);
                                     imports.push(symbol);
                                 }
                             }

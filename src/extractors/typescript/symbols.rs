@@ -3,9 +3,9 @@
 //! This module handles the main tree traversal and symbol type routing.
 //! It delegates to specialized modules for specific symbol kinds.
 
+use super::{classes, functions, imports_exports, interfaces};
 use crate::extractors::base::Symbol;
 use crate::extractors::typescript::TypeScriptExtractor;
-use super::{classes, functions, interfaces, imports_exports};
 use tree_sitter::{Node, Tree};
 
 /// Extract all symbols from the syntax tree

@@ -353,4 +353,3 @@ pub struct SimilarityResult {
     pub similarity_score: f32,
     pub embedding: Vec<f32>,
 }
-

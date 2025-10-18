@@ -1,10 +1,8 @@
+use super::helpers::infer_symbol_kind_from_assignment;
 /// Assignment handling for Ruby symbols
 /// Includes support for regular assignments, parallel assignments, and rest assignments
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
-use super::helpers::infer_symbol_kind_from_assignment;
 
 /// Extract a symbol from an assignment node
 pub(super) fn extract_assignment(
@@ -118,8 +116,7 @@ fn handle_parallel_assignment(
     // Store additional symbols in the base extractor's symbol_map
     // Since this method only returns one symbol, we add the rest to the symbol_map
     for symbol in created_symbols.iter().skip(1) {
-        base.symbol_map
-            .insert(symbol.id.clone(), symbol.clone());
+        base.symbol_map.insert(symbol.id.clone(), symbol.clone());
     }
 
     // Return the first symbol (if any were created)
@@ -271,9 +268,7 @@ pub(super) fn extract_parallel_assignment_fallback(
 
         for var in variables {
             let clean_var = var.trim_start_matches('*'); // Remove splat operator
-            if !clean_var.is_empty()
-                && clean_var.chars().all(|c| c.is_alphanumeric() || c == '_')
-            {
+            if !clean_var.is_empty() && clean_var.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 let symbol = base.create_symbol(
                     node,
                     clean_var.to_string(),

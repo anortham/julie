@@ -2,16 +2,16 @@
 // Following TDD pattern: RED phase - tests should compile but fail
 
 // Submodule declarations
-pub mod extractor;
 pub mod assignments;
 pub mod decorators;
+pub mod extractor;
 pub mod functions;
 pub mod helpers;
 pub mod identifiers;
 pub mod imports;
+pub mod relationships;
 pub mod signatures;
 pub mod types;
-pub mod relationships;
 
 use crate::extractors::base::{RelationshipKind, SymbolKind};
 use crate::extractors::python::PythonExtractor;
@@ -310,11 +310,17 @@ lat, lon = coords
 
         // Should extract all variables from multiple assignments
         let a_var = symbols.iter().find(|s| s.name == "a");
-        assert!(a_var.is_some(), "Should extract 'a' from multiple assignment");
+        assert!(
+            a_var.is_some(),
+            "Should extract 'a' from multiple assignment"
+        );
         assert_eq!(a_var.unwrap().kind, SymbolKind::Variable);
 
         let b_var = symbols.iter().find(|s| s.name == "b");
-        assert!(b_var.is_some(), "Should extract 'b' from multiple assignment");
+        assert!(
+            b_var.is_some(),
+            "Should extract 'b' from multiple assignment"
+        );
         assert_eq!(b_var.unwrap().kind, SymbolKind::Variable);
 
         let x_var = symbols.iter().find(|s| s.name == "x");
@@ -327,16 +333,28 @@ lat, lon = coords
         assert!(z_var.is_some(), "Should extract 'z' from tuple assignment");
 
         let first_var = symbols.iter().find(|s| s.name == "first");
-        assert!(first_var.is_some(), "Should extract 'first' from function result");
+        assert!(
+            first_var.is_some(),
+            "Should extract 'first' from function result"
+        );
 
         let second_var = symbols.iter().find(|s| s.name == "second");
-        assert!(second_var.is_some(), "Should extract 'second' from function result");
+        assert!(
+            second_var.is_some(),
+            "Should extract 'second' from function result"
+        );
 
         let lat_var = symbols.iter().find(|s| s.name == "lat");
-        assert!(lat_var.is_some(), "Should extract 'lat' from tuple unpacking");
+        assert!(
+            lat_var.is_some(),
+            "Should extract 'lat' from tuple unpacking"
+        );
 
         let lon_var = symbols.iter().find(|s| s.name == "lon");
-        assert!(lon_var.is_some(), "Should extract 'lon' from tuple unpacking");
+        assert!(
+            lon_var.is_some(),
+            "Should extract 'lon' from tuple unpacking"
+        );
     }
 
     #[test]

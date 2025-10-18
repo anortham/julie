@@ -18,7 +18,9 @@ mod tests {
     fn test_has_modifier() {
         let code = "async function foo() {}";
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+        parser
+            .set_language(&tree_sitter_javascript::LANGUAGE.into())
+            .unwrap();
         let tree = parser.parse(code, None).unwrap();
 
         fn find_function(node: Node) -> Option<Node> {

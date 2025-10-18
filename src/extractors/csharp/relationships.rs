@@ -4,13 +4,22 @@ use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Sym
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree
-pub fn extract_relationships(base: &BaseExtractor, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+pub fn extract_relationships(
+    base: &BaseExtractor,
+    tree: &Tree,
+    symbols: &[Symbol],
+) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     visit_relationships(base, tree.root_node(), symbols, &mut relationships);
     relationships
 }
 
-fn visit_relationships(base: &BaseExtractor, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+fn visit_relationships(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
     match node.kind() {
         "class_declaration" | "interface_declaration" | "struct_declaration" => {
             extract_inheritance_relationships(base, node, symbols, relationships);
@@ -24,9 +33,16 @@ fn visit_relationships(base: &BaseExtractor, node: tree_sitter::Node, symbols: &
     }
 }
 
-fn extract_inheritance_relationships(base: &BaseExtractor, node: tree_sitter::Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+fn extract_inheritance_relationships(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
     let mut cursor = node.walk();
-    let name_node = node.children(&mut cursor).find(|c| c.kind() == "identifier");
+    let name_node = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "identifier");
     let Some(name_node) = name_node else { return };
 
     let current_symbol_name = base.get_node_text(&name_node);

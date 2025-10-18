@@ -1,16 +1,11 @@
+use super::helpers::extract_method_name_from_call;
 /// Special method call extraction for Ruby
 /// Handles require, attr_accessor, define_method, def_delegator
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
-use super::helpers::extract_method_name_from_call;
 
 /// Extract special method calls that create symbols
-pub(super) fn extract_call(
-    base: &mut BaseExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_call(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
     let method_name = extract_method_name_from_call(node, |n| base.get_node_text(n))?;
 
     match method_name.as_str() {
@@ -33,9 +28,7 @@ fn extract_require(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
         .children(&mut arg_node.walk())
         .find(|c| c.kind() == "string")?;
 
-    let require_path = base
-        .get_node_text(&string_node)
-        .replace(['\'', '"'], "");
+    let require_path = base.get_node_text(&string_node).replace(['\'', '"'], "");
     let module_name = require_path
         .split('/')
         .next_back()
@@ -146,10 +139,7 @@ fn extract_def_delegator(base: &mut BaseExtractor, node: Node) -> Option<Symbol>
             delegated_method_name,
             SymbolKind::Method,
             SymbolOptions {
-                signature: Some(format!(
-                    "def_delegator {}",
-                    base.get_node_text(&arg_node)
-                )),
+                signature: Some(format!("def_delegator {}", base.get_node_text(&arg_node))),
                 visibility: Some(Visibility::Public),
                 parent_id: None,
                 metadata: None,

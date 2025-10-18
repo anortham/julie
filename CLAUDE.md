@@ -152,6 +152,7 @@ mod tests {
    - You should review code from the standpoint of you being the target user
    - Tool output should be optimized for YOU
    - Tool functionality should be optimized for YOU
+5. **Agent Usage**: make use of the @agent-rust-tdd-implementer whenver possible
 
 ### Workspace Storage Architecture
 

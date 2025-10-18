@@ -346,4 +346,3 @@ impl ASTSymbolFinder {
         }
     }
 }
-

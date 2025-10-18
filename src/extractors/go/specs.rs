@@ -3,7 +3,11 @@ use tree_sitter::Node;
 
 /// Extraction of import, variable, and constant specifications
 impl super::GoExtractor {
-    pub(super) fn extract_import_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+    pub(super) fn extract_import_symbols(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         let mut cursor = node.walk();
 
@@ -32,7 +36,11 @@ impl super::GoExtractor {
         symbols
     }
 
-    pub(super) fn extract_var_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+    pub(super) fn extract_var_symbols(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         let mut cursor = node.walk();
 
@@ -60,7 +68,11 @@ impl super::GoExtractor {
         symbols
     }
 
-    pub(super) fn extract_const_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
+    pub(super) fn extract_const_symbols(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         let mut cursor = node.walk();
 
@@ -88,7 +100,11 @@ impl super::GoExtractor {
         symbols
     }
 
-    pub(super) fn extract_import_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_import_spec(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut alias = None;
         let mut path = None;
@@ -143,7 +159,11 @@ impl super::GoExtractor {
         }
     }
 
-    pub(super) fn extract_var_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_var_spec(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut identifier = None;
         let mut var_type = None;
@@ -206,7 +226,11 @@ impl super::GoExtractor {
         }
     }
 
-    pub(super) fn extract_const_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_const_spec(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut identifier = None;
         let mut const_type = None;

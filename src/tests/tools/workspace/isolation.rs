@@ -51,9 +51,7 @@ mod workspace_isolation {
         // STEP 2: Initialize handler and set primary workspace
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(
-                primary_workspace.path().to_string_lossy().to_string(),
-            ))
+            .initialize_workspace(Some(primary_workspace.path().to_string_lossy().to_string()))
             .await?;
 
         // STEP 3: Index primary workspace
@@ -176,8 +174,8 @@ mod workspace_isolation {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore] // SLOW: Requires ONNX model download and embedding generation (~30s)
     async fn test_reference_workspaces_get_hnsw_indexes() -> Result<()> {
-        use tempfile::TempDir;
         use std::fs;
+        use tempfile::TempDir;
 
         // STEP 1: Create reference workspace with code
         let reference_workspace = TempDir::new()?;
@@ -207,14 +205,14 @@ mod workspace_isolation {
         fs::write(primary_workspace.path().join("main.rs"), "fn main() {}")?;
 
         handler
-            .initialize_workspace(Some(
-                primary_workspace.path().to_string_lossy().to_string(),
-            ))
+            .initialize_workspace(Some(primary_workspace.path().to_string_lossy().to_string()))
             .await?;
 
         // STEP 3: Add reference workspace
         let workspace = handler.get_workspace().await?.unwrap();
-        let registry = crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+        let registry = crate::workspace::registry_service::WorkspaceRegistryService::new(
+            workspace.root.clone(),
+        );
 
         let ref_entry = registry
             .register_workspace(

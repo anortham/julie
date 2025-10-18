@@ -76,12 +76,7 @@ fn extract_identifier_from_node(
             // get_node is a special GDScript function for node access
             let name = "get_node".to_string();
             let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
-            base.create_identifier(
-                &node,
-                name,
-                IdentifierKind::Call,
-                containing_symbol_id,
-            );
+            base.create_identifier(&node, name, IdentifierKind::Call, containing_symbol_id);
         }
 
         // GDScript member access: attribute and subscript nodes

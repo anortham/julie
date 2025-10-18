@@ -1,9 +1,8 @@
 /// Class and type extraction for Python
 /// Handles class definitions, enums, protocols, and type detection
-
 use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
-use super::{decorators, helpers};
 use super::PythonExtractor;
+use super::{decorators, helpers};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -169,4 +168,3 @@ pub(super) fn is_inside_enum_class(extractor: &PythonExtractor, node: &Node) -> 
     }
     false
 }
-

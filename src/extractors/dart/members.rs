@@ -2,13 +2,17 @@
 //
 // Methods for extracting fields, properties, getters, and setters
 
-use crate::extractors::base::{BaseExtractor, SymbolKind, SymbolOptions, Visibility, Symbol};
 use super::helpers::*;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract field definition
-pub(super) fn extract_field(base: &mut BaseExtractor, node: &Node, parent_id: Option<&str>) -> Option<Symbol> {
+pub(super) fn extract_field(
+    base: &mut BaseExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     if node.kind() != "declaration" {
         return None;
     }

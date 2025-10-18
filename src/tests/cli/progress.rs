@@ -2,7 +2,6 @@
 ///
 /// Tests for ProgressReporter functionality including progress reporting,
 /// rate calculation, and completion reporting.
-
 use crate::cli::ProgressReporter;
 
 #[test]

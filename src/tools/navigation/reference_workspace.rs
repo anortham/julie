@@ -97,7 +97,10 @@ pub async fn find_references_in_reference_workspace(
 
     // Strategy 4: HNSW-powered semantic matching for references (if no exact matches found)
     if definitions.is_empty() {
-        debug!("🧠 Using HNSW semantic search for references: {} in reference workspace", symbol);
+        debug!(
+            "🧠 Using HNSW semantic search for references: {} in reference workspace",
+            symbol
+        );
 
         // Try to load reference workspace's vector store
         if let Ok(Some(primary_workspace)) = handler.get_workspace().await {
@@ -105,7 +108,10 @@ pub async fn find_references_in_reference_workspace(
 
             // Check if vector store exists for this reference workspace
             if ref_vectors_path.exists() {
-                debug!("📊 Loading reference workspace vector store from: {}", ref_vectors_path.display());
+                debug!(
+                    "📊 Loading reference workspace vector store from: {}",
+                    ref_vectors_path.display()
+                );
 
                 // Create a new vector store for this reference workspace
                 if let Ok(mut ref_vector_store) = VectorStore::new(384) {
@@ -128,30 +134,38 @@ pub async fn find_references_in_reference_workspace(
 
                             // If we got the embedding, call the generic semantic search function
                             if let Some(embedding) = query_embedding {
-                                if let Ok(semantic_symbols) = super::semantic_matching::find_semantic_definitions_with_store(
-                                    ref_store_arc,
-                                    ref_db_path_for_semantic.clone(),
-                                    embedding,
-                                ).await {
+                                if let Ok(semantic_symbols) =
+                                    super::semantic_matching::find_semantic_definitions_with_store(
+                                        ref_store_arc,
+                                        ref_db_path_for_semantic.clone(),
+                                        embedding,
+                                    )
+                                    .await
+                                {
                                     debug!(
                                         "🚀 HNSW semantic search found {} definitions for references",
                                         semantic_symbols.len()
                                     );
 
                                     // Now query for relationships to these semantic definitions
-                                    let semantic_def_ids: Vec<String> = semantic_symbols.iter().map(|s| s.id.clone()).collect();
+                                    let semantic_def_ids: Vec<String> =
+                                        semantic_symbols.iter().map(|s| s.id.clone()).collect();
 
                                     // Use spawn_blocking for database query
                                     let ref_db_path_clone = ref_db_path_for_semantic.clone();
                                     let semantic_refs = tokio::task::spawn_blocking(move || {
-                                        if let Ok(db) = crate::database::SymbolDatabase::new(&ref_db_path_clone) {
+                                        if let Ok(db) =
+                                            crate::database::SymbolDatabase::new(&ref_db_path_clone)
+                                        {
                                             db.get_relationships_to_symbols(&semantic_def_ids)
                                         } else {
                                             Ok(Vec::new())
                                         }
                                     })
                                     .await
-                                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+                                    .map_err(|e| {
+                                        anyhow::anyhow!("spawn_blocking join error: {}", e)
+                                    })?;
 
                                     if let Ok(semantic_rels) = semantic_refs {
                                         references.extend(semantic_rels);
@@ -162,7 +176,10 @@ pub async fn find_references_in_reference_workspace(
                             }
                         }
                     } else {
-                        debug!("⚠️ Could not load HNSW index for reference workspace {}", ref_workspace_id);
+                        debug!(
+                            "⚠️ Could not load HNSW index for reference workspace {}",
+                            ref_workspace_id
+                        );
                     }
                 }
             }
@@ -266,7 +283,10 @@ pub async fn find_definitions_in_reference_workspace(
 
     // Strategy 3: HNSW-powered semantic matching (if available and no exact matches)
     if exact_matches.is_empty() {
-        debug!("🧠 Using HNSW semantic search for: {} in reference workspace", symbol);
+        debug!(
+            "🧠 Using HNSW semantic search for: {} in reference workspace",
+            symbol
+        );
 
         // Try to load reference workspace's vector store
         if let Ok(Some(primary_workspace)) = handler.get_workspace().await {
@@ -274,7 +294,10 @@ pub async fn find_definitions_in_reference_workspace(
 
             // Check if vector store exists for this reference workspace
             if ref_vectors_path.exists() {
-                debug!("📊 Loading reference workspace vector store from: {}", ref_vectors_path.display());
+                debug!(
+                    "📊 Loading reference workspace vector store from: {}",
+                    ref_vectors_path.display()
+                );
 
                 // Create a new vector store for this reference workspace
                 if let Ok(mut ref_vector_store) = VectorStore::new(384) {
@@ -297,17 +320,23 @@ pub async fn find_definitions_in_reference_workspace(
 
                             // If we got the embedding, call the generic semantic search function
                             if let Some(embedding) = query_embedding {
-                                if let Ok(semantic_symbols) = super::semantic_matching::find_semantic_definitions_with_store(
-                                    ref_store_arc,
-                                    ref_db_path_for_semantic.clone(),
-                                    embedding,
-                                ).await {
+                                if let Ok(semantic_symbols) =
+                                    super::semantic_matching::find_semantic_definitions_with_store(
+                                        ref_store_arc,
+                                        ref_db_path_for_semantic.clone(),
+                                        embedding,
+                                    )
+                                    .await
+                                {
                                     exact_matches.extend(semantic_symbols);
                                 }
                             }
                         }
                     } else {
-                        debug!("⚠️ Could not load HNSW index for reference workspace {}", ref_workspace_id);
+                        debug!(
+                            "⚠️ Could not load HNSW index for reference workspace {}",
+                            ref_workspace_id
+                        );
                     }
                 }
             }

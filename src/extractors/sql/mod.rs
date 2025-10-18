@@ -20,8 +20,7 @@ mod routines;
 mod schemas;
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind,
-    SymbolOptions,
+    BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind, SymbolOptions,
 };
 use std::collections::HashMap;
 use tree_sitter::Tree;
@@ -158,7 +157,12 @@ impl SqlExtractor {
                 symbol = schemas::extract_type(&mut self.base, node, parent_id);
             }
             "alter_table" => {
-                constraints::extract_constraints_from_alter_table(&mut self.base, node, symbols, parent_id);
+                constraints::extract_constraints_from_alter_table(
+                    &mut self.base,
+                    node,
+                    symbols,
+                    parent_id,
+                );
             }
             "select" => {
                 self.extract_select_aliases(node, symbols, parent_id);
@@ -167,12 +171,19 @@ impl SqlExtractor {
                 // Remember symbol count before extraction
                 let symbols_before = symbols.len();
 
-                error_handling::extract_multiple_from_error_node(&mut self.base, node, symbols, parent_id);
+                error_handling::extract_multiple_from_error_node(
+                    &mut self.base,
+                    node,
+                    symbols,
+                    parent_id,
+                );
 
                 // Check if any view symbols were added and extract their columns
                 for i in symbols_before..symbols.len() {
                     let symbol_ref = &symbols[i].clone(); // Clone to avoid borrow issues
-                    if symbol_ref.metadata.as_ref()
+                    if symbol_ref
+                        .metadata
+                        .as_ref()
                         .and_then(|m| m.get("isView"))
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false)
@@ -191,7 +202,12 @@ impl SqlExtractor {
             match node.kind() {
                 "create_table" => {
                     constraints::extract_table_columns(&mut self.base, node, symbols, &symbol.id);
-                    constraints::extract_table_constraints(&mut self.base, node, symbols, &symbol.id);
+                    constraints::extract_table_constraints(
+                        &mut self.base,
+                        node,
+                        symbols,
+                        &symbol.id,
+                    );
                 }
                 "create_view" => {
                     self.extract_view_columns(node, symbols, &symbol.id);
@@ -217,7 +233,12 @@ impl SqlExtractor {
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false)
                     {
-                        routines::extract_parameters_from_error_node(&mut self.base, node, symbols, &symbol.id);
+                        routines::extract_parameters_from_error_node(
+                            &mut self.base,
+                            node,
+                            symbols,
+                            &symbol.id,
+                        );
                     }
                 }
                 "create_function" | "create_function_statement" => {
@@ -303,7 +324,10 @@ impl SqlExtractor {
                                     || expr_text.contains("MAX")
                                     || expr_text.contains("MIN")
                                 {
-                                    format!("{}()", expr_text.split('(').next().unwrap_or(&expr_text))
+                                    format!(
+                                        "{}()",
+                                        expr_text.split('(').next().unwrap_or(&expr_text)
+                                    )
                                 } else {
                                     expr_text.clone()
                                 }
@@ -313,14 +337,9 @@ impl SqlExtractor {
                         let signature = format!("{} AS {}", expression, alias_name);
 
                         let mut metadata = HashMap::new();
-                        metadata.insert(
-                            "isSelectAlias".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
-                        metadata.insert(
-                            "isComputedField".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
+                        metadata.insert("isSelectAlias".to_string(), serde_json::Value::Bool(true));
+                        metadata
+                            .insert("isComputedField".to_string(), serde_json::Value::Bool(true));
 
                         let options = SymbolOptions {
                             signature: Some(signature),
@@ -330,12 +349,9 @@ impl SqlExtractor {
                             metadata: Some(metadata),
                         };
 
-                        let alias_symbol = self.base.create_symbol(
-                            &node,
-                            alias_name,
-                            SymbolKind::Field,
-                            options,
-                        );
+                        let alias_symbol =
+                            self.base
+                                .create_symbol(&node, alias_name, SymbolKind::Field, options);
                         symbols.push(alias_symbol);
                         break;
                     }
@@ -456,12 +472,9 @@ impl SqlExtractor {
                 metadata: Some(metadata),
             };
 
-            let alias_symbol = self.base.create_symbol(
-                &node,
-                alias_name.to_string(),
-                SymbolKind::Field,
-                options,
-            );
+            let alias_symbol =
+                self.base
+                    .create_symbol(&node, alias_name.to_string(), SymbolKind::Field, options);
             symbols.push(alias_symbol);
         }
     }

@@ -272,6 +272,8 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
+                include_body: None,
+                mode: None,
             };
 
             let get_symbols_extra = GetSymbolsTool {
@@ -279,6 +281,8 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
+                include_body: None,
+                mode: None,
             };
 
             let handler_a = handler.clone();

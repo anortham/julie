@@ -106,9 +106,7 @@ pub(super) fn extract_view(
                 metadata: Some(metadata),
             };
 
-            return Some(
-                base.create_symbol(&node, name, SymbolKind::Interface, options),
-            );
+            return Some(base.create_symbol(&node, name, SymbolKind::Interface, options));
         }
     }
 
@@ -188,9 +186,7 @@ pub(super) fn extract_index(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Property, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Property, options))
 }
 
 /// Extract trigger from CREATE TRIGGER statement
@@ -217,9 +213,7 @@ pub(super) fn extract_trigger(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Method, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Method, options))
 }
 
 /// Extract schema from CREATE SCHEMA statement
@@ -232,8 +226,7 @@ pub(super) fn extract_schema(
     let node_text = base.get_node_text(&node);
 
     // Extract schemas from ERROR nodes
-    let schema_regex =
-        regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+    let schema_regex = regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
 
     if let Some(captures) = schema_regex.captures(&node_text) {
         if let Some(schema_name) = captures.get(1) {
@@ -254,9 +247,7 @@ pub(super) fn extract_schema(
                 metadata: Some(metadata),
             };
 
-            return Some(
-                base.create_symbol(&node, name, SymbolKind::Namespace, options),
-            );
+            return Some(base.create_symbol(&node, name, SymbolKind::Namespace, options));
         }
     }
 
@@ -315,9 +306,7 @@ pub(super) fn extract_domain(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Class, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Class, options))
 }
 
 /// Extract type from CREATE TYPE statement (including ENUMs)
@@ -362,9 +351,7 @@ pub(super) fn extract_type(
             metadata: Some(metadata),
         };
 
-        return Some(
-            base.create_symbol(&node, name, SymbolKind::Class, options),
-        );
+        return Some(base.create_symbol(&node, name, SymbolKind::Class, options));
     }
 
     // Handle other types (non-enum)
@@ -381,9 +368,7 @@ pub(super) fn extract_type(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Class, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Class, options))
 }
 
 /// Extract CTE (Common Table Expression) from WITH clause
@@ -419,9 +404,7 @@ pub(super) fn extract_cte(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Interface, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Interface, options))
 }
 
 /// Extract sequence from CREATE SEQUENCE statement
@@ -505,7 +488,5 @@ pub(super) fn extract_sequence(
         metadata: Some(metadata),
     };
 
-    Some(
-        base.create_symbol(&node, name, SymbolKind::Variable, options),
-    )
+    Some(base.create_symbol(&node, name, SymbolKind::Variable, options))
 }

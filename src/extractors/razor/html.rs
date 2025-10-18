@@ -5,7 +5,11 @@ use tree_sitter::Node;
 
 impl super::RazorExtractor {
     /// Extract HTML elements (<div>, <span>, etc.)
-    pub(super) fn extract_html_element(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_html_element(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let tag_name = self.extract_html_tag_name(node);
         let attributes = self.extract_html_attributes(node);
 
@@ -175,7 +179,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract Razor components (<Component />, <MyCustomComponent />)
-    pub(super) fn extract_component(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_component(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let component_name = self.extract_component_name(node);
         let parameters = self.extract_component_parameters(node);
 
@@ -282,7 +290,12 @@ impl super::RazorExtractor {
     }
 
     /// Extract HTML attributes with detailed parsing
-    pub(super) fn extract_html_attribute(&mut self, node: Node, parent_id: Option<&str>, symbols: &mut Vec<Symbol>) -> Option<Symbol> {
+    pub(super) fn extract_html_attribute(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+        symbols: &mut Vec<Symbol>,
+    ) -> Option<Symbol> {
         let attribute_text = self.base.get_node_text(&node);
 
         // Extract attribute name and value
@@ -303,7 +316,10 @@ impl super::RazorExtractor {
 
         // If we can't parse structured, fall back to parsing the text
         if attr_name.is_none() {
-            if let Some(captures) = regex::Regex::new(r"([^=]+)=(.*)").unwrap().captures(&attribute_text) {
+            if let Some(captures) = regex::Regex::new(r"([^=]+)=(.*)")
+                .unwrap()
+                .captures(&attribute_text)
+            {
                 attr_name = Some(captures[1].trim().to_string());
                 attr_value = Some(captures[2].trim().to_string());
             } else {
@@ -316,8 +332,14 @@ impl super::RazorExtractor {
             if name.starts_with("@bind-Value") {
                 if let Some(value) = &attr_value {
                     // Create a separate symbol for the binding
-                    let binding_name = format!("{}_binding",
-                        value.replace("\"", "").replace("Model.", "").replace(".", "_").to_lowercase());
+                    let binding_name = format!(
+                        "{}_binding",
+                        value
+                            .replace("\"", "")
+                            .replace("Model.", "")
+                            .replace(".", "_")
+                            .to_lowercase()
+                    );
                     let binding_signature = format!("{}={}", name, value);
 
                     let binding_symbol = self.base.create_symbol(
@@ -330,9 +352,18 @@ impl super::RazorExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("type".to_string(), serde_json::Value::String("data-binding".to_string()));
-                                metadata.insert("bindingType".to_string(), serde_json::Value::String("two-way".to_string()));
-                                metadata.insert("property".to_string(), serde_json::Value::String(value.clone()));
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("data-binding".to_string()),
+                                );
+                                metadata.insert(
+                                    "bindingType".to_string(),
+                                    serde_json::Value::String("two-way".to_string()),
+                                );
+                                metadata.insert(
+                                    "property".to_string(),
+                                    serde_json::Value::String(value.clone()),
+                                );
                                 metadata
                             }),
                             doc_comment: None,
@@ -345,8 +376,8 @@ impl super::RazorExtractor {
             // Handle event binding with custom event
             if name.starts_with("@bind-Value:event") {
                 if let Some(value) = &attr_value {
-                    let event_binding_name = format!("{}_event_binding",
-                        value.replace("\"", "").to_lowercase());
+                    let event_binding_name =
+                        format!("{}_event_binding", value.replace("\"", "").to_lowercase());
                     let event_signature = format!("{}={}", name, value);
 
                     let event_symbol = self.base.create_symbol(
@@ -359,8 +390,14 @@ impl super::RazorExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("type".to_string(), serde_json::Value::String("event-binding".to_string()));
-                                metadata.insert("event".to_string(), serde_json::Value::String(value.clone()));
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("event-binding".to_string()),
+                                );
+                                metadata.insert(
+                                    "event".to_string(),
+                                    serde_json::Value::String(value.clone()),
+                                );
                                 metadata
                             }),
                             doc_comment: None,
@@ -389,16 +426,31 @@ impl super::RazorExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: Some({
                         let mut metadata = HashMap::new();
-                        metadata.insert("type".to_string(), serde_json::Value::String("html-attribute".to_string()));
-                        metadata.insert("attributeName".to_string(), serde_json::Value::String(name.clone()));
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("html-attribute".to_string()),
+                        );
+                        metadata.insert(
+                            "attributeName".to_string(),
+                            serde_json::Value::String(name.clone()),
+                        );
                         if let Some(value) = attr_value {
-                            metadata.insert("attributeValue".to_string(), serde_json::Value::String(value));
+                            metadata.insert(
+                                "attributeValue".to_string(),
+                                serde_json::Value::String(value),
+                            );
                         }
                         if name.starts_with("@bind") {
-                            metadata.insert("isDataBinding".to_string(), serde_json::Value::String("true".to_string()));
+                            metadata.insert(
+                                "isDataBinding".to_string(),
+                                serde_json::Value::String("true".to_string()),
+                            );
                         }
                         if name.starts_with("@on") {
-                            metadata.insert("isEventBinding".to_string(), serde_json::Value::Bool(true));
+                            metadata.insert(
+                                "isEventBinding".to_string(),
+                                serde_json::Value::Bool(true),
+                            );
                         }
                         metadata
                     }),
@@ -411,19 +463,28 @@ impl super::RazorExtractor {
     }
 
     /// Extract Razor attribute (stub - to be implemented)
-    pub(super) fn extract_razor_attribute(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_razor_attribute(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name = if let Some(name_node) = self.find_child_by_type(node, "identifier") {
             self.base.get_node_text(&name_node)
         } else {
             let raw = self.base.get_node_text(&node);
-            raw.split('=').next().map(|s| s.trim().to_string()).unwrap_or_default()
+            raw.split('=')
+                .next()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
         };
 
         if name.is_empty() {
             return None;
         }
 
-        let value = if let Some(value_node) = self.find_child_by_types(node, &["attribute_value", "string_literal"]) {
+        let value = if let Some(value_node) =
+            self.find_child_by_types(node, &["attribute_value", "string_literal"])
+        {
             Some(self.base.get_node_text(&value_node))
         } else {
             None
@@ -460,16 +521,11 @@ impl super::RazorExtractor {
                         );
                     }
                     if name.starts_with("@bind") {
-                        metadata.insert(
-                            "isDataBinding".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
+                        metadata.insert("isDataBinding".to_string(), serde_json::Value::Bool(true));
                     }
                     if name.starts_with("@on") {
-                        metadata.insert(
-                            "isEventBinding".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
+                        metadata
+                            .insert("isEventBinding".to_string(), serde_json::Value::Bool(true));
                     }
                     metadata
                 }),

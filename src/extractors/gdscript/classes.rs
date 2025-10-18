@@ -1,10 +1,10 @@
 //! Class extraction for GDScript
 
+use super::helpers::find_child_by_type;
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers::find_child_by_type;
 
 /// Extract class_name statement (explicit class definition)
 pub(super) fn extract_class_name_statement(

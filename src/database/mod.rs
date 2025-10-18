@@ -11,21 +11,21 @@ use tracing::{info, warn};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 // Module declarations
-pub mod types;
-mod migrations;
-mod schema;
-mod files;
-mod symbols;
-mod relationships;
 mod bulk_operations;
-mod workspace;
-mod helpers;
 mod embeddings;
+mod files;
+mod helpers;
+mod migrations;
+mod relationships;
+mod schema;
+mod symbols;
+pub mod types;
+mod workspace;
 
 // Re-export public types
-pub use types::*;
 pub use files::{calculate_file_hash, create_file_info};
 pub use migrations::LATEST_SCHEMA_VERSION;
+pub use types::*;
 
 /// The main database connection and operations
 pub struct SymbolDatabase {

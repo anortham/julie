@@ -1149,7 +1149,9 @@ Future<String> chainOperations() {
             let count_down = symbols.iter().find(|s| s.name == "countDown");
             assert!(count_down.is_some());
 
-            let process_data_with_completer = symbols.iter().find(|s| s.name == "processDataWithCompleter");
+            let process_data_with_completer = symbols
+                .iter()
+                .find(|s| s.name == "processDataWithCompleter");
             assert!(process_data_with_completer.is_some());
 
             let generate_messages = symbols.iter().find(|s| s.name == "generateMessages");
@@ -1373,10 +1375,12 @@ List<String> processChunk(List<String> chunk) {
             assert!(isolate_messenger.is_some());
             assert_eq!(isolate_messenger.unwrap().kind, SymbolKind::Class);
 
-            let message_handling_isolate = symbols.iter().find(|s| s.name == "messageHandlingIsolate");
+            let message_handling_isolate =
+                symbols.iter().find(|s| s.name == "messageHandlingIsolate");
             assert!(message_handling_isolate.is_some());
 
-            let process_data_concurrently = symbols.iter().find(|s| s.name == "processDataConcurrently");
+            let process_data_concurrently =
+                symbols.iter().find(|s| s.name == "processDataConcurrently");
             assert!(process_data_concurrently.is_some());
 
             let process_chunk = symbols.iter().find(|s| s.name == "processChunk");
@@ -1498,7 +1502,8 @@ Future<String> riskyOperation() async {
             assert!(transform_stream.is_some());
 
             // Test stream classes
-            let number_stream_controller = symbols.iter().find(|s| s.name == "NumberStreamController");
+            let number_stream_controller =
+                symbols.iter().find(|s| s.name == "NumberStreamController");
             assert!(number_stream_controller.is_some());
             assert_eq!(number_stream_controller.unwrap().kind, SymbolKind::Class);
 

@@ -1,3 +1,4 @@
+use super::helpers;
 /// Function and method definition extraction
 ///
 /// Handles extraction of:
@@ -5,11 +6,7 @@
 /// - Local functions: `local function name() end`
 /// - Methods with colon syntax: `function obj:method() end`
 /// - Methods with dot syntax: `function obj.method() end`
-
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
-use super::helpers;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
 /// Extract regular function definition statement
@@ -47,9 +44,7 @@ pub(super) fn extract_function_definition_statement(
                     kind = SymbolKind::Method;
 
                     // Try to find the object this method belongs to
-                    if let Some(object_symbol) =
-                        symbols.iter().find(|s| s.name == object_name)
-                    {
+                    if let Some(object_symbol) = symbols.iter().find(|s| s.name == object_name) {
                         method_parent_id = Some(object_symbol.id.clone());
                     }
                 } else {
@@ -67,9 +62,7 @@ pub(super) fn extract_function_definition_statement(
                     kind = SymbolKind::Method;
 
                     // Try to find the object this method belongs to
-                    if let Some(object_symbol) =
-                        symbols.iter().find(|s| s.name == object_name)
-                    {
+                    if let Some(object_symbol) = symbols.iter().find(|s| s.name == object_name) {
                         method_parent_id = Some(object_symbol.id.clone());
                     }
                 } else {

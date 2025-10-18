@@ -146,13 +146,19 @@ mod tests {
         let input_focus = symbols.iter().find(|s| s.name == ".input:focus");
         assert!(input_focus.is_some());
 
-        let list_item_odd = symbols.iter().find(|s| s.name == ".list-item:nth-child(odd)");
+        let list_item_odd = symbols
+            .iter()
+            .find(|s| s.name == ".list-item:nth-child(odd)");
         assert!(list_item_odd.is_some());
 
-        let article_nth = symbols.iter().find(|s| s.name == ".article p:nth-of-type(1)");
+        let article_nth = symbols
+            .iter()
+            .find(|s| s.name == ".article p:nth-of-type(1)");
         assert!(article_nth.is_some());
 
-        let checkbox_checked = symbols.iter().find(|s| s.name == ".checkbox:checked + .checkmark");
+        let checkbox_checked = symbols
+            .iter()
+            .find(|s| s.name == ".checkbox:checked + .checkmark");
         assert!(checkbox_checked.is_some());
 
         let radio_disabled = symbols.iter().find(|s| s.name == ".radio:disabled");

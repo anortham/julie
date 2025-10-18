@@ -1,15 +1,11 @@
 /// Function signatures and parameter extraction
 /// Handles parameter lists, type hints, return types, and visibility inference
-
 use super::PythonExtractor;
 use crate::extractors::base::Visibility;
 use tree_sitter::Node;
 
 /// Extract function parameters from a parameters node
-pub fn extract_parameters(
-    extractor: &PythonExtractor,
-    parameters_node: &Node,
-) -> Vec<String> {
+pub fn extract_parameters(extractor: &PythonExtractor, parameters_node: &Node) -> Vec<String> {
     let mut params = Vec::new();
     let base = extractor.base();
 

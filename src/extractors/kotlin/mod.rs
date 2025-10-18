@@ -18,9 +18,7 @@ mod properties;
 mod relationships;
 mod types;
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -51,37 +49,78 @@ impl KotlinExtractor {
 
         match node.kind() {
             "class_declaration" | "enum_declaration" => {
-                symbol = Some(types::extract_class(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_class(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "interface_declaration" => {
-                symbol = Some(types::extract_interface(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_interface(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "object_declaration" => {
-                symbol = Some(types::extract_object(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_object(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "companion_object" => {
-                symbol = Some(types::extract_companion_object(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_companion_object(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "function_declaration" => {
-                symbol = Some(types::extract_function(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_function(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "property_declaration" | "property_signature" => {
-                symbol = Some(properties::extract_property(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(properties::extract_property(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "enum_class_body" => {
                 types::extract_enum_members(&mut self.base, &node, symbols, parent_id.as_deref());
             }
             "primary_constructor" => {
-                properties::extract_constructor_parameters(&mut self.base, &node, symbols, parent_id.as_deref());
+                properties::extract_constructor_parameters(
+                    &mut self.base,
+                    &node,
+                    symbols,
+                    parent_id.as_deref(),
+                );
             }
             "package_header" => {
-                symbol = Some(types::extract_package(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_package(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "import" => {
-                symbol = Some(types::extract_import(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_import(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             "type_alias" => {
-                symbol = Some(types::extract_type_alias(&mut self.base, &node, parent_id.as_deref()));
+                symbol = Some(types::extract_type_alias(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                ));
             }
             _ => {}
         }
@@ -135,7 +174,12 @@ impl KotlinExtractor {
             | "enum_declaration"
             | "object_declaration"
             | "interface_declaration" => {
-                relationships::extract_inheritance_relationships(&self.base, &node, symbols, relationships);
+                relationships::extract_inheritance_relationships(
+                    &self.base,
+                    &node,
+                    symbols,
+                    relationships,
+                );
             }
             _ => {}
         }

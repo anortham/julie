@@ -2,7 +2,9 @@
 //
 // Responsible for parsing .vue file structure and extracting template, script, and style sections
 
-use super::helpers::{LANG_ATTR_RE, SCRIPT_START_RE, SECTION_END_RE, STYLE_START_RE, TEMPLATE_START_RE};
+use super::helpers::{
+    LANG_ATTR_RE, SCRIPT_START_RE, SECTION_END_RE, STYLE_START_RE, TEMPLATE_START_RE,
+};
 use std::fmt;
 
 /// Represents a section within a Vue SFC file (template, script, or style)
@@ -23,7 +25,10 @@ impl fmt::Display for VueSection {
             "{}@{}{}",
             self.section_type,
             self.start_line,
-            self.lang.as_deref().map(|l| format!("({})", l)).unwrap_or_default()
+            self.lang
+                .as_deref()
+                .map(|l| format!("({})", l))
+                .unwrap_or_default()
         )
     }
 }

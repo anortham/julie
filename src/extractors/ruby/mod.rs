@@ -8,19 +8,17 @@
 /// - Identifier extraction for LSP-quality find_references
 ///
 /// Port of Miller's comprehensive Ruby extractor
-use crate::extractors::base::{
-    BaseExtractor, Symbol, Visibility, Relationship, Identifier,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, Visibility};
 use tree_sitter::{Node, Tree};
 
 // Private modules - encapsulate implementation details
-mod helpers;
-mod signatures;
-mod symbols;
 mod assignments;
 mod calls;
-mod relationships;
+mod helpers;
 mod identifiers;
+mod relationships;
+mod signatures;
+mod symbols;
 
 /// Ruby extractor that handles Ruby-specific constructs
 pub struct RubyExtractor {
@@ -49,7 +47,8 @@ impl RubyExtractor {
         // Include additional symbols from symbol_map (parallel assignments, etc.)
         // BUT: Only add symbols that weren't already added during traversal
         // (create_symbol automatically adds to symbol_map, causing duplication)
-        let existing_ids: std::collections::HashSet<_> = symbols.iter().map(|s| s.id.clone()).collect();
+        let existing_ids: std::collections::HashSet<_> =
+            symbols.iter().map(|s| s.id.clone()).collect();
 
         for (id, symbol) in self.base.symbol_map.iter() {
             if !existing_ids.contains(id) {
@@ -104,7 +103,11 @@ impl RubyExtractor {
                 ));
             }
             "singleton_class" => {
-                symbol_opt = Some(symbols::extract_singleton_class(&mut self.base, node, parent_id.clone()));
+                symbol_opt = Some(symbols::extract_singleton_class(
+                    &mut self.base,
+                    node,
+                    parent_id.clone(),
+                ));
             }
             "method" => {
                 symbol_opt = Some(symbols::extract_method(
@@ -129,7 +132,9 @@ impl RubyExtractor {
             }
             "assignment" | "operator_assignment" => {
                 // Handle assignments by extracting symbols
-                if let Some(symbol) = assignments::extract_assignment(&mut self.base, node, parent_id.clone()) {
+                if let Some(symbol) =
+                    assignments::extract_assignment(&mut self.base, node, parent_id.clone())
+                {
                     symbols.push(symbol);
                 }
             }

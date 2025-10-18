@@ -202,13 +202,10 @@ impl ManageWorkspaceTool {
 
                 // Clean up database entries for modified files
                 for file_path in &files_to_clean {
-                    if let Err(e) =
-                        db_lock.delete_symbols_for_file_in_workspace(file_path)
-                    {
+                    if let Err(e) = db_lock.delete_symbols_for_file_in_workspace(file_path) {
                         warn!("Failed to delete old symbols for {}: {}", file_path, e);
                     }
-                    if let Err(e) = db_lock.delete_relationships_for_file(file_path)
-                    {
+                    if let Err(e) = db_lock.delete_relationships_for_file(file_path) {
                         warn!(
                             "Failed to delete old relationships for {}: {}",
                             file_path, e
@@ -259,8 +256,7 @@ impl ManageWorkspaceTool {
                 }
 
                 // Bulk store relationships
-                if let Err(e) = db_lock.bulk_store_relationships(&all_relationships)
-                {
+                if let Err(e) = db_lock.bulk_store_relationships(&all_relationships) {
                     warn!("Failed to bulk store relationships: {}", e);
                 }
 

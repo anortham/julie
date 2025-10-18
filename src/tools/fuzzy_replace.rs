@@ -462,5 +462,4 @@ impl FuzzyReplaceTool {
 
         (brace_count, bracket_count, paren_count)
     }
-
 }

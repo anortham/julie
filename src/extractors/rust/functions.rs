@@ -1,3 +1,8 @@
+use super::helpers::{
+    extract_extern_modifier, extract_visibility, find_doc_comment, has_async_keyword,
+    has_unsafe_keyword, is_inside_impl, ImplBlockInfo,
+};
+use super::signatures::extract_return_type;
 /// Rust function and method extraction
 /// - Functions and methods
 /// - Impl blocks and two-phase processing
@@ -6,14 +11,12 @@ use crate::extractors::rust::RustExtractor;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
-use super::helpers::{
-    extract_visibility, is_inside_impl, has_async_keyword, has_unsafe_keyword,
-    extract_extern_modifier, find_doc_comment, ImplBlockInfo,
-};
-use super::signatures::extract_return_type;
 
 /// Extract function parameters from a function node
-pub(super) fn extract_function_parameters(base: &crate::extractors::base::BaseExtractor, node: Node) -> Vec<String> {
+pub(super) fn extract_function_parameters(
+    base: &crate::extractors::base::BaseExtractor,
+    node: Node,
+) -> Vec<String> {
     let mut parameters = Vec::new();
     let param_list = node.child_by_field_name("parameters");
 
@@ -34,7 +37,11 @@ pub(super) fn extract_function_parameters(base: &crate::extractors::base::BaseEx
 }
 
 /// Extract function or method definition
-pub(super) fn extract_function(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_function(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -134,7 +141,11 @@ pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id
 
 /// Process impl blocks during phase 2
 /// Extracts methods from impl blocks and links them to their parent types
-pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, symbols: &mut Vec<Symbol>) {
+pub(super) fn process_impl_blocks(
+    extractor: &mut RustExtractor,
+    tree: &Tree,
+    symbols: &mut Vec<Symbol>,
+) {
     let impl_blocks = extractor.get_impl_blocks().to_vec();
 
     for impl_block in impl_blocks {
@@ -160,7 +171,8 @@ pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, sy
             {
                 for child in declaration_list.children(&mut declaration_list.walk()) {
                     if child.kind() == "function_item" {
-                        let mut method_symbol = extract_function(extractor, child, parent_id.clone());
+                        let mut method_symbol =
+                            extract_function(extractor, child, parent_id.clone());
                         method_symbol.kind = SymbolKind::Method;
 
                         // Preserve the impl type name in metadata so cross-file methods stay discoverable

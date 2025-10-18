@@ -376,7 +376,9 @@ fn processPayment() {
         // NEW FORMAT: Minimal 2-line summary shows symbol name and basic status
         // Symbol type details are in structured_content JSON, not required in minimal text
         assert!(
-            response_text.contains("getUserData") || response_text.contains("Found") || response_text.contains("symbol"),
+            response_text.contains("getUserData")
+                || response_text.contains("Found")
+                || response_text.contains("symbol"),
             "Should show basic search result info"
         );
 

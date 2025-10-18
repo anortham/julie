@@ -1,15 +1,15 @@
 // Lua Extractor Tests - modularized structure
 
 // Submodule declarations
-pub mod core;
 pub mod classes;
+pub mod core;
 pub mod extractor;
 pub mod functions;
-pub mod variables;
-pub mod identifiers;
 pub mod helpers;
-pub mod tables;
+pub mod identifiers;
 pub mod relationships;
+pub mod tables;
+pub mod variables;
 
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::lua::LuaExtractor;

@@ -2,8 +2,8 @@
 //
 // Methods for extracting relationships between symbols (inheritance, uses, etc.)
 
-use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use super::helpers::*;
+use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use tree_sitter::Node;
 
 /// Extract relationships from the tree
@@ -38,9 +38,9 @@ fn extract_class_relationships(
         return;
     }
 
-    let class_symbol = symbols.iter().find(|s| {
-        s.name == get_node_text(&class_name.unwrap()) && s.kind == SymbolKind::Class
-    });
+    let class_symbol = symbols
+        .iter()
+        .find(|s| s.name == get_node_text(&class_name.unwrap()) && s.kind == SymbolKind::Class);
     if class_symbol.is_none() {
         return;
     }
@@ -86,9 +86,10 @@ fn extract_class_relationships(
 
                     // Create relationships for any generic types that are classes in our symbols
                     for generic_type_name in generic_types {
-                        if let Some(generic_type_symbol) = symbols.iter().find(|s| {
-                            s.name == generic_type_name && s.kind == SymbolKind::Class
-                        }) {
+                        if let Some(generic_type_symbol) = symbols
+                            .iter()
+                            .find(|s| s.name == generic_type_name && s.kind == SymbolKind::Class)
+                        {
                             relationships.push(Relationship {
                                 id: format!(
                                     "{}_{}_{:?}_{}",

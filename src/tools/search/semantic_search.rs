@@ -46,15 +46,22 @@ pub async fn semantic_search_impl(
             use crate::workspace::registry_service::WorkspaceRegistryService;
             let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
-            if registry_service.get_workspace(workspace_id).await?.is_none() {
-                return Err(anyhow::anyhow!("Workspace '{}' not found in registry", workspace_id));
+            if registry_service
+                .get_workspace(workspace_id)
+                .await?
+                .is_none()
+            {
+                return Err(anyhow::anyhow!(
+                    "Workspace '{}' not found in registry",
+                    workspace_id
+                ));
             }
 
             // Load the specific workspace's database from primary workspace's indexes
             let db_path = primary_workspace.workspace_db_path(workspace_id);
             debug!("📂 Loading database from: {}", db_path.display());
             let db = std::sync::Arc::new(std::sync::Mutex::new(
-                crate::database::SymbolDatabase::new(&db_path)?
+                crate::database::SymbolDatabase::new(&db_path)?,
             ));
 
             // Load the specific workspace's vector store from primary workspace's indexes
@@ -71,16 +78,25 @@ pub async fn semantic_search_impl(
                 // Load HNSW index from disk (just the graph structure + id_mapping)
                 match store.load_hnsw_index(&vectors_dir) {
                     Ok(_) => {
-                        debug!("✅ HNSW index loaded from disk for workspace '{}'", workspace_id);
+                        debug!(
+                            "✅ HNSW index loaded from disk for workspace '{}'",
+                            workspace_id
+                        );
                         Some(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
                     }
                     Err(e) => {
-                        warn!("⚠️ Failed to load HNSW from disk: {}. Semantic search not available.", e);
+                        warn!(
+                            "⚠️ Failed to load HNSW from disk: {}. Semantic search not available.",
+                            e
+                        );
                         None
                     }
                 }
             } else {
-                debug!("Vector store directory does not exist for workspace '{}'", workspace_id);
+                debug!(
+                    "Vector store directory does not exist for workspace '{}'",
+                    workspace_id
+                );
                 None
             };
 
@@ -104,7 +120,10 @@ pub async fn semantic_search_impl(
         // Get primary workspace ID for logging
         use crate::workspace::registry_service::WorkspaceRegistryService;
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
-        let primary_id = registry_service.get_primary_workspace_id().await?.unwrap_or_else(|| "primary".to_string());
+        let primary_id = registry_service
+            .get_primary_workspace_id()
+            .await?
+            .unwrap_or_else(|| "primary".to_string());
 
         (db, vector_store, primary_id)
     };
@@ -113,13 +132,17 @@ pub async fn semantic_search_impl(
     let vector_store = match vector_store {
         Some(vs) => vs,
         None => {
-            warn!("Vector store not available for workspace '{}' - falling back to text search", target_workspace_id);
+            warn!(
+                "Vector store not available for workspace '{}' - falling back to text search",
+                target_workspace_id
+            );
             return crate::tools::search::text_search::text_search_impl(
                 query,
                 language,
                 file_pattern,
                 limit,
-                workspace_ids, "symbols", // Semantic fallback searches symbols
+                workspace_ids,
+                "symbols", // Semantic fallback searches symbols
                 handler,
             )
             .await;
@@ -141,7 +164,8 @@ pub async fn semantic_search_impl(
                     language,
                     file_pattern,
                     limit,
-                    workspace_ids, "symbols", // Semantic fallback searches symbols
+                    workspace_ids,
+                    "symbols", // Semantic fallback searches symbols
                     handler,
                 )
                 .await;
@@ -195,7 +219,8 @@ pub async fn semantic_search_impl(
             language,
             file_pattern,
             limit,
-            workspace_ids, "symbols", // Semantic fallback searches symbols
+            workspace_ids,
+            "symbols", // Semantic fallback searches symbols
             handler,
         )
         .await;
@@ -206,17 +231,27 @@ pub async fn semantic_search_impl(
     let semantic_results = match tokio::task::block_in_place(|| {
         let db_lock = db.lock().unwrap();
         let model_name = "bge-small"; // Match the embedding model
-        store_guard.search_similar_hnsw(&*db_lock, &query_embedding, search_limit, similarity_threshold, model_name)
+        store_guard.search_similar_hnsw(
+            &*db_lock,
+            &query_embedding,
+            search_limit,
+            similarity_threshold,
+            model_name,
+        )
     }) {
         Ok(results) => results,
         Err(e) => {
-            warn!("Semantic similarity search failed: {} - falling back to text search", e);
+            warn!(
+                "Semantic similarity search failed: {} - falling back to text search",
+                e
+            );
             return crate::tools::search::text_search::text_search_impl(
                 query,
                 language,
                 file_pattern,
                 limit,
-                workspace_ids, "symbols", // Semantic fallback searches symbols
+                workspace_ids,
+                "symbols", // Semantic fallback searches symbols
                 handler,
             )
             .await;
@@ -281,10 +316,7 @@ pub async fn semantic_search_impl(
         .collect();
 
     // Limit to requested number of results
-    let results: Vec<Symbol> = filtered_symbols
-        .into_iter()
-        .take(limit as usize)
-        .collect();
+    let results: Vec<Symbol> = filtered_symbols.into_iter().take(limit as usize).collect();
 
     debug!(
         "✅ Semantic search returned {} results (HNSW-powered)",

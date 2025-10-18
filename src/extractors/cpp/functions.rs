@@ -275,7 +275,11 @@ pub(super) fn extract_function_modifiers(base: &mut BaseExtractor, node: Node) -
 }
 
 /// Extract method modifiers (checks multiple tree levels)
-fn extract_method_modifiers(base: &mut BaseExtractor, declaration_node: Node, func_node: Node) -> Vec<String> {
+fn extract_method_modifiers(
+    base: &mut BaseExtractor,
+    declaration_node: Node,
+    func_node: Node,
+) -> Vec<String> {
     let mut modifiers = Vec::new();
     let modifier_types = [
         "virtual", "static", "explicit", "friend", "inline", "override",

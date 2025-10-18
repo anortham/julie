@@ -55,9 +55,9 @@ mod reference_workspace_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[ignore] // FIXME: FTS5 corruption when searching primary workspace after adding reference workspace
-    // Error: fts5: missing row 1 from content table 'main'.'files'
-    // This appears to be an issue with FTS5 virtual table state becoming inconsistent.
-    // Needs investigation into how file content is stored and synced to FTS5 indices.
+              // Error: fts5: missing row 1 from content table 'main'.'files'
+              // This appears to be an issue with FTS5 virtual table state becoming inconsistent.
+              // Needs investigation into how file content is stored and synced to FTS5 indices.
     async fn test_reference_workspace_end_to_end() -> Result<()> {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
         // Note: Don't skip search index - we need the workspace to be registered!
@@ -157,8 +157,13 @@ pub fn reference_function() {
             use crate::workspace::registry_service::WorkspaceRegistryService;
             let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
             match registry_service.get_primary_workspace_id().await {
-                Ok(Some(id)) => println!("✅ After adding reference, primary workspace still registered: {}", id),
-                Ok(None) => println!("❌❌❌ PRIMARY WORKSPACE LOST after adding reference workspace!"),
+                Ok(Some(id)) => println!(
+                    "✅ After adding reference, primary workspace still registered: {}",
+                    id
+                ),
+                Ok(None) => {
+                    println!("❌❌❌ PRIMARY WORKSPACE LOST after adding reference workspace!")
+                }
                 Err(e) => println!("❌ Error getting primary workspace ID: {}", e),
             }
         }
@@ -216,7 +221,10 @@ pub fn reference_function() {
         let reference_result = search_reference.call_tool(&handler).await?;
         let reference_response = extract_text_from_result(&reference_result);
 
-        println!("Reference workspace search results:\n{}", reference_response);
+        println!(
+            "Reference workspace search results:\n{}",
+            reference_response
+        );
 
         assert!(
             reference_response.contains("REFERENCE_MARKER_UNIQUE"),
@@ -399,7 +407,7 @@ pub fn compute_system_statistics() {
         // This should find ONLY reference workspace content
         let search_reference_semantic = FastSearchTool {
             query: "calculate statistics".to_string(), // Semantic query
-            mode: "semantic".to_string(), // ❌ BUG: This mode ignores workspace param
+            mode: "semantic".to_string(),              // ❌ BUG: This mode ignores workspace param
             language: None,
             file_pattern: None,
             limit: 10,
@@ -412,7 +420,10 @@ pub fn compute_system_statistics() {
         let reference_result = search_reference_semantic.call_tool(&handler).await?;
         let reference_response = extract_text_from_result(&reference_result);
 
-        println!("Semantic search (reference workspace) results:\n{}", reference_response);
+        println!(
+            "Semantic search (reference workspace) results:\n{}",
+            reference_response
+        );
 
         // EXPECTED: Should find reference workspace function
         // ACTUAL (BUG): Will find primary workspace function instead

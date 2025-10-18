@@ -14,86 +14,88 @@
 // CLI TESTS - Command-line interface integration tests
 // ============================================================================
 pub mod cli {
-    pub mod codesearch;      // CLI integration tests for julie-codesearch (scan/update)
-    pub mod semantic;        // CLI integration tests for julie-semantic (embed with HNSW)
-    pub mod output;          // CLI output formatting tests
-    pub mod parallel;        // CLI parallel execution tests
-    pub mod progress;        // CLI progress indicator tests
+    pub mod codesearch; // CLI integration tests for julie-codesearch (scan/update)
+    pub mod output; // CLI output formatting tests
+    pub mod parallel; // CLI parallel execution tests
+    pub mod progress;
+    pub mod semantic; // CLI integration tests for julie-semantic (embed with HNSW)
+    // CLI progress indicator tests
 }
 
 // ============================================================================
 // CORE SYSTEM TESTS - Database, embeddings, handlers, language support
 // ============================================================================
 pub mod core {
-    pub mod database;        // Database operations and SQLite tests
-    pub mod handler;         // MCP handler tests
-    pub mod language;        // Language detection and support tests
-    pub mod tracing;         // Tracing and logging tests
+    pub mod database; // Database operations and SQLite tests
+    pub mod handler; // MCP handler tests
+    pub mod language; // Language detection and support tests
+    pub mod tracing; // Tracing and logging tests
 
-    pub mod embeddings;  // Embedding tests with cross-language support
+    pub mod embeddings; // Embedding tests with cross-language support
 }
 
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod tools {
-    pub mod ast_symbol_finder;                // AST symbol finder tests
-    pub mod get_symbols;                      // GetSymbolsTool tests
-    pub mod get_symbols_target_filtering;     // GetSymbolsTool target filtering tests
-    pub mod get_symbols_token;                // GetSymbolsTool token optimization tests
-    pub mod smart_read;                       // Smart Read token optimization tests
-    pub mod syntax_validation;                // Syntax validation tests
+    pub mod ast_symbol_finder; // AST symbol finder tests
+    pub mod get_symbols; // GetSymbolsTool tests
+    pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
+    pub mod get_symbols_token; // GetSymbolsTool token optimization tests
+    pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
+    pub mod smart_read; // Smart Read token optimization tests
+    pub mod syntax_validation; // Syntax validation tests
 
-    pub mod editing;  // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
+    pub mod editing; // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
 
-    pub mod search;  // Search tool tests (line mode, quality, race conditions)
-    pub mod search_context_lines;  // FastSearchTool context_lines parameter tests (token optimization)
+    pub mod search; // Search tool tests (line mode, quality, race conditions)
+    pub mod search_context_lines; // FastSearchTool context_lines parameter tests (token optimization)
 
-    pub mod refactoring;  // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
+    pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
     pub mod workspace {
-        pub mod mod_tests;           // Workspace module functionality tests
-        pub mod utils;               // Workspace utilities tests
-        pub mod isolation;           // Workspace isolation tests
-        pub mod management_token;    // ManageWorkspaceTool token optimization tests
-        pub mod registry;            // Workspace registry tests
-        pub mod registry_service;    // Registry service tests
+        pub mod isolation; // Workspace isolation tests
+        pub mod management_token; // ManageWorkspaceTool token optimization tests
+        pub mod mod_tests; // Workspace module functionality tests
+        pub mod registry; // Workspace registry tests
+        pub mod registry_service;
+        pub mod utils; // Workspace utilities tests // Registry service tests
     }
 
-    pub mod navigation;  // Navigation tool tests (FastRefsTool, FastGotoTool)
+    pub mod navigation; // Navigation tool tests (FastRefsTool, FastGotoTool)
 
-    pub mod exploration;  // Exploration tool tests (FastExploreTool, FindLogicTool)
+    pub mod exploration; // Exploration tool tests (FastExploreTool, FindLogicTool)
 
-    pub mod trace_call_path;  // TraceCallPathTool tests (core + comprehensive)
+    pub mod trace_call_path; // TraceCallPathTool tests (core + comprehensive)
 }
 
 // ============================================================================
 // UTILS TESTS - Cross-language intelligence, scoring, optimization utilities
 // ============================================================================
 pub mod utils {
-    pub mod context_truncation;            // Context truncation tests
-    pub mod cross_language_intelligence;   // Cross-language intelligence tests
-    pub mod progressive_reduction;         // Progressive reduction tests
-    pub mod query_expansion;               // Query expansion tests
-    pub mod token_estimation;              // Token estimation tests
+    pub mod context_truncation; // Context truncation tests
+    pub mod cross_language_intelligence; // Cross-language intelligence tests
+    pub mod progressive_reduction; // Progressive reduction tests
+    pub mod query_expansion; // Query expansion tests
+    pub mod token_estimation; // Token estimation tests
 
-    pub mod exact_match_boost;  // Exact match boost tests
+    pub mod exact_match_boost; // Exact match boost tests
 
-    pub mod path_relevance;  // Path relevance scoring tests
+    pub mod path_relevance; // Path relevance scoring tests
 }
 
 // ============================================================================
 // INTEGRATION TESTS - End-to-end and cross-component tests
 // ============================================================================
 pub mod integration {
-    pub mod real_world_validation;      // Real-world code validation tests
-    pub mod reference_workspace;        // Reference workspace tests
-    pub mod lock_contention;            // Lock contention regression tests
-    pub mod stale_index_detection;      // Stale index detection tests
-    pub mod fts5_sanitization;          // FTS5 query sanitization tests
-    pub mod watcher;                    // File watcher tests
-    // pub mod tracing;                 // Tracing integration tests - DISABLED
-    // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
+    pub mod fts5_sanitization; // FTS5 query sanitization tests
+    pub mod lock_contention; // Lock contention regression tests
+    pub mod real_world_validation; // Real-world code validation tests
+    pub mod reference_workspace; // Reference workspace tests
+    pub mod stale_index_detection; // Stale index detection tests
+    pub mod watcher; // File watcher tests
+                     // pub mod tracing;                 // Tracing integration tests - DISABLED
+                     // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }
 
 #[cfg(test)]
@@ -215,7 +217,7 @@ pub mod test_utils;
 // EXTRACTOR TESTS - All 26 language extractors (100% Miller parity)
 // ============================================================================
 pub mod extractors {
-    pub mod base;    // BaseExtractor tests
+    pub mod base; // BaseExtractor tests
 
     // Bash extractor tests (single mod.rs file)
     pub mod bash;
@@ -292,4 +294,3 @@ pub mod extractors {
     // Zig extractor tests
     pub mod zig;
 }
-

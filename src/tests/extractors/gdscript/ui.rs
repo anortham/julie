@@ -226,7 +226,9 @@ func toggle_inventory():
         let update_score_display = symbols.iter().find(|s| s.name == "update_score_display");
         assert!(update_score_display.is_some());
 
-        let refresh_inventory_display = symbols.iter().find(|s| s.name == "refresh_inventory_display");
+        let refresh_inventory_display = symbols
+            .iter()
+            .find(|s| s.name == "refresh_inventory_display");
         assert!(refresh_inventory_display.is_some());
 
         let show_pause_menu = symbols.iter().find(|s| s.name == "show_pause_menu");
@@ -244,17 +246,25 @@ func toggle_inventory():
         let remove_inventory_item = symbols.iter().find(|s| s.name == "remove_inventory_item");
         assert!(remove_inventory_item.is_some());
 
-        let show_item_pickup_animation = symbols.iter().find(|s| s.name == "show_item_pickup_animation");
+        let show_item_pickup_animation = symbols
+            .iter()
+            .find(|s| s.name == "show_item_pickup_animation");
         assert!(show_item_pickup_animation.is_some());
 
         // Test event handlers
-        let on_start_button_pressed = symbols.iter().find(|s| s.name == "_on_start_button_pressed");
+        let on_start_button_pressed = symbols
+            .iter()
+            .find(|s| s.name == "_on_start_button_pressed");
         assert!(on_start_button_pressed.is_some());
 
-        let on_pause_button_pressed = symbols.iter().find(|s| s.name == "_on_pause_button_pressed");
+        let on_pause_button_pressed = symbols
+            .iter()
+            .find(|s| s.name == "_on_pause_button_pressed");
         assert!(on_pause_button_pressed.is_some());
 
-        let on_inventory_item_pressed = symbols.iter().find(|s| s.name == "_on_inventory_item_pressed");
+        let on_inventory_item_pressed = symbols
+            .iter()
+            .find(|s| s.name == "_on_inventory_item_pressed");
         assert!(on_inventory_item_pressed.is_some());
 
         let input = symbols.iter().find(|s| s.name == "_input");

@@ -19,7 +19,9 @@ fn test_basic_class_extraction() {
     "#;
 
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_c_sharp::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = CSharpExtractor::new(
@@ -44,7 +46,9 @@ fn test_interface_extraction() {
     "#;
 
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_c_sharp::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = CSharpExtractor::new(
@@ -66,7 +70,9 @@ fn test_property_extraction() {
     "#;
 
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_c_sharp::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = CSharpExtractor::new(
@@ -89,7 +95,9 @@ fn test_enum_extraction() {
     "#;
 
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_c_sharp::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = CSharpExtractor::new(

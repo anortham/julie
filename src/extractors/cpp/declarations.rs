@@ -257,7 +257,12 @@ pub(super) fn extract_field(
     // Also need to handle pointer_declarator for pointer fields
     let declarators: Vec<Node> = node
         .children(&mut node.walk())
-        .filter(|c| matches!(c.kind(), "field_declarator" | "init_declarator" | "pointer_declarator"))
+        .filter(|c| {
+            matches!(
+                c.kind(),
+                "field_declarator" | "init_declarator" | "pointer_declarator"
+            )
+        })
         .collect();
 
     if declarators.is_empty() {
@@ -266,7 +271,10 @@ pub(super) fn extract_field(
         // 2. function_declarator (method declaration inside class)
 
         // Check for function_declarator (method declarations)
-        if node.children(&mut node.walk()).any(|c| c.kind() == "function_declarator") {
+        if node
+            .children(&mut node.walk())
+            .any(|c| c.kind() == "function_declarator")
+        {
             // This is a method declaration inside a class - not a field
             // Don't handle it here - let it be processed as a function
             // Return empty vec to signal this should be handled elsewhere
@@ -333,7 +341,7 @@ pub(super) fn extract_field(
         // Extract field name from declarator (handles pointer_declarator, field_declarator, etc.)
         let name_node = match extract_field_name_from_declarator(declarator) {
             Some(n) => n,
-            None => continue,  // Skip if we can't find the name
+            None => continue, // Skip if we can't find the name
         };
 
         let name = base.get_node_text(&name_node);
@@ -370,18 +378,16 @@ pub(super) fn extract_field(
 fn extract_field_name_from_declarator(declarator: Node) -> Option<Node> {
     // For pointer_declarator: need to recursively find field_identifier
     if declarator.kind() == "pointer_declarator" {
-        return declarator
-            .children(&mut declarator.walk())
-            .find_map(|c| {
-                if c.kind() == "field_identifier" || c.kind() == "identifier" {
-                    Some(c)
-                } else if matches!(c.kind(), "pointer_declarator" | "field_declarator") {
-                    // Recursively search nested declarators (e.g., double**)
-                    extract_field_name_from_declarator(c)
-                } else {
-                    None
-                }
-            });
+        return declarator.children(&mut declarator.walk()).find_map(|c| {
+            if c.kind() == "field_identifier" || c.kind() == "identifier" {
+                Some(c)
+            } else if matches!(c.kind(), "pointer_declarator" | "field_declarator") {
+                // Recursively search nested declarators (e.g., double**)
+                extract_field_name_from_declarator(c)
+            } else {
+                None
+            }
+        });
     }
 
     // For field_declarator and init_declarator: direct children
@@ -412,10 +418,7 @@ pub(super) fn extract_friend_declaration(
         .find(|c| c.kind() == "operator_name")
     {
         // This is a friend operator
-        (
-            base.get_node_text(&operator_name),
-            SymbolKind::Operator,
-        )
+        (base.get_node_text(&operator_name), SymbolKind::Operator)
     } else if let Some(identifier) = function_declarator
         .children(&mut function_declarator.walk())
         .find(|c| c.kind() == "identifier")
@@ -694,9 +697,9 @@ fn extract_field_visibility(base: &mut BaseExtractor, node: Node) -> Visibility 
         Some((parent_kind, parent_node)) => {
             // Determine default visibility based on parent type
             let default_visibility = if parent_kind == "class_specifier" {
-                Visibility::Private  // class defaults to private
+                Visibility::Private // class defaults to private
             } else {
-                Visibility::Public   // struct and union default to public
+                Visibility::Public // struct and union default to public
             };
 
             // Find the field_list body
@@ -711,7 +714,7 @@ fn extract_field_visibility(base: &mut BaseExtractor, node: Node) -> Visibility 
                 default_visibility
             }
         }
-        None => Visibility::Public,  // Not inside a class/struct, assume public
+        None => Visibility::Public, // Not inside a class/struct, assume public
     }
 }
 
@@ -729,7 +732,12 @@ fn find_parent_class_or_struct(mut node: Node) -> Option<(&'static str, Node)> {
 }
 
 /// Find the most recent access_spec before the target node
-fn find_access_spec_before_node(base: &BaseExtractor, field_list: Node, target: Node, default_visibility: Visibility) -> Visibility {
+fn find_access_spec_before_node(
+    base: &BaseExtractor,
+    field_list: Node,
+    target: Node,
+    default_visibility: Visibility,
+) -> Visibility {
     let target_start = target.start_position();
     let mut current_visibility = default_visibility;
 
@@ -750,7 +758,7 @@ fn find_access_spec_before_node(base: &BaseExtractor, field_list: Node, target: 
                 "private" => Visibility::Private,
                 "protected" => Visibility::Protected,
                 "public" => Visibility::Public,
-                _ => current_visibility,  // Unknown, keep current
+                _ => current_visibility, // Unknown, keep current
             };
         }
     }

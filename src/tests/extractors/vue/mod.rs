@@ -566,7 +566,11 @@ export default {
 </script>
 "#;
 
-        let mut extractor = VueExtractor::new("vue".to_string(), "malformed.vue".to_string(), vue_code.to_string());
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "malformed.vue".to_string(),
+            vue_code.to_string(),
+        );
         let symbols = extractor.extract_symbols(None);
 
         // Should handle malformed templates gracefully
@@ -586,7 +590,11 @@ export default {
 </style>
 "#;
 
-        let mut extractor = VueExtractor::new("vue".to_string(), "empty.vue".to_string(), vue_code.to_string());
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "empty.vue".to_string(),
+            vue_code.to_string(),
+        );
         let symbols = extractor.extract_symbols(None);
 
         // Should handle empty sections
@@ -603,7 +611,11 @@ export default {
 </script>
 "#;
 
-        let mut extractor = VueExtractor::new("vue".to_string(), "minimal.vue".to_string(), vue_code.to_string());
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "minimal.vue".to_string(),
+            vue_code.to_string(),
+        );
         let symbols = extractor.extract_symbols(None);
 
         // Should handle missing template and style sections
@@ -637,7 +649,11 @@ export default defineComponent<Props>({
 </script>
 "#;
 
-        let mut extractor = VueExtractor::new("vue".to_string(), "typescript.vue".to_string(), vue_code.to_string());
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "typescript.vue".to_string(),
+            vue_code.to_string(),
+        );
         let symbols = extractor.extract_symbols(None);
 
         // Should handle TypeScript in Vue components

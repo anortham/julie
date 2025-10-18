@@ -16,8 +16,7 @@ mod type_inference;
 mod types;
 
 use crate::extractors::base::{
-    BaseExtractor, Relationship, Symbol, SymbolKind,
-    SymbolOptions, Visibility,
+    BaseExtractor, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
@@ -59,9 +58,14 @@ impl CppExtractor {
     }
 
     /// Extract identifiers (function calls, member access, etc.)
-    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<crate::extractors::base::Identifier> {
+    pub fn extract_identifiers(
+        &mut self,
+        tree: &Tree,
+        symbols: &[Symbol],
+    ) -> Vec<crate::extractors::base::Identifier> {
         // Create symbol map for fast lookup
-        let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Walk the tree and extract identifiers
         self.walk_tree_for_identifiers(tree.root_node(), &symbol_map);
@@ -83,7 +87,8 @@ impl CppExtractor {
     fn walk_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
         // Handle field_declaration specially (can produce multiple symbols)
         if node.kind() == "field_declaration" {
-            let field_symbols = declarations::extract_field(&mut self.base, node, parent_id.as_deref());
+            let field_symbols =
+                declarations::extract_field(&mut self.base, node, parent_id.as_deref());
             if !field_symbols.is_empty() {
                 symbols.extend(field_symbols);
                 // Don't walk children - field declarations are leaf nodes
@@ -140,7 +145,9 @@ impl CppExtractor {
         }
 
         let symbol = match node.kind() {
-            "namespace_definition" => declarations::extract_namespace(&mut self.base, node, parent_id),
+            "namespace_definition" => {
+                declarations::extract_namespace(&mut self.base, node, parent_id)
+            }
             "using_declaration" | "namespace_alias_definition" => {
                 declarations::extract_using(&mut self.base, node, parent_id)
             }
@@ -166,7 +173,9 @@ impl CppExtractor {
             "friend_declaration" => {
                 declarations::extract_friend_declaration(&mut self.base, node, parent_id)
             }
-            "template_declaration" => declarations::extract_template(&mut self.base, node, parent_id),
+            "template_declaration" => {
+                declarations::extract_template(&mut self.base, node, parent_id)
+            }
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,
         };

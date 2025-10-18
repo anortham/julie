@@ -216,8 +216,7 @@ pub(super) fn extract_declare_variables(
                     let variable_type = captures.get(2).unwrap().as_str();
 
                     let mut metadata = HashMap::new();
-                    metadata
-                        .insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
+                    metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
                     metadata.insert(
                         "isDeclaredVariable".to_string(),
                         serde_json::Value::Bool(true),
@@ -320,12 +319,8 @@ pub(super) fn extract_parameters_from_error_node(
                 metadata: Some(metadata),
             };
 
-            let param_symbol = base.create_symbol(
-                &node,
-                param_name.to_string(),
-                SymbolKind::Variable,
-                options,
-            );
+            let param_symbol =
+                base.create_symbol(&node, param_name.to_string(), SymbolKind::Variable, options);
             symbols.push(param_symbol);
         }
     }

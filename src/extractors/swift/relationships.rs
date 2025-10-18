@@ -9,7 +9,11 @@ use super::SwiftExtractor;
 impl SwiftExtractor {
     /// Extract relationships between Swift types (inheritance and protocol conformance)
     /// Port of Miller's extractRelationships method
-    pub fn extract_relationships(&mut self, tree: &tree_sitter::Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
         relationships

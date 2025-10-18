@@ -107,10 +107,14 @@ ORDER BY idx_tup_read DESC;
         assert!(idx_posts_created_at.is_some());
 
         // Test composite indexes
-        let idx_orders_customer_date = symbols.iter().find(|s| s.name == "idx_orders_customer_date");
+        let idx_orders_customer_date = symbols
+            .iter()
+            .find(|s| s.name == "idx_orders_customer_date");
         assert!(idx_orders_customer_date.is_some());
 
-        let idx_products_category_price = symbols.iter().find(|s| s.name == "idx_products_category_price");
+        let idx_products_category_price = symbols
+            .iter()
+            .find(|s| s.name == "idx_products_category_price");
         assert!(idx_products_category_price.is_some());
 
         // Test partial indexes
@@ -159,7 +163,9 @@ ORDER BY idx_tup_read DESC;
         assert!(idx_user_settings_theme.is_some());
 
         // Test covering indexes
-        let idx_orders_customer_status_date = symbols.iter().find(|s| s.name == "idx_orders_customer_status_date");
+        let idx_orders_customer_status_date = symbols
+            .iter()
+            .find(|s| s.name == "idx_orders_customer_status_date");
         assert!(idx_orders_customer_status_date.is_some());
 
         // Test concurrent index

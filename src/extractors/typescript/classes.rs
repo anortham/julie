@@ -3,9 +3,9 @@
 //! This module handles extraction of class declarations including inheritance,
 //! modifiers, and abstract classes.
 
+use super::helpers;
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::extractors::typescript::TypeScriptExtractor;
-use super::helpers;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -44,4 +44,3 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
         },
     )
 }
-

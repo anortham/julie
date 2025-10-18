@@ -11,7 +11,6 @@
 /// - classes: Lua class pattern detection (tables with metatables)
 /// - identifiers: LSP identifier tracking for references
 /// - helpers: Type inference and utility functions
-
 pub(crate) mod classes;
 mod core;
 mod functions;
@@ -21,9 +20,7 @@ mod relationships;
 mod tables;
 mod variables;
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::Tree;
 
 pub struct LuaExtractor {
@@ -77,6 +74,4 @@ impl LuaExtractor {
     pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
     }
-
-
 }

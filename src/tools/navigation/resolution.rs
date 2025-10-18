@@ -3,10 +3,10 @@
 //! This module provides common utilities for resolving symbols across
 //! different workspaces and using multiple search strategies.
 
-use anyhow::Result;
-use crate::handler::JulieServerHandler;
 use crate::extractors::Symbol;
+use crate::handler::JulieServerHandler;
 use crate::workspace::registry_service::WorkspaceRegistryService;
+use anyhow::Result;
 
 /// Resolve workspace parameter to specific workspace ID
 ///

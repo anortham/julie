@@ -1,5 +1,4 @@
 /// Import and package declaration extraction
-
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::extractors::java::JavaExtractor;
 use tree_sitter::Node;

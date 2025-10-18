@@ -1,9 +1,8 @@
 /// Function and method extraction
 /// Handles regular functions, async functions, lambdas, and method detection
-
 use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
-use super::{decorators, signatures};
 use super::PythonExtractor;
+use super::{decorators, signatures};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -29,7 +28,10 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Symbol {
 
     // Extract return type annotation from 'return_type' field
     let return_type = if let Some(return_type_node) = node.child_by_field_name("return_type") {
-        format!(": {}", extractor.base_mut().get_node_text(&return_type_node))
+        format!(
+            ": {}",
+            extractor.base_mut().get_node_text(&return_type_node)
+        )
     } else {
         String::new()
     };

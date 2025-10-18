@@ -3,13 +3,11 @@
 //! This module handles extraction of properties, constructor parameters,
 //! and related metadata.
 
-use crate::extractors::base::{
-    BaseExtractor, SymbolKind, SymbolOptions, Symbol, Visibility,
-};
+use super::helpers;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers;
 
 /// Extract a Kotlin property declaration
 pub(super) fn extract_property(
@@ -193,9 +191,8 @@ pub(super) fn extract_constructor_parameters(
                 // Alternative: look for assignment pattern (= value)
                 let final_signature = if default_val.is_empty() {
                     let children: Vec<Node> = child.children(&mut child.walk()).collect();
-                    if let Some(equal_index) = children
-                        .iter()
-                        .position(|n| base.get_node_text(n) == "=")
+                    if let Some(equal_index) =
+                        children.iter().position(|n| base.get_node_text(n) == "=")
                     {
                         if equal_index + 1 < children.len() {
                             let value_node = &children[equal_index + 1];

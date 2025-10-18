@@ -4,7 +4,6 @@
 /// - Node traversal helpers
 /// - Type inference from expressions
 /// - Node text extraction
-
 use crate::extractors::base::BaseExtractor;
 use tree_sitter::Node;
 
@@ -57,4 +56,3 @@ pub(crate) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> St
         _ => "unknown".to_string(),
     }
 }
-

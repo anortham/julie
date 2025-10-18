@@ -2,15 +2,18 @@
 //
 // Responsible for extracting CSS class names from the <style> section
 
-use crate::extractors::base::{SymbolKind};
+use super::helpers::CSS_CLASS_RE;
 use super::parsing::VueSection;
 use super::script::create_symbol_manual;
-use super::helpers::CSS_CLASS_RE;
 use crate::extractors::base::BaseExtractor;
+use crate::extractors::base::SymbolKind;
 
 /// Extract symbols from style section (CSS class names, etc.)
 /// Port of Miller's extractStyleSymbols logic
-pub(super) fn extract_style_symbols(base: &BaseExtractor, section: &VueSection) -> Vec<crate::extractors::base::Symbol> {
+pub(super) fn extract_style_symbols(
+    base: &BaseExtractor,
+    section: &VueSection,
+) -> Vec<crate::extractors::base::Symbol> {
     let mut symbols = Vec::new();
     let lines: Vec<&str> = section.content.lines().collect();
 

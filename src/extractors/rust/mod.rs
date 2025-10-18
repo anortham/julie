@@ -6,18 +6,16 @@
 /// - Two-phase processing: extract symbols → process impl blocks
 ///
 /// Port of Miller's comprehensive Rust extractor
-use crate::extractors::base::{
-    BaseExtractor, Symbol, Relationship, Identifier,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::{Node, Tree};
 
 // Private modules
+mod functions;
 mod helpers;
+mod identifiers;
+mod relationships;
 mod signatures;
 mod types;
-mod functions;
-mod relationships;
-mod identifiers;
 
 // Re-export types
 pub use self::helpers::ImplBlockInfo;
@@ -96,7 +94,9 @@ impl RustExtractor {
                     Some(functions::extract_function(self, node, parent_id))
                 }
             }
-            "function_signature_item" => Some(signatures::extract_function_signature(self, node, parent_id)),
+            "function_signature_item" => Some(signatures::extract_function_signature(
+                self, node, parent_id,
+            )),
             "associated_type" => Some(signatures::extract_associated_type(self, node, parent_id)),
             "union_item" => Some(types::extract_union(self, node, parent_id)),
             "macro_invocation" => signatures::extract_macro_invocation(self, node, parent_id),

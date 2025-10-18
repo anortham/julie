@@ -1,6 +1,5 @@
 /// Identifier extraction for LSP-quality find_references
 /// Tracks function calls, member access, and other identifier usages
-
 use super::PythonExtractor;
 use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
@@ -14,8 +13,7 @@ pub fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(extractor, tree.root_node(), &symbol_map);

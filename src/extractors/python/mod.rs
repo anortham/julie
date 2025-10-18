@@ -1,3 +1,4 @@
+pub(crate) mod assignments;
 /// Python extractor for extracting symbols and relationships from Python source code
 /// Port of Miller's Python extractor with comprehensive Python feature support
 ///
@@ -11,7 +12,6 @@
 /// - assignments: Variable and constant assignment extraction
 /// - relationships: Inheritance and call relationship extraction
 /// - identifiers: LSP identifier tracking for references
-
 pub(crate) mod decorators;
 pub(crate) mod functions;
 pub(crate) mod helpers;
@@ -20,11 +20,8 @@ pub(crate) mod imports;
 pub(crate) mod relationships;
 pub(crate) mod signatures;
 pub(crate) mod types;
-pub(crate) mod assignments;
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

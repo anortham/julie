@@ -79,20 +79,37 @@ impl CExtractor {
         // Port Miller's switch statement logic for C constructs
         match node.kind() {
             "preproc_include" => {
-                symbol = Some(declarations::extract_include(self, node, parent_id.as_deref()));
+                symbol = Some(declarations::extract_include(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                ));
             }
             "preproc_def" | "preproc_function_def" => {
-                symbol = Some(declarations::extract_macro(self, node, parent_id.as_deref()));
+                symbol = Some(declarations::extract_macro(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                ));
             }
             "declaration" => {
-                let declaration_symbols = declarations::extract_declaration(self, node, parent_id.as_deref());
+                let declaration_symbols =
+                    declarations::extract_declaration(self, node, parent_id.as_deref());
                 symbols.extend(declaration_symbols);
             }
             "function_definition" => {
-                symbol = Some(declarations::extract_function_definition(self, node, parent_id.as_deref()));
+                symbol = Some(declarations::extract_function_definition(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                ));
             }
             "struct_specifier" => {
-                symbol = Some(declarations::extract_struct(self, node, parent_id.as_deref()));
+                symbol = Some(declarations::extract_struct(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                ));
             }
             "enum_specifier" => {
                 symbol = Some(declarations::extract_enum(self, node, parent_id.as_deref()));
@@ -104,14 +121,23 @@ impl CExtractor {
                 }
             }
             "type_definition" => {
-                symbol = Some(declarations::extract_type_definition(self, node, parent_id.as_deref()));
+                symbol = Some(declarations::extract_type_definition(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                ));
             }
             "linkage_specification" => {
-                symbol = declarations::extract_linkage_specification(self, node, parent_id.as_deref());
+                symbol =
+                    declarations::extract_linkage_specification(self, node, parent_id.as_deref());
             }
             "expression_statement" => {
                 // Handle cases like "} PACKED NetworkHeader;" where NetworkHeader is in expression_statement
-                symbol = declarations::extract_from_expression_statement(self, node, parent_id.as_deref());
+                symbol = declarations::extract_from_expression_statement(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                );
             }
             _ => {}
         }
@@ -130,6 +156,4 @@ impl CExtractor {
             self.visit_node(child, symbols, current_parent_id.clone());
         }
     }
-
-
 }

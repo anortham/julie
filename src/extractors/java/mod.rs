@@ -11,7 +11,6 @@
 /// - relationships: Inheritance and implementation relationship extraction
 /// - types: Type inference from signatures
 /// - identifiers: LSP identifier tracking for references
-
 mod annotations;
 mod classes;
 mod fields;
@@ -22,9 +21,7 @@ mod methods;
 mod relationships;
 mod types;
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -99,7 +96,12 @@ impl JavaExtractor {
             | "interface_declaration"
             | "enum_declaration"
             | "record_declaration" => {
-                relationships::extract_inheritance_relationships(self, node, symbols, relationships);
+                relationships::extract_inheritance_relationships(
+                    self,
+                    node,
+                    symbols,
+                    relationships,
+                );
             }
             _ => {}
         }

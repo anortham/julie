@@ -150,12 +150,11 @@ impl FastSearchTool {
         };
 
         // Check system readiness with graceful degradation (workspace-aware!)
-        let readiness =
-            crate::health::HealthChecker::check_system_readiness(
-                handler,
-                target_workspace_id.as_deref(),
-            )
-            .await?;
+        let readiness = crate::health::HealthChecker::check_system_readiness(
+            handler,
+            target_workspace_id.as_deref(),
+        )
+        .await?;
 
         match readiness {
             SystemReadiness::NotReady => {

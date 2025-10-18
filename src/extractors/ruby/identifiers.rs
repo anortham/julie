@@ -1,11 +1,9 @@
+use super::helpers::extract_method_name_from_call;
 /// Identifier extraction for Ruby symbols
 /// Handles LSP-quality find_references functionality
-use crate::extractors::base::{
-    BaseExtractor, Symbol, Identifier, IdentifierKind,
-};
-use tree_sitter::{Node, Tree};
+use crate::extractors::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
-use super::helpers::extract_method_name_from_call;
+use tree_sitter::{Node, Tree};
 
 /// Extract all identifier usages (function calls, member access, etc.)
 /// Following the Rust extractor reference implementation pattern
@@ -15,8 +13,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(base, tree.root_node(), &symbol_map);

@@ -1246,23 +1246,48 @@ collect_files() {
 
         // Array variables and their elements should be extracted
         // The extractor captures array declarations and individual element accesses
-        let fruits_elements = symbols.iter().filter(|s| s.name.starts_with("fruits")).count();
-        assert!(fruits_elements >= 3, "Expected at least 3 fruits-related symbols, got {}", fruits_elements);
+        let fruits_elements = symbols
+            .iter()
+            .filter(|s| s.name.starts_with("fruits"))
+            .count();
+        assert!(
+            fruits_elements >= 3,
+            "Expected at least 3 fruits-related symbols, got {}",
+            fruits_elements
+        );
 
         let colors_elements = symbols.iter().filter(|s| s.name.contains("colors")).count();
-        assert!(colors_elements >= 4, "Expected at least 4 colors-related symbols, got {}", colors_elements);
+        assert!(
+            colors_elements >= 4,
+            "Expected at least 4 colors-related symbols, got {}",
+            colors_elements
+        );
 
         let numbers_elements = symbols.iter().filter(|s| s.name == "numbers").count();
-        assert!(numbers_elements >= 4, "Expected at least 4 numbers-related symbols, got {}", numbers_elements);
+        assert!(
+            numbers_elements >= 4,
+            "Expected at least 4 numbers-related symbols, got {}",
+            numbers_elements
+        );
 
         let matrix_elements = symbols.iter().filter(|s| s.name.contains("matrix")).count();
-        assert!(matrix_elements >= 6, "Expected at least 6 matrix-related symbols, got {}", matrix_elements);
+        assert!(
+            matrix_elements >= 6,
+            "Expected at least 6 matrix-related symbols, got {}",
+            matrix_elements
+        );
 
         // Verify specific array element access patterns
         let red_color = symbols.iter().find(|s| s.name == "colors[\"red\"]");
-        assert!(red_color.is_some(), "colors[\"red\"] element access not found");
+        assert!(
+            red_color.is_some(),
+            "colors[\"red\"] element access not found"
+        );
 
         let matrix_00 = symbols.iter().find(|s| s.name == "matrix[\"0,0\"]");
-        assert!(matrix_00.is_some(), "matrix[\"0,0\"] element access not found");
+        assert!(
+            matrix_00.is_some(),
+            "matrix[\"0,0\"] element access not found"
+        );
     }
 }

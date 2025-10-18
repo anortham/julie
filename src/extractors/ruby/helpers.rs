@@ -4,7 +4,11 @@ use crate::extractors::base::{SymbolKind, Visibility};
 use tree_sitter::Node;
 
 /// Extract a name from a node by field name
-pub(super) fn extract_name_from_node(node: Node, base_get_text: impl Fn(&Node) -> String, field_name: &str) -> Option<String> {
+pub(super) fn extract_name_from_node(
+    node: Node,
+    base_get_text: impl Fn(&Node) -> String,
+    field_name: &str,
+) -> Option<String> {
     node.child_by_field_name(field_name)
         .map(|name_node| base_get_text(&name_node))
 }
@@ -53,7 +57,10 @@ pub(super) fn build_qualified_name(
 }
 
 /// Infer symbol kind from assignment node (constant vs variable)
-pub(super) fn infer_symbol_kind_from_assignment(left_node: &Node, base_get_text: impl Fn(&Node) -> String) -> SymbolKind {
+pub(super) fn infer_symbol_kind_from_assignment(
+    left_node: &Node,
+    base_get_text: impl Fn(&Node) -> String,
+) -> SymbolKind {
     match left_node.kind() {
         "constant" => SymbolKind::Constant,
         "class_variable" | "instance_variable" | "global_variable" => SymbolKind::Variable,
@@ -112,7 +119,10 @@ pub(super) fn is_part_of_class_module_declaration(node: &Node) -> bool {
 }
 
 /// Extract method name from a call node
-pub(super) fn extract_method_name_from_call(node: Node, base_get_text: impl Fn(&Node) -> String) -> Option<String> {
+pub(super) fn extract_method_name_from_call(
+    node: Node,
+    base_get_text: impl Fn(&Node) -> String,
+) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "identifier" {
@@ -123,7 +133,10 @@ pub(super) fn extract_method_name_from_call(node: Node, base_get_text: impl Fn(&
 }
 
 /// Extract method name from a singleton method node
-pub(super) fn extract_singleton_method_name(node: Node, base_get_text: impl Fn(&Node) -> String) -> String {
+pub(super) fn extract_singleton_method_name(
+    node: Node,
+    base_get_text: impl Fn(&Node) -> String,
+) -> String {
     // Ruby singleton method structure: def target.method_name
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -135,7 +148,10 @@ pub(super) fn extract_singleton_method_name(node: Node, base_get_text: impl Fn(&
 }
 
 /// Extract target of a singleton method (e.g., 'self' or object name)
-pub(super) fn extract_singleton_method_target(node: Node, base_get_text: impl Fn(&Node) -> String) -> String {
+pub(super) fn extract_singleton_method_target(
+    node: Node,
+    base_get_text: impl Fn(&Node) -> String,
+) -> String {
     // Find the target before the dot
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

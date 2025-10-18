@@ -3,9 +3,7 @@
 //! This module handles extraction of inheritance and interface implementation
 //! relationships between types.
 
-use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind,
-};
+use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;

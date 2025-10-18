@@ -26,6 +26,10 @@ fn default_limit() -> Option<u32> {
     Some(50) // Default limit to prevent token overflow on large files
 }
 
+fn default_mode() -> Option<String> {
+    Some("structure".to_string())
+}
+
 //**********************//
 //   Get Symbols Tool   //
 //**********************//
@@ -75,6 +79,21 @@ pub struct GetSymbolsTool {
     /// Example: limit=100 returns first 100 symbols
     #[serde(default = "default_limit")]
     pub limit: Option<u32>,
+
+    /// Extract complete function/class bodies (default: false)
+    /// When false: Strip code_context (current behavior)
+    /// When true: Read source file and populate code_context with actual code
+    /// Note: Ignored if mode="structure"
+    #[serde(default)]
+    pub include_body: Option<bool>,
+
+    /// Reading mode: "structure" (default), "minimal", "full"
+    /// - "structure": No bodies, structure only (ignore include_body)
+    /// - "minimal": Bodies for top-level symbols only
+    /// - "full": Bodies for ALL symbols including nested methods
+    /// Default: "structure" - maintains backward compatibility
+    #[serde(default = "default_mode")]
+    pub mode: Option<String>,
 }
 
 impl GetSymbolsTool {
@@ -130,59 +149,245 @@ impl GetSymbolsTool {
 
         if symbols.is_empty() {
             let message = format!("No symbols found in: {}", self.file_path);
-            return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
         }
 
-        // Smart Read: Keep ALL symbols for hierarchy building (bug fix)
-        // Target filtering will be applied only to top-level symbols for display,
-        // but children must remain available for format_symbol() to find them
+        // Smart Read: Keep ALL symbols for hierarchy building
         let all_symbols = symbols; // Complete symbol list for hierarchy
 
-        // Check if we have any matching symbols (only check top-level for now)
-        if self.target.is_some() {
-            let target_lower = self.target.as_ref().unwrap().to_lowercase();
-            let has_matches = all_symbols
-                .iter()
-                .any(|s| s.name.to_lowercase().contains(&target_lower));
-
-            if !has_matches {
-                let message = format!(
-                    "No symbols matching '{}' found in: {}",
-                    self.target.as_ref().unwrap(),
-                    self.file_path
-                );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(message)]));
+        // Build a map of parent_id -> children for efficient lookup
+        let mut parent_to_children: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (idx, symbol) in all_symbols.iter().enumerate() {
+            if let Some(ref parent_id) = symbol.parent_id {
+                parent_to_children
+                    .entry(parent_id.clone())
+                    .or_default()
+                    .push(idx);
             }
         }
 
-        // Apply limit if specified (truncate to avoid token overflow)
+        // Find top-level symbols (parent_id is None)
+        let top_level_indices: Vec<usize> = all_symbols
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.parent_id.is_none())
+            .map(|(idx, _)| idx)
+            .collect();
+
+        debug!(
+            "📊 Symbol hierarchy: {} total, {} top-level",
+            all_symbols.len(),
+            top_level_indices.len()
+        );
+
+        // Apply max_depth filtering: recursively collect symbols up to max_depth
+        fn collect_symbols_by_depth(
+            indices: &[usize],
+            depth: u32,
+            max_depth: u32,
+            all_symbols: &[crate::extractors::base::Symbol],
+            parent_to_children: &std::collections::HashMap<String, Vec<usize>>,
+            result: &mut Vec<usize>,
+        ) {
+            if depth > max_depth {
+                return;
+            }
+
+            for &idx in indices {
+                result.push(idx);
+                if depth < max_depth {
+                    if let Some(children_indices) = parent_to_children.get(&all_symbols[idx].id) {
+                        collect_symbols_by_depth(
+                            children_indices,
+                            depth + 1,
+                            max_depth,
+                            all_symbols,
+                            parent_to_children,
+                            result,
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut indices_to_include = Vec::new();
+        collect_symbols_by_depth(
+            &top_level_indices,
+            0,
+            self.max_depth,
+            &all_symbols,
+            &parent_to_children,
+            &mut indices_to_include,
+        );
+
+        debug!(
+            "🔍 After max_depth={} filtering: {} -> {} symbols",
+            self.max_depth,
+            all_symbols.len(),
+            indices_to_include.len()
+        );
+
+        // Collect the filtered symbols in original order
+        let mut symbols_after_depth_filter: Vec<crate::extractors::base::Symbol> =
+            indices_to_include
+                .into_iter()
+                .map(|idx| all_symbols[idx].clone())
+                .collect();
+
+        // Apply target filtering if specified
+        if let Some(ref target) = self.target {
+            let target_lower = target.to_lowercase();
+
+            // Find symbols matching the target
+            let matching_indices: Vec<usize> = symbols_after_depth_filter
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.name.to_lowercase().contains(&target_lower))
+                .map(|(idx, _)| idx)
+                .collect();
+
+            if matching_indices.is_empty() {
+                let message = format!(
+                    "No symbols matching '{}' found in: {}",
+                    target, self.file_path
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
+            }
+
+            // For each matching symbol, include it and all its descendants
+            let mut final_indices = Vec::new();
+            for &match_idx in &matching_indices {
+                final_indices.push(match_idx);
+                let matched_id = &symbols_after_depth_filter[match_idx].id;
+
+                // Recursively add all descendants of this symbol
+                fn add_descendants(
+                    parent_id: &str,
+                    symbols: &[crate::extractors::base::Symbol],
+                    result: &mut Vec<usize>,
+                ) {
+                    for (idx, symbol) in symbols.iter().enumerate() {
+                        if let Some(ref pid) = symbol.parent_id {
+                            if pid == parent_id {
+                                result.push(idx);
+                                add_descendants(&symbol.id, symbols, result);
+                            }
+                        }
+                    }
+                }
+                add_descendants(matched_id, &symbols_after_depth_filter, &mut final_indices);
+            }
+
+            symbols_after_depth_filter = final_indices
+                .into_iter()
+                .map(|idx| symbols_after_depth_filter[idx].clone())
+                .collect();
+
+            debug!(
+                "🎯 After target='{}' filtering: {} symbols",
+                target,
+                symbols_after_depth_filter.len()
+            );
+        }
+
+        // Check if we have any matching symbols after filtering
+        if symbols_after_depth_filter.is_empty() {
+            let message = format!("No symbols found after filtering in: {}", self.file_path);
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
+        // Apply hierarchy-preserving limit if specified
         let total_symbols = all_symbols.len();
         let top_level_count = all_symbols.iter().filter(|s| s.parent_id.is_none()).count();
 
         let (symbols_to_return, was_truncated) = if let Some(limit) = self.limit {
             let limit_usize = limit as usize;
-            if total_symbols > limit_usize {
+
+            // Count top-level symbols in filtered list
+            let top_level_in_filtered: Vec<usize> = symbols_after_depth_filter
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.parent_id.is_none())
+                .map(|(idx, _)| idx)
+                .collect();
+
+            if top_level_in_filtered.len() > limit_usize {
+                // Limit applies to top-level symbols; include all their children
+                let mut result = Vec::new();
+                let mut top_level_count = 0;
+
+                for (idx, symbol) in symbols_after_depth_filter.iter().enumerate() {
+                    if symbol.parent_id.is_none() {
+                        if top_level_count >= limit_usize {
+                            break;
+                        }
+                        top_level_count += 1;
+                        result.push(idx);
+                    }
+                }
+
+                // Add all children of included top-level symbols
+                let top_level_ids: std::collections::HashSet<String> = result
+                    .iter()
+                    .map(|&idx| symbols_after_depth_filter[idx].id.clone())
+                    .collect();
+
+                fn add_all_descendants(
+                    parent_ids: &std::collections::HashSet<String>,
+                    symbols: &[crate::extractors::base::Symbol],
+                    result: &mut Vec<usize>,
+                ) {
+                    let mut to_process: Vec<String> = parent_ids.iter().cloned().collect();
+                    let mut processed = std::collections::HashSet::new();
+
+                    while let Some(parent_id) = to_process.pop() {
+                        if processed.contains(&parent_id) {
+                            continue;
+                        }
+                        processed.insert(parent_id.clone());
+
+                        for (idx, symbol) in symbols.iter().enumerate() {
+                            if let Some(ref pid) = symbol.parent_id {
+                                if pid == &parent_id && !result.contains(&idx) {
+                                    result.push(idx);
+                                    to_process.push(symbol.id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                add_all_descendants(&top_level_ids, &symbols_after_depth_filter, &mut result);
+
                 info!(
-                    "⚠️  Truncating symbols: {} -> {} (use 'target' to filter instead)",
-                    total_symbols, limit
+                    "⚠️  Truncating to {} top-level symbols (total {} with children)",
+                    limit_usize,
+                    result.len()
                 );
-                (all_symbols.into_iter().take(limit_usize).collect(), true)
+
+                result.sort();
+                let filtered_symbols: Vec<crate::extractors::base::Symbol> = result
+                    .into_iter()
+                    .map(|idx| symbols_after_depth_filter[idx].clone())
+                    .collect();
+
+                (filtered_symbols, true)
             } else {
-                (all_symbols, false)
+                (symbols_after_depth_filter, false)
             }
         } else {
-            (all_symbols, false)
+            (symbols_after_depth_filter, false)
         };
 
-        // Strip code_context to save massive tokens (structure view doesn't need full context)
-        // This is critical for large files - code_context can be 50-100 lines per symbol!
-        let symbols_to_return: Vec<_> = symbols_to_return
-            .into_iter()
-            .map(|mut s| {
-                s.code_context = None; // Remove context - structure view only needs metadata
-                s
-            })
-            .collect();
+        // Phase 2: Smart Read - conditionally extract code bodies based on mode and include_body
+        let symbols_to_return = self.extract_code_bodies(symbols_to_return, &absolute_path)?;
 
         // Note: Symbol metadata (name, kind, signature, location) returned in structured_content
         // code_context is stripped to save tokens - use fast_search for context
@@ -209,7 +414,10 @@ impl GetSymbolsTool {
                 "{} ({} total symbols, {} matching '{}'){}",
                 self.file_path,
                 total_symbols,
-                symbols_to_return.iter().filter(|s| s.name.to_lowercase().contains(&target.to_lowercase())).count(),
+                symbols_to_return
+                    .iter()
+                    .filter(|s| s.name.to_lowercase().contains(&target.to_lowercase()))
+                    .count(),
                 target,
                 truncation_warning
             )
@@ -252,4 +460,83 @@ impl GetSymbolsTool {
         Ok(result)
     }
 
+    /// Extract code bodies for symbols based on mode and include_body parameters
+    fn extract_code_bodies(
+        &self,
+        mut symbols: Vec<crate::extractors::base::Symbol>,
+        file_path: &str,
+    ) -> Result<Vec<crate::extractors::base::Symbol>> {
+        use tracing::warn;
+
+        // Determine the reading mode
+        let mode = self
+            .mode
+            .as_deref()
+            .unwrap_or("structure");
+        let include_body = self.include_body.unwrap_or(false);
+
+        // In "structure" mode, always strip context regardless of include_body
+        if mode == "structure" {
+            for symbol in symbols.iter_mut() {
+                symbol.code_context = None;
+            }
+            return Ok(symbols);
+        }
+
+        // If not including bodies, strip context
+        if !include_body {
+            for symbol in symbols.iter_mut() {
+                symbol.code_context = None;
+            }
+            return Ok(symbols);
+        }
+
+        // Read the source file for body extraction
+        let source_code = match std::fs::read(file_path) {
+            Ok(bytes) => bytes,
+            Err(_e) => {
+                debug!(file_path = %file_path, "Failed to read file for code body extraction");
+                // Return symbols with context stripped if file can't be read
+                for symbol in symbols.iter_mut() {
+                    symbol.code_context = None;
+                }
+                return Ok(symbols);
+            }
+        };
+
+        // Extract bodies based on mode
+        for symbol in symbols.iter_mut() {
+            let should_extract = match mode {
+                "minimal" => symbol.parent_id.is_none(), // Top-level only
+                "full" => true,                          // All symbols
+                _ => false,                              // Unknown mode, don't extract
+            };
+
+            if should_extract {
+                // Extract the code bytes for this symbol
+                let start_byte = symbol.start_byte as usize;
+                let end_byte = symbol.end_byte as usize;
+
+                if start_byte < source_code.len() && end_byte <= source_code.len() {
+                    // Use lossy conversion to handle potential UTF-8 issues
+                    let code_bytes = &source_code[start_byte..end_byte];
+                    symbol.code_context = Some(String::from_utf8_lossy(code_bytes).to_string());
+                } else {
+                    warn!(
+                        symbol_name = %symbol.name,
+                        start_byte = start_byte,
+                        end_byte = end_byte,
+                        file_size = source_code.len(),
+                        "Symbol byte range out of bounds, skipping extraction"
+                    );
+                    symbol.code_context = None;
+                }
+            } else {
+                // Don't extract for this symbol based on mode
+                symbol.code_context = None;
+            }
+        }
+
+        Ok(symbols)
+    }
 }

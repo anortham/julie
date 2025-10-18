@@ -8,7 +8,6 @@ use tree_sitter::Node;
 /// Find the containing symbol for a given node
 ///
 
-
 /// Check if a node has a modifier child of the given kind
 ///
 /// Useful for checking for 'async', 'static', 'abstract', etc.

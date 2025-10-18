@@ -55,7 +55,8 @@ fn extract_identifier_from_node(
                     "identifier" => {
                         // Simple function call: foo()
                         let name = extractor.base().get_node_text(&function_node);
-                        let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+                        let containing_symbol_id =
+                            find_containing_symbol_id(extractor, node, symbol_map);
 
                         extractor.base_mut().create_identifier(
                             &function_node,
@@ -69,7 +70,8 @@ fn extract_identifier_from_node(
                         // Extract the rightmost identifier (the method name)
                         if let Some(property_node) = function_node.child_by_field_name("property") {
                             let name = extractor.base().get_node_text(&property_node);
-                            let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+                            let containing_symbol_id =
+                                find_containing_symbol_id(extractor, node, symbol_map);
 
                             extractor.base_mut().create_identifier(
                                 &property_node,
@@ -140,4 +142,3 @@ fn find_containing_symbol_id(
         .find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-

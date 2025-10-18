@@ -10,8 +10,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(base, tree.root_node(), &symbol_map);
@@ -58,9 +57,7 @@ fn extract_identifier_from_node(
                 );
             }
             // Check for field_expression (method calls like obj.method())
-            else if let Some(field_expr) =
-                base.find_child_by_type(&node, "field_expression")
-            {
+            else if let Some(field_expr) = base.find_child_by_type(&node, "field_expression") {
                 // Extract the rightmost identifier (the method name)
                 let mut cursor = field_expr.walk();
                 let identifiers: Vec<Node> = field_expr
@@ -134,7 +131,6 @@ fn find_containing_symbol_id(
         .map(|&s| s.clone())
         .collect();
 
-    base
-        .find_containing_symbol(&node, &file_symbols)
+    base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }

@@ -118,7 +118,11 @@ pub(super) fn has_attribute(base: &BaseExtractor, node: Node, attribute_name: &s
 }
 
 /// Check if a parameter node has an attribute (e.g., Mandatory=$true)
-pub(super) fn has_parameter_attribute(base: &BaseExtractor, node: Node, attribute_name: &str) -> bool {
+pub(super) fn has_parameter_attribute(
+    base: &BaseExtractor,
+    node: Node,
+    attribute_name: &str,
+) -> bool {
     let node_text = base.get_node_text(&node);
     node_text.contains(&format!("{}=$true", attribute_name))
         || node_text.contains(&format!("{}=true", attribute_name))

@@ -1,7 +1,7 @@
 // PHP Extractor - Relationship extraction (inheritance, implementation)
 
+use super::{find_child, PhpExtractor};
 use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use super::{PhpExtractor, find_child};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -168,7 +168,9 @@ pub(super) fn find_class_symbol<'a>(
     let name = extractor.get_base().get_node_text(&name_node);
 
     symbols.iter().find(|s| {
-        s.name == name && s.kind == SymbolKind::Class && s.file_path == extractor.get_base().file_path
+        s.name == name
+            && s.kind == SymbolKind::Class
+            && s.file_path == extractor.get_base().file_path
     })
 }
 
@@ -182,7 +184,8 @@ pub(super) fn find_interface_symbol<'a>(
     let name = extractor.get_base().get_node_text(&name_node);
 
     symbols.iter().find(|s| {
-        s.name == name && s.kind == SymbolKind::Interface && s.file_path == extractor.get_base().file_path
+        s.name == name
+            && s.kind == SymbolKind::Interface
+            && s.file_path == extractor.get_base().file_path
     })
 }
-

@@ -1,7 +1,6 @@
 /// Component name extraction from Vue SFC
 ///
 /// Handles extracting component name from export default { name: ... } or filename
-
 use super::parsing::VueSection;
 
 /// Extract component name from sections or filename
@@ -33,9 +32,7 @@ pub(super) fn extract_component_name(file_path: &str, sections: &[VueSection]) -
                 let mut chars = part.chars();
                 match chars.next() {
                     None => String::new(),
-                    Some(first) => {
-                        first.to_uppercase().collect::<String>() + chars.as_str()
-                    }
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                 }
             })
             .collect::<String>();

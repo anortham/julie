@@ -1,17 +1,13 @@
 /// Variable and constant assignment extraction
 /// Handles variable assignments, type annotations, enum members, and constants
-
 use super::super::base::{Symbol, SymbolKind, SymbolOptions};
-use super::{signatures, types};
 use super::PythonExtractor;
+use super::{signatures, types};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract an assignment statement - can return multiple symbols for tuple unpacking
-pub(super) fn extract_assignment(
-    extractor: &mut PythonExtractor,
-    node: Node,
-) -> Vec<Symbol> {
+pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbol> {
     // Handle assignments like: x = 5, x: int = 5, self.x = 5, a, b = 1, 2
     let left = match node.child_by_field_name("left") {
         Some(left) => left,
@@ -54,10 +50,7 @@ pub(super) fn extract_assignment(
         symbol_kind = SymbolKind::Property;
     }
     // Check if it's a constant (uppercase name)
-    else if symbol_kind == SymbolKind::Variable
-        && name == name.to_uppercase()
-        && name.len() > 1
-    {
+    else if symbol_kind == SymbolKind::Variable && name == name.to_uppercase() && name.len() > 1 {
         // Check if we're inside an enum class
         if types::is_inside_enum_class(extractor, &node) {
             symbol_kind = SymbolKind::EnumMember;

@@ -4,7 +4,9 @@
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
-use super::documentation::{get_variable_documentation, is_automatic_variable, is_environment_variable};
+use super::documentation::{
+    get_variable_documentation, is_automatic_variable, is_environment_variable,
+};
 use super::helpers::find_variable_name_node;
 
 /// Extract variable symbols from variable assignment and references
@@ -37,7 +39,8 @@ pub(super) fn extract_variable(
     } else {
         Visibility::Private
     };
-    let doc_comment = get_variable_documentation(is_environment, is_automatic, is_global, is_script);
+    let doc_comment =
+        get_variable_documentation(is_environment, is_automatic, is_global, is_script);
 
     Some(base.create_symbol(
         &node,
@@ -77,7 +80,8 @@ pub(super) fn extract_variable_reference(
     // Only extract automatic variables, environment variables, and special variables
     // to avoid creating symbols for every variable reference
     let is_automatic = is_automatic_variable(&name);
-    let is_environment = is_environment_variable(&name) || base.get_node_text(&node).contains("env:");
+    let is_environment =
+        is_environment_variable(&name) || base.get_node_text(&node).contains("env:");
 
     if !is_automatic && !is_environment {
         return None; // Skip regular variable references
@@ -127,4 +131,3 @@ fn extract_variable_signature(base: &BaseExtractor, node: Node) -> String {
         .map(|n| base.get_node_text(&n))
         .unwrap_or_else(|| "unknown".to_string())
 }
-

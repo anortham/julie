@@ -51,55 +51,73 @@ impl CSSExtractor {
 
         match node.kind() {
             "rule_set" => {
-                if let Some(rule_symbol) = RuleExtractor::extract_rule(
-                    &mut self.base,
-                    node,
-                    current_parent_id.as_deref(),
-                ) {
+                if let Some(rule_symbol) =
+                    RuleExtractor::extract_rule(&mut self.base, node, current_parent_id.as_deref())
+                {
                     current_parent_id = Some(rule_symbol.id.clone());
                     symbols.push(rule_symbol);
                 }
             }
             "at_rule" | "import_statement" | "charset_statement" | "namespace_statement" => {
-                if let Some(at_rule_symbol) =
-                    AtRuleExtractor::extract_at_rule(&mut self.base, node, current_parent_id.as_deref())
-                {
+                if let Some(at_rule_symbol) = AtRuleExtractor::extract_at_rule(
+                    &mut self.base,
+                    node,
+                    current_parent_id.as_deref(),
+                ) {
                     current_parent_id = Some(at_rule_symbol.id.clone());
                     symbols.push(at_rule_symbol);
                 }
             }
             "keyframes_statement" => {
-                if let Some(keyframes_symbol) =
-                    AnimationExtractor::extract_keyframes_rule(&mut self.base, node, current_parent_id.as_deref())
-                {
+                if let Some(keyframes_symbol) = AnimationExtractor::extract_keyframes_rule(
+                    &mut self.base,
+                    node,
+                    current_parent_id.as_deref(),
+                ) {
                     current_parent_id = Some(keyframes_symbol.id.clone());
                     symbols.push(keyframes_symbol);
                 }
                 // Also extract the animation name as a separate symbol
-                if let Some(animation_symbol) =
-                    AnimationExtractor::extract_animation_name(&mut self.base, node, current_parent_id.as_deref())
-                {
+                if let Some(animation_symbol) = AnimationExtractor::extract_animation_name(
+                    &mut self.base,
+                    node,
+                    current_parent_id.as_deref(),
+                ) {
                     symbols.push(animation_symbol);
                 }
                 // Also extract individual keyframes
-                AnimationExtractor::extract_keyframes(&mut self.base, node, symbols, current_parent_id.as_deref());
+                AnimationExtractor::extract_keyframes(
+                    &mut self.base,
+                    node,
+                    symbols,
+                    current_parent_id.as_deref(),
+                );
             }
             "keyframe_block_list" => {
                 // Handle keyframes content
-                AnimationExtractor::extract_keyframes(&mut self.base, node, symbols, current_parent_id.as_deref());
+                AnimationExtractor::extract_keyframes(
+                    &mut self.base,
+                    node,
+                    symbols,
+                    current_parent_id.as_deref(),
+                );
             }
             "media_statement" => {
-                if let Some(media_symbol) =
-                    MediaExtractor::extract_media_rule(&mut self.base, node, current_parent_id.as_deref())
-                {
+                if let Some(media_symbol) = MediaExtractor::extract_media_rule(
+                    &mut self.base,
+                    node,
+                    current_parent_id.as_deref(),
+                ) {
                     current_parent_id = Some(media_symbol.id.clone());
                     symbols.push(media_symbol);
                 }
             }
             "supports_statement" => {
-                if let Some(supports_symbol) =
-                    PropertyExtractor::extract_supports_rule(&mut self.base, node, current_parent_id.as_deref())
-                {
+                if let Some(supports_symbol) = PropertyExtractor::extract_supports_rule(
+                    &mut self.base,
+                    node,
+                    current_parent_id.as_deref(),
+                ) {
                     current_parent_id = Some(supports_symbol.id.clone());
                     symbols.push(supports_symbol);
                 }
@@ -108,9 +126,11 @@ impl CSSExtractor {
                 // CSS custom properties (variables)
                 let property_text = self.base.get_node_text(&node);
                 if property_text.starts_with("--") {
-                    if let Some(custom_prop) =
-                        PropertyExtractor::extract_custom_property(&mut self.base, node, current_parent_id.as_deref())
-                    {
+                    if let Some(custom_prop) = PropertyExtractor::extract_custom_property(
+                        &mut self.base,
+                        node,
+                        current_parent_id.as_deref(),
+                    ) {
                         symbols.push(custom_prop);
                     }
                 }

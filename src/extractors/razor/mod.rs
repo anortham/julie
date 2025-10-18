@@ -6,18 +6,17 @@
 /// - HTML elements and Razor components
 /// - Data bindings (@bind-Value)
 /// - Event handlers (@onclick, etc.)
-
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::{Node, Tree};
 
 // Module declarations
-mod helpers;
-mod directives;
-mod html;
 mod csharp;
-mod stubs;
+mod directives;
+mod helpers;
+mod html;
 mod identifiers;
 mod relationships;
+mod stubs;
 mod type_inference;
 
 pub struct RazorExtractor {

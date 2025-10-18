@@ -220,7 +220,8 @@ impl AttributeHandler {
         }
 
         // Enhanced attribute parsing
-        let re = Regex::new(r#"(\w+(?:-\w+)*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?"#).unwrap();
+        let re =
+            Regex::new(r#"(\w+(?:-\w+)*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?"#).unwrap();
 
         for captures in re.captures_iter(clean_text) {
             if let Some(name_match) = captures.get(1) {

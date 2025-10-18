@@ -937,4 +937,3 @@ pub struct ComprehensiveCleanupReport {
 
 // calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
 // Use crate::tools::workspace::calculate_dir_size() instead
-

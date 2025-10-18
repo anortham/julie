@@ -14,7 +14,8 @@ pub fn main() void {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor = ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+    let mut extractor =
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(!symbols.is_empty());
@@ -34,7 +35,8 @@ pub const Point = struct {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor = ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+    let mut extractor =
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
     let symbols = extractor.extract_symbols(&tree);
 
     // Should extract struct (as Class)

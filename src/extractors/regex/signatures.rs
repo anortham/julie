@@ -34,7 +34,11 @@ pub(super) fn build_anchor_signature(anchor_text: &str, anchor_type: &str) -> St
 }
 
 /// Build signature for a lookaround
-pub(super) fn build_lookaround_signature(lookaround_text: &str, direction: &str, polarity: &str) -> String {
+pub(super) fn build_lookaround_signature(
+    lookaround_text: &str,
+    direction: &str,
+    polarity: &str,
+) -> String {
     format!("{} {}: {}", polarity, direction, lookaround_text)
 }
 

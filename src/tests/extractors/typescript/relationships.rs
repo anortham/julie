@@ -4,8 +4,8 @@
 //! including function calls and inheritance relationships.
 
 use crate::extractors::base::RelationshipKind;
-use crate::extractors::typescript::TypeScriptExtractor;
 use crate::extractors::typescript::relationships::extract_relationships;
+use crate::extractors::typescript::TypeScriptExtractor;
 
 #[test]
 fn test_extract_call_relationships() {
@@ -16,7 +16,9 @@ fn test_extract_call_relationships() {
     function callee() {}
     "#;
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = TypeScriptExtractor::new(
@@ -28,7 +30,9 @@ fn test_extract_call_relationships() {
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
-    assert!(relationships.iter().any(|r| r.kind == RelationshipKind::Calls));
+    assert!(relationships
+        .iter()
+        .any(|r| r.kind == RelationshipKind::Calls));
 }
 
 #[test]
@@ -38,7 +42,9 @@ fn test_extract_inheritance_relationships() {
     class Dog extends Animal {}
     "#;
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = TypeScriptExtractor::new(
@@ -50,5 +56,7 @@ fn test_extract_inheritance_relationships() {
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
-    assert!(relationships.iter().any(|r| r.kind == RelationshipKind::Extends));
+    assert!(relationships
+        .iter()
+        .any(|r| r.kind == RelationshipKind::Extends));
 }

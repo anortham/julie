@@ -1,7 +1,7 @@
 // PHP Extractor - Property and constant extraction
 
+use super::{determine_visibility, extract_modifiers, find_child, PhpExtractor};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
-use super::{PhpExtractor, find_child, extract_modifiers, determine_visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -37,7 +37,10 @@ pub(super) fn extract_property(
     }
 
     if let Some(type_node) = type_node {
-        signature.push_str(&format!("{} ", extractor.get_base().get_node_text(&type_node)));
+        signature.push_str(&format!(
+            "{} ",
+            extractor.get_base().get_node_text(&type_node)
+        ));
     }
 
     signature.push_str(&name);
@@ -170,7 +173,10 @@ pub(super) fn find_type_node<'a>(_extractor: &PhpExtractor, node: &Node<'a>) -> 
 }
 
 /// Extract property default value
-pub(super) fn extract_property_value(extractor: &PhpExtractor, property_element: &Node) -> Option<String> {
+pub(super) fn extract_property_value(
+    extractor: &PhpExtractor,
+    property_element: &Node,
+) -> Option<String> {
     let mut cursor = property_element.walk();
     let mut found_assignment = false;
 
@@ -184,4 +190,3 @@ pub(super) fn extract_property_value(extractor: &PhpExtractor, property_element:
     }
     None
 }
-

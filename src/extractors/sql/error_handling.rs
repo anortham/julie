@@ -65,7 +65,12 @@ fn extract_procedures_from_error(
             let procedure_symbol =
                 base.create_symbol(node, name.clone(), SymbolKind::Function, options);
             symbols.push(procedure_symbol.clone());
-            routines::extract_parameters_from_error_node(base, *node, symbols, &procedure_symbol.id);
+            routines::extract_parameters_from_error_node(
+                base,
+                *node,
+                symbols,
+                &procedure_symbol.id,
+            );
         }
     }
 }
@@ -118,10 +123,9 @@ fn extract_functions_from_error(
     }
 
     // Fallback: Extract any CREATE FUNCTION
-    let simple_function_regex = regex::Regex::new(
-        r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-    )
-    .unwrap();
+    let simple_function_regex =
+        regex::Regex::new(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+            .unwrap();
     if let Some(captures) = simple_function_regex.captures(error_text) {
         if let Some(function_name) = captures.get(1) {
             let name = function_name.as_str().to_string();
@@ -157,8 +161,7 @@ fn extract_schemas_from_error(
     symbols: &mut Vec<Symbol>,
     parent_id: Option<&str>,
 ) {
-    let schema_regex =
-        regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+    let schema_regex = regex::Regex::new(r"CREATE\s+SCHEMA\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
     if let Some(captures) = schema_regex.captures(error_text) {
         if let Some(schema_name) = captures.get(1) {
             let name = schema_name.as_str().to_string();
@@ -178,8 +181,7 @@ fn extract_schemas_from_error(
                 metadata: Some(metadata),
             };
 
-            let schema_symbol =
-                base.create_symbol(node, name, SymbolKind::Namespace, options);
+            let schema_symbol = base.create_symbol(node, name, SymbolKind::Namespace, options);
             symbols.push(schema_symbol);
         }
     }
@@ -227,8 +229,7 @@ fn extract_triggers_from_error(
     symbols: &mut Vec<Symbol>,
     parent_id: Option<&str>,
 ) {
-    let trigger_regex =
-        regex::Regex::new(r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+    let trigger_regex = regex::Regex::new(r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
     if let Some(captures) = trigger_regex.captures(error_text) {
         if let Some(trigger_name) = captures.get(1) {
             let name = trigger_name.as_str().to_string();
@@ -240,8 +241,7 @@ fn extract_triggers_from_error(
                 let timing = details_captures.get(1).unwrap().as_str();
                 let event = details_captures.get(2).unwrap().as_str();
                 let table = details_captures.get(3).unwrap().as_str();
-                signature =
-                    format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
+                signature = format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
             }
 
             let mut metadata = HashMap::new();
@@ -259,8 +259,7 @@ fn extract_triggers_from_error(
                 metadata: Some(metadata),
             };
 
-            let trigger_symbol =
-                base.create_symbol(node, name, SymbolKind::Method, options);
+            let trigger_symbol = base.create_symbol(node, name, SymbolKind::Method, options);
             symbols.push(trigger_symbol);
         }
     }
@@ -280,8 +279,7 @@ fn extract_constraints_from_error(
             let name = constraint_name.as_str().to_string();
             let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
 
-            let mut signature =
-                format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+            let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
             if constraint_type == "CHECK" {
                 let check_regex =
@@ -305,10 +303,9 @@ fn extract_constraints_from_error(
                     ));
                 }
 
-                let on_delete_regex = regex::Regex::new(
-                    r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
-                )
-                .unwrap();
+                let on_delete_regex =
+                    regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
+                        .unwrap();
                 if let Some(on_delete_captures) = on_delete_regex.captures(error_text) {
                     signature.push_str(&format!(
                         " ON DELETE {}",
@@ -316,10 +313,9 @@ fn extract_constraints_from_error(
                     ));
                 }
 
-                let on_update_regex = regex::Regex::new(
-                    r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
-                )
-                .unwrap();
+                let on_update_regex =
+                    regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
+                        .unwrap();
                 if let Some(on_update_captures) = on_update_regex.captures(error_text) {
                     signature.push_str(&format!(
                         " ON UPDATE {}",
@@ -347,8 +343,7 @@ fn extract_constraints_from_error(
                 metadata: Some(metadata),
             };
 
-            let constraint_symbol =
-                base.create_symbol(node, name, SymbolKind::Property, options);
+            let constraint_symbol = base.create_symbol(node, name, SymbolKind::Property, options);
             symbols.push(constraint_symbol);
         }
     }
@@ -362,7 +357,10 @@ fn extract_domains_from_error(
     symbols: &mut Vec<Symbol>,
     parent_id: Option<&str>,
 ) {
-    let domain_regex = regex::Regex::new(r"CREATE\s+DOMAIN\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)").unwrap();
+    let domain_regex = regex::Regex::new(
+        r"CREATE\s+DOMAIN\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+([A-Za-z]+(?:\(\d+(?:,\s*\d+)?\))?)",
+    )
+    .unwrap();
     if let Some(captures) = domain_regex.captures(error_text) {
         if let Some(domain_name) = captures.get(1) {
             let name = domain_name.as_str().to_string();
@@ -370,8 +368,7 @@ fn extract_domains_from_error(
 
             let mut signature = format!("CREATE DOMAIN {} AS {}", name, base_type);
 
-            let check_regex =
-                regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
+            let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
             if let Some(check_captures) = check_regex.captures(error_text) {
                 signature.push_str(&format!(
                     " CHECK ({})",
@@ -395,8 +392,7 @@ fn extract_domains_from_error(
                 metadata: Some(metadata),
             };
 
-            let domain_symbol =
-                base.create_symbol(node, name, SymbolKind::Class, options);
+            let domain_symbol = base.create_symbol(node, name, SymbolKind::Class, options);
             symbols.push(domain_symbol);
         }
     }
@@ -410,10 +406,9 @@ fn extract_types_from_error(
     symbols: &mut Vec<Symbol>,
     parent_id: Option<&str>,
 ) {
-    let enum_regex = regex::Regex::new(
-        r"CREATE\s+TYPE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+ENUM\s*\(([\s\S]*?)\)",
-    )
-    .unwrap();
+    let enum_regex =
+        regex::Regex::new(r"CREATE\s+TYPE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s+ENUM\s*\(([\s\S]*?)\)")
+            .unwrap();
     if let Some(captures) = enum_regex.captures(error_text) {
         if let Some(enum_name) = captures.get(1) {
             let name = enum_name.as_str().to_string();
@@ -451,8 +446,7 @@ fn extract_aggregates_from_error(
     parent_id: Option<&str>,
 ) {
     let aggregate_regex =
-        regex::Regex::new(r"CREATE\s+AGGREGATE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)")
-            .unwrap();
+        regex::Regex::new(r"CREATE\s+AGGREGATE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)").unwrap();
     if let Some(captures) = aggregate_regex.captures(error_text) {
         if let Some(aggregate_name) = captures.get(1) {
             let name = aggregate_name.as_str().to_string();
@@ -475,8 +469,7 @@ fn extract_aggregates_from_error(
                 metadata: Some(metadata),
             };
 
-            let aggregate_symbol =
-                base.create_symbol(node, name, SymbolKind::Function, options);
+            let aggregate_symbol = base.create_symbol(node, name, SymbolKind::Function, options);
             symbols.push(aggregate_symbol);
         }
     }

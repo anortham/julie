@@ -7,7 +7,10 @@ use crate::extractors::base::{SymbolKind, Visibility};
 use tree_sitter::Node;
 
 /// Extract modifiers from a Kotlin node (public, private, open, sealed, data, etc.)
-pub(super) fn extract_modifiers(base: &super::super::base::BaseExtractor, node: &Node) -> Vec<String> {
+pub(super) fn extract_modifiers(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Vec<String> {
     let mut modifiers = Vec::new();
     let modifiers_list = node
         .children(&mut node.walk())
@@ -47,7 +50,10 @@ pub(super) fn extract_modifiers(base: &super::super::base::BaseExtractor, node: 
 }
 
 /// Extract type parameters from a Kotlin node (e.g., <T, U>)
-pub(super) fn extract_type_parameters(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_type_parameters(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let type_params = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "type_parameters");
@@ -55,7 +61,10 @@ pub(super) fn extract_type_parameters(base: &super::super::base::BaseExtractor, 
 }
 
 /// Extract super types/base classes from a Kotlin node
-pub(super) fn extract_super_types(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_super_types(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let mut super_types = Vec::new();
 
     // Look for delegation_specifiers container first (wrapped case)
@@ -127,7 +136,10 @@ pub(super) fn extract_super_types(base: &super::super::base::BaseExtractor, node
 }
 
 /// Extract function parameters from a Kotlin node
-pub(super) fn extract_parameters(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_parameters(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let params = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "function_value_parameters");
@@ -135,7 +147,10 @@ pub(super) fn extract_parameters(base: &super::super::base::BaseExtractor, node:
 }
 
 /// Extract return type from a Kotlin function node
-pub(super) fn extract_return_type(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_return_type(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let mut found_colon = false;
     for child in node.children(&mut node.walk()) {
         if child.kind() == ":" {
@@ -155,7 +170,10 @@ pub(super) fn extract_return_type(base: &super::super::base::BaseExtractor, node
 }
 
 /// Extract property type from a Kotlin property node
-pub(super) fn extract_property_type(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_property_type(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     // Look for type in variable_declaration (interface properties)
     let var_decl = node
         .children(&mut node.walk())
@@ -183,12 +201,12 @@ pub(super) fn extract_property_type(base: &super::super::base::BaseExtractor, no
 }
 
 /// Extract property initializer (the value after `=`)
-pub(super) fn extract_property_initializer(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_property_initializer(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let children: Vec<Node> = node.children(&mut node.walk()).collect();
-    if let Some(assignment_index) = children
-        .iter()
-        .position(|n| base.get_node_text(n) == "=")
-    {
+    if let Some(assignment_index) = children.iter().position(|n| base.get_node_text(n) == "=") {
         if assignment_index + 1 < children.len() {
             let initializer_node = &children[assignment_index + 1];
             return Some(base.get_node_text(initializer_node).trim().to_string());
@@ -203,12 +221,12 @@ pub(super) fn extract_property_initializer(base: &super::super::base::BaseExtrac
 }
 
 /// Extract property delegation (e.g., `by lazy { ... }`)
-pub(super) fn extract_property_delegation(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_property_delegation(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let children: Vec<Node> = node.children(&mut node.walk()).collect();
-    if let Some(by_index) = children
-        .iter()
-        .position(|n| base.get_node_text(n) == "by")
-    {
+    if let Some(by_index) = children.iter().position(|n| base.get_node_text(n) == "by") {
         if by_index + 1 < children.len() {
             let delegate_node = &children[by_index + 1];
             return Some(format!("by {}", base.get_node_text(delegate_node)));
@@ -223,7 +241,10 @@ pub(super) fn extract_property_delegation(base: &super::super::base::BaseExtract
 }
 
 /// Extract where clause from a function declaration
-pub(super) fn extract_where_clause(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_where_clause(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let type_constraints = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "type_constraints");
@@ -246,7 +267,10 @@ pub(super) fn extract_where_clause(base: &super::super::base::BaseExtractor, nod
 }
 
 /// Extract receiver type for extension functions (e.g., `String.functionName`)
-pub(super) fn extract_receiver_type(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_receiver_type(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let children: Vec<_> = node.children(&mut node.walk()).collect();
 
     // Find the pattern: user_type followed by "."
@@ -263,7 +287,10 @@ pub(super) fn extract_receiver_type(base: &super::super::base::BaseExtractor, no
 }
 
 /// Extract primary constructor signature
-pub(super) fn extract_primary_constructor_signature(base: &super::super::base::BaseExtractor, node: &Node) -> Option<String> {
+pub(super) fn extract_primary_constructor_signature(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Option<String> {
     let primary_constructor = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "primary_constructor");
@@ -273,7 +300,11 @@ pub(super) fn extract_primary_constructor_signature(base: &super::super::base::B
 }
 
 /// Determine the kind of class (Class, Enum, Data class, Sealed class)
-pub(super) fn determine_class_kind(base: &super::super::base::BaseExtractor, modifiers: &[String], node: &Node) -> SymbolKind {
+pub(super) fn determine_class_kind(
+    base: &super::super::base::BaseExtractor,
+    modifiers: &[String],
+    node: &Node,
+) -> SymbolKind {
     // Check if this is an enum declaration by node type
     if node.kind() == "enum_declaration" {
         return SymbolKind::Enum;

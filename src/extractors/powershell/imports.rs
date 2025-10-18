@@ -59,11 +59,10 @@ pub(super) fn extract_import_command(
 
     if command_name == "Import-Module" {
         // Extract module name from "Import-Module Az.Accounts" or "Import-Module -Name 'Custom.Tools'"
-        if let Some(captures) = Regex::new(
-            r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#,
-        )
-        .unwrap()
-        .captures(&node_text)
+        if let Some(captures) =
+            Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
+                .unwrap()
+                .captures(&node_text)
         {
             module_name = captures
                 .get(1)
@@ -72,10 +71,9 @@ pub(super) fn extract_import_command(
         }
     } else if command_name == "using" {
         // Extract from "using namespace System.Collections.Generic" or "using module Az.Storage"
-        if let Some(captures) =
-            Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
-                .unwrap()
-                .captures(&node_text)
+        if let Some(captures) = Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
+            .unwrap()
+            .captures(&node_text)
         {
             module_name = captures
                 .get(1)
@@ -181,9 +179,10 @@ pub(super) fn extract_dot_sourcing(
 
 /// Extract module name from Import-Module command
 fn extract_import_module_name(node_text: &str) -> Option<String> {
-    if let Some(captures) = Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
-        .unwrap()
-        .captures(node_text)
+    if let Some(captures) =
+        Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
+            .unwrap()
+            .captures(node_text)
     {
         Some(
             captures

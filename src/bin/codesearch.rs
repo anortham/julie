@@ -172,7 +172,8 @@ fn discover_files(dir: &PathBuf, ignore_patterns: &[String]) -> Result<Vec<PathB
         };
 
         if should_include {
-            let canonical = std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path().to_path_buf());
+            let canonical =
+                std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path().to_path_buf());
             let canonical_str = canonical.to_string_lossy().to_string();
             if seen.insert(canonical_str.clone()) {
                 files.push(canonical);
@@ -284,7 +285,8 @@ fn process_file(
     use julie::extractors::ExtractorManager;
 
     // Canonicalize path to ensure consistent absolute paths in database
-    let canonical_path = file_path.canonicalize()
+    let canonical_path = file_path
+        .canonicalize()
         .unwrap_or_else(|_| file_path.clone());
     let path_str = canonical_path.to_string_lossy().to_string();
 
@@ -369,9 +371,7 @@ fn scan_directory(
 
     // Get existing file hashes for change detection
     eprintln!("📊 Loading existing file hashes...");
-    let existing_hashes = database
-        .get_file_hashes_for_workspace()
-        .unwrap_or_default();
+    let existing_hashes = database.get_file_hashes_for_workspace().unwrap_or_default();
     eprintln!(
         "📊 Found {} existing files in database",
         existing_hashes.len()
@@ -644,8 +644,7 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
         SymbolDatabase::new(&db).with_context(|| format!("Failed to open database: {:?}", db))?;
 
     // Canonicalize path to ensure consistent absolute paths in database
-    let canonical_file = file.canonicalize()
-        .unwrap_or_else(|_| file.clone());
+    let canonical_file = file.canonicalize().unwrap_or_else(|_| file.clone());
     let path_str = canonical_file.to_string_lossy().to_string();
 
     let language = detect_language(&file);

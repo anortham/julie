@@ -8,7 +8,11 @@ use super::SwiftExtractor;
 /// Extracts Swift properties, variables, and subscripts
 impl SwiftExtractor {
     /// Port of Miller's extractVariable method
-    pub(super) fn extract_variable(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_variable(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let binding_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "property_binding_pattern" || c.kind() == "pattern_binding");

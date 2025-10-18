@@ -1,5 +1,4 @@
 /// Annotation extraction
-
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::extractors::java::JavaExtractor;
 use tree_sitter::Node;

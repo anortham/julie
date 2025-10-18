@@ -1,6 +1,5 @@
 /// Relationship extraction
 /// Handles inheritance relationships and function call relationships
-
 use super::super::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use super::{helpers, PythonExtractor};
 use std::collections::HashMap;
@@ -147,7 +146,10 @@ fn extract_call_relationships(
 }
 
 /// Extract method name from a call node
-fn extract_method_name_from_call(base: &crate::extractors::base::BaseExtractor, function_node: &Node) -> String {
+fn extract_method_name_from_call(
+    base: &crate::extractors::base::BaseExtractor,
+    function_node: &Node,
+) -> String {
     match function_node.kind() {
         "identifier" => {
             // Simple function call: foo()

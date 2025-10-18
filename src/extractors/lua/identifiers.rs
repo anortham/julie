@@ -1,17 +1,14 @@
+use super::helpers;
 /// Identifier extraction for LSP-quality find_references
 ///
 /// Extracts all identifier usages:
 /// - Function calls: `foo()`, `require("module")`
 /// - Method calls with colon syntax: `obj:method()`
 /// - Member access: `obj.field`, `obj.field.nested`
-
-use crate::extractors::base::{
-    Identifier, IdentifierKind, Symbol,
-};
-use super::helpers;
+use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
+use crate::extractors::lua::LuaExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
-use crate::extractors::lua::LuaExtractor;
 
 /// Extract all identifier usages (function calls, member access, etc.)
 /// Following the Rust extractor reference implementation pattern
@@ -21,8 +18,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(extractor, tree.root_node(), &symbol_map);
@@ -124,9 +120,7 @@ fn extract_identifier_from_node(
             // Only extract if it's NOT part of a function_call or method_index_expression
             // (we handle those in the cases above)
             if let Some(parent) = node.parent() {
-                if parent.kind() == "function_call"
-                    || parent.kind() == "method_index_expression"
-                {
+                if parent.kind() == "function_call" || parent.kind() == "method_index_expression" {
                     return; // Skip - handled by function/method call
                 }
             }
@@ -173,7 +167,8 @@ fn find_containing_symbol_id(
         .map(|&s| s.clone())
         .collect();
 
-    extractor.base()
+    extractor
+        .base()
         .find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }

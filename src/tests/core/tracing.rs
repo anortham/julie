@@ -5,9 +5,7 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::{Symbol, SymbolKind};
-    use crate::tracing::{
-        ArchitecturalLayer, CrossLanguageTracer, TraceOptions,
-    };
+    use crate::tracing::{ArchitecturalLayer, CrossLanguageTracer, TraceOptions};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 

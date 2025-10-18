@@ -101,7 +101,9 @@ impl HTMLExtractor {
                 node,
                 parent_id,
             )),
-            "comment" => elements::ElementExtractor::extract_comment(&mut self.base, node, parent_id),
+            "comment" => {
+                elements::ElementExtractor::extract_comment(&mut self.base, node, parent_id)
+            }
             _ => None,
         }
     }

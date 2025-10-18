@@ -105,4 +105,3 @@ pub(crate) fn extract_condition(conditional_text: &str) -> String {
     }
     "unknown".to_string()
 }
-

@@ -12,8 +12,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(base, tree.root_node(), &symbol_map);
@@ -57,7 +56,8 @@ fn extract_identifier_from_node(
                 if let Some(end_pos) = content_after.find('>') {
                     let group_name = content_after[3..end_pos].to_string();
                     if !group_name.is_empty() {
-                        let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+                        let containing_symbol_id =
+                            find_containing_symbol_id(base, node, symbol_map);
 
                         base.create_identifier(
                             &node,

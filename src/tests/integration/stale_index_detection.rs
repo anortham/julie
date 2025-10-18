@@ -60,10 +60,7 @@ async fn test_stale_index_file_modified_after_db() -> Result<()> {
 
     // Verify: Indexing IS needed (file is newer than database)
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
-    assert!(
-        needs_indexing,
-        "Modified file should trigger re-indexing"
-    );
+    assert!(needs_indexing, "Modified file should trigger re-indexing");
 
     Ok(())
 }
@@ -90,10 +87,7 @@ async fn test_new_file_not_in_database() -> Result<()> {
 
     // Verify: Indexing IS needed (new file detected)
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
-    assert!(
-        needs_indexing,
-        "New file should trigger re-indexing"
-    );
+    assert!(needs_indexing, "New file should trigger re-indexing");
 
     Ok(())
 }

@@ -341,8 +341,8 @@ mod navigation_tools_tests {
         // Unit test verifying the semantic search fallback is properly integrated
         // This tests the happy path: exact match fails, then semantic search would trigger
 
-        use crate::extractors::SymbolKind;
         use crate::extractors::base::Visibility;
+        use crate::extractors::SymbolKind;
 
         let goto_tool = FastGotoTool {
             symbol: "getUserData".to_string(),
@@ -399,7 +399,10 @@ mod navigation_tools_tests {
         // 3. It returns Result<Vec<Symbol>>
 
         // This test documents the API contract for the semantic search fallback
-        assert!(true, "Semantic search fallback function is properly defined");
+        assert!(
+            true,
+            "Semantic search fallback function is properly defined"
+        );
     }
 
     #[test]
@@ -428,8 +431,8 @@ mod navigation_tools_tests {
         // Reference workspaces now have equivalent semantic search capabilities
         // to primary workspaces, improving user search experience across workspaces.
 
-        use crate::extractors::SymbolKind;
         use crate::extractors::base::Visibility;
+        use crate::extractors::SymbolKind;
 
         // Create a reference workspace context
         let ref_workspace_id = "external-lib_abc123".to_string();
@@ -439,7 +442,10 @@ mod navigation_tools_tests {
         let search_symbol = "getUserData";
         let exact_matches_found = false;
 
-        assert!(!exact_matches_found, "Exact match not found - semantic search will trigger");
+        assert!(
+            !exact_matches_found,
+            "Exact match not found - semantic search will trigger"
+        );
 
         // Step 2: Create the result we'd get from semantic search
         let semantic_result = Symbol {
@@ -455,7 +461,9 @@ mod navigation_tools_tests {
             start_byte: 2000,
             end_byte: 2500,
             signature: Some("function fetchUserInfo(userId: string)".to_string()),
-            doc_comment: Some("Fetches user information - semantically similar to getUserData".to_string()),
+            doc_comment: Some(
+                "Fetches user information - semantically similar to getUserData".to_string(),
+            ),
             visibility: Some(Visibility::Public),
             parent_id: None,
             metadata: Some(HashMap::new()),
@@ -466,7 +474,10 @@ mod navigation_tools_tests {
 
         // Step 3: Verify the semantic result has properties indicating it came from semantic search
         assert_eq!(semantic_result.name, "fetchUserInfo");
-        assert!(semantic_result.confidence.unwrap() > 0.7, "Should have high semantic similarity");
+        assert!(
+            semantic_result.confidence.unwrap() > 0.7,
+            "Should have high semantic similarity"
+        );
         assert_eq!(semantic_result.semantic_group, None); // Different symbol, not same group
 
         // Step 4: Confirm it's from the reference workspace
@@ -503,8 +514,8 @@ mod navigation_tools_tests {
         // Reference workspaces now have equivalent semantic search capabilities
         // for references to primary workspaces, achieving full feature parity.
 
-        use crate::extractors::SymbolKind;
         use crate::extractors::base::Visibility;
+        use crate::extractors::SymbolKind;
 
         // Create a reference workspace context
         let ref_workspace_id = "external-lib_abc123".to_string();
@@ -513,7 +524,10 @@ mod navigation_tools_tests {
         // Simulate the flow:
         // Step 1: No exact match found for "calculateData"
         let exact_matches_found = false;
-        assert!(!exact_matches_found, "Exact match not found - semantic search will trigger");
+        assert!(
+            !exact_matches_found,
+            "Exact match not found - semantic search will trigger"
+        );
 
         // Step 2: Semantic search finds semantically similar symbol "computeMetrics"
         let semantic_definition = Symbol {
@@ -553,10 +567,15 @@ mod navigation_tools_tests {
         // Step 4: Verify the semantic reference has correct properties
         assert_eq!(reference_to_semantic_def.to_symbol_id, "sem_def_1");
         assert_eq!(reference_to_semantic_def.kind, RelationshipKind::References);
-        assert!(reference_to_semantic_def.confidence >= 0.9, "Reference should have high confidence");
+        assert!(
+            reference_to_semantic_def.confidence >= 0.9,
+            "Reference should have high confidence"
+        );
 
         // Step 5: Confirm it's from the reference workspace
-        assert!(reference_to_semantic_def.file_path.starts_with("external-lib/"));
+        assert!(reference_to_semantic_def
+            .file_path
+            .starts_with("external-lib/"));
 
         println!(
             "✓ Semantic search fallback for references working: \

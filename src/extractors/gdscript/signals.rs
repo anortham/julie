@@ -1,8 +1,8 @@
 //! Signal extraction for GDScript
 
+use super::helpers::find_child_by_type;
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
-use super::helpers::find_child_by_type;
 
 /// Extract signal statement
 pub(super) fn extract_signal_statement(

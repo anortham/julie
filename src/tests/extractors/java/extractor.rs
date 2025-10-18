@@ -2,7 +2,6 @@
 ///
 /// Tests for Java extractor initialization and basic functionality.
 /// Ported from original inline tests in the JavaExtractor implementation.
-
 use crate::extractors::java::JavaExtractor;
 
 #[test]

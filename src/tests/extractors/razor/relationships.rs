@@ -1,5 +1,5 @@
-use crate::extractors::base::RelationshipKind;
 use super::{extract_relationships, extract_symbols};
+use crate::extractors::base::RelationshipKind;
 
 #[test]
 fn test_method_invocation_relationship() {

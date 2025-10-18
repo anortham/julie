@@ -5,9 +5,9 @@
 mod search_tools_tests {
     use crate::extractors::base::Visibility;
     use crate::extractors::{Symbol, SymbolKind};
+    use crate::tools::search::formatting::format_optimized_results;
     use crate::tools::search::FastSearchTool;
     use crate::tools::shared::OptimizedResponse;
-    use crate::tools::search::formatting::format_optimized_results;
 
     #[test]
     fn test_short_response_unchanged() {
@@ -152,7 +152,10 @@ mod search_tools_tests {
         };
 
         // Create many symbols - text output will remain minimal
-        let large_context = (1..=10).map(|i| format!("    // Comment line {} with content", i)).collect::<Vec<_>>().join("\n");
+        let large_context = (1..=10)
+            .map(|i| format!("    // Comment line {} with content", i))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         let mut symbols = Vec::new();
         for i in 1..=70 {
@@ -223,7 +226,10 @@ mod search_tools_tests {
         };
 
         // Create 80 symbols - text output will remain minimal
-        let large_context = (1..=20).map(|i| format!("    // Large context line {} with content", i)).collect::<Vec<_>>().join("\n");
+        let large_context = (1..=20)
+            .map(|i| format!("    // Large context line {} with content", i))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         let mut symbols = Vec::new();
         for i in 1..=80 {

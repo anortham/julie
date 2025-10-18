@@ -6,12 +6,12 @@
 
 // Submodule declarations
 pub mod extractor;
-pub mod types;
-pub mod relationships;
-pub mod signatures;
 pub mod functions;
 pub mod helpers;
 pub mod identifiers;
+pub mod relationships;
+pub mod signatures;
+pub mod types;
 // This is one of Miller's most comprehensive extractors with 2000+ lines of tests
 // covering everything from basic structs to unsafe FFI code and procedural macros.
 

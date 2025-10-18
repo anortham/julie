@@ -6,7 +6,11 @@ use tree_sitter::Node;
 impl super::GoExtractor {
     /// Extract all identifier usages (function calls, member access, etc.)
     /// Following the Rust extractor reference implementation pattern
-    pub(super) fn walk_tree_for_identifiers(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+    pub(super) fn walk_tree_for_identifiers(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
         // Extract identifier from this node if applicable
         self.extract_identifier_from_node(node, symbol_map);
 
@@ -18,7 +22,11 @@ impl super::GoExtractor {
     }
 
     /// Extract identifier from a single node based on its kind
-    pub(super) fn extract_identifier_from_node(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+    pub(super) fn extract_identifier_from_node(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
         match node.kind() {
             // Function/method calls: foo(), bar.Baz()
             "call_expression" => {

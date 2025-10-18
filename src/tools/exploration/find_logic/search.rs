@@ -187,7 +187,10 @@ impl FindLogicTool {
     }
 
     /// Tier 4: Use HNSW semantic search to find conceptually similar business logic
-    pub async fn semantic_business_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
+    pub async fn semantic_business_search(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Vec<Symbol>> {
         let mut semantic_matches: Vec<Symbol> = Vec::new();
 
         // Ensure embedding engine is ready
@@ -278,7 +281,13 @@ impl FindLogicTool {
         let semantic_results = match tokio::task::block_in_place(|| {
             let db_lock = db.lock().unwrap();
             let model_name = "bge-small";
-            store_guard.search_similar_hnsw(&*db_lock, &query_embedding, search_limit, similarity_threshold, model_name)
+            store_guard.search_similar_hnsw(
+                &*db_lock,
+                &query_embedding,
+                search_limit,
+                similarity_threshold,
+                model_name,
+            )
         }) {
             Ok(results) => results,
             Err(e) => {

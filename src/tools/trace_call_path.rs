@@ -888,7 +888,13 @@ impl TraceCallPathTool {
         let semantic_results = match tokio::task::block_in_place(|| {
             let db_lock = db_arc.lock().unwrap();
             let model_name = "bge-small";
-            store_guard.search_similar_hnsw(&*db_lock, &embedding, max_results, self.similarity_threshold, model_name)
+            store_guard.search_similar_hnsw(
+                &*db_lock,
+                &embedding,
+                max_results,
+                self.similarity_threshold,
+                model_name,
+            )
         }) {
             Ok(results) => results,
             Err(e) => {
@@ -925,9 +931,7 @@ impl TraceCallPathTool {
     ) -> Result<Vec<SemanticMatch>> {
         // Use configurable semantic_limit parameter (default 8 if None)
         let limit = self.semantic_limit.unwrap_or(8) as usize;
-        let candidates = self
-            .semantic_neighbors(handler, symbol, limit)
-            .await?;
+        let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);
@@ -980,9 +984,7 @@ impl TraceCallPathTool {
     ) -> Result<Vec<SemanticMatch>> {
         // Use configurable semantic_limit parameter (default 8 if None)
         let limit = self.semantic_limit.unwrap_or(8) as usize;
-        let candidates = self
-            .semantic_neighbors(handler, symbol, limit)
-            .await?;
+        let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);
@@ -1080,17 +1082,16 @@ impl TraceCallPathTool {
         let mut output = String::new();
 
         // Header
-        output.push_str(&format!(
-            "Call Path Trace: '{}'\n",
-            self.symbol
-        ));
+        output.push_str(&format!("Call Path Trace: '{}'\n", self.symbol));
         output.push_str(&format!(
             "Direction: {} | Depth: {} | Cross-language: {}\n",
             self.direction, self.max_depth, self.cross_language
         ));
         output.push_str(&format!(
             "Found {} {} across {} languages\n\n",
-            total_nodes, direction_label, all_languages.len()
+            total_nodes,
+            direction_label,
+            all_languages.len()
         ));
 
         // Render each tree
@@ -1154,7 +1155,6 @@ impl TraceCallPathTool {
         }
     }
 
-
     /// Count total nodes in tree
     fn count_nodes(&self, nodes: &[CallPathNode]) -> usize {
         nodes
@@ -1198,22 +1198,25 @@ impl TraceCallPathTool {
             MatchType::Semantic => "semantic",
         };
 
-        let relationship_str = node.relationship_kind.as_ref().map(|k| match k {
-            RelationshipKind::Calls => "calls",
-            RelationshipKind::Extends => "extends",
-            RelationshipKind::Implements => "implements",
-            RelationshipKind::Uses => "uses",
-            RelationshipKind::Returns => "returns",
-            RelationshipKind::Parameter => "parameter",
-            RelationshipKind::Imports => "imports",
-            RelationshipKind::Instantiates => "instantiates",
-            RelationshipKind::References => "references",
-            RelationshipKind::Defines => "defines",
-            RelationshipKind::Overrides => "overrides",
-            RelationshipKind::Contains => "contains",
-            RelationshipKind::Joins => "joins",
-            RelationshipKind::Composition => "composition",
-        }.to_string());
+        let relationship_str = node.relationship_kind.as_ref().map(|k| {
+            match k {
+                RelationshipKind::Calls => "calls",
+                RelationshipKind::Extends => "extends",
+                RelationshipKind::Implements => "implements",
+                RelationshipKind::Uses => "uses",
+                RelationshipKind::Returns => "returns",
+                RelationshipKind::Parameter => "parameter",
+                RelationshipKind::Imports => "imports",
+                RelationshipKind::Instantiates => "instantiates",
+                RelationshipKind::References => "references",
+                RelationshipKind::Defines => "defines",
+                RelationshipKind::Overrides => "overrides",
+                RelationshipKind::Contains => "contains",
+                RelationshipKind::Joins => "joins",
+                RelationshipKind::Composition => "composition",
+            }
+            .to_string()
+        });
 
         SerializablePathNode {
             symbol_name: node.symbol.name.clone(),
@@ -1224,7 +1227,11 @@ impl TraceCallPathTool {
             relationship_kind: relationship_str,
             similarity: node.similarity,
             level: node.level,
-            children: node.children.iter().map(|c| self.node_to_serializable(c)).collect(),
+            children: node
+                .children
+                .iter()
+                .map(|c| self.node_to_serializable(c))
+                .collect(),
         }
     }
 
@@ -1247,10 +1254,7 @@ impl TraceCallPathTool {
     /// Get cross-language recursion depth limit
     /// Uses cross_language_max_depth if specified, otherwise max_depth - 1
     fn get_cross_language_depth_limit(&self) -> u32 {
-        self.cross_language_max_depth.unwrap_or(self.max_depth.saturating_sub(1))
+        self.cross_language_max_depth
+            .unwrap_or(self.max_depth.saturating_sub(1))
     }
-
-
-
 }
-

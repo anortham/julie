@@ -24,7 +24,10 @@ fn traverse_for_relationships(
         }
         "const_declaration" => {
             // Check const declarations for struct definitions
-            if base.find_child_by_type(&node, "struct_declaration").is_some() {
+            if base
+                .find_child_by_type(&node, "struct_declaration")
+                .is_some()
+            {
                 extract_struct_relationships(base, node, symbols, relationships);
             }
         }
@@ -82,9 +85,7 @@ fn traverse_struct_fields(
     let mut cursor = node.walk();
     for field_node in node.children(&mut cursor) {
         if field_node.kind() == "container_field" {
-            if let Some(field_name_node) =
-                base.find_child_by_type(&field_node, "identifier")
-            {
+            if let Some(field_name_node) = base.find_child_by_type(&field_node, "identifier") {
                 let _field_name = base.get_node_text(&field_name_node);
 
                 // Look for type information
@@ -98,8 +99,7 @@ fn traverse_struct_fields(
                         let mut field_cursor = field_node.walk();
                         let field_children: Vec<Node> =
                             field_node.children(&mut field_cursor).collect();
-                        let colon_index =
-                            field_children.iter().position(|c| c.kind() == ":")?;
+                        let colon_index = field_children.iter().position(|c| c.kind() == ":")?;
                         field_children.get(colon_index + 1).copied()
                     });
 
@@ -153,12 +153,9 @@ fn extract_function_call_relationships(
     // Check for direct function call (identifier + arguments)
     if let Some(func_name_node) = base.find_child_by_type(&node, "identifier") {
         called_func_name = Some(base.get_node_text(&func_name_node));
-    } else if let Some(field_expr_node) =
-        base.find_child_by_type(&node, "field_expression")
-    {
+    } else if let Some(field_expr_node) = base.find_child_by_type(&node, "field_expression") {
         // Check for method call (field_expression + arguments)
-        let identifiers = base
-            .find_children_by_type(&field_expr_node, "identifier");
+        let identifiers = base.find_children_by_type(&field_expr_node, "identifier");
         if identifiers.len() >= 2 {
             called_func_name = Some(base.get_node_text(&identifiers[1]));
             // Second identifier is the method name
@@ -178,9 +175,7 @@ fn extract_function_call_relationships(
                     parent.kind(),
                     "function_declaration" | "function_definition"
                 ) {
-                    if let Some(caller_name_node) =
-                        base.find_child_by_type(&parent, "identifier")
-                    {
+                    if let Some(caller_name_node) = base.find_child_by_type(&parent, "identifier") {
                         let caller_name = base.get_node_text(&caller_name_node);
                         let caller_symbol = symbols
                             .iter()

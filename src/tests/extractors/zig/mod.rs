@@ -1361,8 +1361,8 @@ fn run() void {
     }
 
     mod async_and_concurrency {
-        use crate::extractors::base::SymbolKind;
         use super::super::zig_extractor_tests::extract_symbols;
+        use crate::extractors::base::SymbolKind;
 
         #[test]
         fn test_extract_async_functions_and_event_loops() {
@@ -1527,8 +1527,8 @@ fn workerFunction() !void {
     }
 
     mod comptime_and_metaprogramming {
-        use crate::extractors::base::SymbolKind;
         use super::super::zig_extractor_tests::extract_symbols;
+        use crate::extractors::base::SymbolKind;
 
         #[test]
         fn test_extract_comptime_metaprogramming_and_generics() {
@@ -1674,8 +1674,8 @@ comptime {
     }
 
     mod error_handling_and_optionals {
-        use crate::extractors::base::SymbolKind;
         use super::super::zig_extractor_tests::extract_symbols;
+        use crate::extractors::base::SymbolKind;
 
         #[test]
         fn test_extract_error_handling_unions_and_optionals() {

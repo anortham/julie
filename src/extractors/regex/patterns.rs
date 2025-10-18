@@ -58,7 +58,10 @@ pub(super) fn extract_character_class(
     let metadata = create_metadata(&[
         ("type", "character-class"),
         ("pattern", &class_text),
-        ("negated", &classes::is_negated_class(&class_text).to_string()),
+        (
+            "negated",
+            &classes::is_negated_class(&class_text).to_string(),
+        ),
     ]);
 
     Some(base.create_symbol(
@@ -190,7 +193,10 @@ pub(super) fn extract_lookaround(
         ("type", "lookaround"),
         ("pattern", &lookaround_text),
         ("direction", &direction),
-        ("positive", &flags::is_positive_lookaround(&lookaround_text).to_string()),
+        (
+            "positive",
+            &flags::is_positive_lookaround(&lookaround_text).to_string(),
+        ),
     ]);
 
     Some(base.create_symbol(

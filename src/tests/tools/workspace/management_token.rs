@@ -10,7 +10,9 @@ mod workspace_management_token_tests {
 
     use crate::utils::progressive_reduction::ProgressiveReducer;
     use crate::utils::token_estimation::TokenEstimator;
-    use crate::workspace::registry::{EmbeddingStatus, WorkspaceEntry, WorkspaceStatus, WorkspaceType};
+    use crate::workspace::registry::{
+        EmbeddingStatus, WorkspaceEntry, WorkspaceStatus, WorkspaceType,
+    };
 
     /// Test that workspace list formatting respects token limits
     #[test]
@@ -23,7 +25,10 @@ mod workspace_management_token_tests {
         for i in 1..=100 {
             let workspace = WorkspaceEntry {
                 id: format!("workspace_{}", i),
-                original_path: format!("/very/long/path/to/workspace/with/many/nested/directories/project_{}", i),
+                original_path: format!(
+                    "/very/long/path/to/workspace/with/many/nested/directories/project_{}",
+                    i
+                ),
                 directory_name: format!("workspace_{}", i),
                 display_name: format!("Project {} - Comprehensive Development Environment", i),
                 workspace_type: WorkspaceType::Reference,
@@ -66,12 +71,21 @@ mod workspace_management_token_tests {
         let optimized = reducer.reduce(&workspaces, 5000, estimate_workspaces);
 
         // Should reduce from 100 to fit within token limits
-        assert!(optimized.len() < 100, "Should reduce workspace count from 100");
-        assert!(optimized.len() >= 5, "Should keep at least 5% of workspaces");
+        assert!(
+            optimized.len() < 100,
+            "Should reduce workspace count from 100"
+        );
+        assert!(
+            optimized.len() >= 5,
+            "Should keep at least 5% of workspaces"
+        );
 
         // Verify token estimation is within limits
         let final_tokens = estimate_workspaces(&optimized);
-        assert!(final_tokens <= 5000, "Final output should be within 5000 token limit");
+        assert!(
+            final_tokens <= 5000,
+            "Final output should be within 5000 token limit"
+        );
 
         // Should preserve first workspace (most recently accessed)
         assert_eq!(optimized[0].id, "workspace_1");
@@ -119,7 +133,11 @@ mod workspace_management_token_tests {
         let optimized = reducer.reduce(&workspaces, 10000, estimate_workspaces);
 
         // Should NOT reduce - all 3 workspaces should be included
-        assert_eq!(optimized.len(), 3, "Should include all 3 workspaces without reduction");
+        assert_eq!(
+            optimized.len(),
+            3,
+            "Should include all 3 workspaces without reduction"
+        );
         assert_eq!(optimized[0].id, "workspace_1");
         assert_eq!(optimized[1].id, "workspace_2");
         assert_eq!(optimized[2].id, "workspace_3");
@@ -172,7 +190,10 @@ mod workspace_management_token_tests {
 
         // Verify token estimation is within limits
         let final_tokens = estimate_files(&optimized);
-        assert!(final_tokens <= 12000, "Final output should be within 12000 token limit");
+        assert!(
+            final_tokens <= 12000,
+            "Final output should be within 12000 token limit"
+        );
 
         // Should preserve first file (most recently modified)
         assert!(optimized[0].path.contains("file_with_long_name_1"));
@@ -217,7 +238,11 @@ mod workspace_management_token_tests {
         let optimized = reducer.reduce(&files, 12000, estimate_files);
 
         // Should NOT reduce - all 5 files should be included
-        assert_eq!(optimized.len(), 5, "Should include all 5 files without reduction");
+        assert_eq!(
+            optimized.len(),
+            5,
+            "Should include all 5 files without reduction"
+        );
         assert!(optimized[0].path.contains("file_1.rs"));
         assert!(optimized[4].path.contains("file_5.rs"));
     }
@@ -261,7 +286,10 @@ mod workspace_management_token_tests {
 
         // Should reduce to ~50 workspaces (50% reduction step)
         assert!(optimized.len() <= 50, "Should apply 50% reduction");
-        assert!(optimized.len() >= 45, "Should be close to 50% (allowing for rounding)");
+        assert!(
+            optimized.len() >= 45,
+            "Should be close to 50% (allowing for rounding)"
+        );
 
         let final_tokens = estimate_workspaces(&optimized);
         assert!(final_tokens <= 10000, "Should be within token limit");

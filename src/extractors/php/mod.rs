@@ -1,28 +1,26 @@
 // PHP Extractor for Julie - Modular structure
 // Main orchestrator and public API
 
-mod helpers;
-mod types;
 mod functions;
-mod members;
-mod relationships;
+mod helpers;
 mod identifiers;
+mod members;
 mod namespaces;
+mod relationships;
+mod types;
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 // Import functions for use in this module
-use helpers::{find_child, find_child_text, extract_modifiers, determine_visibility};
-use types::{extract_class, extract_interface, extract_trait, extract_enum, extract_enum_case};
 use functions::extract_function;
-use members::{extract_property, extract_constant};
-use relationships::{extract_class_relationships, extract_interface_relationships};
+use helpers::{determine_visibility, extract_modifiers, find_child, find_child_text};
 use identifiers::extract_identifier_from_node;
+use members::{extract_constant, extract_property};
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
+use relationships::{extract_class_relationships, extract_interface_relationships};
+use types::{extract_class, extract_enum, extract_enum_case, extract_interface, extract_trait};
 
 pub struct PhpExtractor {
     base: BaseExtractor,
@@ -111,7 +109,9 @@ impl PhpExtractor {
                 Some(extract_use(self, node, parent_id.as_deref()))
             }
             "enum_case" => extract_enum_case(self, node, parent_id.as_deref()),
-            "assignment_expression" => extract_variable_assignment(self, node, parent_id.as_deref()),
+            "assignment_expression" => {
+                extract_variable_assignment(self, node, parent_id.as_deref())
+            }
             _ => None,
         };
 

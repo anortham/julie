@@ -8,8 +8,8 @@
 //! Also includes legacy EditingTransaction tests extracted from inline tests.
 
 // Test submodules
-pub mod fuzzy_replace;  // FuzzyReplaceTool comprehensive tests
-pub mod edit_lines;     // EditLinesTool tests
+pub mod edit_lines;
+pub mod fuzzy_replace; // FuzzyReplaceTool comprehensive tests // EditLinesTool tests
 
 // Legacy EditingTransaction tests
 use crate::tools::editing::EditingTransaction;

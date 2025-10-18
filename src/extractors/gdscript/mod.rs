@@ -140,7 +140,9 @@ impl GDScriptExtractor {
                 }
             }
             "class" => {
-                if let Some(symbol) = classes::extract_class_definition(&mut self.base, node, parent_id) {
+                if let Some(symbol) =
+                    classes::extract_class_definition(&mut self.base, node, parent_id)
+                {
                     // Set current class context for inner classes
                     self.current_class_context = Some(symbol.id.clone());
                     extracted_symbol = Some(symbol);
@@ -179,9 +181,11 @@ impl GDScriptExtractor {
             "constructor_definition" => {
                 let effective_parent_id =
                     self.determine_effective_parent_id(node, parent_id, symbols);
-                if let Some(symbol) =
-                    functions::extract_constructor_definition(&mut self.base, node, effective_parent_id.as_ref())
-                {
+                if let Some(symbol) = functions::extract_constructor_definition(
+                    &mut self.base,
+                    node,
+                    effective_parent_id.as_ref(),
+                ) {
                     extracted_symbol = Some(symbol);
                 }
             }
@@ -189,7 +193,8 @@ impl GDScriptExtractor {
                 // Skip if this var node is part of a variable_statement
                 if let Some(parent) = node.parent() {
                     if parent.kind() != "variable_statement" {
-                        if let Some(symbol) = variables::extract_variable_statement(&mut self.base, node, parent_id)
+                        if let Some(symbol) =
+                            variables::extract_variable_statement(&mut self.base, node, parent_id)
                         {
                             extracted_symbol = Some(symbol);
                         }
@@ -197,30 +202,41 @@ impl GDScriptExtractor {
                 }
             }
             "variable_statement" => {
-                if let Some(symbol) =
-                    variables::extract_variable_from_statement(&mut self.base, node, parent_id, symbols)
-                {
+                if let Some(symbol) = variables::extract_variable_from_statement(
+                    &mut self.base,
+                    node,
+                    parent_id,
+                    symbols,
+                ) {
                     extracted_symbol = Some(symbol);
                 }
             }
             "const" => {
-                if let Some(symbol) = variables::extract_constant_statement(&mut self.base, node, parent_id) {
+                if let Some(symbol) =
+                    variables::extract_constant_statement(&mut self.base, node, parent_id)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
             "enum_definition" => {
-                if let Some(symbol) = enums::extract_enum_definition(&mut self.base, node, parent_id) {
+                if let Some(symbol) =
+                    enums::extract_enum_definition(&mut self.base, node, parent_id)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
             "identifier" => {
                 // Check if this identifier is an enum member
-                if let Some(symbol) = enums::extract_enum_member(&mut self.base, node, parent_id, symbols) {
+                if let Some(symbol) =
+                    enums::extract_enum_member(&mut self.base, node, parent_id, symbols)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }
             "signal_statement" | "signal" => {
-                if let Some(symbol) = signals::extract_signal_statement(&mut self.base, node, parent_id) {
+                if let Some(symbol) =
+                    signals::extract_signal_statement(&mut self.base, node, parent_id)
+                {
                     extracted_symbol = Some(symbol);
                 }
             }

@@ -5,20 +5,35 @@ use tree_sitter::Node;
 
 impl super::RazorExtractor {
     /// Extract relationships between symbols
-    pub fn extract_relationships(&mut self, tree: &tree_sitter::Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_relationships(tree.root_node(), symbols, &mut relationships);
         relationships
     }
 
     /// Visit nodes and extract relationships
-    fn visit_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn visit_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         match node.kind() {
             "razor_component" => self.extract_component_relationships(node, symbols, relationships),
             "using_directive" => self.extract_using_relationships(node, symbols, relationships),
-            "html_element" | "element" => self.extract_element_relationships(node, symbols, relationships),
-            "identifier" => self.extract_identifier_component_relationships(node, symbols, relationships),
-            "invocation_expression" => self.extract_invocation_relationships(node, symbols, relationships),
+            "html_element" | "element" => {
+                self.extract_element_relationships(node, symbols, relationships)
+            }
+            "identifier" => {
+                self.extract_identifier_component_relationships(node, symbols, relationships)
+            }
+            "invocation_expression" => {
+                self.extract_invocation_relationships(node, symbols, relationships)
+            }
             _ => {}
         }
 
@@ -29,7 +44,12 @@ impl super::RazorExtractor {
     }
 
     /// Extract relationships between Razor components
-    fn extract_component_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_component_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Extract relationships between Razor components
         let _element_text = self.base.get_node_text(&node);
 
@@ -38,8 +58,16 @@ impl super::RazorExtractor {
             let component_name = self.base.get_node_text(&name_node);
 
             // Find the using component (from symbols) - prefer the main page/component
-            let from_symbol = symbols.iter().find(|s| s.kind == SymbolKind::Class)
-                .or_else(|| symbols.iter().find(|s| s.signature.as_ref().is_some_and(|sig| sig.contains("@page"))))
+            let from_symbol = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Class)
+                .or_else(|| {
+                    symbols.iter().find(|s| {
+                        s.signature
+                            .as_ref()
+                            .is_some_and(|sig| sig.contains("@page"))
+                    })
+                })
                 .or_else(|| symbols.iter().find(|s| s.kind == SymbolKind::Module));
 
             if let Some(from_sym) = from_symbol {
@@ -54,8 +82,14 @@ impl super::RazorExtractor {
                     Some(1.0),
                     Some({
                         let mut metadata = HashMap::new();
-                        metadata.insert("component".to_string(), serde_json::Value::String(component_name.clone()));
-                        metadata.insert("type".to_string(), serde_json::Value::String("component-usage".to_string()));
+                        metadata.insert(
+                            "component".to_string(),
+                            serde_json::Value::String(component_name.clone()),
+                        );
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("component-usage".to_string()),
+                        );
                         metadata
                     }),
                 ));
@@ -64,7 +98,12 @@ impl super::RazorExtractor {
     }
 
     /// Extract using directive relationships
-    fn extract_using_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_using_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Extract using directive relationships
         if let Some(qualified_name) = self.find_child_by_type(node, "qualified_name") {
             let namespace_name = self.base.get_node_text(&qualified_name);
@@ -79,8 +118,14 @@ impl super::RazorExtractor {
                     Some(0.8),
                     Some({
                         let mut metadata = HashMap::new();
-                        metadata.insert("namespace".to_string(), serde_json::Value::String(namespace_name));
-                        metadata.insert("type".to_string(), serde_json::Value::String("using-directive".to_string()));
+                        metadata.insert(
+                            "namespace".to_string(),
+                            serde_json::Value::String(namespace_name),
+                        );
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("using-directive".to_string()),
+                        );
                         metadata
                     }),
                 ));
@@ -89,7 +134,12 @@ impl super::RazorExtractor {
     }
 
     /// Extract relationships from HTML elements with bindings
-    fn extract_element_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_element_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         // Extract relationships from HTML elements that might bind to properties
         let element_text = self.base.get_node_text(&node);
 
@@ -99,11 +149,20 @@ impl super::RazorExtractor {
                 if let Some(tag_match) = captures.get(1) {
                     let tag_name = tag_match.as_str();
 
-                    if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class)
-                        .or_else(|| symbols.iter().find(|s| s.signature.as_ref().is_some_and(|sig| sig.contains("@page")))) {
-
+                    if let Some(from_symbol) = symbols
+                        .iter()
+                        .find(|s| s.kind == SymbolKind::Class)
+                        .or_else(|| {
+                            symbols.iter().find(|s| {
+                                s.signature
+                                    .as_ref()
+                                    .is_some_and(|sig| sig.contains("@page"))
+                            })
+                        })
+                    {
                         // Find the component symbol (should exist now due to symbol extraction)
-                        if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name) {
+                        if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name)
+                        {
                             relationships.push(self.base.create_relationship(
                                 from_symbol.id.clone(),
                                 component_symbol.id.clone(),
@@ -112,8 +171,14 @@ impl super::RazorExtractor {
                                 Some(1.0),
                                 Some({
                                     let mut metadata = HashMap::new();
-                                    metadata.insert("component".to_string(), serde_json::Value::String(tag_name.to_string()));
-                                    metadata.insert("type".to_string(), serde_json::Value::String("component-usage".to_string()));
+                                    metadata.insert(
+                                        "component".to_string(),
+                                        serde_json::Value::String(tag_name.to_string()),
+                                    );
+                                    metadata.insert(
+                                        "type".to_string(),
+                                        serde_json::Value::String("component-usage".to_string()),
+                                    );
                                     metadata
                                 }),
                             ));
@@ -127,7 +192,10 @@ impl super::RazorExtractor {
         if element_text.contains("@bind") {
             if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
                 // Extract property being bound
-                if let Some(captures) = regex::Regex::new(r"@bind-(\w+)").unwrap().captures(&element_text) {
+                if let Some(captures) = regex::Regex::new(r"@bind-(\w+)")
+                    .unwrap()
+                    .captures(&element_text)
+                {
                     if let Some(property_match) = captures.get(1) {
                         let property_name = property_match.as_str().to_string();
 
@@ -139,8 +207,14 @@ impl super::RazorExtractor {
                             Some(0.9),
                             Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("property".to_string(), serde_json::Value::String(property_name));
-                                metadata.insert("type".to_string(), serde_json::Value::String("data-binding".to_string()));
+                                metadata.insert(
+                                    "property".to_string(),
+                                    serde_json::Value::String(property_name),
+                                );
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("data-binding".to_string()),
+                                );
                                 metadata
                             }),
                         ));
@@ -152,7 +226,10 @@ impl super::RazorExtractor {
         // Check for event binding attributes (e.g., @onclick)
         if element_text.contains("@on") {
             if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
-                if let Some(captures) = regex::Regex::new(r"@on(\w+)").unwrap().captures(&element_text) {
+                if let Some(captures) = regex::Regex::new(r"@on(\w+)")
+                    .unwrap()
+                    .captures(&element_text)
+                {
                     if let Some(event_match) = captures.get(1) {
                         let event_name = event_match.as_str().to_string();
 
@@ -164,8 +241,14 @@ impl super::RazorExtractor {
                             Some(0.9),
                             Some({
                                 let mut metadata = HashMap::new();
-                                metadata.insert("event".to_string(), serde_json::Value::String(event_name));
-                                metadata.insert("type".to_string(), serde_json::Value::String("event-binding".to_string()));
+                                metadata.insert(
+                                    "event".to_string(),
+                                    serde_json::Value::String(event_name),
+                                );
+                                metadata.insert(
+                                    "type".to_string(),
+                                    serde_json::Value::String("event-binding".to_string()),
+                                );
                                 metadata
                             }),
                         ));
@@ -176,7 +259,12 @@ impl super::RazorExtractor {
     }
 
     /// Extract identifier component relationships (stub)
-    fn extract_identifier_component_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
+    fn extract_identifier_component_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
         let identifier = self.base.get_node_text(&node);
         if identifier.is_empty() {
             return;
@@ -239,9 +327,16 @@ impl super::RazorExtractor {
     }
 
     /// Extract invocation relationships (stub)
-    fn extract_invocation_relationships(&self, node: Node, symbols: &[Symbol], relationships: &mut Vec<Relationship>) {
-        let method_node = self
-            .find_child_by_types(node, &["identifier", "member_access_expression", "qualified_name"]);
+    fn extract_invocation_relationships(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
+        let method_node = self.find_child_by_types(
+            node,
+            &["identifier", "member_access_expression", "qualified_name"],
+        );
         let Some(method_node) = method_node else {
             return;
         };
@@ -261,7 +356,10 @@ impl super::RazorExtractor {
             !is_invocation_symbol(symbol)
                 && matches!(
                     symbol.kind,
-                    SymbolKind::Function | SymbolKind::Method | SymbolKind::Class | SymbolKind::Module
+                    SymbolKind::Function
+                        | SymbolKind::Method
+                        | SymbolKind::Class
+                        | SymbolKind::Module
                 )
                 && symbol.name == method_name
         });
@@ -420,9 +518,9 @@ impl super::RazorExtractor {
         symbols: &'a [Symbol],
     ) -> Option<&'a Symbol> {
         let component_name = self.extract_first_string_literal(node)?;
-        symbols.iter().find(|symbol| {
-            is_component_symbol(symbol) && symbol.name == component_name
-        })
+        symbols
+            .iter()
+            .find(|symbol| is_component_symbol(symbol) && symbol.name == component_name)
     }
 
     fn extract_first_string_literal(&self, node: Node) -> Option<String> {

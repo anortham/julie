@@ -88,7 +88,6 @@ impl SymbolDatabase {
             [],
         )?;
 
-
         debug!("Created files table and indexes");
 
         // CASCADE: Create FTS5 table and triggers
@@ -168,9 +167,11 @@ impl SymbolDatabase {
     pub(crate) fn rebuild_files_fts(&self) -> Result<()> {
         debug!("Rebuilding files FTS5 index...");
         // First, delete all existing FTS content
-        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
+        self.conn
+            .execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
         // Then rebuild from base table
-        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+        self.conn
+            .execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
         debug!("✅ Files FTS5 index rebuilt successfully");
         Ok(())
     }
@@ -325,9 +326,13 @@ impl SymbolDatabase {
     pub(crate) fn rebuild_symbols_fts(&self) -> Result<()> {
         debug!("Rebuilding symbols FTS5 index...");
         // First, delete all existing FTS content
-        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')", [])?;
+        self.conn.execute(
+            "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
+            [],
+        )?;
         // Then rebuild from base table
-        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+        self.conn
+            .execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
         debug!("✅ Symbols FTS5 index rebuilt successfully");
         Ok(())
     }

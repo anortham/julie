@@ -280,7 +280,10 @@ impl VectorStore {
 
         let json = std::fs::read_to_string(&mapping_file)?;
         self.id_mapping = serde_json::from_str(&json)?;
-        tracing::debug!("📂 Loaded id_mapping with {} entries", self.id_mapping.len());
+        tracing::debug!(
+            "📂 Loaded id_mapping with {} entries",
+            self.id_mapping.len()
+        );
         Ok(())
     }
 

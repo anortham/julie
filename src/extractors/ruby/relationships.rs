@@ -1,10 +1,8 @@
+use super::helpers::{extract_method_name_from_call, extract_name_from_node};
 /// Relationship extraction for Ruby symbols
 /// Handles inheritance, module inclusion, and other symbol relationships
-use crate::extractors::base::{
-    BaseExtractor, Symbol, Relationship, RelationshipKind,
-};
+use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
 use tree_sitter::Node;
-use super::helpers::{extract_name_from_node, extract_method_name_from_call};
 
 /// Extract all relationships from a tree
 pub(super) fn extract_relationships(
@@ -125,7 +123,13 @@ fn extract_module_inclusion_relationships(
             let mut body_cursor = child.walk();
             for body_child in child.children(&mut body_cursor) {
                 if body_child.kind() == "call" {
-                    process_include_extend_call(base, body_child, &class_or_module_name, symbols, relationships);
+                    process_include_extend_call(
+                        base,
+                        body_child,
+                        &class_or_module_name,
+                        symbols,
+                        relationships,
+                    );
                 }
             }
         }

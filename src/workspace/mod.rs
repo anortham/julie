@@ -511,10 +511,7 @@ impl JulieWorkspace {
             Ok(embeddings) => {
                 let count = embeddings.len();
                 if count > 0 {
-                    info!(
-                        "📥 Loaded {} embeddings from database for HNSW",
-                        count
-                    );
+                    info!("📥 Loaded {} embeddings from database for HNSW", count);
 
                     // Now try to load HNSW index from disk (fast path)
                     let vectors_dir = self.workspace_vectors_path(&workspace_id);
@@ -528,10 +525,7 @@ impl JulieWorkspace {
                                 loaded_from_disk = true;
                             }
                             Err(e) => {
-                                info!(
-                                    "⚠️  Failed to load HNSW from disk: {}. Rebuilding...",
-                                    e
-                                );
+                                info!("⚠️  Failed to load HNSW from disk: {}. Rebuilding...", e);
                             }
                         }
                     }
@@ -548,9 +542,7 @@ impl JulieWorkspace {
                                 // Save HNSW index to disk for faster startup next time
                                 match store.save_hnsw_index(&vectors_dir) {
                                     Ok(_) => {
-                                        info!(
-                                            "💾 HNSW index persisted to disk successfully"
-                                        );
+                                        info!("💾 HNSW index persisted to disk successfully");
                                     }
                                     Err(e) => {
                                         warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
@@ -565,7 +557,10 @@ impl JulieWorkspace {
                 }
             }
             Err(e) => {
-                warn!("Could not load embeddings from database: {}. Starting with empty store.", e);
+                warn!(
+                    "Could not load embeddings from database: {}. Starting with empty store.",
+                    e
+                );
             }
         }
 

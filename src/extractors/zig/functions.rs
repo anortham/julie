@@ -195,10 +195,8 @@ fn extract_function_signature(
                     .or_else(|| {
                         // Look for identifier after colon
                         let mut param_cursor = child.walk();
-                        let param_children: Vec<Node> =
-                            child.children(&mut param_cursor).collect();
-                        let colon_index =
-                            param_children.iter().position(|c| c.kind() == ":")?;
+                        let param_children: Vec<Node> = child.children(&mut param_cursor).collect();
+                        let colon_index = param_children.iter().position(|c| c.kind() == ":")?;
                         param_children.get(colon_index + 1).copied()
                     });
 
@@ -224,9 +222,7 @@ fn extract_function_signature(
 
                     params.push(param_str);
                 }
-            } else if child.kind() == "variadic_parameter"
-                || base.get_node_text(&child) == "..."
-            {
+            } else if child.kind() == "variadic_parameter" || base.get_node_text(&child) == "..." {
                 params.push("...".to_string());
             }
         }

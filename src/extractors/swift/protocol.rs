@@ -8,7 +8,11 @@ use super::SwiftExtractor;
 /// Extracts protocol-specific members and requirements
 impl SwiftExtractor {
     /// Port of Miller's extractProtocolFunction method
-    pub(super) fn extract_protocol_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_protocol_function(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
@@ -59,7 +63,11 @@ impl SwiftExtractor {
     }
 
     /// Port of Miller's extractProtocolProperty method
-    pub(super) fn extract_protocol_property(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_protocol_property(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Symbol {
         let pattern_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "pattern");
@@ -145,7 +153,11 @@ impl SwiftExtractor {
     }
 
     /// Port of Miller's extractAssociatedType method
-    pub(super) fn extract_associated_type(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_associated_type(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier" || c.kind() == "simple_identifier");

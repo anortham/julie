@@ -48,10 +48,7 @@ mod tests {
 
     #[test]
     fn test_extract_unicode_property_name() {
-        assert_eq!(
-            extract_unicode_property_name(r"\p{Letter}"),
-            "Letter"
-        );
+        assert_eq!(extract_unicode_property_name(r"\p{Letter}"), "Letter");
     }
 
     #[test]

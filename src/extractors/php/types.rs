@@ -1,7 +1,7 @@
 // PHP Extractor - Type extraction (classes, interfaces, traits, enums)
 
+use super::{determine_visibility, extract_modifiers, find_child, find_child_text, PhpExtractor};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
-use super::{PhpExtractor, find_child, find_child_text, extract_modifiers, determine_visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -11,8 +11,8 @@ pub(super) fn extract_class(
     node: Node,
     parent_id: Option<&str>,
 ) -> Symbol {
-    let name = find_child_text(extractor, &node, "name")
-        .unwrap_or_else(|| "UnknownClass".to_string());
+    let name =
+        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownClass".to_string());
 
     let modifiers = extract_modifiers(extractor, &node);
     let extends_node = find_child(extractor, &node, "base_clause");
@@ -113,8 +113,8 @@ pub(super) fn extract_interface(
     node: Node,
     parent_id: Option<&str>,
 ) -> Symbol {
-    let name = find_child_text(extractor, &node, "name")
-        .unwrap_or_else(|| "UnknownInterface".to_string());
+    let name =
+        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownInterface".to_string());
 
     let extends_node = find_child(extractor, &node, "base_clause");
     let mut signature = format!("interface {}", name);
@@ -161,8 +161,8 @@ pub(super) fn extract_trait(
     node: Node,
     parent_id: Option<&str>,
 ) -> Symbol {
-    let name = find_child_text(extractor, &node, "name")
-        .unwrap_or_else(|| "UnknownTrait".to_string());
+    let name =
+        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownTrait".to_string());
 
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -190,8 +190,8 @@ pub(super) fn extract_enum(
     node: Node,
     parent_id: Option<&str>,
 ) -> Symbol {
-    let name = find_child_text(extractor, &node, "name")
-        .unwrap_or_else(|| "UnknownEnum".to_string());
+    let name =
+        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownEnum".to_string());
 
     // Check for backing type (e.g., enum Status: string)
     let backing_type = find_backing_type(extractor, &node);
@@ -311,4 +311,3 @@ fn find_backing_type(extractor: &PhpExtractor, node: &Node) -> Option<String> {
     }
     None
 }
-

@@ -3,11 +3,13 @@
 // Responsible for extracting Vue component options from the <script> section
 // Handles data(), methods, computed, props, and function definitions
 
+use super::helpers::{
+    COMPUTED_OBJECT_RE, DATA_FUNCTION_RE, FUNCTION_DEF_RE, METHODS_OBJECT_RE, PROPS_OBJECT_RE,
+};
+use super::parsing::VueSection;
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind};
 use serde_json::Value;
 use std::collections::HashMap;
-use super::helpers::{DATA_FUNCTION_RE, METHODS_OBJECT_RE, COMPUTED_OBJECT_RE, PROPS_OBJECT_RE, FUNCTION_DEF_RE};
-use super::parsing::VueSection;
 
 /// Extract symbols from script section
 pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection) -> Vec<Symbol> {

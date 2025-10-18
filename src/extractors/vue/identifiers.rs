@@ -3,17 +3,14 @@
 // Parses the <script> section with JavaScript tree-sitter and extracts identifier usages
 // Handles function calls, method calls, and member access patterns
 
+use super::parsing::{parse_vue_sfc, VueSection};
 use crate::extractors::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser};
-use super::parsing::{parse_vue_sfc, VueSection};
 
 /// Extract all identifier usages (function calls, member access, etc.)
 /// Vue-specific: Parses <script> section with JavaScript tree-sitter
-pub(super) fn extract_identifiers(
-    base: &mut BaseExtractor,
-    symbols: &[Symbol],
-) -> Vec<Identifier> {
+pub(super) fn extract_identifiers(base: &mut BaseExtractor, symbols: &[Symbol]) -> Vec<Identifier> {
     // Create symbol map for fast lookup
     let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
@@ -125,8 +122,7 @@ fn extract_identifier_from_node_with_content(
                         // Method call: obj.method()
                         // Extract the rightmost identifier (the method name)
                         if let Some(property_node) = function_node.child_by_field_name("property") {
-                            let name =
-                                get_node_text_from_content(&property_node, script_content);
+                            let name = get_node_text_from_content(&property_node, script_content);
                             let containing_symbol_id =
                                 find_containing_symbol_id(base, node, symbol_map);
 

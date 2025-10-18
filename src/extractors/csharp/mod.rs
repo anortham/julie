@@ -14,12 +14,12 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 mod helpers;
-mod types;
+mod identifiers;
 mod members;
 mod operators;
 mod relationships;
 mod type_inference;
-mod identifiers;
+mod types;
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
@@ -46,7 +46,12 @@ impl CSharpExtractor {
     }
 
     /// Walk tree and extract symbols - port of Miller's walkTree method
-    fn walk_tree(&mut self, node: tree_sitter::Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
+    fn walk_tree(
+        &mut self,
+        node: tree_sitter::Node,
+        symbols: &mut Vec<Symbol>,
+        parent_id: Option<String>,
+    ) {
         let symbol = self.extract_symbol(node, parent_id.clone());
         let current_parent_id = if let Some(ref sym) = symbol {
             symbols.push(sym.clone());
@@ -63,7 +68,11 @@ impl CSharpExtractor {
     }
 
     /// Extract symbol from node - port of Miller's extractSymbol method
-    fn extract_symbol(&mut self, node: tree_sitter::Node, parent_id: Option<String>) -> Option<Symbol> {
+    fn extract_symbol(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         match node.kind() {
             "namespace_declaration" => types::extract_namespace(&mut self.base, node, parent_id),
             "using_directive" => types::extract_using(&mut self.base, node, parent_id),
@@ -71,17 +80,25 @@ impl CSharpExtractor {
             "interface_declaration" => types::extract_interface(&mut self.base, node, parent_id),
             "struct_declaration" => types::extract_struct(&mut self.base, node, parent_id),
             "enum_declaration" => types::extract_enum(&mut self.base, node, parent_id),
-            "enum_member_declaration" => types::extract_enum_member(&mut self.base, node, parent_id),
+            "enum_member_declaration" => {
+                types::extract_enum_member(&mut self.base, node, parent_id)
+            }
             "method_declaration" => members::extract_method(&mut self.base, node, parent_id),
-            "constructor_declaration" => members::extract_constructor(&mut self.base, node, parent_id),
+            "constructor_declaration" => {
+                members::extract_constructor(&mut self.base, node, parent_id)
+            }
             "property_declaration" => members::extract_property(&mut self.base, node, parent_id),
             "field_declaration" => members::extract_field(&mut self.base, node, parent_id),
             "event_field_declaration" => members::extract_event(&mut self.base, node, parent_id),
             "delegate_declaration" => members::extract_delegate(&mut self.base, node, parent_id),
             "record_declaration" => types::extract_record(&mut self.base, node, parent_id),
-            "destructor_declaration" => members::extract_destructor(&mut self.base, node, parent_id),
+            "destructor_declaration" => {
+                members::extract_destructor(&mut self.base, node, parent_id)
+            }
             "operator_declaration" => operators::extract_operator(&mut self.base, node, parent_id),
-            "conversion_operator_declaration" => operators::extract_conversion_operator(&mut self.base, node, parent_id),
+            "conversion_operator_declaration" => {
+                operators::extract_conversion_operator(&mut self.base, node, parent_id)
+            }
             "indexer_declaration" => operators::extract_indexer(&mut self.base, node, parent_id),
             _ => None,
         }

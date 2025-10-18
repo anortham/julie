@@ -13,10 +13,17 @@ impl super::RazorExtractor {
         // Find variable declarator in field declaration
         if let Some(var_decl) = self.find_child_by_type(node, "variable_declaration") {
             // Extract type
-            if let Some(type_node) = self.find_child_by_types(var_decl, &[
-                "predefined_type", "identifier", "generic_name", "qualified_name",
-                "nullable_type", "array_type"
-            ]) {
+            if let Some(type_node) = self.find_child_by_types(
+                var_decl,
+                &[
+                    "predefined_type",
+                    "identifier",
+                    "generic_name",
+                    "qualified_name",
+                    "nullable_type",
+                    "array_type",
+                ],
+            ) {
                 field_type = Some(self.base.get_node_text(&type_node));
             }
 
@@ -53,12 +60,21 @@ impl super::RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("field".to_string()));
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("field".to_string()),
+                    );
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     if let Some(f_type) = field_type {
                         metadata.insert("fieldType".to_string(), serde_json::Value::String(f_type));
                     }
-                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::Value::String(attributes.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -67,7 +83,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract local function statement
-    pub(super) fn extract_local_function(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_local_function(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract function name using same logic as extract_method
         let mut name = "unknownFunction".to_string();
 
@@ -109,7 +129,11 @@ impl super::RazorExtractor {
         } else {
             signature_parts.push("void".to_string()); // Default return type for local functions
         }
-        signature_parts.push(format!("{}{}", name, parameters.clone().unwrap_or_else(|| "()".to_string())));
+        signature_parts.push(format!(
+            "{}{}",
+            name,
+            parameters.clone().unwrap_or_else(|| "()".to_string())
+        ));
 
         Some(self.base.create_symbol(
             &node,
@@ -121,15 +145,30 @@ impl super::RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("local-function".to_string()));
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("local-function".to_string()),
+                    );
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     if let Some(params) = &parameters {
-                        metadata.insert("parameters".to_string(), serde_json::Value::String(params.clone()));
+                        metadata.insert(
+                            "parameters".to_string(),
+                            serde_json::Value::String(params.clone()),
+                        );
                     }
                     if let Some(ret_type) = return_type {
-                        metadata.insert("returnType".to_string(), serde_json::Value::String(ret_type));
+                        metadata.insert(
+                            "returnType".to_string(),
+                            serde_json::Value::String(ret_type),
+                        );
                     }
-                    metadata.insert("attributes".to_string(), serde_json::Value::String(attributes.join(", ")));
+                    metadata.insert(
+                        "attributes".to_string(),
+                        serde_json::Value::String(attributes.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -138,7 +177,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract local variable declaration
-    pub(super) fn extract_local_variable(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_local_variable(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract variable name and type from local declaration
         let mut variable_name = "unknownVariable".to_string();
         let mut variable_type = None;
@@ -162,10 +205,17 @@ impl super::RazorExtractor {
 
         // Find variable type declaration
         if let Some(var_decl) = self.find_child_by_type(node, "variable_declaration") {
-            if let Some(type_node) = self.find_child_by_types(var_decl, &[
-                "predefined_type", "identifier", "generic_name", "qualified_name",
-                "nullable_type", "array_type"
-            ]) {
+            if let Some(type_node) = self.find_child_by_types(
+                var_decl,
+                &[
+                    "predefined_type",
+                    "identifier",
+                    "generic_name",
+                    "qualified_name",
+                    "nullable_type",
+                    "array_type",
+                ],
+            ) {
                 variable_type = Some(self.base.get_node_text(&type_node));
             }
         }
@@ -198,14 +248,23 @@ impl super::RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("local-variable".to_string()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("local-variable".to_string()),
+                    );
                     if let Some(var_type) = variable_type {
-                        metadata.insert("variableType".to_string(), serde_json::Value::String(var_type));
+                        metadata.insert(
+                            "variableType".to_string(),
+                            serde_json::Value::String(var_type),
+                        );
                     }
                     if let Some(init) = initializer {
                         metadata.insert("initializer".to_string(), serde_json::Value::String(init));
                     }
-                    metadata.insert("modifiers".to_string(), serde_json::Value::String(modifiers.join(", ")));
+                    metadata.insert(
+                        "modifiers".to_string(),
+                        serde_json::Value::String(modifiers.join(", ")),
+                    );
                     metadata
                 }),
                 doc_comment: None,
@@ -214,17 +273,30 @@ impl super::RazorExtractor {
     }
 
     /// Extract variable declaration
-    pub(super) fn extract_variable_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_variable_declaration(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract variable name and type from variable declaration
         let mut variable_type = None;
 
         // Find the type (if present)
-        if let Some(type_node) = self.find_child_by_types(node, &[
-            "predefined_type", "identifier", "generic_name", "qualified_name",
-            "nullable_type", "array_type", "var"
-        ]) {
+        if let Some(type_node) = self.find_child_by_types(
+            node,
+            &[
+                "predefined_type",
+                "identifier",
+                "generic_name",
+                "qualified_name",
+                "nullable_type",
+                "array_type",
+                "var",
+            ],
+        ) {
             let type_text = self.base.get_node_text(&type_node);
-            if type_text != "var" {  // Don't use "var" as the actual type
+            if type_text != "var" {
+                // Don't use "var" as the actual type
                 variable_type = Some(type_text);
             }
         }
@@ -243,7 +315,8 @@ impl super::RazorExtractor {
                     let decl_children: Vec<_> = child.children(&mut decl_cursor).collect();
                     if let Some(equals_pos) = decl_children.iter().position(|c| c.kind() == "=") {
                         if equals_pos + 1 < decl_children.len() {
-                            initializer = Some(self.base.get_node_text(&decl_children[equals_pos + 1]));
+                            initializer =
+                                Some(self.base.get_node_text(&decl_children[equals_pos + 1]));
                         }
                     }
 
@@ -277,12 +350,21 @@ impl super::RazorExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: Some({
                         let mut metadata = HashMap::new();
-                        metadata.insert("type".to_string(), serde_json::Value::String("variable-declaration".to_string()));
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("variable-declaration".to_string()),
+                        );
                         if let Some(var_type) = variable_type {
-                            metadata.insert("variableType".to_string(), serde_json::Value::String(var_type));
+                            metadata.insert(
+                                "variableType".to_string(),
+                                serde_json::Value::String(var_type),
+                            );
                         }
                         if let Some(init) = initializer {
-                            metadata.insert("initializer".to_string(), serde_json::Value::String(init.clone()));
+                            metadata.insert(
+                                "initializer".to_string(),
+                                serde_json::Value::String(init.clone()),
+                            );
                         }
                         metadata
                     }),
@@ -295,7 +377,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract assignment expression
-    pub(super) fn extract_assignment(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_assignment(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Extract left side (variable being assigned to) and right side (value)
         let mut left_side = None;
         let mut right_side = None;
@@ -332,11 +418,21 @@ impl super::RazorExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: Some({
                         let mut metadata = HashMap::new();
-                        metadata.insert("type".to_string(), serde_json::Value::String("assignment".to_string()));
-                        metadata.insert("leftSide".to_string(), serde_json::Value::String(left.clone()));
-                        metadata.insert("rightSide".to_string(), serde_json::Value::String(right.clone()));
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("assignment".to_string()),
+                        );
+                        metadata.insert(
+                            "leftSide".to_string(),
+                            serde_json::Value::String(left.clone()),
+                        );
+                        metadata.insert(
+                            "rightSide".to_string(),
+                            serde_json::Value::String(right.clone()),
+                        );
                         if left.contains("ViewData") {
-                            metadata.insert("isViewData".to_string(), serde_json::Value::Bool(true));
+                            metadata
+                                .insert("isViewData".to_string(), serde_json::Value::Bool(true));
                         }
                         if left.contains("ViewBag") {
                             metadata.insert("isViewBag".to_string(), serde_json::Value::Bool(true));
@@ -355,7 +451,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract method invocation expression
-    pub(super) fn extract_invocation(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_invocation(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let _invocation_text = self.base.get_node_text(&node);
 
         // Extract method name and arguments
@@ -363,7 +463,9 @@ impl super::RazorExtractor {
         let mut arguments = None;
 
         // Look for the invoked expression (method name)
-        if let Some(expression) = self.find_child_by_types(node, &["identifier", "member_access_expression"]) {
+        if let Some(expression) =
+            self.find_child_by_types(node, &["identifier", "member_access_expression"])
+        {
             method_name = self.base.get_node_text(&expression);
         }
 
@@ -388,20 +490,30 @@ impl super::RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("method-invocation".to_string()));
-                    metadata.insert("methodName".to_string(), serde_json::Value::String(method_name.clone()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("method-invocation".to_string()),
+                    );
+                    metadata.insert(
+                        "methodName".to_string(),
+                        serde_json::Value::String(method_name.clone()),
+                    );
                     if let Some(args) = arguments {
                         metadata.insert("arguments".to_string(), serde_json::Value::String(args));
                     }
                     // Detect special method types
                     if method_name.contains("Component.InvokeAsync") {
-                        metadata.insert("isComponentInvocation".to_string(), serde_json::Value::Bool(true));
+                        metadata.insert(
+                            "isComponentInvocation".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
                     }
                     if method_name.contains("Html.Raw") {
                         metadata.insert("isHtmlHelper".to_string(), serde_json::Value::Bool(true));
                     }
                     if method_name.contains("RenderSectionAsync") {
-                        metadata.insert("isRenderSection".to_string(), serde_json::Value::Bool(true));
+                        metadata
+                            .insert("isRenderSection".to_string(), serde_json::Value::Bool(true));
                     }
                     if method_name.contains("RenderBody") {
                         metadata.insert("isRenderBody".to_string(), serde_json::Value::Bool(true));
@@ -414,7 +526,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract element access expression (e.g., ViewData["Title"])
-    pub(super) fn extract_element_access(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_element_access(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Handle expressions like ViewData["Title"], ViewBag.MetaDescription
         let element_text = self.base.get_node_text(&node);
 
@@ -424,7 +540,9 @@ impl super::RazorExtractor {
         // Try to find the object being accessed
         if let Some(expression) = self.find_child_by_type(node, "identifier") {
             object_name = self.base.get_node_text(&expression);
-        } else if let Some(member_access) = self.find_child_by_type(node, "member_access_expression") {
+        } else if let Some(member_access) =
+            self.find_child_by_type(node, "member_access_expression")
+        {
             object_name = self.base.get_node_text(&member_access);
         }
 
@@ -450,8 +568,14 @@ impl super::RazorExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some({
                     let mut metadata = HashMap::new();
-                    metadata.insert("type".to_string(), serde_json::Value::String("element-access".to_string()));
-                    metadata.insert("objectName".to_string(), serde_json::Value::String(object_name.clone()));
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("element-access".to_string()),
+                    );
+                    metadata.insert(
+                        "objectName".to_string(),
+                        serde_json::Value::String(object_name.clone()),
+                    );
                     if let Some(key) = access_key {
                         metadata.insert("accessKey".to_string(), serde_json::Value::String(key));
                     }

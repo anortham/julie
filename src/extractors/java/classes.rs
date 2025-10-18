@@ -1,5 +1,4 @@
 /// Class, interface, enum, and record extraction
-
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::extractors::java::JavaExtractor;
 use serde_json;
@@ -52,7 +51,10 @@ pub(super) fn extract_class(
         .children(&mut node.walk())
         .find(|c| c.kind() == "permits")
     {
-        signature.push_str(&format!(" {}", extractor.base().get_node_text(&permits_clause)));
+        signature.push_str(&format!(
+            " {}",
+            extractor.base().get_node_text(&permits_clause)
+        ));
     }
 
     let options = SymbolOptions {

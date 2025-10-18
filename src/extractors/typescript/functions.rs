@@ -3,9 +3,9 @@
 //! This module handles extraction of function declarations, methods, constructors,
 //! and arrow functions assigned to variables.
 
+use super::helpers;
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::extractors::typescript::TypeScriptExtractor;
-use super::helpers;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -70,16 +70,18 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
     // Regenerate ID using function name position (not body start)
     if let Some(name_node) = node.child_by_field_name("name") {
         let start_pos = name_node.start_position();
-        let new_id = extractor.base().generate_id(
-            &name,
-            start_pos.row as u32,
-            start_pos.column as u32,
-        );
+        let new_id =
+            extractor
+                .base()
+                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
 
         let old_id = symbol.id.clone();
         symbol.id = new_id.clone();
         extractor.base_mut().symbol_map.remove(&old_id);
-        extractor.base_mut().symbol_map.insert(new_id, symbol.clone());
+        extractor
+            .base_mut()
+            .symbol_map
+            .insert(new_id, symbol.clone());
     } else if node.kind() == "arrow_function" {
         if let Some(parent) = node.parent() {
             if parent.kind() == "variable_declarator" {
@@ -94,7 +96,10 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
                     let old_id = symbol.id.clone();
                     symbol.id = new_id.clone();
                     extractor.base_mut().symbol_map.remove(&old_id);
-                    extractor.base_mut().symbol_map.insert(new_id, symbol.clone());
+                    extractor
+                        .base_mut()
+                        .symbol_map
+                        .insert(new_id, symbol.clone());
                 }
             }
         }
@@ -164,16 +169,18 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
     // Regenerate ID using method name position
     if let Some(name_node) = node.child_by_field_name("name") {
         let start_pos = name_node.start_position();
-        let new_id = extractor.base().generate_id(
-            &name,
-            start_pos.row as u32,
-            start_pos.column as u32,
-        );
+        let new_id =
+            extractor
+                .base()
+                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
 
         let old_id = symbol.id.clone();
         symbol.id = new_id.clone();
         extractor.base_mut().symbol_map.remove(&old_id);
-        extractor.base_mut().symbol_map.insert(new_id, symbol.clone());
+        extractor
+            .base_mut()
+            .symbol_map
+            .insert(new_id, symbol.clone());
     }
 
     symbol
@@ -196,20 +203,13 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
         }
     }
 
-    extractor.base_mut().create_symbol(
-        &node,
-        name,
-        SymbolKind::Variable,
-        SymbolOptions::default(),
-    )
+    extractor
+        .base_mut()
+        .create_symbol(&node, name, SymbolKind::Variable, SymbolOptions::default())
 }
 
 /// Build a function signature string (e.g., "foo(x, y): string")
-fn build_function_signature(
-    extractor: &TypeScriptExtractor,
-    node: &Node,
-    name: &str,
-) -> String {
+fn build_function_signature(extractor: &TypeScriptExtractor, node: &Node, name: &str) -> String {
     let params = extractor
         .base()
         .get_field_text(node, "parameters")
@@ -284,11 +284,10 @@ fn find_parent_class_id(extractor: &TypeScriptExtractor, node: &Node) -> Option<
                     }
                 }
 
-                if let Some((id, _symbol)) = extractor
-                    .base()
-                    .symbol_map
-                    .iter()
-                    .find(|(_, symbol)| symbol.name == class_name && symbol.kind == SymbolKind::Class)
+                if let Some((id, _symbol)) =
+                    extractor.base().symbol_map.iter().find(|(_, symbol)| {
+                        symbol.name == class_name && symbol.kind == SymbolKind::Class
+                    })
                 {
                     return Some(id.clone());
                 }
@@ -298,4 +297,3 @@ fn find_parent_class_id(extractor: &TypeScriptExtractor, node: &Node) -> Option<
     }
     None
 }
-

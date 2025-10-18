@@ -241,5 +241,4 @@ impl SymbolDatabase {
         debug!("Found {} symbols in file '{}'", symbols.len(), file_path);
         Ok(symbols)
     }
-
 }

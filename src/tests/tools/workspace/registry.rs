@@ -33,8 +33,7 @@ fn test_workspace_entry_expiration() {
 
     // Primary workspace should never expire
     let primary =
-        WorkspaceEntry::new("/test/primary".to_string(), WorkspaceType::Primary, &config)
-            .unwrap();
+        WorkspaceEntry::new("/test/primary".to_string(), WorkspaceType::Primary, &config).unwrap();
     assert!(!primary.is_expired());
     assert!(primary.expires_at.is_none());
 

@@ -387,7 +387,9 @@ mod tests {
         );
 
         // Public constructor (line 311)
-        let ctor = symbols.iter().find(|s| s.name == "Vector" && s.kind == SymbolKind::Constructor);
+        let ctor = symbols
+            .iter()
+            .find(|s| s.name == "Vector" && s.kind == SymbolKind::Constructor);
         assert!(ctor.is_some(), "Should extract Vector constructor");
         assert_eq!(
             ctor.unwrap().visibility,

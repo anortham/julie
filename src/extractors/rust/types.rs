@@ -1,3 +1,6 @@
+use super::helpers::{
+    extract_derived_traits, extract_visibility, find_doc_comment, get_preceding_attributes,
+};
 /// Rust type definitions extraction
 /// - Structs and enums
 /// - Traits
@@ -9,10 +12,13 @@ use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::extractors::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers::{extract_visibility, get_preceding_attributes, extract_derived_traits, find_doc_comment};
 
 /// Extract struct definition
-pub(super) fn extract_struct(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_struct(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -58,7 +64,11 @@ pub(super) fn extract_struct(extractor: &mut RustExtractor, node: Node, parent_i
 }
 
 /// Extract enum definition
-pub(super) fn extract_enum(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_enum(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -102,7 +112,11 @@ pub(super) fn extract_enum(extractor: &mut RustExtractor, node: Node, parent_id:
 }
 
 /// Extract trait definition
-pub(super) fn extract_trait(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_trait(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -169,7 +183,11 @@ pub(super) fn extract_trait(extractor: &mut RustExtractor, node: Node, parent_id
 }
 
 /// Extract union definition
-pub(super) fn extract_union(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_union(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())
@@ -202,7 +220,11 @@ pub(super) fn extract_union(extractor: &mut RustExtractor, node: Node, parent_id
 }
 
 /// Extract module definition
-pub(super) fn extract_module(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_module(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -233,7 +255,11 @@ pub(super) fn extract_module(extractor: &mut RustExtractor, node: Node, parent_i
 }
 
 /// Extract const definition
-pub(super) fn extract_const(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_const(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -273,7 +299,11 @@ pub(super) fn extract_const(extractor: &mut RustExtractor, node: Node, parent_id
 }
 
 /// Extract static definition
-pub(super) fn extract_static(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_static(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -320,7 +350,11 @@ pub(super) fn extract_static(extractor: &mut RustExtractor, node: Node, parent_i
 }
 
 /// Extract macro definition
-pub(super) fn extract_macro(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_macro(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
     let name = name_node
@@ -344,7 +378,11 @@ pub(super) fn extract_macro(extractor: &mut RustExtractor, node: Node, parent_id
 }
 
 /// Extract type alias definition
-pub(super) fn extract_type_alias(extractor: &mut RustExtractor, node: Node, parent_id: Option<String>) -> Symbol {
+pub(super) fn extract_type_alias(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Symbol {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())

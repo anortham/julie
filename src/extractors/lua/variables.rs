@@ -1,3 +1,5 @@
+use super::helpers;
+use super::tables;
 /// Variable and assignment extraction
 ///
 /// Handles extraction of:
@@ -6,12 +8,7 @@
 /// - Assignment statements: `x, y = 1, 2`
 /// - Property assignments: `obj.prop = value`
 /// - Module property assignments: `M.PI = 3.14159`
-
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
-use super::helpers;
-use super::tables;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -287,8 +284,7 @@ pub(super) fn extract_assignment_statement(
                     ..Default::default()
                 };
 
-                let symbol =
-                    base.create_symbol(&left, property_name.to_string(), kind, options);
+                let symbol = base.create_symbol(&left, property_name.to_string(), kind, options);
                 symbols.push(symbol);
             }
         }
@@ -395,14 +391,12 @@ pub(super) fn extract_variable_assignment(
                     ..Default::default()
                 };
 
-                let symbol =
-                    base.create_symbol(var_node, property_name.to_string(), kind, options);
+                let symbol = base.create_symbol(var_node, property_name.to_string(), kind, options);
                 symbols.push(symbol);
 
                 // If this is a table, extract its fields with this symbol as parent
                 if let Some(expression) = expressions.get(i) {
-                    if expression.kind() == "table_constructor" || expression.kind() == "table"
-                    {
+                    if expression.kind() == "table_constructor" || expression.kind() == "table" {
                         let parent_id = symbols.last().unwrap().id.clone();
                         tables::extract_table_fields(symbols, base, *expression, Some(&parent_id));
                     }

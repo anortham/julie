@@ -3,8 +3,8 @@
 //! This module provides functionality for extracting type information from the syntax tree,
 //! including return types, parameters, qualifiers, and attributes.
 
-use crate::extractors::base::BaseExtractor;
 use super::helpers;
+use crate::extractors::base::BaseExtractor;
 
 /// Extract return type from a function
 pub(super) fn extract_return_type(base: &BaseExtractor, node: tree_sitter::Node) -> String {
@@ -15,10 +15,7 @@ pub(super) fn extract_return_type(base: &BaseExtractor, node: tree_sitter::Node)
     // Look for the specifier that contains the base type
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "primitive_type"
-            | "type_identifier"
-            | "sized_type_specifier"
-            | "struct_specifier" => {
+            "primitive_type" | "type_identifier" | "sized_type_specifier" | "struct_specifier" => {
                 base_types.push(base.get_node_text(&child));
             }
             "pointer_declarator" => {
@@ -67,7 +64,10 @@ pub(super) fn extract_return_type(base: &BaseExtractor, node: tree_sitter::Node)
 }
 
 /// Extract storage class from a declaration (static, extern, etc.)
-pub(super) fn extract_storage_class(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_storage_class(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     let mut storage_classes = Vec::new();
     let mut cursor = node.walk();
 
@@ -85,7 +85,10 @@ pub(super) fn extract_storage_class(base: &BaseExtractor, node: tree_sitter::Nod
 }
 
 /// Extract type qualifiers from a declaration (const, volatile, etc.)
-pub(super) fn extract_type_qualifiers(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_type_qualifiers(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     let mut qualifiers = Vec::new();
     let mut cursor = node.walk();
 
@@ -121,7 +124,10 @@ pub(super) fn extract_variable_type(base: &BaseExtractor, node: tree_sitter::Nod
 }
 
 /// Extract array specifier information from a declarator
-pub(super) fn extract_array_specifier(base: &BaseExtractor, declarator: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_array_specifier(
+    base: &BaseExtractor,
+    declarator: tree_sitter::Node,
+) -> Option<String> {
     if let Some(array_decl) = helpers::find_node_by_type(declarator, "array_declarator") {
         // Extract array size information
         let mut sizes = Vec::new();
@@ -149,7 +155,10 @@ pub(super) fn extract_array_specifier(base: &BaseExtractor, declarator: tree_sit
 }
 
 /// Extract initializer from an init_declarator node
-pub(super) fn extract_initializer(base: &BaseExtractor, declarator: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_initializer(
+    base: &BaseExtractor,
+    declarator: tree_sitter::Node,
+) -> Option<String> {
     if declarator.kind() == "init_declarator" {
         // Look for initializer after '='
         let mut found_equals = false;
@@ -167,7 +176,10 @@ pub(super) fn extract_initializer(base: &BaseExtractor, declarator: tree_sitter:
 }
 
 /// Extract struct attributes (PACKED, ALIGNED, etc.)
-pub(super) fn extract_struct_attributes(base: &BaseExtractor, node: tree_sitter::Node) -> Vec<String> {
+pub(super) fn extract_struct_attributes(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Vec<String> {
     let mut attributes = Vec::new();
     let node_text = base.get_node_text(&node);
 
@@ -182,7 +194,10 @@ pub(super) fn extract_struct_attributes(base: &BaseExtractor, node: tree_sitter:
 }
 
 /// Extract alignment attributes (ALIGN macro, etc.)
-pub(super) fn extract_alignment_attributes(base: &BaseExtractor, node: tree_sitter::Node) -> Vec<String> {
+pub(super) fn extract_alignment_attributes(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Vec<String> {
     let mut attributes = Vec::new();
 
     let node_text = base.get_node_text(&node);
@@ -212,7 +227,10 @@ pub(super) fn extract_alignment_attributes(base: &BaseExtractor, node: tree_sitt
 }
 
 /// Extract the underlying type from a type definition
-pub(super) fn extract_underlying_type_from_type_definition(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+pub(super) fn extract_underlying_type_from_type_definition(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -224,7 +242,10 @@ pub(super) fn extract_underlying_type_from_type_definition(base: &BaseExtractor,
 }
 
 /// Extract the underlying type from a typedef declaration
-pub(super) fn extract_underlying_type_from_declaration(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+pub(super) fn extract_underlying_type_from_declaration(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> String {
     let mut types = Vec::new();
     let mut cursor = node.walk();
     let mut found_typedef = false;

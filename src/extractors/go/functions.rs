@@ -206,7 +206,11 @@ impl super::GoExtractor {
         }
     }
 
-    pub(super) fn extract_from_error_node(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_from_error_node(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Try to recover function signatures from ERROR nodes
         // Look for identifier + parenthesized_type pattern (function signature)
         let mut cursor = node.walk();

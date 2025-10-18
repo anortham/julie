@@ -1,8 +1,8 @@
 // Tests extracted from src/workspace/registry_service.rs
 // These were previously inline tests that have been moved to follow project standards
 
-use crate::workspace::registry_service::WorkspaceRegistryService;
 use crate::workspace::registry::WorkspaceType;
+use crate::workspace::registry_service::WorkspaceRegistryService;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Barrier;

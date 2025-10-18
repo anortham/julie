@@ -6,7 +6,9 @@ pub(crate) mod identifiers;
 mod patterns;
 pub(crate) mod signatures;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility};
+use crate::extractors::base::{
+    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -41,7 +43,9 @@ impl RegexExtractor {
             "pattern" | "regex" | "expression" => {
                 patterns::extract_pattern(&mut self.base, node, parent_id.clone())
             }
-            "character_class" => patterns::extract_character_class(&mut self.base, node, parent_id.clone()),
+            "character_class" => {
+                patterns::extract_character_class(&mut self.base, node, parent_id.clone())
+            }
             "group" | "capturing_group" | "non_capturing_group" | "named_capturing_group" => {
                 patterns::extract_group(&mut self.base, node, parent_id.clone())
             }
@@ -56,7 +60,9 @@ impl RegexExtractor {
             | "positive_lookahead"
             | "negative_lookahead"
             | "positive_lookbehind"
-            | "negative_lookbehind" => patterns::extract_lookaround(&mut self.base, node, parent_id.clone()),
+            | "negative_lookbehind" => {
+                patterns::extract_lookaround(&mut self.base, node, parent_id.clone())
+            }
             "alternation" | "disjunction" => {
                 patterns::extract_alternation(&mut self.base, node, parent_id.clone())
             }
@@ -66,11 +72,17 @@ impl RegexExtractor {
             "unicode_property" | "unicode_category" => {
                 patterns::extract_unicode_property(&mut self.base, node, parent_id.clone())
             }
-            "backreference" => patterns::extract_backreference(&mut self.base, node, parent_id.clone()),
+            "backreference" => {
+                patterns::extract_backreference(&mut self.base, node, parent_id.clone())
+            }
             "conditional" => patterns::extract_conditional(&mut self.base, node, parent_id.clone()),
-            "atomic_group" => patterns::extract_atomic_group(&mut self.base, node, parent_id.clone()),
+            "atomic_group" => {
+                patterns::extract_atomic_group(&mut self.base, node, parent_id.clone())
+            }
             "comment" => patterns::extract_comment(&mut self.base, node, parent_id.clone()),
-            "literal" | "character" => patterns::extract_literal(&mut self.base, node, parent_id.clone()),
+            "literal" | "character" => {
+                patterns::extract_literal(&mut self.base, node, parent_id.clone())
+            }
             _ => {
                 if helpers::is_regex_pattern(&node.kind()) {
                     patterns::extract_generic_pattern(&mut self.base, node, parent_id.clone())

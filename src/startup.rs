@@ -68,8 +68,8 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
                 }
 
                 // ✅ NEW: Check for new files not in database
-                let indexed_files_raw: Vec<String> = db
-                    .get_all_indexed_files(&primary_workspace_id)?;
+                let indexed_files_raw: Vec<String> =
+                    db.get_all_indexed_files(&primary_workspace_id)?;
 
                 // Normalize indexed files to relative paths (database stores absolute paths)
                 let indexed_files: HashSet<String> = indexed_files_raw

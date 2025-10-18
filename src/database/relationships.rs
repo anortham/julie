@@ -19,10 +19,7 @@ impl SymbolDatabase {
             params![file_path],
         )?;
 
-        debug!(
-            "Deleted {} relationships for file '{}'",
-            count, file_path
-        );
+        debug!("Deleted {} relationships for file '{}'", count, file_path);
         Ok(())
     }
 
@@ -127,7 +124,9 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
-    pub fn get_file_relationship_statistics(&self) -> Result<std::collections::HashMap<String, usize>> {
+    pub fn get_file_relationship_statistics(
+        &self,
+    ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
         let mut by_file = HashMap::new();

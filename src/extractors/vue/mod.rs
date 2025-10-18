@@ -5,9 +5,7 @@
 //
 // Port of Miller's Vue extractor with comprehensive Vue SFC feature support
 
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Tree;
@@ -57,7 +55,9 @@ impl VueExtractor {
                 }
 
                 // Add component-level symbol - following Miller's logic
-                if let Some(component_name) = component::extract_component_name(&self.base.file_path, &sections) {
+                if let Some(component_name) =
+                    component::extract_component_name(&self.base.file_path, &sections)
+                {
                     let component_symbol = create_symbol_manual(
                         &self.base,
                         &component_name,

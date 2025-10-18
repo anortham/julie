@@ -1,12 +1,16 @@
 // C# Type Declaration Extraction
 
+use super::helpers;
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers;
 
 /// Extract namespace
-pub fn extract_namespace(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_namespace(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -26,7 +30,11 @@ pub fn extract_namespace(base: &mut BaseExtractor, node: Node, parent_id: Option
 }
 
 /// Extract using statement
-pub fn extract_using(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_using(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node.children(&mut cursor).find(|c| {
         matches!(
@@ -39,7 +47,9 @@ pub fn extract_using(base: &mut BaseExtractor, node: Node, parent_id: Option<Str
     let is_static = node.children(&mut cursor).any(|c| c.kind() == "static");
 
     let mut cursor2 = node.walk();
-    let alias_node = node.children(&mut cursor2).find(|c| c.kind() == "name_equals");
+    let alias_node = node
+        .children(&mut cursor2)
+        .find(|c| c.kind() == "name_equals");
     let name = if let Some(alias_node) = alias_node {
         let mut alias_cursor = alias_node.walk();
         let alias_identifier = alias_node
@@ -75,7 +85,11 @@ pub fn extract_using(base: &mut BaseExtractor, node: Node, parent_id: Option<Str
 }
 
 /// Extract class
-pub fn extract_class(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_class(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -133,7 +147,11 @@ pub fn extract_class(base: &mut BaseExtractor, node: Node, parent_id: Option<Str
 }
 
 /// Extract interface
-pub fn extract_interface(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_interface(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -183,7 +201,11 @@ pub fn extract_interface(base: &mut BaseExtractor, node: Node, parent_id: Option
 }
 
 /// Extract struct
-pub fn extract_struct(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_struct(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -222,7 +244,11 @@ pub fn extract_struct(base: &mut BaseExtractor, node: Node, parent_id: Option<St
 }
 
 /// Extract enum
-pub fn extract_enum(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_enum(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -254,7 +280,11 @@ pub fn extract_enum(base: &mut BaseExtractor, node: Node, parent_id: Option<Stri
 }
 
 /// Extract enum member
-pub fn extract_enum_member(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_enum_member(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)
@@ -288,7 +318,11 @@ pub fn extract_enum_member(base: &mut BaseExtractor, node: Node, parent_id: Opti
 }
 
 /// Extract record
-pub fn extract_record(base: &mut BaseExtractor, node: Node, parent_id: Option<String>) -> Option<Symbol> {
+pub fn extract_record(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let mut cursor = node.walk();
     let name_node = node
         .children(&mut cursor)

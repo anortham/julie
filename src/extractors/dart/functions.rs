@@ -2,9 +2,9 @@
 //
 // Methods for extracting functions, methods, classes, and related constructs
 
-use crate::extractors::base::{BaseExtractor, SymbolKind, SymbolOptions, Visibility, Symbol};
 use super::helpers::*;
 use super::signatures;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 

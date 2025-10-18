@@ -1,5 +1,5 @@
-use crate::extractors::base::RelationshipKind;
 use super::parse_c;
+use crate::extractors::base::RelationshipKind;
 
 #[test]
 fn test_extract_function_call_relationships() {

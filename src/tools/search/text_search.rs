@@ -8,9 +8,7 @@ use tracing::debug;
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use crate::utils::{
-    exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer,
-};
+use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 
 use super::query::{matches_glob_pattern, preprocess_fallback_query};
 
@@ -85,17 +83,16 @@ async fn database_search_with_workspace_filter(
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
     // Determine if searching primary or reference workspace
-    let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
-        workspace.root.clone(),
-    );
+    let registry_service =
+        crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
     let primary_workspace_id = registry_service
         .get_primary_workspace_id()
         .await?
         .unwrap_or_else(|| "primary".to_string());
 
-    let target_workspace_id = workspace_ids.first().ok_or_else(|| {
-        anyhow::anyhow!("No workspace ID provided")
-    })?;
+    let target_workspace_id = workspace_ids
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("No workspace ID provided"))?;
 
     let is_primary = target_workspace_id == &primary_workspace_id;
 
@@ -128,10 +125,7 @@ async fn database_search_with_workspace_filter(
             ));
         }
 
-        debug!(
-            "📂 Opening reference workspace DB: {:?}",
-            ref_db_path
-        );
+        debug!("📂 Opening reference workspace DB: {:?}", ref_db_path);
 
         tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
@@ -246,9 +240,9 @@ async fn sqlite_fts_search(
             );
 
             // Create Arc<Mutex<SymbolDatabase>> for consistent type
-            std::sync::Arc::new(std::sync::Mutex::new(
-                crate::database::SymbolDatabase::new(&ref_db_path)?
-            ))
+            std::sync::Arc::new(std::sync::Mutex::new(crate::database::SymbolDatabase::new(
+                &ref_db_path,
+            )?))
         }
     } else {
         // No workspace filter - use primary workspace database directly
@@ -273,7 +267,10 @@ async fn sqlite_fts_search(
         && !processed_query.contains(" OR ")
         && !processed_query.contains(" AND ")
     {
-        processed_query.split_whitespace().collect::<Vec<_>>().join(" AND ")
+        processed_query
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" AND ")
     } else {
         processed_query.clone()
     };
@@ -289,7 +286,7 @@ async fn sqlite_fts_search(
     let file_results = tokio::task::block_in_place(|| {
         let db_lock = db.lock().unwrap();
         db_lock.search_file_content_fts(
-            &content_query,  // Use phrase-wrapped query for content search
+            &content_query, // Use phrase-wrapped query for content search
             limit as usize,
         )
     })?;
@@ -303,10 +300,7 @@ async fn sqlite_fts_search(
         if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
             // Find the line containing the snippet text
             // Remove FTS highlighting markers (...) from snippet for matching
-            let clean_snippet = result.snippet
-                .replace("...", "")
-                .trim()
-                .to_string();
+            let clean_snippet = result.snippet.replace("...", "").trim().to_string();
 
             // Search for the snippet in file content
             let mut found_line: Option<(usize, String)> = None;
@@ -350,7 +344,10 @@ async fn sqlite_fts_search(
                 symbols.push(symbol);
             } else {
                 // Fallback: couldn't find exact line, use snippet as context
-                debug!("⚠️ Could not locate exact line for FTS match in {}", result.path);
+                debug!(
+                    "⚠️ Could not locate exact line for FTS match in {}",
+                    result.path
+                );
                 let symbol = crate::extractors::Symbol {
                     id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
                     name: format!(

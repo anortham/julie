@@ -75,17 +75,17 @@ fn test_fts5_special_characters() {
 
     // Test various special characters that FTS5 might misinterpret
     let special_queries = vec![
-        "#[test]",      // Rust attribute
-        "@Component",   // Decorator
-        "[typescript]", // Brackets
-        "C++",          // Plus signs
-        "async/await",  // Forward slash
-        "foo:bar",      // Colon (column specifier)
-        "println!",     // Exclamation mark (Rust macro)
-        "eprintln!",    // Exclamation mark
-        "func(arg)",    // Parentheses (function call)
-        "(a || b)",     // Parentheses (grouping)
-        "System.Collections.Generic", // Dot (namespace/qualified name)
+        "#[test]",                            // Rust attribute
+        "@Component",                         // Decorator
+        "[typescript]",                       // Brackets
+        "C++",                                // Plus signs
+        "async/await",                        // Forward slash
+        "foo:bar",                            // Colon (column specifier)
+        "println!",                           // Exclamation mark (Rust macro)
+        "eprintln!",                          // Exclamation mark
+        "func(arg)",                          // Parentheses (function call)
+        "(a || b)",                           // Parentheses (grouping)
+        "System.Collections.Generic",         // Dot (namespace/qualified name)
         "CurrentUserService.ApplicationUser", // Dot (qualified name)
     ];
 

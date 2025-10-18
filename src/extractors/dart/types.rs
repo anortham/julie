@@ -2,13 +2,17 @@
 //
 // Methods for extracting type aliases, enums, mixins, and extensions
 
-use crate::extractors::base::{BaseExtractor, SymbolKind, SymbolOptions, Visibility, Symbol};
 use super::helpers::*;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract enum definition
-pub(super) fn extract_enum(base: &mut BaseExtractor, node: &Node, parent_id: Option<&str>) -> Option<Symbol> {
+pub(super) fn extract_enum(
+    base: &mut BaseExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
 
@@ -66,7 +70,11 @@ pub(super) fn extract_enum_constant(
 }
 
 /// Extract mixin definition
-pub(super) fn extract_mixin(base: &mut BaseExtractor, node: &Node, parent_id: Option<&str>) -> Option<Symbol> {
+pub(super) fn extract_mixin(
+    base: &mut BaseExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
 

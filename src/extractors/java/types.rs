@@ -1,5 +1,4 @@
 /// Type inference from method and field signatures
-
 use crate::extractors::base::{Symbol, SymbolKind};
 use crate::extractors::java::JavaExtractor;
 use regex::Regex;
@@ -20,7 +19,10 @@ static FIELD_MODIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Infer types from method and field signatures
-pub(super) fn infer_types(_extractor: &JavaExtractor, symbols: &[Symbol]) -> HashMap<String, String> {
+pub(super) fn infer_types(
+    _extractor: &JavaExtractor,
+    symbols: &[Symbol],
+) -> HashMap<String, String> {
     let mut types = HashMap::new();
 
     for symbol in symbols {

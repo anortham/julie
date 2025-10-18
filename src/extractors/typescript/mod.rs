@@ -13,15 +13,15 @@
 //! - **identifiers**: Identifier usage extraction (calls, member access, etc.)
 //! - **helpers**: Utility functions for tree traversal and text extraction
 
-mod symbols;
-mod functions;
 mod classes;
-mod interfaces;
-mod imports_exports;
-pub(crate) mod relationships;
-pub mod inference;
-mod identifiers;
+mod functions;
 mod helpers;
+mod identifiers;
+mod imports_exports;
+pub mod inference;
+mod interfaces;
+pub(crate) mod relationships;
+mod symbols;
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;

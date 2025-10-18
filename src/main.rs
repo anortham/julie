@@ -311,9 +311,7 @@ async fn update_workspace_statistics(
     // Count symbols and files in database
     let (symbol_count, file_count) = if let Some(db_arc) = &workspace.db {
         let db = db_arc.lock().unwrap();
-        let symbols = db
-            .get_symbol_count_for_workspace()
-            .unwrap_or(0) as usize;
+        let symbols = db.get_symbol_count_for_workspace().unwrap_or(0) as usize;
         let files = db.get_file_count_for_workspace().unwrap_or(0) as usize;
         (symbols, files)
     } else {

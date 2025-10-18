@@ -8,8 +8,8 @@
 // - extractors/python/signatures.rs
 // - extractors/python/assignments.rs
 
-use crate::extractors::python::helpers;
 use crate::extractors::base::Visibility;
+use crate::extractors::python::helpers;
 
 // ============================================================================
 // Tests from extractors/python/mod.rs
@@ -18,10 +18,7 @@ use crate::extractors::base::Visibility;
 #[test]
 fn test_python_extractor_initialization() {
     use crate::extractors::python::PythonExtractor;
-    let extractor = PythonExtractor::new(
-        "test.py".to_string(),
-        "def hello(): pass".to_string(),
-    );
+    let extractor = PythonExtractor::new("test.py".to_string(), "def hello(): pass".to_string());
     assert_eq!(extractor.base().file_path, "test.py");
 }
 

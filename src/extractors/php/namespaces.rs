@@ -1,7 +1,7 @@
 // PHP Extractor - Namespace and import declarations, variable assignments
 
+use super::{find_child, PhpExtractor};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
-use super::{PhpExtractor, find_child};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -137,19 +137,16 @@ pub(super) fn extract_variable_assignment(
     );
     metadata.insert("value".to_string(), serde_json::Value::String(value_text));
 
-    Some(
-        extractor.get_base_mut().create_symbol(
-            &node,
-            var_name,
-            SymbolKind::Variable,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(Visibility::Public),
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(metadata),
-                doc_comment: None,
-            },
-        ),
-    )
+    Some(extractor.get_base_mut().create_symbol(
+        &node,
+        var_name,
+        SymbolKind::Variable,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|s| s.to_string()),
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    ))
 }
-

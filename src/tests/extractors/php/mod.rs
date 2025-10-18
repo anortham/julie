@@ -1788,21 +1788,29 @@ class UserController
         assert_eq!(app_controllers.unwrap().kind, SymbolKind::Namespace);
 
         // Use statements with aliases
-        let user_repo = symbols.iter().find(|s| s.name == "App\\Contracts\\UserRepositoryInterface");
+        let user_repo = symbols
+            .iter()
+            .find(|s| s.name == "App\\Contracts\\UserRepositoryInterface");
         assert!(user_repo.is_some());
         assert_eq!(user_repo.unwrap().kind, SymbolKind::Import);
 
-        let eloquent_model = symbols.iter().find(|s| s.name == "Illuminate\\Database\\Eloquent\\Model");
+        let eloquent_model = symbols
+            .iter()
+            .find(|s| s.name == "Illuminate\\Database\\Eloquent\\Model");
         assert!(eloquent_model.is_some());
         assert_eq!(eloquent_model.unwrap().kind, SymbolKind::Import);
 
         // Function import
-        let format_date = symbols.iter().find(|s| s.name == "App\\Helpers\\formatDate");
+        let format_date = symbols
+            .iter()
+            .find(|s| s.name == "App\\Helpers\\formatDate");
         assert!(format_date.is_some());
         assert_eq!(format_date.unwrap().kind, SymbolKind::Import);
 
         // Const import
-        let default_timeout = symbols.iter().find(|s| s.name == "App\\Config\\DEFAULT_TIMEOUT");
+        let default_timeout = symbols
+            .iter()
+            .find(|s| s.name == "App\\Config\\DEFAULT_TIMEOUT");
         assert!(default_timeout.is_some());
         assert_eq!(default_timeout.unwrap().kind, SymbolKind::Import);
 
@@ -1816,9 +1824,9 @@ class UserController
         assert_eq!(user_controller.unwrap().kind, SymbolKind::Class);
 
         // Verify namespace-qualified types in signatures
-        let find_user = symbols
-            .iter()
-            .find(|s| s.name == "findUser" && s.parent_id.as_ref() == user_service.map(|us| &us.id));
+        let find_user = symbols.iter().find(|s| {
+            s.name == "findUser" && s.parent_id.as_ref() == user_service.map(|us| &us.id)
+        });
         assert!(find_user.is_some());
         assert!(find_user
             .unwrap()

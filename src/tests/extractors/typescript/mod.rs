@@ -6,12 +6,12 @@
 // Submodule declarations
 pub mod extractor;
 pub mod functions;
+pub mod helpers;
 pub mod identifiers;
 pub mod imports_exports;
-pub mod symbols;
 pub mod inference;
-pub mod helpers;
 pub mod relationships;
+pub mod symbols;
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::typescript::TypeScriptExtractor;
@@ -913,7 +913,10 @@ export default UserCard;
         let symbols = extractor.extract_symbols(&tree);
 
         // CRITICAL: Should extract symbols, not return empty vec
-        assert!(!symbols.is_empty(), "TSX file should extract symbols (dispatcher routing regression test)");
+        assert!(
+            !symbols.is_empty(),
+            "TSX file should extract symbols (dispatcher routing regression test)"
+        );
 
         // Check interface symbol
         let user_props = symbols.iter().find(|s| s.name == "UserProps");
@@ -922,11 +925,17 @@ export default UserCard;
 
         // Check component symbol (arrow function constant)
         let user_card = symbols.iter().find(|s| s.name == "UserCard");
-        assert!(user_card.is_some(), "Should extract React component from TSX");
+        assert!(
+            user_card.is_some(),
+            "Should extract React component from TSX"
+        );
 
         // Check handler function
         let handle_click = symbols.iter().find(|s| s.name == "handleClick");
-        assert!(handle_click.is_some(), "Should extract handler function from TSX");
+        assert!(
+            handle_click.is_some(),
+            "Should extract handler function from TSX"
+        );
     }
 
     #[test]
@@ -976,7 +985,10 @@ export default Counter;
 
         // Check class symbol
         let counter_class = symbols.iter().find(|s| s.name == "Counter");
-        assert!(counter_class.is_some(), "Should extract class component from TSX");
+        assert!(
+            counter_class.is_some(),
+            "Should extract class component from TSX"
+        );
         assert_eq!(counter_class.unwrap().kind, SymbolKind::Class);
 
         // NOTE: Relationship extraction will be fixed in the JavaScript relationship task
@@ -1014,8 +1026,17 @@ class Panel extends React.Component {
         let symbols = extractor.extract_symbols(&tree);
 
         // Should extract all components despite JSX syntax
-        assert!(symbols.iter().any(|s| s.name == "Button"), "Should extract function component");
-        assert!(symbols.iter().any(|s| s.name == "Link"), "Should extract arrow function component");
-        assert!(symbols.iter().any(|s| s.name == "Panel"), "Should extract class component");
+        assert!(
+            symbols.iter().any(|s| s.name == "Button"),
+            "Should extract function component"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "Link"),
+            "Should extract arrow function component"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "Panel"),
+            "Should extract class component"
+        );
     }
 }

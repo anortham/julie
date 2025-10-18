@@ -32,10 +32,7 @@ impl ManageWorkspaceTool {
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
         // Register the reference workspace
-        debug!(
-            "TRACE: About to call register_workspace for path: {}",
-            path
-        );
+        debug!("TRACE: About to call register_workspace for path: {}", path);
         match registry_service
             .register_workspace(path.to_string(), WorkspaceType::Reference)
             .await
@@ -50,10 +47,7 @@ impl ManageWorkspaceTool {
                 // Index the reference workspace immediately
                 let workspace_path = std::path::PathBuf::from(&entry.original_path);
 
-                info!(
-                    "Starting indexing of reference workspace: {}",
-                    display_name
-                );
+                info!("Starting indexing of reference workspace: {}", display_name);
 
                 // TEST: Let's see if awaiting actually deadlocks or if something else is the issue
                 debug!("About to call index_workspace_files for reference workspace");
@@ -224,54 +218,56 @@ impl ManageWorkspaceTool {
                 let target_tokens = 10000;
 
                 // Create a token estimation function that formats a workspace entry
-                let estimate_workspaces = |ws_subset: &[crate::workspace::registry::WorkspaceEntry]| {
-                    let mut test_output = String::from("Registered Workspaces:\n\n");
-                    for workspace in ws_subset {
-                        let status = if workspace.is_expired() {
-                            "EXPIRED"
-                        } else if !workspace.path_exists() {
-                            "MISSING"
-                        } else {
-                            "ACTIVE"
-                        };
+                let estimate_workspaces =
+                    |ws_subset: &[crate::workspace::registry::WorkspaceEntry]| {
+                        let mut test_output = String::from("Registered Workspaces:\n\n");
+                        for workspace in ws_subset {
+                            let status = if workspace.is_expired() {
+                                "EXPIRED"
+                            } else if !workspace.path_exists() {
+                                "MISSING"
+                            } else {
+                                "ACTIVE"
+                            };
 
-                        let expires = match workspace.expires_at {
-                            Some(exp_time) => {
-                                let now = crate::workspace::registry::current_timestamp();
-                                if exp_time > now {
-                                    let days_left = (exp_time - now) / (24 * 60 * 60);
-                                    format!("in {} days", days_left)
-                                } else {
-                                    "expired".to_string()
+                            let expires = match workspace.expires_at {
+                                Some(exp_time) => {
+                                    let now = crate::workspace::registry::current_timestamp();
+                                    if exp_time > now {
+                                        let days_left = (exp_time - now) / (24 * 60 * 60);
+                                        format!("in {} days", days_left)
+                                    } else {
+                                        "expired".to_string()
+                                    }
                                 }
-                            }
-                            None => "never".to_string(),
-                        };
+                                None => "never".to_string(),
+                            };
 
-                        test_output.push_str(&format!(
-                            "{} ({})\n\
+                            test_output.push_str(&format!(
+                                "{} ({})\n\
                             Path: {}\n\
                             Type: {:?}\n\
                             Files: {} | Symbols: {} | Size: {:.1} KB\n\
                             Expires: {}\n\
                             Status: {}\n\n",
-                            workspace.display_name,
-                            workspace.id,
-                            workspace.original_path,
-                            workspace.workspace_type,
-                            workspace.file_count,
-                            workspace.symbol_count,
-                            workspace.index_size_bytes as f64 / 1024.0,
-                            expires,
-                            status
-                        ));
-                    }
-                    token_estimator.estimate_string(&test_output)
-                };
+                                workspace.display_name,
+                                workspace.id,
+                                workspace.original_path,
+                                workspace.workspace_type,
+                                workspace.file_count,
+                                workspace.symbol_count,
+                                workspace.index_size_bytes as f64 / 1024.0,
+                                expires,
+                                status
+                            ));
+                        }
+                        token_estimator.estimate_string(&test_output)
+                    };
 
                 // Reduce workspaces if needed to fit token limit
                 let total_count = workspaces.len();
-                let optimized_workspaces = reducer.reduce(&workspaces, target_tokens, estimate_workspaces);
+                let optimized_workspaces =
+                    reducer.reduce(&workspaces, target_tokens, estimate_workspaces);
                 let shown_count = optimized_workspaces.len();
 
                 let mut output = String::from("Registered Workspaces:\n\n");
@@ -830,8 +826,7 @@ impl ManageWorkspaceTool {
                 }
             }
             None => {
-                status
-                    .push_str("SQLite Status: NOT CONNECTED\nDatabase not initialized\n");
+                status.push_str("SQLite Status: NOT CONNECTED\nDatabase not initialized\n");
             }
         }
 
@@ -882,12 +877,8 @@ impl ManageWorkspaceTool {
 
                 if embeddings_exist {
                     status.push_str("Embeddings Status: READY\n");
-                    status.push_str(
-                        "Semantic Search: AI-powered code understanding enabled\n",
-                    );
-                    status.push_str(
-                        "Features: Concept-based search and similarity matching\n",
-                    );
+                    status.push_str("Semantic Search: AI-powered code understanding enabled\n");
+                    status.push_str("Features: Concept-based search and similarity matching\n");
 
                     if detailed {
                         let embedding_size = Self::calculate_directory_size(&embedding_path)?;
@@ -901,8 +892,7 @@ impl ManageWorkspaceTool {
                     }
                 } else {
                     status.push_str("Embeddings Status: BUILDING\n");
-                    status
-                        .push_str("Background generation in progress, text search available\n");
+                    status.push_str("Background generation in progress, text search available\n");
                 }
             }
             None => {
@@ -945,7 +935,11 @@ impl ManageWorkspaceTool {
             • Embedding System: {}\n\n",
             systems_ready,
             if db_ready { "READY" } else { "BUILDING" },
-            if embeddings_ready { "READY" } else { "BUILDING" }
+            if embeddings_ready {
+                "READY"
+            } else {
+                "BUILDING"
+            }
         ));
 
         assessment.push_str("Recommended Actions:\n");

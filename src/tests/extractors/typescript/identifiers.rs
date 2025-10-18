@@ -16,7 +16,9 @@ fn test_extract_function_calls() {
     }
     "#;
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = TypeScriptExtractor::new(
@@ -28,7 +30,9 @@ fn test_extract_function_calls() {
     let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
     assert!(!identifiers.is_empty());
-    assert!(identifiers.iter().any(|id| id.name == "foo" && id.kind == IdentifierKind::Call));
+    assert!(identifiers
+        .iter()
+        .any(|id| id.name == "foo" && id.kind == IdentifierKind::Call));
 }
 
 #[test]
@@ -38,7 +42,9 @@ fn test_extract_member_access() {
     console.log(obj.prop);
     "#;
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = TypeScriptExtractor::new(
@@ -59,7 +65,9 @@ fn test_extract_member_access() {
 fn test_extract_chained_member_access() {
     let code = "const value = obj.foo.bar.baz;";
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let mut extractor = TypeScriptExtractor::new(

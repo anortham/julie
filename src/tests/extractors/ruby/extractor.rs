@@ -11,10 +11,8 @@ mod ruby_extractor_tests {
     fn test_ruby_extractor_creation() {
         // Verify that RubyExtractor can be created successfully
         // The constructor should not panic and should accept valid file paths and content
-        let _extractor = RubyExtractor::new(
-            "test.rb".to_string(),
-            "class MyClass\nend".to_string(),
-        );
+        let _extractor =
+            RubyExtractor::new("test.rb".to_string(), "class MyClass\nend".to_string());
         // If we reach here without panicking, the test passes
         assert!(true);
     }

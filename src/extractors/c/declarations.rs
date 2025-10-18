@@ -5,9 +5,9 @@
 
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::extractors::c::CExtractor;
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
-use regex::Regex;
 
 use super::helpers;
 use super::signatures;
@@ -150,10 +150,7 @@ pub(super) fn extract_function_definition(
             }),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("function".to_string()),
-                ),
+                ("type".to_string(), Value::String("function".to_string())),
                 ("name".to_string(), Value::String(function_name)),
                 (
                     "returnType".to_string(),
@@ -193,47 +190,51 @@ pub(super) fn extract_function_declaration(
         "public"
     };
 
-    Some(extractor.base.create_symbol(
-        &node,
-        function_name.clone(),
-        SymbolKind::Function,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(if visibility == "private" {
-                Visibility::Private
-            } else {
-                Visibility::Public
-            }),
-            parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("function".to_string()),
-                ),
-                ("name".to_string(), Value::String(function_name)),
-                (
-                    "returnType".to_string(),
-                    Value::String(types::extract_return_type(&extractor.base, node)),
-                ),
-                (
-                    "parameters".to_string(),
-                    Value::String(
-                        signatures::extract_function_parameters_from_declaration(&extractor.base, node)
-                            .join(", "),
+    Some(
+        extractor.base.create_symbol(
+            &node,
+            function_name.clone(),
+            SymbolKind::Function,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(if visibility == "private" {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                }),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(HashMap::from([
+                    ("type".to_string(), Value::String("function".to_string())),
+                    ("name".to_string(), Value::String(function_name)),
+                    (
+                        "returnType".to_string(),
+                        Value::String(types::extract_return_type(&extractor.base, node)),
                     ),
-                ),
-                (
-                    "isDefinition".to_string(),
-                    Value::String("false".to_string()),
-                ),
-                (
-                    "isStatic".to_string(),
-                    Value::String(helpers::is_static_function(&extractor.base, node).to_string()),
-                ),
-            ])),
-            doc_comment: None,
-        },
-    ))
+                    (
+                        "parameters".to_string(),
+                        Value::String(
+                            signatures::extract_function_parameters_from_declaration(
+                                &extractor.base,
+                                node,
+                            )
+                            .join(", "),
+                        ),
+                    ),
+                    (
+                        "isDefinition".to_string(),
+                        Value::String("false".to_string()),
+                    ),
+                    (
+                        "isStatic".to_string(),
+                        Value::String(
+                            helpers::is_static_function(&extractor.base, node).to_string(),
+                        ),
+                    ),
+                ])),
+                doc_comment: None,
+            },
+        ),
+    )
 }
 
 /// Extract a variable declaration
@@ -264,10 +265,7 @@ pub(super) fn extract_variable_declaration(
             }),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("variable".to_string()),
-                ),
+                ("type".to_string(), Value::String("variable".to_string())),
                 ("name".to_string(), Value::String(variable_name)),
                 (
                     "dataType".to_string(),
@@ -323,10 +321,7 @@ pub(super) fn extract_struct(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("struct".to_string()),
-                ),
+                ("type".to_string(), Value::String("struct".to_string())),
                 ("name".to_string(), Value::String(struct_name)),
                 (
                     "fields".to_string(),
@@ -359,10 +354,7 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("enum".to_string()),
-                ),
+                ("type".to_string(), Value::String("enum".to_string())),
                 ("name".to_string(), Value::String(enum_name)),
                 (
                     "values".to_string(),
@@ -411,10 +403,7 @@ pub(super) fn extract_enum_value_symbols(
                                 visibility: Some(Visibility::Public),
                                 parent_id: Some(parent_enum_id.to_string()),
                                 metadata: Some(HashMap::from([
-                                    (
-                                        "type".to_string(),
-                                        Value::String("enum_value".to_string()),
-                                    ),
+                                    ("type".to_string(), Value::String("enum_value".to_string())),
                                     ("name".to_string(), Value::String(name)),
                                     (
                                         "value".to_string(),
@@ -446,7 +435,8 @@ pub(super) fn extract_type_definition(
     parent_id: Option<&str>,
 ) -> Symbol {
     let typedef_name = extract_typedef_name_from_type_definition(&extractor.base, node);
-    let underlying_type = types::extract_underlying_type_from_type_definition(&extractor.base, node);
+    let underlying_type =
+        types::extract_underlying_type_from_type_definition(&extractor.base, node);
     let signature = signatures::build_typedef_signature(&extractor.base, &node, &typedef_name);
 
     // If the typedef contains any struct, treat it as a Class
@@ -471,19 +461,10 @@ pub(super) fn extract_type_definition(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String(struct_type.to_string()),
-                ),
+                ("type".to_string(), Value::String(struct_type.to_string())),
                 ("name".to_string(), Value::String(typedef_name)),
-                (
-                    "underlyingType".to_string(),
-                    Value::String(underlying_type),
-                ),
-                (
-                    "isStruct".to_string(),
-                    Value::String(is_struct.to_string()),
-                ),
+                ("underlyingType".to_string(), Value::String(underlying_type)),
+                ("isStruct".to_string(), Value::String(is_struct.to_string())),
             ])),
             doc_comment: None,
         },
@@ -515,10 +496,7 @@ pub(super) fn extract_linkage_specification(
                                 "type".to_string(),
                                 Value::String("linkage_specification".to_string()),
                             ),
-                            (
-                                "linkage".to_string(),
-                                Value::String("C".to_string()),
-                            ),
+                            ("linkage".to_string(), Value::String("C".to_string())),
                         ])),
                         doc_comment: None,
                     },
@@ -542,7 +520,8 @@ pub(super) fn extract_from_expression_statement(
 
             // Check if this looks like a typedef name by looking at siblings
             if helpers::looks_like_typedef_name(&extractor.base, &node, &identifier_name) {
-                let signature = signatures::build_typedef_signature(&extractor.base, &node, &identifier_name);
+                let signature =
+                    signatures::build_typedef_signature(&extractor.base, &node, &identifier_name);
                 return Some(extractor.base.create_symbol(
                     &node,
                     identifier_name.clone(),
@@ -552,14 +531,8 @@ pub(super) fn extract_from_expression_statement(
                         visibility: Some(Visibility::Public),
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: Some(HashMap::from([
-                            (
-                                "type".to_string(),
-                                Value::String("struct".to_string()),
-                            ),
-                            (
-                                "name".to_string(),
-                                Value::String(identifier_name),
-                            ),
+                            ("type".to_string(), Value::String("struct".to_string())),
+                            ("name".to_string(), Value::String(identifier_name)),
                             (
                                 "fromExpressionStatement".to_string(),
                                 Value::String("true".to_string()),
@@ -575,13 +548,16 @@ pub(super) fn extract_from_expression_statement(
 }
 
 /// Extract typedef name from type definition
-fn extract_typedef_name_from_type_definition(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+fn extract_typedef_name_from_type_definition(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> String {
     let mut all_identifiers = Vec::new();
     helpers::collect_all_identifiers(base, node, &mut all_identifiers);
 
     let c_keywords = [
-        "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void",
-        "const", "volatile", "static", "extern",
+        "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void", "const",
+        "volatile", "static", "extern",
     ];
 
     for identifier in all_identifiers.iter().rev() {
@@ -604,8 +580,8 @@ fn extract_typedef_name_from_declaration(base: &BaseExtractor, node: tree_sitter
     helpers::collect_all_identifiers(base, node, &mut all_identifiers);
 
     let c_keywords = [
-        "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void",
-        "const", "volatile", "static", "extern",
+        "typedef", "unsigned", "long", "char", "int", "short", "float", "double", "void", "const",
+        "volatile", "static", "extern",
     ];
 
     for identifier in all_identifiers.iter().rev() {
@@ -636,15 +612,9 @@ pub(super) fn extract_typedef_from_declaration(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(HashMap::from([
-                (
-                    "type".to_string(),
-                    Value::String("typedef".to_string()),
-                ),
+                ("type".to_string(), Value::String("typedef".to_string())),
                 ("name".to_string(), Value::String(typedef_name)),
-                (
-                    "underlyingType".to_string(),
-                    Value::String(underlying_type),
-                ),
+                ("underlyingType".to_string(), Value::String(underlying_type)),
             ])),
             doc_comment: None,
         },
@@ -652,7 +622,10 @@ pub(super) fn extract_typedef_from_declaration(
 }
 
 /// Extract function pointer typedef name using regex
-fn extract_function_pointer_typedef_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+fn extract_function_pointer_typedef_name(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     let signature = base.get_node_text(&node);
     let re = Regex::new(r"typedef\s+[^(]*\(\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)").ok()?;
 
@@ -708,11 +681,11 @@ pub(super) fn fix_struct_alignment_attributes(symbols: &mut [Symbol]) {
         if symbol.kind == SymbolKind::Type || symbol.kind == SymbolKind::Class {
             if let Some(signature) = &symbol.signature {
                 if signature.contains("typedef struct") && !signature.contains("ALIGN(") {
-                    if symbol.name == "AtomicCounter" || signature.contains("volatile int counter") {
-                        if let Some(new_signature) = reconstruct_struct_signature_with_alignment(
-                            signature,
-                            &symbol.name,
-                        ) {
+                    if symbol.name == "AtomicCounter" || signature.contains("volatile int counter")
+                    {
+                        if let Some(new_signature) =
+                            reconstruct_struct_signature_with_alignment(signature, &symbol.name)
+                        {
                             symbol.signature = Some(new_signature);
                         }
                     }

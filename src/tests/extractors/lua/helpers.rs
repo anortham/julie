@@ -1,7 +1,7 @@
 // Lua helpers inline tests extracted from extractors/lua/helpers.rs
 
 use crate::extractors::lua::helpers::{
-    find_child_by_type, contains_function_definition, infer_type_from_expression,
+    contains_function_definition, find_child_by_type, infer_type_from_expression,
 };
 use crate::extractors::lua::LuaExtractor;
 use tree_sitter::Parser;
@@ -65,7 +65,10 @@ fn test_infer_type_from_expression_string() {
     if let Some(string_node) = find_node_by_kind(root, "string") {
         let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string());
         let inferred = infer_type_from_expression(base.base(), string_node);
-        assert_eq!(inferred, "string", "String expression should infer as 'string'");
+        assert_eq!(
+            inferred, "string",
+            "String expression should infer as 'string'"
+        );
     } else {
         panic!("Could not find string node in parsed code");
     }
@@ -82,7 +85,10 @@ fn test_infer_type_from_expression_number() {
     if let Some(number_node) = find_node_by_kind(root, "number") {
         let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string());
         let inferred = infer_type_from_expression(base.base(), number_node);
-        assert_eq!(inferred, "number", "Number expression should infer as 'number'");
+        assert_eq!(
+            inferred, "number",
+            "Number expression should infer as 'number'"
+        );
     } else {
         panic!("Could not find number node in parsed code");
     }
@@ -99,7 +105,10 @@ fn test_infer_type_from_expression_table() {
     if let Some(table_node) = find_node_by_kind(root, "table_constructor") {
         let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string());
         let inferred = infer_type_from_expression(base.base(), table_node);
-        assert_eq!(inferred, "table", "Table constructor should infer as 'table'");
+        assert_eq!(
+            inferred, "table",
+            "Table constructor should infer as 'table'"
+        );
     } else {
         panic!("Could not find table_constructor node in parsed code");
     }
@@ -116,7 +125,10 @@ fn test_infer_type_from_expression_require_call() {
     if let Some(call_node) = find_node_by_kind(root, "function_call") {
         let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string());
         let inferred = infer_type_from_expression(base.base(), call_node);
-        assert_eq!(inferred, "import", "require() call should infer as 'import'");
+        assert_eq!(
+            inferred, "import",
+            "require() call should infer as 'import'"
+        );
     } else {
         panic!("Could not find function_call node in parsed code");
     }
@@ -164,5 +176,8 @@ end
             found_something = true;
         }
     }
-    assert!(found_something, "Should have found something in realistic Lua code");
+    assert!(
+        found_something,
+        "Should have found something in realistic Lua code"
+    );
 }

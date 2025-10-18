@@ -1,8 +1,8 @@
 //! Refactoring operations - extract, replace, and insert operations
 
 use anyhow::{anyhow, Result};
-use serde_json::Value as JsonValue;
 use rust_mcp_sdk::schema::CallToolResult;
+use serde_json::Value as JsonValue;
 
 use super::SmartRefactorTool;
 use crate::handler::JulieServerHandler;
@@ -80,7 +80,7 @@ impl SmartRefactorTool {
             .unwrap_or(0);
         let line_end = source_content[symbol_end..]
             .find('\n')
-            .map(|pos| symbol_end + pos + 1)  // Include the newline
+            .map(|pos| symbol_end + pos + 1) // Include the newline
             .unwrap_or(source_content.len());
 
         let extracted_text = source_content[line_start..line_end].trim_end().to_string();
@@ -93,18 +93,15 @@ impl SmartRefactorTool {
 
         // Clean up: collapse multiple consecutive blank lines to just one blank line
         // (two newlines total: one ends the previous content, one is the blank line)
-        let cleaned = new_source_content.replace("\n\n\n\n", "\n\n")
+        let cleaned = new_source_content
+            .replace("\n\n\n\n", "\n\n")
             .replace("\n\n\n", "\n\n");
         new_source_content = cleaned;
 
         // If update_imports is true, add import statement at top of source file
         if update_imports {
-            let import_statement = self.generate_import_statement(
-                symbol_name,
-                source_file,
-                target_file,
-                &language,
-            )?;
+            let import_statement =
+                self.generate_import_statement(symbol_name, source_file, target_file, &language)?;
             new_source_content = self.add_import_to_top(&new_source_content, &import_statement);
         }
 
@@ -232,7 +229,8 @@ impl SmartRefactorTool {
             if trimmed.starts_with("import ")
                 || trimmed.starts_with("from ")
                 || trimmed.starts_with("use ")
-                || trimmed.starts_with("#")  // Python shebang/encoding
+                || trimmed.starts_with("#")
+            // Python shebang/encoding
             {
                 insert_after_line = i + 1;
             }
@@ -244,7 +242,7 @@ impl SmartRefactorTool {
             if i == insert_after_line {
                 result.push(import_statement.to_string());
                 if !lines.get(i).map(|l| l.trim().is_empty()).unwrap_or(true) {
-                    result.push(String::new());  // Add blank line
+                    result.push(String::new()); // Add blank line
                 }
             }
             result.push(line.to_string());
@@ -491,7 +489,10 @@ impl SmartRefactorTool {
 
         // Validate position
         if position != "before" && position != "after" {
-            return Err(anyhow!("Position must be 'before' or 'after', got: {}", position));
+            return Err(anyhow!(
+                "Position must be 'before' or 'after', got: {}",
+                position
+            ));
         }
 
         // Validate file exists
@@ -539,9 +540,9 @@ impl SmartRefactorTool {
 
         // Calculate insertion point based on position
         let insertion_byte = if position == "before" {
-            line_start  // Insert at start of line
+            line_start // Insert at start of line
         } else {
-            line_end    // Insert at end of line
+            line_end // Insert at end of line
         };
 
         // Get the symbol's line for indentation detection
@@ -576,19 +577,13 @@ impl SmartRefactorTool {
             format!(
                 "DRY RUN: Would insert {} '{}' in {}\n\n\
                 Inserting {} lines",
-                position,
-                target_symbol,
-                file_path,
-                lines_inserted
+                position, target_symbol, file_path, lines_inserted
             )
         } else {
             format!(
                 "✅ Successfully inserted {} '{}' in {}\n\n\
                 Inserted {} lines",
-                position,
-                target_symbol,
-                file_path,
-                lines_inserted
+                position, target_symbol, file_path, lines_inserted
             )
         };
 
@@ -654,5 +649,4 @@ impl SmartRefactorTool {
 
         Err(anyhow!("Symbol '{}' not found", name))
     }
-
 }

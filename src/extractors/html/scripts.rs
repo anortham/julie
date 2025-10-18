@@ -17,7 +17,8 @@ impl ScriptStyleExtractor {
     ) -> Symbol {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
-        let signature = AttributeHandler::build_element_signature("script", &attributes, content.as_deref());
+        let signature =
+            AttributeHandler::build_element_signature("script", &attributes, content.as_deref());
 
         // Determine symbol kind based on src attribute
         let symbol_kind = if attributes.contains_key("src") {
@@ -86,7 +87,8 @@ impl ScriptStyleExtractor {
     ) -> Symbol {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
-        let signature = AttributeHandler::build_element_signature("style", &attributes, content.as_deref());
+        let signature =
+            AttributeHandler::build_element_signature("style", &attributes, content.as_deref());
 
         let mut metadata = HashMap::new();
         metadata.insert(

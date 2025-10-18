@@ -255,11 +255,15 @@ impl JulieServerHandler {
                             .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("workspace");
-                        let full_workspace_id = format!("{}_{}", workspace_name, &workspace_id[..8]);
+                        let full_workspace_id =
+                            format!("{}_{}", workspace_name, &workspace_id[..8]);
                         Some(julie_dir.join("indexes").join(full_workspace_id))
                     }
                     Err(e) => {
-                        warn!("Failed to generate workspace ID: {} - will skip index clearing", e);
+                        warn!(
+                            "Failed to generate workspace ID: {} - will skip index clearing",
+                            e
+                        );
                         None
                     }
                 };
@@ -268,9 +272,16 @@ impl JulieServerHandler {
                 if let Some(primary_index_dir) = primary_workspace_index_dir {
                     if primary_index_dir.exists() {
                         if let Err(e) = std::fs::remove_dir_all(&primary_index_dir) {
-                            warn!("Failed to clear primary workspace index {}: {}", primary_index_dir.display(), e);
+                            warn!(
+                                "Failed to clear primary workspace index {}: {}",
+                                primary_index_dir.display(),
+                                e
+                            );
                         } else {
-                            info!("✅ Cleared primary workspace index: {}", primary_index_dir.display());
+                            info!(
+                                "✅ Cleared primary workspace index: {}",
+                                primary_index_dir.display()
+                            );
                             info!("✅ Reference workspaces preserved (workspace isolation maintained)");
                         }
                     }

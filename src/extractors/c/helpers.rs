@@ -187,7 +187,11 @@ pub(super) fn extract_enum_name(base: &BaseExtractor, node: tree_sitter::Node) -
 }
 
 /// Check if this looks like a typedef name by examining parent context
-pub(super) fn looks_like_typedef_name(base: &BaseExtractor, node: &tree_sitter::Node, _identifier_name: &str) -> bool {
+pub(super) fn looks_like_typedef_name(
+    base: &BaseExtractor,
+    node: &tree_sitter::Node,
+    _identifier_name: &str,
+) -> bool {
     // Simple heuristic: check if previous siblings contain "typedef"
     if let Some(parent) = node.parent() {
         let mut cursor = parent.walk();
@@ -202,7 +206,11 @@ pub(super) fn looks_like_typedef_name(base: &BaseExtractor, node: &tree_sitter::
 }
 
 /// Recursively collect all identifiers from a node tree
-pub(super) fn collect_all_identifiers(base: &BaseExtractor, node: tree_sitter::Node, identifiers: &mut Vec<String>) {
+pub(super) fn collect_all_identifiers(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+    identifiers: &mut Vec<String>,
+) {
     match node.kind() {
         "identifier" | "type_identifier" | "primitive_type" => {
             let text = base.get_node_text(&node);

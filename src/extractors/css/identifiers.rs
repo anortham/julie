@@ -54,7 +54,8 @@ impl IdentifierExtractor {
                 for child in node.children(&mut cursor) {
                     if child.kind() == "function_name" {
                         let name = base.get_node_text(&child);
-                        let containing_symbol_id = Self::find_containing_symbol_id(base, node, symbol_map);
+                        let containing_symbol_id =
+                            Self::find_containing_symbol_id(base, node, symbol_map);
 
                         base.create_identifier(
                             &child,
@@ -74,7 +75,8 @@ impl IdentifierExtractor {
                 let class_name = text.strip_prefix('.').unwrap_or(&text);
 
                 if !class_name.is_empty() {
-                    let containing_symbol_id = Self::find_containing_symbol_id(base, node, symbol_map);
+                    let containing_symbol_id =
+                        Self::find_containing_symbol_id(base, node, symbol_map);
 
                     base.create_identifier(
                         &node,
@@ -92,7 +94,8 @@ impl IdentifierExtractor {
                 let id_name = text.strip_prefix('#').unwrap_or(&text);
 
                 if !id_name.is_empty() {
-                    let containing_symbol_id = Self::find_containing_symbol_id(base, node, symbol_map);
+                    let containing_symbol_id =
+                        Self::find_containing_symbol_id(base, node, symbol_map);
 
                     base.create_identifier(
                         &node,

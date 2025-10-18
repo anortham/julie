@@ -6,7 +6,11 @@ use tree_sitter::Node;
 impl super::RazorExtractor {
     /// Find the first child node of a specific type
     #[allow(clippy::manual_find)] // Manual loop required for borrow checker
-    pub(super) fn find_child_by_type<'a>(&self, node: Node<'a>, child_type: &str) -> Option<Node<'a>> {
+    pub(super) fn find_child_by_type<'a>(
+        &self,
+        node: Node<'a>,
+        child_type: &str,
+    ) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == child_type {
@@ -18,7 +22,11 @@ impl super::RazorExtractor {
 
     /// Find the first child node matching any of the provided types
     #[allow(clippy::manual_find)] // Manual loop required for borrow checker
-    pub(super) fn find_child_by_types<'a>(&self, node: Node<'a>, child_types: &[&str]) -> Option<Node<'a>> {
+    pub(super) fn find_child_by_types<'a>(
+        &self,
+        node: Node<'a>,
+        child_types: &[&str],
+    ) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child_types.contains(&child.kind()) {
@@ -35,10 +43,20 @@ impl super::RazorExtractor {
         for child in node.children(&mut cursor) {
             let child_text = self.base.get_node_text(&child);
             let modifier_types = [
-                "public", "private", "protected", "internal", "static",
-                "virtual", "override", "abstract", "sealed", "async"
+                "public",
+                "private",
+                "protected",
+                "internal",
+                "static",
+                "virtual",
+                "override",
+                "abstract",
+                "sealed",
+                "async",
             ];
-            if modifier_types.contains(&child.kind()) || modifier_types.contains(&child_text.as_str()) {
+            if modifier_types.contains(&child.kind())
+                || modifier_types.contains(&child_text.as_str())
+            {
                 modifiers.push(child_text);
             }
         }
@@ -47,17 +65,23 @@ impl super::RazorExtractor {
 
     /// Extract method parameters from a parameter_list node
     pub(super) fn extract_method_parameters(&self, node: Node) -> Option<String> {
-        self.find_child_by_type(node, "parameter_list").map(|param_list| self.base.get_node_text(&param_list))
+        self.find_child_by_type(node, "parameter_list")
+            .map(|param_list| self.base.get_node_text(&param_list))
     }
 
     /// Extract return type from a node
     pub(super) fn extract_return_type(&self, node: Node) -> Option<String> {
         let type_kinds = [
-            "predefined_type", "identifier", "generic_name", "qualified_name",
-            "nullable_type", "array_type"
+            "predefined_type",
+            "identifier",
+            "generic_name",
+            "qualified_name",
+            "nullable_type",
+            "array_type",
         ];
 
-        self.find_child_by_types(node, &type_kinds).map(|return_type| self.base.get_node_text(&return_type))
+        self.find_child_by_types(node, &type_kinds)
+            .map(|return_type| self.base.get_node_text(&return_type))
     }
 
     /// Extract property type from a property_declaration node
@@ -67,17 +91,41 @@ impl super::RazorExtractor {
 
         for (i, child) in children.iter().enumerate() {
             // Skip attributes and modifiers
-            if child.kind() == "attribute_list" ||
-               ["public", "private", "protected", "internal", "static", "virtual", "override", "abstract", "sealed"]
-                   .contains(&child.kind()) ||
-               ["public", "private", "protected", "internal", "static", "virtual", "override", "abstract", "sealed"]
-                   .contains(&self.base.get_node_text(child).as_str()) {
+            if child.kind() == "attribute_list"
+                || [
+                    "public",
+                    "private",
+                    "protected",
+                    "internal",
+                    "static",
+                    "virtual",
+                    "override",
+                    "abstract",
+                    "sealed",
+                ]
+                .contains(&child.kind())
+                || [
+                    "public",
+                    "private",
+                    "protected",
+                    "internal",
+                    "static",
+                    "virtual",
+                    "override",
+                    "abstract",
+                    "sealed",
+                ]
+                .contains(&self.base.get_node_text(child).as_str())
+            {
                 continue;
             }
 
             // Look for type nodes
-            if matches!(child.kind(), "predefined_type" | "nullable_type" | "array_type" | "generic_name") ||
-               (child.kind() == "identifier" && i < children.len() - 2) {
+            if matches!(
+                child.kind(),
+                "predefined_type" | "nullable_type" | "array_type" | "generic_name"
+            ) || (child.kind() == "identifier" && i < children.len() - 2)
+            {
                 return Some(self.base.get_node_text(child));
             }
         }

@@ -1,6 +1,5 @@
 /// Helper utilities for Python symbol extraction
 /// Includes AST navigation, argument extraction, and string handling
-
 use super::PythonExtractor;
 use tree_sitter::Node;
 
@@ -23,8 +22,7 @@ pub fn extract_argument_list(extractor: &PythonExtractor, node: &Node) -> Vec<St
                 // Handle keyword arguments like metaclass=SingletonMeta
                 let mut child_cursor = child.walk();
                 let children: Vec<_> = child.children(&mut child_cursor).collect();
-                if let (Some(keyword_node), Some(value_node)) =
-                    (children.first(), children.last())
+                if let (Some(keyword_node), Some(value_node)) = (children.first(), children.last())
                 {
                     if keyword_node.kind() == "identifier"
                         && base.get_node_text(keyword_node) == "metaclass"

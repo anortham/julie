@@ -308,11 +308,7 @@ impl FindLogicTool {
         }
 
         // Get top symbol names for summary
-        let top_symbols: Vec<String> = symbols
-            .iter()
-            .take(5)
-            .map(|s| s.name.clone())
-            .collect();
+        let top_symbols: Vec<String> = symbols.iter().take(5).map(|s| s.name.clone()).collect();
 
         format!(
             "Found {} business logic components for '{}'\nTop: {}",

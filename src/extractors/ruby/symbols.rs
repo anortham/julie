@@ -1,11 +1,9 @@
+use super::helpers::{extract_alias_name, extract_name_from_node, extract_singleton_method_name};
+use super::signatures;
 /// Symbol extraction for individual Ruby constructs
 /// Handles extraction of modules, classes, methods, variables, constants, and aliases
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
-use super::helpers::{extract_name_from_node, extract_singleton_method_name, extract_alias_name};
-use super::signatures;
 
 /// Extract a module symbol
 pub(super) fn extract_module(
@@ -166,7 +164,8 @@ pub(super) fn extract_singleton_method(
     current_visibility: Visibility,
 ) -> Symbol {
     let name = extract_singleton_method_name(node, |n| base.get_node_text(n));
-    let signature = signatures::build_singleton_method_signature(&node, &name, |n| base.get_node_text(n));
+    let signature =
+        signatures::build_singleton_method_signature(&node, &name, |n| base.get_node_text(n));
 
     base.create_symbol(
         &node,
@@ -183,10 +182,7 @@ pub(super) fn extract_singleton_method(
 }
 
 /// Extract a variable symbol
-pub(super) fn extract_variable(
-    base: &mut BaseExtractor,
-    node: Node,
-) -> Symbol {
+pub(super) fn extract_variable(base: &mut BaseExtractor, node: Node) -> Symbol {
     let name = base.get_node_text(&node);
     let signature = name.clone();
 
@@ -228,10 +224,7 @@ pub(super) fn extract_constant(
 }
 
 /// Extract an alias symbol
-pub(super) fn extract_alias(
-    base: &mut BaseExtractor,
-    node: Node,
-) -> Symbol {
+pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Symbol {
     let signature = base.get_node_text(&node);
     let alias_name = extract_alias_name(node, |n| base.get_node_text(n));
 

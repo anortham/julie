@@ -128,10 +128,7 @@ impl BashExtractor {
         self.base.identifiers.clone()
     }
 
-    pub fn infer_types(
-        &self,
-        symbols: &[Symbol],
-    ) -> std::collections::HashMap<String, String> {
+    pub fn infer_types(&self, symbols: &[Symbol]) -> std::collections::HashMap<String, String> {
         // Delegate to types module
         types::BashExtractor::infer_types(self, symbols)
     }

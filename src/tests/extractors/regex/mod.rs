@@ -1,6 +1,6 @@
 // Submodule declarations
-pub mod extractor;
 pub mod classes;
+pub mod extractor;
 pub mod flags;
 pub mod groups;
 pub mod helpers;

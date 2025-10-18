@@ -8,11 +8,11 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::extractors::SymbolKind;
     use crate::utils::cross_language_intelligence::{
         generate_naming_variants, to_camel_case, to_kebab_case, to_pascal_case,
         to_screaming_snake_case, to_snake_case, IntelligenceConfig, SymbolKindEquivalence,
     };
-    use crate::extractors::SymbolKind;
 
     #[test]
     fn test_snake_case_conversion() {

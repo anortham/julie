@@ -16,11 +16,11 @@ use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
+use super::reference_workspace;
+use super::resolution::{compare_symbols_by_priority_and_context, resolve_workspace_filter};
+use super::semantic_matching;
 use super::types::DefinitionResult;
 use super::types::FastGotoResult;
-use super::resolution::{resolve_workspace_filter, compare_symbols_by_priority_and_context};
-use super::reference_workspace;
-use super::semantic_matching;
 
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
@@ -249,7 +249,9 @@ impl FastGotoTool {
         // Strategy 3: HNSW-powered semantic matching (FAST!)
         if exact_matches.is_empty() {
             debug!("🧠 Using HNSW semantic search for: {}", self.symbol);
-            if let Ok(semantic_symbols) = semantic_matching::find_semantic_definitions(handler, &self.symbol).await {
+            if let Ok(semantic_symbols) =
+                semantic_matching::find_semantic_definitions(handler, &self.symbol).await
+            {
                 exact_matches.extend(semantic_symbols);
             }
         }
@@ -257,7 +259,8 @@ impl FastGotoTool {
         // Prioritize results using shared logic
         exact_matches.sort_by(|a, b| {
             // Use shared prioritization logic (definition priority + context file preference)
-            let shared_cmp = compare_symbols_by_priority_and_context(a, b, self.context_file.as_deref());
+            let shared_cmp =
+                compare_symbols_by_priority_and_context(a, b, self.context_file.as_deref());
             if shared_cmp != std::cmp::Ordering::Equal {
                 return shared_cmp;
             }
@@ -283,11 +286,7 @@ impl FastGotoTool {
     /// Format minimal summary for AI agents (structured_content has all data)
     pub fn format_optimized_results(&self, symbols: &[Symbol]) -> String {
         let count = symbols.len();
-        let top_results: Vec<String> = symbols
-            .iter()
-            .take(5)
-            .map(|s| s.name.clone())
-            .collect();
+        let top_results: Vec<String> = symbols.iter().take(5).map(|s| s.name.clone()).collect();
 
         format!(
             "Found {} definitions for '{}'\n{}",

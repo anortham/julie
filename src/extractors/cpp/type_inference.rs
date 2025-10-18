@@ -59,8 +59,7 @@ fn infer_function_return_type(symbol: &Symbol) -> Option<String> {
     }
 
     // Pattern: "auto functionName(params) -> returnType"
-    let auto_pattern =
-        regex::Regex::new(r"auto\s+(\w+)\s*\([^)]*\)\s*->\s*(.+?)(?:\s|$)").ok()?;
+    let auto_pattern = regex::Regex::new(r"auto\s+(\w+)\s*\([^)]*\)\s*->\s*(.+?)(?:\s|$)").ok()?;
     if let Some(captures) = auto_pattern.captures(signature) {
         return Some(captures.get(2)?.as_str().trim().to_string());
     }

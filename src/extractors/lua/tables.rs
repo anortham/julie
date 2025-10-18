@@ -1,13 +1,10 @@
+use super::helpers;
 /// Table field extraction and handling
 ///
 /// Handles extraction of table fields from table constructors:
 /// - Field assignments: `field = value`
 /// - Method definitions: `method = function() end`
-
-use crate::extractors::base::{
-    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-};
-use super::helpers;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -24,7 +21,8 @@ pub(super) fn extract_table_fields(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "field" {
-            if let Some(field_symbol) = extract_table_field_symbol(symbols, base, child, parent_id) {
+            if let Some(field_symbol) = extract_table_field_symbol(symbols, base, child, parent_id)
+            {
                 symbols.push(field_symbol);
             }
         }

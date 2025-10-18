@@ -19,8 +19,11 @@ impl ElementExtractor {
         let tag_name = HTMLHelpers::extract_tag_name(base, node);
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let text_content = HTMLHelpers::extract_element_text_content(base, node);
-        let signature =
-            AttributeHandler::build_element_signature(&tag_name, &attributes, text_content.as_deref());
+        let signature = AttributeHandler::build_element_signature(
+            &tag_name,
+            &attributes,
+            text_content.as_deref(),
+        );
 
         // Determine symbol kind based on element type
         let symbol_kind = HTMLTypes::get_symbol_kind_for_element(&tag_name, &attributes);

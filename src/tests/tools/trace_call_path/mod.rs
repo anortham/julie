@@ -1,8 +1,8 @@
 // Tests extracted from src/tools/trace_call_path.rs
 // These were previously inline tests that have been moved to follow project standards
 
-mod comprehensive;  // Parameter validation and API tests
-mod new_features;   // TDD tests for new features (output_format, configurable parameters)
+mod comprehensive; // Parameter validation and API tests
+mod new_features; // TDD tests for new features (output_format, configurable parameters)
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};

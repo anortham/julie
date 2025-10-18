@@ -49,7 +49,9 @@ pub(super) fn extract_variable(
 
     // Check for function type declaration
     if node_text.contains("fn (") || node_text.contains("fn(") {
-        return extract_function_type_assignment(base, node, name, parent_id, is_public, &node_text);
+        return extract_function_type_assignment(
+            base, node, name, parent_id, is_public, &node_text,
+        );
     }
 
     // Standard variable/constant extraction
@@ -181,9 +183,7 @@ fn extract_enum_assignment(
     is_public: bool,
     node_text: &str,
 ) -> Option<Symbol> {
-    let enum_match = Regex::new(r"enum\(([^)]+)\)")
-        .unwrap()
-        .find(node_text);
+    let enum_match = Regex::new(r"enum\(([^)]+)\)").unwrap().find(node_text);
     let enum_type = if let Some(enum_match) = enum_match {
         enum_match.as_str().to_string()
     } else {
@@ -325,9 +325,7 @@ fn extract_standard_variable(
     // For type aliases, extract the assignment value
     if var_type == "inferred" && is_const {
         let node_text = base.get_node_text(&node);
-        let assignment_match = Regex::new(r"=\s*([^;]+)")
-            .unwrap()
-            .captures(&node_text);
+        let assignment_match = Regex::new(r"=\s*([^;]+)").unwrap().captures(&node_text);
         if let Some(assignment_match) = assignment_match {
             var_type = assignment_match[1].trim().to_string();
         }

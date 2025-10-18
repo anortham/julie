@@ -126,7 +126,9 @@ func _on_level_started():
         let on_item_collected = symbols.iter().find(|s| s.name == "_on_item_collected");
         assert!(on_item_collected.is_some());
 
-        let on_player_health_changed = symbols.iter().find(|s| s.name == "_on_player_health_changed");
+        let on_player_health_changed = symbols
+            .iter()
+            .find(|s| s.name == "_on_player_health_changed");
         assert!(on_player_health_changed.is_some());
 
         let on_level_started = symbols.iter().find(|s| s.name == "_on_level_started");

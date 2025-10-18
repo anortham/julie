@@ -2,7 +2,7 @@
 /// - Function calls
 /// - Variable references
 /// - Member access expressions
-use crate::extractors::base::{Symbol, Identifier, IdentifierKind};
+use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
 use crate::extractors::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::Tree;
@@ -21,8 +21,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Build symbol map for finding containing symbols
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     walk_tree_for_identifiers(extractor, tree.root_node(), &symbol_map);
 

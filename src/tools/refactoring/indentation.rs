@@ -19,11 +19,11 @@ pub fn normalize_indentation(text: &str) -> String {
     text.lines()
         .map(|line| {
             if line.trim().is_empty() {
-                String::new()  // Empty lines stay empty
+                String::new() // Empty lines stay empty
             } else if line.len() >= min_indent {
-                line[min_indent..].to_string()  // Strip min_indent spaces
+                line[min_indent..].to_string() // Strip min_indent spaces
             } else {
-                line.to_string()  // Line is shorter than min_indent (shouldn't happen)
+                line.to_string() // Line is shorter than min_indent (shouldn't happen)
             }
         })
         .collect::<Vec<_>>()
@@ -39,7 +39,7 @@ pub fn apply_indentation(normalized_text: &str, target_indent: usize) -> String 
         .lines()
         .map(|line| {
             if line.trim().is_empty() {
-                String::new()  // Empty lines stay empty
+                String::new() // Empty lines stay empty
             } else {
                 format!("{}{}", indent_str, line)
             }

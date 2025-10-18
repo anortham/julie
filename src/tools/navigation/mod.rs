@@ -10,12 +10,12 @@
 //! - CASCADE architecture for progressive enhancement
 //! - Cross-language support through naming convention variants
 
-mod types;
-mod resolution;
-mod reference_workspace;
-mod semantic_matching;
 mod fast_goto;
 mod fast_refs;
+mod reference_workspace;
+mod resolution;
+mod semantic_matching;
+mod types;
 
 // Re-export public APIs
 pub use fast_goto::FastGotoTool;

@@ -73,10 +73,15 @@ impl DartExtractor {
         // Extract symbol based on node type (port of Miller's switch statement)
         match node.kind() {
             "class_definition" => {
-                symbol = functions::extract_class(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    functions::extract_class(&mut self.base, &node, current_parent_id.as_deref());
             }
             "function_declaration" => {
-                symbol = functions::extract_function(&mut self.base, &node, current_parent_id.as_deref());
+                symbol = functions::extract_function(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "function_signature" => {
                 // Skip function_signature if nested inside method_signature (already handled)
@@ -86,47 +91,73 @@ impl DartExtractor {
                     } else {
                         // Top-level functions use function_signature (not function_declaration)
                         symbol = if current_parent_id.is_some() {
-                            functions::extract_method(&mut self.base, &node, current_parent_id.as_deref())
+                            functions::extract_method(
+                                &mut self.base,
+                                &node,
+                                current_parent_id.as_deref(),
+                            )
                         } else {
-                            functions::extract_function(&mut self.base, &node, current_parent_id.as_deref())
+                            functions::extract_function(
+                                &mut self.base,
+                                &node,
+                                current_parent_id.as_deref(),
+                            )
                         };
                     }
                 }
             }
             "method_signature" | "method_declaration" => {
-                symbol = functions::extract_method(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    functions::extract_method(&mut self.base, &node, current_parent_id.as_deref());
             }
             "enum_declaration" => {
                 symbol = types::extract_enum(&mut self.base, &node, current_parent_id.as_deref());
             }
             "enum_constant" => {
-                symbol = types::extract_enum_constant(&mut self.base, &node, current_parent_id.as_deref());
+                symbol = types::extract_enum_constant(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "mixin_declaration" => {
                 symbol = types::extract_mixin(&mut self.base, &node, current_parent_id.as_deref());
             }
             "extension_declaration" => {
-                symbol = types::extract_extension(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    types::extract_extension(&mut self.base, &node, current_parent_id.as_deref());
             }
             "constructor_signature"
             | "factory_constructor_signature"
             | "constant_constructor_signature" => {
-                symbol = functions::extract_constructor(&mut self.base, &node, current_parent_id.as_deref());
+                symbol = functions::extract_constructor(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "getter_signature" => {
-                symbol = members::extract_getter(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    members::extract_getter(&mut self.base, &node, current_parent_id.as_deref());
             }
             "setter_signature" => {
-                symbol = members::extract_setter(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    members::extract_setter(&mut self.base, &node, current_parent_id.as_deref());
             }
             "declaration" => {
-                symbol = members::extract_field(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    members::extract_field(&mut self.base, &node, current_parent_id.as_deref());
             }
             "top_level_variable_declaration" | "initialized_variable_definition" => {
-                symbol = functions::extract_variable(&mut self.base, &node, current_parent_id.as_deref());
+                symbol = functions::extract_variable(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "type_alias" => {
-                symbol = types::extract_typedef(&mut self.base, &node, current_parent_id.as_deref());
+                symbol =
+                    types::extract_typedef(&mut self.base, &node, current_parent_id.as_deref());
             }
             "ERROR" => {
                 // Harper-tree-sitter-dart sometimes generates ERROR nodes for complex enum syntax
@@ -281,11 +312,31 @@ fn extract_enum_constants_from_text(
 ) {
     // Look for patterns like "blue('Blue')" in the text
     let patterns_and_names = [
-        ("blue('Blue')", "blue", crate::extractors::base::SymbolKind::EnumMember),
-        ("blue", "blue", crate::extractors::base::SymbolKind::EnumMember),
-        ("Blue')", "blue", crate::extractors::base::SymbolKind::EnumMember), // Match partial pattern
-        ("const Color", "Color", crate::extractors::base::SymbolKind::Constructor),
-        ("const Color(", "Color", crate::extractors::base::SymbolKind::Constructor),
+        (
+            "blue('Blue')",
+            "blue",
+            crate::extractors::base::SymbolKind::EnumMember,
+        ),
+        (
+            "blue",
+            "blue",
+            crate::extractors::base::SymbolKind::EnumMember,
+        ),
+        (
+            "Blue')",
+            "blue",
+            crate::extractors::base::SymbolKind::EnumMember,
+        ), // Match partial pattern
+        (
+            "const Color",
+            "Color",
+            crate::extractors::base::SymbolKind::Constructor,
+        ),
+        (
+            "const Color(",
+            "Color",
+            crate::extractors::base::SymbolKind::Constructor,
+        ),
     ];
 
     for (pattern, name, symbol_kind) in patterns_and_names.iter() {
@@ -351,7 +402,11 @@ fn extract_enum_constants_from_error_recursive(
 
 // === Identifiers Extraction ===
 
-fn walk_tree_for_identifiers(base: &mut BaseExtractor, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+fn walk_tree_for_identifiers(
+    base: &mut BaseExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
     // Extract identifier from this node if applicable
     extract_identifier_from_node(base, node, symbol_map);
 
@@ -432,4 +487,3 @@ fn find_containing_symbol_id(
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-

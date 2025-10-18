@@ -108,7 +108,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract namespace declaration
-    pub(super) fn extract_namespace(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_namespace(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name = if let Some(name_node) =
             self.find_child_by_types(node, &["qualified_name", "identifier"])
         {
@@ -276,7 +280,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract property declaration
-    pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_property(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut name = "unknownProperty".to_string();
 
         // Find property name - should be after type but before accessors

@@ -233,21 +233,22 @@ impl SwiftExtractor {
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_annotation")
         {
-            if let Some(type_node) = type_annotation
-                .children(&mut type_annotation.walk())
-                .find(|c| {
-                    matches!(
-                        c.kind(),
-                        "type"
-                            | "user_type"
-                            | "primitive_type"
-                            | "optional_type"
-                            | "function_type"
-                            | "tuple_type"
-                            | "dictionary_type"
-                            | "array_type"
-                    )
-                })
+            if let Some(type_node) =
+                type_annotation
+                    .children(&mut type_annotation.walk())
+                    .find(|c| {
+                        matches!(
+                            c.kind(),
+                            "type"
+                                | "user_type"
+                                | "primitive_type"
+                                | "optional_type"
+                                | "function_type"
+                                | "tuple_type"
+                                | "dictionary_type"
+                                | "array_type"
+                        )
+                    })
             {
                 return Some(self.base.get_node_text(&type_node));
             }

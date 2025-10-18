@@ -10,7 +10,10 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract function return type from a function node
-pub(super) fn extract_return_type(base: &crate::extractors::base::BaseExtractor, node: Node) -> String {
+pub(super) fn extract_return_type(
+    base: &crate::extractors::base::BaseExtractor,
+    node: Node,
+) -> String {
     let return_type_node = node.child_by_field_name("return_type");
 
     if let Some(ret_type) = return_type_node {

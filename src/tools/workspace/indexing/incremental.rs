@@ -230,9 +230,7 @@ impl ManageWorkspaceTool {
                 }
 
                 // Delete symbols
-                if let Err(e) =
-                    db_lock.delete_symbols_for_file_in_workspace(file_path)
-                {
+                if let Err(e) = db_lock.delete_symbols_for_file_in_workspace(file_path) {
                     warn!(
                         "Failed to delete symbols for orphaned file {}: {}",
                         file_path, e

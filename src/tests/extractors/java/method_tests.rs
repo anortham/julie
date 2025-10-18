@@ -126,9 +126,15 @@ public class Person {
             .collect();
 
         assert!(signatures.iter().any(|s| s.contains("public Person()")));
-        assert!(signatures.iter().any(|s| s.contains("public Person(String name)")));
-        assert!(signatures.iter().any(|s| s.contains("public Person(String name, int age)")));
-        assert!(signatures.iter().any(|s| s.contains("private Person(Person other)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public Person(String name)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public Person(String name, int age)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("private Person(Person other)")));
     }
 
     #[test]
@@ -169,17 +175,29 @@ public class OverloadedExample {
             .filter(|s| s.name == "process" && s.kind == SymbolKind::Method)
             .collect();
 
-        assert_eq!(process_methods.len(), 4, "Should extract all 4 overloaded process methods");
+        assert_eq!(
+            process_methods.len(),
+            4,
+            "Should extract all 4 overloaded process methods"
+        );
 
         let signatures: Vec<_> = process_methods
             .iter()
             .filter_map(|s| s.signature.as_ref())
             .collect();
 
-        assert!(signatures.iter().any(|s| s.contains("public void process()")));
-        assert!(signatures.iter().any(|s| s.contains("public void process(int value)")));
-        assert!(signatures.iter().any(|s| s.contains("public void process(String text)")));
-        assert!(signatures.iter().any(|s| s.contains("public void process(int value, String text)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public void process()")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public void process(int value)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public void process(String text)")));
+        assert!(signatures
+            .iter()
+            .any(|s| s.contains("public void process(int value, String text)")));
     }
 
     #[test]

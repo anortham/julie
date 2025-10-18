@@ -1,7 +1,7 @@
 // PHP Extractor - Function/method extraction
 
+use super::{determine_visibility, extract_modifiers, find_child, find_child_text, PhpExtractor};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions};
-use super::{PhpExtractor, find_child, find_child_text, extract_modifiers, determine_visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -11,8 +11,8 @@ pub(super) fn extract_function(
     node: Node,
     parent_id: Option<&str>,
 ) -> Symbol {
-    let name = find_child_text(extractor, &node, "name")
-        .unwrap_or_else(|| "unknownFunction".to_string());
+    let name =
+        find_child_text(extractor, &node, "name").unwrap_or_else(|| "unknownFunction".to_string());
 
     let modifiers = extract_modifiers(extractor, &node);
     let parameters_node = find_child(extractor, &node, "formal_parameters");
@@ -60,7 +60,10 @@ pub(super) fn extract_function(
     }
 
     if let Some(return_node) = return_type_node {
-        signature.push_str(&format!(": {}", extractor.get_base().get_node_text(&return_node)));
+        signature.push_str(&format!(
+            ": {}",
+            extractor.get_base().get_node_text(&return_node)
+        ));
     }
 
     let mut metadata = HashMap::new();
@@ -122,4 +125,3 @@ pub(super) fn find_return_type<'a>(_extractor: &PhpExtractor, node: &Node<'a>) -
     }
     None
 }
-

@@ -290,8 +290,10 @@ async fn generate_embeddings(
         let mut db = db_arc.lock().unwrap();
 
         // 🔧 REFACTOR: Use all_embeddings HashMap directly instead of VectorStore
-        let embeddings_vec: Vec<(String, Vec<f32>)> =
-            all_embeddings.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let embeddings_vec: Vec<(String, Vec<f32>)> = all_embeddings
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         // Store in database using the existing bulk method
         db.bulk_store_embeddings(&embeddings_vec, engine.dimensions(), model)?;

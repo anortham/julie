@@ -10,7 +10,10 @@ mod tests {
     #[test]
     fn test_extract_group_name() {
         assert_eq!(extract_group_name("(?<name>...)"), Some("name".to_string()));
-        assert_eq!(extract_group_name("(?P<name>...)"), Some("name".to_string()));
+        assert_eq!(
+            extract_group_name("(?P<name>...)"),
+            Some("name".to_string())
+        );
         assert_eq!(extract_group_name("(abc)"), None);
     }
 }

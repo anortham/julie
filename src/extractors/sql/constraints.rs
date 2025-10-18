@@ -133,8 +133,7 @@ pub(super) fn extract_table_columns(
             };
 
             // Columns are fields within the table (Miller's strategy)
-            let column_symbol =
-                base.create_symbol(&node, column_name, SymbolKind::Field, options);
+            let column_symbol = base.create_symbol(&node, column_name, SymbolKind::Field, options);
             symbols.push(column_symbol);
         }
     }
@@ -155,21 +154,11 @@ pub(super) fn extract_table_constraints(
         let mut constraint_name = format!("constraint_{}", node.start_position().row);
 
         // Determine constraint type based on child nodes (Miller's logic)
-        let has_check = base
-            .find_child_by_type(&node, "keyword_check")
-            .is_some();
-        let has_primary = base
-            .find_child_by_type(&node, "keyword_primary")
-            .is_some();
-        let has_foreign = base
-            .find_child_by_type(&node, "keyword_foreign")
-            .is_some();
-        let has_unique = base
-            .find_child_by_type(&node, "keyword_unique")
-            .is_some();
-        let has_index = base
-            .find_child_by_type(&node, "keyword_index")
-            .is_some();
+        let has_check = base.find_child_by_type(&node, "keyword_check").is_some();
+        let has_primary = base.find_child_by_type(&node, "keyword_primary").is_some();
+        let has_foreign = base.find_child_by_type(&node, "keyword_foreign").is_some();
+        let has_unique = base.find_child_by_type(&node, "keyword_unique").is_some();
+        let has_index = base.find_child_by_type(&node, "keyword_index").is_some();
         let named_constraint = base.find_child_by_type(&node, "identifier");
 
         if let Some(name_node) = named_constraint {
@@ -244,14 +233,16 @@ pub(super) fn extract_constraints_from_alter_table(
     let node_text = base.get_node_text(&node);
 
     // Extract ADD CONSTRAINT statements
-    let constraint_regex = regex::Regex::new(r"ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)").unwrap();
+    let constraint_regex = regex::Regex::new(
+        r"ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)",
+    )
+    .unwrap();
     if let Some(captures) = constraint_regex.captures(&node_text) {
         if let Some(constraint_name) = captures.get(1) {
             let name = constraint_name.as_str().to_string();
             let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
 
-            let mut signature =
-                format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+            let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
             // Add more details based on constraint type
             if constraint_type == "CHECK" {
@@ -277,10 +268,9 @@ pub(super) fn extract_constraints_from_alter_table(
                 }
 
                 // Add ON DELETE/UPDATE actions
-                let on_delete_regex = regex::Regex::new(
-                    r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
-                )
-                .unwrap();
+                let on_delete_regex =
+                    regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
+                        .unwrap();
                 if let Some(on_delete_captures) = on_delete_regex.captures(&node_text) {
                     signature.push_str(&format!(
                         " ON DELETE {}",
@@ -288,10 +278,9 @@ pub(super) fn extract_constraints_from_alter_table(
                     ));
                 }
 
-                let on_update_regex = regex::Regex::new(
-                    r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)",
-                )
-                .unwrap();
+                let on_update_regex =
+                    regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
+                        .unwrap();
                 if let Some(on_update_captures) = on_update_regex.captures(&node_text) {
                     signature.push_str(&format!(
                         " ON UPDATE {}",
@@ -315,8 +304,7 @@ pub(super) fn extract_constraints_from_alter_table(
                 metadata: Some(metadata),
             };
 
-            let constraint_symbol =
-                base.create_symbol(&node, name, SymbolKind::Property, options);
+            let constraint_symbol = base.create_symbol(&node, name, SymbolKind::Property, options);
             symbols.push(constraint_symbol);
         }
     }

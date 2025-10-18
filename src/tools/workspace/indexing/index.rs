@@ -186,7 +186,10 @@ impl ManageWorkspaceTool {
                     {
                         Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
                         Ok(Err(e)) => {
-                            tracing::warn!("Failed to open reference workspace DB for final count: {}", e);
+                            tracing::warn!(
+                                "Failed to open reference workspace DB for final count: {}",
+                                e
+                            );
                             None
                         }
                         Err(e) => {
@@ -203,9 +206,7 @@ impl ManageWorkspaceTool {
             // Query the correct database
             if let Some(db_arc) = db_to_query {
                 let db = db_arc.lock().unwrap();
-                let symbols_count = db
-                    .get_symbol_count_for_workspace()
-                    .unwrap_or(0);
+                let symbols_count = db.get_symbol_count_for_workspace().unwrap_or(0);
                 let stats = db.get_stats().unwrap_or_default();
                 (symbols_count as usize, stats.total_relationships as usize)
             } else {
@@ -280,11 +281,17 @@ impl ManageWorkspaceTool {
                     {
                         Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
                         Ok(Err(e)) => {
-                            tracing::warn!("Failed to open reference workspace DB for embeddings: {}", e);
+                            tracing::warn!(
+                                "Failed to open reference workspace DB for embeddings: {}",
+                                e
+                            );
                             None
                         }
                         Err(e) => {
-                            tracing::warn!("Reference workspace DB open task failed for embeddings: {}", e);
+                            tracing::warn!(
+                                "Reference workspace DB open task failed for embeddings: {}",
+                                e
+                            );
                             None
                         }
                     }

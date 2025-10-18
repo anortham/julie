@@ -1,7 +1,7 @@
 // PHP Extractor - Identifier extraction (function calls, member access)
 
-use crate::extractors::base::{IdentifierKind, Symbol};
 use super::PhpExtractor;
+use crate::extractors::base::{IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -95,4 +95,3 @@ fn find_containing_symbol_id(
         .find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
 }
-

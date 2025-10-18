@@ -23,7 +23,9 @@ pub(crate) fn infer_types(
 }
 
 /// Parse content using the tree-sitter parser
-fn parse_content(extractor: &TypeScriptExtractor) -> Result<tree_sitter::Tree, Box<dyn std::error::Error>> {
+fn parse_content(
+    extractor: &TypeScriptExtractor,
+) -> Result<tree_sitter::Tree, Box<dyn std::error::Error>> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&tree_sitter_javascript::LANGUAGE.into())?;
     let tree = parser
@@ -108,7 +110,10 @@ pub(crate) fn infer_type_from_value(extractor: &TypeScriptExtractor, value_node:
 }
 
 /// Infer return type of a function
-pub(crate) fn infer_function_return_type(extractor: &TypeScriptExtractor, func_node: &Node) -> String {
+pub(crate) fn infer_function_return_type(
+    extractor: &TypeScriptExtractor,
+    func_node: &Node,
+) -> String {
     // Check for async functions
     let is_async = func_node
         .children(&mut func_node.walk())

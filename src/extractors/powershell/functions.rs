@@ -70,9 +70,7 @@ pub(super) fn extract_advanced_function(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
-            doc_comment: Some(
-                "Advanced PowerShell function with [CmdletBinding()]".to_string(),
-            ),
+            doc_comment: Some("Advanced PowerShell function with [CmdletBinding()]".to_string()),
         },
     ))
 }
@@ -247,4 +245,3 @@ fn extract_script_parameter_signature(base: &BaseExtractor, node: Node) -> Strin
         name
     }
 }
-

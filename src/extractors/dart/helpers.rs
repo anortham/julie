@@ -43,8 +43,6 @@ pub(super) fn get_node_text(node: &Node) -> String {
     })
 }
 
-
-
 /// Recursively traverse tree and call callback on each node
 pub(super) fn traverse_tree<F>(node: Node, callback: &mut F)
 where

@@ -46,7 +46,11 @@ impl FallbackExtractor {
         }
 
         // Extract elements using regex as fallback
-        symbols.extend(Self::extract_elements_with_regex(base, &content, &tree.root_node()));
+        symbols.extend(Self::extract_elements_with_regex(
+            base,
+            &content,
+            &tree.root_node(),
+        ));
 
         symbols
     }
@@ -71,8 +75,9 @@ impl FallbackExtractor {
 
         // Enhanced regex for HTML elements - handles both self-closing and container elements
         // Note: Rust regex doesn't support backreferences, so we match any closing tag
-        let re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</[^>]+>|>)"#)
-            .unwrap();
+        let re =
+            Regex::new(r#"<([a-zA-Z][a-zA-Z0-9\-]*)(?:\s+([^>]*?))?\s*(?:/>|>(.*?)</[^>]+>|>)"#)
+                .unwrap();
 
         for captures in re.captures_iter(content) {
             if let Some(tag_name_match) = captures.get(1) {

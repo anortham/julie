@@ -356,9 +356,9 @@ fn test_max_depth_range() {
             similarity_threshold: 0.7,
             context_file: None,
             workspace: None,
-        output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
+            output_format: "json".to_string(),
+            semantic_limit: None,
+            cross_language_max_depth: None,
         };
 
         assert_eq!(tool.max_depth, depth);
@@ -380,9 +380,9 @@ fn test_similarity_threshold_range() {
             similarity_threshold: threshold,
             context_file: None,
             workspace: None,
-        output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
+            output_format: "json".to_string(),
+            semantic_limit: None,
+            cross_language_max_depth: None,
         };
 
         assert_eq!(tool.similarity_threshold, threshold);

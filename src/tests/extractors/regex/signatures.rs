@@ -3,8 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::regex::signatures::{
-        build_pattern_signature,
-        build_character_class_signature,
+        build_character_class_signature, build_pattern_signature,
     };
 
     #[test]

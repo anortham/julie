@@ -4,8 +4,8 @@
 // This module contains all inline tests from the path relevance module,
 // ensuring code relevance scoring works correctly for search quality enhancement.
 
-use std::path::Path;
 use crate::utils::path_relevance::PathRelevanceScorer;
+use std::path::Path;
 
 #[test]
 fn test_directory_scoring_verified_weights() {

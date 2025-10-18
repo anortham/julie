@@ -9,7 +9,6 @@
 /// - Smart truncation with essential line preservation
 /// - Edge case handling (empty input, single line, zero limit)
 /// - Preservation of structural elements (functions, classes, structs, decorators)
-
 use crate::utils::context_truncation::ContextTruncator;
 
 #[test]
@@ -94,7 +93,8 @@ fn test_smart_truncation_preserves_class_definitions() {
         "        this.logger = deps.logger;".to_string(),
         "    }".to_string(),
         "    async getUserData(userId: string): Promise<UserData> {".to_string(),
-        "        return await this.database.query('SELECT * FROM users WHERE id = ?', [userId]);".to_string(),
+        "        return await this.database.query('SELECT * FROM users WHERE id = ?', [userId]);"
+            .to_string(),
         "    }".to_string(),
         "}".to_string(),
     ];

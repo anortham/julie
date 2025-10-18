@@ -1,8 +1,8 @@
 // PHP Extractor - Helper utilities
 // Common functions for AST navigation and type inspection
 
-use crate::extractors::base::Visibility;
 use super::PhpExtractor;
+use crate::extractors::base::Visibility;
 use tree_sitter::Node;
 
 /// Helper method to find child node by type
@@ -22,9 +22,12 @@ pub(super) fn find_child<'a>(
 }
 
 /// Helper method to find child node text by type
-pub(super) fn find_child_text(extractor: &PhpExtractor, node: &Node, child_type: &str) -> Option<String> {
-    find_child(extractor, node, child_type)
-        .map(|child| extractor.get_base().get_node_text(&child))
+pub(super) fn find_child_text(
+    extractor: &PhpExtractor,
+    node: &Node,
+    child_type: &str,
+) -> Option<String> {
+    find_child(extractor, node, child_type).map(|child| extractor.get_base().get_node_text(&child))
 }
 
 /// Extract modifiers from PHP nodes
@@ -60,4 +63,3 @@ pub(super) fn determine_visibility(modifiers: &[String]) -> Visibility {
     }
     Visibility::Public // PHP defaults to public
 }
-

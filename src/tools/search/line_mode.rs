@@ -9,7 +9,9 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 
-use super::query::{line_match_strategy, line_matches, matches_glob_pattern, preprocess_fallback_query};
+use super::query::{
+    line_match_strategy, line_matches, matches_glob_pattern, preprocess_fallback_query,
+};
 use super::types::{LineMatch, LineMatchStrategy};
 
 /// Line-level search mode (grep-style output with line numbers)
@@ -56,12 +58,7 @@ pub async fn line_mode_search(
             // Specific workspace ID - validate it exists
             match registry_service.get_workspace(ws_id).await? {
                 Some(_) => ws_id.clone(),
-                None => {
-                    return Err(anyhow::anyhow!(
-                        "Workspace '{}' not found",
-                        ws_id
-                    ))
-                }
+                None => return Err(anyhow::anyhow!("Workspace '{}' not found", ws_id)),
             }
         }
         _ => primary_workspace_id.clone(),
@@ -77,10 +74,7 @@ pub async fn line_mode_search(
         // Search primary workspace using shared connection
         tokio::task::block_in_place(|| -> Result<Vec<LineMatch>> {
             let db_lock = db.lock().unwrap();
-            let file_results = db_lock.search_file_content_fts(
-                &processed_query,
-                fetch_limit,
-            )?;
+            let file_results = db_lock.search_file_content_fts(&processed_query, fetch_limit)?;
 
             let mut matches = Vec::new();
             for file_result in file_results {
@@ -88,9 +82,7 @@ pub async fn line_mode_search(
                     break;
                 }
 
-                if let Some(content) = db_lock
-                    .get_file_content(&file_result.path)?
-                {
+                if let Some(content) = db_lock.get_file_content(&file_result.path)? {
                     collect_line_matches(
                         &mut matches,
                         &content,
@@ -115,10 +107,7 @@ pub async fn line_mode_search(
             }
 
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-            let file_results = ref_db.search_file_content_fts(
-                &query_clone,
-                fetch_limit,
-            )?;
+            let file_results = ref_db.search_file_content_fts(&query_clone, fetch_limit)?;
 
             let mut matches = Vec::new();
             for file_result in file_results {
@@ -126,9 +115,7 @@ pub async fn line_mode_search(
                     break;
                 }
 
-                if let Some(content) = ref_db
-                    .get_file_content(&file_result.path)?
-                {
+                if let Some(content) = ref_db.get_file_content(&file_result.path)? {
                     collect_line_matches(
                         &mut matches,
                         &content,

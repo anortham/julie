@@ -44,6 +44,8 @@ mod tests {
             max_depth: 2,
             target: Some("call_tool".to_string()), // Method inside GetSymbolsTool
             limit: None,
+            include_body: None,
+            mode: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -114,6 +116,8 @@ mod tests {
             max_depth: 2,
             target: Some("GetSymbolsTool".to_string()),
             limit: None,
+            include_body: None,
+            mode: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -176,6 +180,8 @@ mod tests {
             max_depth: 2,
             target: Some("getsymbolstool".to_string()), // lowercase
             limit: None,
+            include_body: None,
+            mode: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -230,6 +236,8 @@ mod tests {
             max_depth: 2,
             target: Some("format".to_string()), // Should match "format_symbol"
             limit: None,
+            include_body: None,
+            mode: None,
         };
 
         let result = tool.call_tool(&handler).await?;

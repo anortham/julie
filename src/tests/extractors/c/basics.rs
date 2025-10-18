@@ -845,7 +845,9 @@ mod tests {
         assert_eq!(find_record.unwrap().kind, SymbolKind::Function);
 
         // External linkage override
-        let external_inline_function = symbols.iter().find(|s| s.name == "external_inline_function");
+        let external_inline_function = symbols
+            .iter()
+            .find(|s| s.name == "external_inline_function");
         assert!(external_inline_function.is_some());
         assert_eq!(external_inline_function.unwrap().kind, SymbolKind::Function);
 

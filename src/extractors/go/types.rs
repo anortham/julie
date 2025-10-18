@@ -4,7 +4,11 @@ use tree_sitter::Node;
 
 /// Type declaration extraction for Go (structs, interfaces, type aliases)
 impl super::GoExtractor {
-    pub(super) fn extract_package(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_package(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Find package identifier node
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -29,7 +33,11 @@ impl super::GoExtractor {
         None
     }
 
-    pub(super) fn extract_type_declaration(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_type_declaration(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Find type_spec or type_alias node which contains the actual type definition
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -42,7 +50,11 @@ impl super::GoExtractor {
         None
     }
 
-    pub(super) fn extract_type_spec(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_type_spec(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut type_identifier = None;
         let mut type_parameters = None;
@@ -168,7 +180,11 @@ impl super::GoExtractor {
         }
     }
 
-    pub(super) fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_type_alias(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Parse type_alias node: "TypeAlias = string"
         let mut cursor = node.walk();
         let mut alias_name = None;

@@ -8,17 +8,17 @@
 //! Unlike simple text editing, these tools understand code semantics and
 //! can perform complex transformations safely across entire codebases.
 
-mod types;
 mod helpers;
-mod operations;
-mod utils;
-mod rename;
 mod indentation;
+mod operations;
+mod rename;
+mod types;
+mod utils;
 
+pub use helpers::{looks_like_doc_comment, replace_identifier_with_boundaries};
 pub use types::{
     AutoFixResult, DelimiterError, RefactorOperation, SmartRefactorResult, SyntaxError,
 };
-pub use helpers::{looks_like_doc_comment, replace_identifier_with_boundaries};
 
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
@@ -142,8 +142,8 @@ impl SmartRefactorTool {
             "extract_symbol_to_file" => self.handle_extract_symbol_to_file(handler).await,
 
             // Removed operations (not feasible for cross-language support)
-            "extract_function" | "extract_type" | "update_imports" | "inline_variable" | "inline_function"
-            | "validate_syntax" | "auto_fix_syntax" => {
+            "extract_function" | "extract_type" | "update_imports" | "inline_variable"
+            | "inline_function" | "validate_syntax" | "auto_fix_syntax" => {
                 let message = format!(
                     "❌ Operation '{}' has been removed from Julie's API\n\n\
                     This operation is not feasible for reliable cross-language support.\n\n\
@@ -204,7 +204,14 @@ impl SmartRefactorTool {
 
         // Use AST-aware replacement to avoid strings/comments
         let updated_content = self
-            .ast_aware_replace(&content, file_path, old_name, new_name, update_comments, handler)
+            .ast_aware_replace(
+                &content,
+                file_path,
+                old_name,
+                new_name,
+                update_comments,
+                handler,
+            )
             .await?;
 
         if updated_content == content {
@@ -240,9 +247,13 @@ impl SmartRefactorTool {
         debug!("🌳 AST-aware replacement for {} -> {}", old_name, new_name);
 
         // First, try using the search database
-        if let Ok(positions) = self.find_symbols_via_search(file_path, old_name, handler).await {
+        if let Ok(positions) = self
+            .find_symbols_via_search(file_path, old_name, handler)
+            .await
+        {
             debug!("📍 Found {} positions via search database", positions.len());
-            let updated = self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
+            let updated =
+                self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
             return Ok(updated);
         }
 
@@ -252,7 +263,8 @@ impl SmartRefactorTool {
             .await
         {
             debug!("📍 Found {} positions via tree-sitter", positions.len());
-            let updated = self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
+            let updated =
+                self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
             return Ok(updated);
         }
 
@@ -306,9 +318,9 @@ impl SmartRefactorTool {
         let mut parser = Parser::new();
         parser.set_language(&ts_language)?;
 
-        let _tree = parser.parse(content, None).ok_or_else(|| {
-            anyhow::anyhow!("Failed to parse {} file", language)
-        })?;
+        let _tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
 
         // Use fallback simple replacement
         let is_identifier_char = |c: char| c.is_alphanumeric() || c == '_';

@@ -1,6 +1,5 @@
 /// Decorator extraction and handling
 /// Supports @property, @staticmethod, @classmethod, and custom decorators
-
 use super::PythonExtractor;
 use tree_sitter::Node;
 

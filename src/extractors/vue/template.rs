@@ -2,15 +2,18 @@
 //
 // Responsible for extracting component usage and directives from the <template> section
 
-use crate::extractors::base::{SymbolKind};
-use super::parsing::VueSection;
-use super::script::{create_symbol_manual};
 use super::helpers::{COMPONENT_USAGE_RE, DIRECTIVE_USAGE_RE};
+use super::parsing::VueSection;
+use super::script::create_symbol_manual;
 use crate::extractors::base::BaseExtractor;
+use crate::extractors::base::SymbolKind;
 
 /// Extract symbols from template section (component usage, directives, etc.)
 /// Port of Miller's extractTemplateSymbols logic
-pub(super) fn extract_template_symbols(base: &BaseExtractor, section: &VueSection) -> Vec<crate::extractors::base::Symbol> {
+pub(super) fn extract_template_symbols(
+    base: &BaseExtractor,
+    section: &VueSection,
+) -> Vec<crate::extractors::base::Symbol> {
     let mut symbols = Vec::new();
     let lines: Vec<&str> = section.content.lines().collect();
 

@@ -1,6 +1,4 @@
-use crate::extractors::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind,
-};
+use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::extractors::lua::helpers;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};

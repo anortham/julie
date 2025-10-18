@@ -1,8 +1,8 @@
 //! Type extraction and inference for GDScript
 
+use super::helpers::find_child_by_type;
 use crate::extractors::base::BaseExtractor;
 use tree_sitter::Node;
-use super::helpers::find_child_by_type;
 
 /// Extract data type from a variable node
 pub(super) fn extract_variable_type(

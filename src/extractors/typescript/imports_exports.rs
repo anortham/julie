@@ -25,12 +25,9 @@ pub(super) fn extract_import(extractor: &mut TypeScriptExtractor, node: Node) ->
             .unwrap_or_else(|| "import".to_string())
     };
 
-    extractor.base_mut().create_symbol(
-        &node,
-        name,
-        SymbolKind::Import,
-        SymbolOptions::default(),
-    )
+    extractor
+        .base_mut()
+        .create_symbol(&node, name, SymbolKind::Import, SymbolOptions::default())
 }
 
 /// Extract an export statement
@@ -59,10 +56,7 @@ pub(super) fn extract_export(extractor: &mut TypeScriptExtractor, node: Node) ->
             .unwrap_or_else(|| "export".to_string())
     };
 
-    extractor.base_mut().create_symbol(
-        &node,
-        name,
-        SymbolKind::Export,
-        SymbolOptions::default(),
-    )
+    extractor
+        .base_mut()
+        .create_symbol(&node, name, SymbolKind::Export, SymbolOptions::default())
 }

@@ -58,7 +58,8 @@ impl PowerShellExtractor {
         if let Some(symbol) = self.extract_symbol_from_node(node, current_parent_id.as_deref()) {
             // If this is a function, extract its parameters
             if symbol.kind == crate::extractors::base::SymbolKind::Function {
-                let parameters = functions::extract_function_parameters(&mut self.base, node, &symbol.id);
+                let parameters =
+                    functions::extract_function_parameters(&mut self.base, node, &symbol.id);
                 symbols.extend(parameters);
             }
 
@@ -87,10 +88,14 @@ impl PowerShellExtractor {
             "variable" => variables::extract_variable_reference(&mut self.base, node, parent_id),
             "class_statement" => classes::extract_class(&mut self.base, node, parent_id),
             "class_method_definition" => classes::extract_method(&mut self.base, node, parent_id),
-            "class_property_definition" => classes::extract_property(&mut self.base, node, parent_id),
+            "class_property_definition" => {
+                classes::extract_property(&mut self.base, node, parent_id)
+            }
             "enum_statement" => classes::extract_enum(&mut self.base, node, parent_id),
             "enum_member" => classes::extract_enum_member(&mut self.base, node, parent_id),
-            "import_statement" | "using_statement" => imports::extract_import(&mut self.base, node, parent_id),
+            "import_statement" | "using_statement" => {
+                imports::extract_import(&mut self.base, node, parent_id)
+            }
             "command" | "command_expression" | "pipeline" => {
                 // Check for dot sourcing, DSC configuration, or regular commands
                 let node_text = self.base.get_node_text(&node);
@@ -104,7 +109,10 @@ impl PowerShellExtractor {
                 } else if helpers::find_command_name_node(node)
                     .map(|cn| {
                         let name = self.base.get_node_text(&cn);
-                        matches!(name.as_str(), "Import-Module" | "Export-ModuleMember" | "using")
+                        matches!(
+                            name.as_str(),
+                            "Import-Module" | "Export-ModuleMember" | "using"
+                        )
                     })
                     .unwrap_or(false)
                 {
@@ -158,7 +166,9 @@ impl PowerShellExtractor {
 
         // Check if this ERROR node contains a DSC configuration
         if node_text.contains("Configuration ") {
-            if let Some((name, signature)) = commands::extract_configuration_from_error(&self.base, &node_text) {
+            if let Some((name, signature)) =
+                commands::extract_configuration_from_error(&self.base, &node_text)
+            {
                 return Some(self.base.create_symbol(
                     &node,
                     name,
@@ -176,7 +186,9 @@ impl PowerShellExtractor {
 
         // Also check for function definitions that might be in ERROR nodes
         if node_text.contains("function ") {
-            if let Some((name, signature)) = commands::extract_function_from_error(&self.base, &node_text) {
+            if let Some((name, signature)) =
+                commands::extract_function_from_error(&self.base, &node_text)
+            {
                 return Some(self.base.create_symbol(
                     &node,
                     name,
@@ -198,7 +210,12 @@ impl PowerShellExtractor {
     /// Extract relationships between symbols
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
-        relationships::walk_tree_for_relationships(&self.base, tree.root_node(), symbols, &mut relationships);
+        relationships::walk_tree_for_relationships(
+            &self.base,
+            tree.root_node(),
+            symbols,
+            &mut relationships,
+        );
         relationships
     }
 

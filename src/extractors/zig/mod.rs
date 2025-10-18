@@ -1,6 +1,4 @@
-use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol,
-};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::{Node, Tree};
 
 // Sub-modules
@@ -9,8 +7,8 @@ mod functions;
 mod helpers;
 mod identifiers;
 mod relationships;
-mod types;
 mod type_inference;
+mod types;
 mod variables;
 
 pub struct ZigExtractor {
@@ -65,35 +63,46 @@ impl ZigExtractor {
         parent_id: Option<&String>,
     ) -> Option<Symbol> {
         match node.kind() {
-            "function_declaration" | "function_definition" => {
-                functions::extract_function(
-                    &mut self.base,
-                    node,
-                    parent_id,
-                    helpers::is_public_function,
-                    helpers::is_export_function,
-                    helpers::is_inside_struct,
-                )
-            }
+            "function_declaration" | "function_definition" => functions::extract_function(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_function,
+                helpers::is_export_function,
+                helpers::is_inside_struct,
+            ),
             "test_declaration" => functions::extract_test(&mut self.base, node, parent_id),
-            "struct_declaration" => {
-                types::extract_struct(&mut self.base, node, parent_id, helpers::is_public_declaration)
-            }
-            "union_declaration" => {
-                types::extract_union(&mut self.base, node, parent_id, helpers::is_public_declaration)
-            }
-            "enum_declaration" => {
-                types::extract_enum(&mut self.base, node, parent_id, helpers::is_public_declaration)
-            }
-            "variable_declaration" | "const_declaration" => {
-                variables::extract_variable(&mut self.base, node, parent_id, helpers::is_public_declaration)
-            }
-            "error_declaration" => {
-                types::extract_error_type(&mut self.base, node, parent_id)
-            }
-            "type_declaration" => {
-                types::extract_type_alias(&mut self.base, node, parent_id, helpers::is_public_declaration)
-            }
+            "struct_declaration" => types::extract_struct(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
+            "union_declaration" => types::extract_union(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
+            "enum_declaration" => types::extract_enum(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
+            "variable_declaration" | "const_declaration" => variables::extract_variable(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
+            "error_declaration" => types::extract_error_type(&mut self.base, node, parent_id),
+            "type_declaration" => types::extract_type_alias(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
             "parameter" => functions::extract_parameter(&mut self.base, node, parent_id),
             "field_declaration" | "struct_field" | "container_field" => {
                 types::extract_struct_field(&mut self.base, node, parent_id)

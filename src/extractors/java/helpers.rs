@@ -1,6 +1,5 @@
 /// Helper functions for Java extraction
 /// Handles modifiers, visibility, and common parsing utilities
-
 use crate::extractors::base::{BaseExtractor, Visibility};
 use tree_sitter::Node;
 

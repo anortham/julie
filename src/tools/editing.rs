@@ -131,7 +131,6 @@ impl Drop for EditingTransaction {
     }
 }
 
-
 /// Memory-based multi-file transaction system
 ///
 /// Provides all-or-nothing semantics across multiple files.

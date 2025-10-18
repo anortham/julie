@@ -3,13 +3,11 @@
 //! This module handles extraction of classes, interfaces, objects, functions,
 //! properties, and other type declarations.
 
-use crate::extractors::base::{
-    BaseExtractor, SymbolKind, SymbolOptions, Symbol, Visibility,
-};
+use super::helpers;
+use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers;
 
 /// Extract a Kotlin class declaration
 pub(super) fn extract_class(
@@ -427,10 +425,7 @@ pub(super) fn extract_type_alias(
     // Find the aliased type (after =) - may consist of multiple nodes
     let mut aliased_type = String::new();
     let children: Vec<Node> = node.children(&mut node.walk()).collect();
-    if let Some(equal_index) = children
-        .iter()
-        .position(|n| base.get_node_text(n) == "=")
-    {
+    if let Some(equal_index) = children.iter().position(|n| base.get_node_text(n) == "=") {
         if equal_index + 1 < children.len() {
             // Concatenate all nodes after the = (e.g., "suspend" + "(T) -> Unit")
             let type_nodes = &children[equal_index + 1..];

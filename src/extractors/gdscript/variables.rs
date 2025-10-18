@@ -1,11 +1,11 @@
 //! Variable and constant extraction for GDScript
 
+use super::helpers::{extract_variable_annotations, find_child_by_type};
+use super::types::extract_variable_type;
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use super::helpers::{find_child_by_type, extract_variable_annotations};
-use super::types::extract_variable_type;
 
 /// Extract variable statement (var declarations)
 pub(super) fn extract_variable_statement(

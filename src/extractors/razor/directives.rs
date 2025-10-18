@@ -5,7 +5,11 @@ use tree_sitter::Node;
 
 impl super::RazorExtractor {
     /// Extract Razor directives (@page, @model, @using, etc.)
-    pub(super) fn extract_directive(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_directive(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let directive_name = self.extract_directive_name(node);
         let directive_value = self.extract_directive_value(node);
 
@@ -150,7 +154,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract token-based directives (@inherits, @namespace, @implements)
-    pub(super) fn extract_token_directive(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_token_directive(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let directive_type = node.kind().replace("at_", "");
         let directive_name = format!("@{}", directive_type);
 
@@ -205,7 +213,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract section (@section) directives
-    pub(super) fn extract_section(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_section(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let identifier_node = self.find_child_by_type(node, "identifier")?;
         let section_name = self.base.get_node_text(&identifier_node);
         let signature = format!("@section {}", section_name);
@@ -232,7 +244,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract code blocks (@code, @functions, @{...})
-    pub(super) fn extract_code_block(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_code_block(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let block_type = self.get_code_block_type(node);
         let content = self.base.get_node_text(&node);
         let truncated_content = if content.len() > 50 {
@@ -287,7 +303,11 @@ impl super::RazorExtractor {
     }
 
     /// Extract Razor expressions (@variable, @(expression))
-    pub(super) fn extract_expression(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_expression(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let expression = self.base.get_node_text(&node);
         let variable_name = self
             .extract_variable_from_expression(&expression)

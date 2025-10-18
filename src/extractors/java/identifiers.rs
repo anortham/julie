@@ -1,5 +1,4 @@
 /// Identifier extraction for LSP-quality find_references
-
 use crate::extractors::base::{Identifier, IdentifierKind, Symbol};
 use crate::extractors::java::JavaExtractor;
 use std::collections::HashMap;
@@ -13,8 +12,7 @@ pub(super) fn extract_identifiers(
     symbols: &[Symbol],
 ) -> Vec<Identifier> {
     // Create symbol map for fast lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.id.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.id.clone(), s)).collect();
 
     // Walk the tree and extract identifiers
     walk_tree_for_identifiers(extractor, tree.root_node(), &symbol_map);

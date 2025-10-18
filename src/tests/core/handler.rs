@@ -9,8 +9,7 @@ use rust_mcp_sdk::error::SdkResult;
 use rust_mcp_sdk::mcp_server::ServerHandler;
 use rust_mcp_sdk::schema::schema_utils::{ClientMessage, MessageFromServer, ServerMessage};
 use rust_mcp_sdk::schema::{
-    CallToolRequest, CallToolRequestParams, InitializeRequestParams, InitializeResult,
-    RequestId,
+    CallToolRequest, CallToolRequestParams, InitializeRequestParams, InitializeResult, RequestId,
 };
 use rust_mcp_sdk::McpServer;
 use std::sync::Arc;
@@ -24,10 +23,7 @@ impl McpServer for NoopServer {
         Ok(())
     }
 
-    async fn set_client_details(
-        &self,
-        _client_details: InitializeRequestParams,
-    ) -> SdkResult<()> {
+    async fn set_client_details(&self, _client_details: InitializeRequestParams) -> SdkResult<()> {
         Ok(())
     }
 

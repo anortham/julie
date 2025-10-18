@@ -137,7 +137,10 @@ fn extract_inheritance_relationships(
 }
 
 /// Helper to find the function that contains a given node
-pub(crate) fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+pub(crate) fn find_containing_function<'a>(
+    node: Node,
+    symbols: &'a [Symbol],
+) -> Option<&'a Symbol> {
     let mut current = Some(node);
 
     while let Some(current_node) = current {

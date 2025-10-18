@@ -55,9 +55,7 @@ impl HealthChecker {
             };
 
             let symbol_count = match db.try_lock() {
-                Ok(db_lock) => db_lock
-                    .get_symbol_count_for_workspace()
-                    .unwrap_or(0),
+                Ok(db_lock) => db_lock.get_symbol_count_for_workspace().unwrap_or(0),
                 Err(_busy) => {
                     debug!(
                         "Primary symbol database busy during readiness check; assuming data present"

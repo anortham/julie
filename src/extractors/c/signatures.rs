@@ -3,9 +3,9 @@
 //! This module provides methods to construct readable signatures for functions, variables,
 //! structs, enums, and typedefs.
 
-use crate::extractors::base::BaseExtractor;
 use super::helpers;
 use super::types;
+use crate::extractors::base::BaseExtractor;
 
 /// Build function signature: "return_type function_name(params)"
 pub(super) fn build_function_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
@@ -30,7 +30,10 @@ pub(super) fn build_function_signature(base: &BaseExtractor, node: tree_sitter::
 }
 
 /// Build function declaration signature
-pub(super) fn build_function_declaration_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+pub(super) fn build_function_declaration_signature(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> String {
     let return_type = types::extract_return_type(base, node);
     let function_name = helpers::extract_function_name_from_declaration(base, node);
     let parameters = extract_function_parameters_from_declaration(base, node);
@@ -75,10 +78,7 @@ pub(super) fn build_variable_signature(
 }
 
 /// Build struct signature: "struct Name { field_type field_name; ... }"
-pub(super) fn build_struct_signature(
-    base: &BaseExtractor,
-    node: tree_sitter::Node,
-) -> String {
+pub(super) fn build_struct_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
     let struct_name = helpers::extract_struct_name(base, node);
     let fields = extract_struct_fields(base, node);
     let attributes = types::extract_struct_attributes(base, node);
@@ -117,11 +117,7 @@ pub(super) fn build_enum_signature(base: &BaseExtractor, node: tree_sitter::Node
 
     let mut signature = format!("enum {}", enum_name);
     if !values.is_empty() {
-        let value_names: Vec<String> = values
-            .iter()
-            .take(3)
-            .map(|v| v.name.clone())
-            .collect();
+        let value_names: Vec<String> = values.iter().take(3).map(|v| v.name.clone()).collect();
         signature.push_str(&format!(" {{ {} }}", value_names.join(", ")));
     }
 
@@ -129,7 +125,11 @@ pub(super) fn build_enum_signature(base: &BaseExtractor, node: tree_sitter::Node
 }
 
 /// Build typedef signature with attributes
-pub(super) fn build_typedef_signature(base: &BaseExtractor, node: &tree_sitter::Node, identifier_name: &str) -> String {
+pub(super) fn build_typedef_signature(
+    base: &BaseExtractor,
+    node: &tree_sitter::Node,
+    identifier_name: &str,
+) -> String {
     let node_text = base.get_node_text(node);
 
     // Look for various attributes in the node text and parent context
@@ -195,7 +195,10 @@ pub(super) fn build_typedef_signature(base: &BaseExtractor, node: &tree_sitter::
 }
 
 /// Extract parameters from a function declarator
-pub(super) fn extract_parameters_from_declarator(base: &BaseExtractor, declarator: tree_sitter::Node) -> Vec<String> {
+pub(super) fn extract_parameters_from_declarator(
+    base: &BaseExtractor,
+    declarator: tree_sitter::Node,
+) -> Vec<String> {
     let mut parameters = Vec::new();
 
     if let Some(param_list) = declarator.child_by_field_name("parameters") {
@@ -217,7 +220,10 @@ pub(super) fn extract_parameters_from_declarator(base: &BaseExtractor, declarato
 }
 
 /// Extract parameters from a function definition
-pub(super) fn extract_function_parameters(base: &BaseExtractor, node: tree_sitter::Node) -> Vec<String> {
+pub(super) fn extract_function_parameters(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Vec<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "function_declarator" {
@@ -236,7 +242,10 @@ pub(super) fn extract_function_parameters(base: &BaseExtractor, node: tree_sitte
 }
 
 /// Extract parameters from a function declaration
-pub(super) fn extract_function_parameters_from_declaration(base: &BaseExtractor, node: tree_sitter::Node) -> Vec<String> {
+pub(super) fn extract_function_parameters_from_declaration(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Vec<String> {
     if let Some(function_declarator) = helpers::find_function_declarator(node) {
         return extract_parameters_from_declarator(base, function_declarator);
     }
@@ -244,7 +253,10 @@ pub(super) fn extract_function_parameters_from_declaration(base: &BaseExtractor,
 }
 
 /// Extract struct fields
-pub(super) fn extract_struct_fields(base: &BaseExtractor, node: tree_sitter::Node) -> Vec<StructField> {
+pub(super) fn extract_struct_fields(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Vec<StructField> {
     let mut fields = Vec::new();
 
     if let Some(body) = node.child_by_field_name("body") {

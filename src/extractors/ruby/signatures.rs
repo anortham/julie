@@ -1,7 +1,9 @@
+use super::helpers::{
+    extract_method_name_from_call, extract_singleton_method_target, find_includes_and_extends,
+};
 /// Signature building for Ruby symbols
 /// Handles construction of method signatures, class signatures, and module signatures
 use tree_sitter::Node;
-use super::helpers::{extract_method_name_from_call, find_includes_and_extends, extract_singleton_method_target};
 
 /// Build module signature with includes/extends
 pub(super) fn build_module_signature(
@@ -13,9 +15,10 @@ pub(super) fn build_module_signature(
     let mut signature = format!("module {}", qualified_name);
 
     // Look for include/extend statements
-    let includes = find_includes_and_extends(node,
+    let includes = find_includes_and_extends(
+        node,
         |n| extract_method_name_from_call(n, base_get_text),
-        base_get_text
+        base_get_text,
     );
     if !includes.is_empty() {
         signature.push_str(&format!("\n  {}", includes.join("\n  ")));
@@ -43,9 +46,10 @@ pub(super) fn build_class_signature(
     }
 
     // Look for include/extend statements
-    let includes = find_includes_and_extends(node,
+    let includes = find_includes_and_extends(
+        node,
         |n| extract_method_name_from_call(n, base_get_text),
-        base_get_text
+        base_get_text,
     );
     if !includes.is_empty() {
         signature.push_str(&format!("\n  {}", includes.join("\n  ")));
