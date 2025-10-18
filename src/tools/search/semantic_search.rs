@@ -63,7 +63,7 @@ pub async fn semantic_search_impl(
             debug!("🧠 Loading vector store from: {}", vectors_dir.display());
 
             let vector_store = if vectors_dir.exists() {
-                // 🔧 REFACTOR: NEW ARCHITECTURE - No embedding loading, just HNSW index
+                // CASCADE Architecture (2-tier): SQLite FTS5 → HNSW Semantic
                 // SQLite is the single source of truth. We only load the HNSW graph structure
                 // and fetch vectors from SQLite on-demand during search for re-ranking.
                 let mut store = crate::embeddings::vector_store::VectorStore::new(384)?;
@@ -187,7 +187,7 @@ pub async fn semantic_search_impl(
 
     let store_guard = vector_store.read().await;
 
-    // 🔧 REFACTOR: Check if HNSW index is built instead of checking if HashMap is empty
+    // Check if HNSW index is available (graceful degradation to text search)
     if !store_guard.has_hnsw_index() {
         debug!("⚠️ HNSW index not available - falling back to text search");
         return crate::tools::search::text_search::text_search_impl(
@@ -201,7 +201,7 @@ pub async fn semantic_search_impl(
         .await;
     }
 
-    // 🔧 REFACTOR: Use new architecture - fetch vectors from SQLite during search
+    // CASCADE Architecture: Fetch vectors from SQLite on-demand during HNSW search
     // We need to access the database within the async context, so use tokio::task::block_in_place
     let semantic_results = match tokio::task::block_in_place(|| {
         let db_lock = db.lock().unwrap();

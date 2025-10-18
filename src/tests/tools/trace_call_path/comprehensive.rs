@@ -8,6 +8,22 @@
 use crate::tools::trace_call_path::TraceCallPathTool;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
+// Helper function to create TraceCallPathTool with defaults
+fn create_test_tool() -> TraceCallPathTool {
+    TraceCallPathTool {
+        symbol: "test".to_string(),
+        direction: "upstream".to_string(),
+        max_depth: 3,
+        cross_language: false,
+        similarity_threshold: 0.7,
+        context_file: None,
+        workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
+    }
+}
+
 #[test]
 fn test_parameter_validation_max_depth() {
     // Test that max_depth validation works
@@ -19,6 +35,9 @@ fn test_parameter_validation_max_depth() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert!(
@@ -38,6 +57,9 @@ fn test_parameter_validation_threshold() {
         similarity_threshold: 1.5, // Invalid (> 1.0)
         context_file: None,
         workspace: Some("primary".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert!(
@@ -57,6 +79,9 @@ fn test_parameter_validation_negative_threshold() {
         similarity_threshold: -0.5, // Invalid (< 0.0)
         context_file: None,
         workspace: Some("primary".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert!(
@@ -76,6 +101,9 @@ fn test_direction_values() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let downstream = TraceCallPathTool {
@@ -86,6 +114,9 @@ fn test_direction_values() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let both = TraceCallPathTool {
@@ -96,6 +127,9 @@ fn test_direction_values() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert_eq!(upstream.direction, "upstream");
@@ -114,6 +148,9 @@ fn test_cross_language_flag() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let disabled = TraceCallPathTool {
@@ -124,6 +161,9 @@ fn test_cross_language_flag() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert!(enabled.cross_language, "cross_language should be enabled");
@@ -211,6 +251,9 @@ fn test_default_parameters() {
         similarity_threshold: 0.7,         // default in tool
         context_file: None,
         workspace: Some("primary".to_string()), // default in tool
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert_eq!(tool.direction, "upstream");
@@ -231,6 +274,9 @@ fn test_context_file_filtering() {
         similarity_threshold: 0.7,
         context_file: Some("src/user.ts".to_string()),
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert_eq!(with_context.context_file, Some("src/user.ts".to_string()));
@@ -243,6 +289,9 @@ fn test_context_file_filtering() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert_eq!(without_context.context_file, None);
@@ -259,6 +308,9 @@ fn test_workspace_filtering() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let all = TraceCallPathTool {
@@ -269,6 +321,9 @@ fn test_workspace_filtering() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("all".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let specific = TraceCallPathTool {
@@ -279,6 +334,9 @@ fn test_workspace_filtering() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("project-b_a3f2b8c1".to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     assert_eq!(primary.workspace, Some("primary".to_string()));
@@ -298,6 +356,9 @@ fn test_max_depth_range() {
             similarity_threshold: 0.7,
             context_file: None,
             workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
         };
 
         assert_eq!(tool.max_depth, depth);
@@ -319,6 +380,9 @@ fn test_similarity_threshold_range() {
             similarity_threshold: threshold,
             context_file: None,
             workspace: None,
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
         };
 
         assert_eq!(tool.similarity_threshold, threshold);

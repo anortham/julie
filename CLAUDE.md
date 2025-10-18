@@ -135,7 +135,7 @@ mod tests {
 
 ## 🐕 Dogfooding Strategy
 
-We will be using Julie to develop Julie (eating our own dog food):
+**MANDATORY** We will be using Julie to develop Julie (eating our own dog food) **ALWAYS USE JULIE'S TOOLS**:
 
 ### Development Workflow
 1. **Development Mode**: Always work in `debug` mode for fast iteration
@@ -144,6 +144,10 @@ We will be using Julie to develop Julie (eating our own dog food):
    - User runs: `cargo build --release`
    - User restarts Claude Code with new Julie build
    - Test the new features in live MCP session
+3. **Backward Compatibility**: We don't need it!
+   - This is an MCP server not a REST API
+   - We aren't concerned with backward compatiblity
+   - We aren't concerned with maintaining API compatibiility
 
 ### Workspace Storage Architecture
 

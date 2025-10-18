@@ -187,8 +187,8 @@ async fn database_search_with_workspace_filter(
 /// This is the final fallback that always works.
 async fn sqlite_fts_search(
     query: &str,
-    _language: &Option<String>,
-    _file_pattern: &Option<String>,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
     handler: &JulieServerHandler,
@@ -383,9 +383,51 @@ async fn sqlite_fts_search(
         }
     }
 
+    // Apply language and file pattern filtering to content search results
+    // This ensures scope="content" respects the same filters as scope="symbols"
+    let total_before_filter = symbols.len();
+    let filtered_symbols: Vec<Symbol> = symbols
+        .into_iter()
+        .filter(|symbol| {
+            // Apply language filter if specified
+            let language_match = if let Some(ref lang) = language {
+                // Extract file extension and match against language
+                let path = std::path::Path::new(&symbol.file_path);
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    // Simple extension matching - could be enhanced with language detection
+                    match lang.to_lowercase().as_str() {
+                        "rust" => ext_str == "rs",
+                        "typescript" => ext_str == "ts" || ext_str == "tsx",
+                        "javascript" => ext_str == "js" || ext_str == "jsx" || ext_str == "mjs",
+                        "python" => ext_str == "py",
+                        "java" => ext_str == "java",
+                        "csharp" | "c#" => ext_str == "cs",
+                        "cpp" | "c++" => ext_str == "cpp" || ext_str == "cc" || ext_str == "cxx",
+                        "c" => ext_str == "c" || ext_str == "h",
+                        _ => ext_str == lang.to_lowercase(),
+                    }
+                } else {
+                    false
+                }
+            } else {
+                true // No language filter, accept all
+            };
+
+            // Apply file pattern filter if specified
+            let file_match = file_pattern
+                .as_ref()
+                .map(|pattern| super::query::matches_glob_pattern(&symbol.file_path, pattern))
+                .unwrap_or(true);
+
+            language_match && file_match
+        })
+        .collect();
+
     debug!(
-        "📄 CASCADE: FTS5 returned {} file content matches",
-        symbols.len()
+        "📄 CASCADE: FTS5 returned {} file content matches (filtered to {})",
+        total_before_filter,
+        filtered_symbols.len()
     );
-    Ok(symbols)
+    Ok(filtered_symbols)
 }

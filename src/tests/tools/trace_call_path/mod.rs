@@ -1,6 +1,9 @@
 // Tests extracted from src/tools/trace_call_path.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod comprehensive;  // Parameter validation and API tests
+mod new_features;   // TDD tests for new features (output_format, configurable parameters)
+
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::tools::trace_call_path::TraceCallPathTool;
@@ -106,6 +109,9 @@ async fn cross_language_callers_found_via_naming_variant() {
         similarity_threshold: 0.7,
         context_file: None,
         workspace: Some(workspace_id.to_string()),
+        output_format: "json".to_string(),
+        semantic_limit: None,
+        cross_language_max_depth: None,
     };
 
     let callers = tool

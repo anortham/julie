@@ -95,7 +95,6 @@ pub async fn line_mode_search(
                         &mut matches,
                         &content,
                         &file_result.path,
-                        &primary_workspace_id,
                         &match_strategy,
                         base_limit,
                     );
@@ -109,7 +108,6 @@ pub async fn line_mode_search(
         let ref_db_path = workspace_struct.workspace_db_path(&target_workspace_id);
         let query_clone = processed_query.clone();
         let strategy = match_strategy.clone();
-        let workspace_id_clone = target_workspace_id.clone();
 
         tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
             if !ref_db_path.exists() {
@@ -135,7 +133,6 @@ pub async fn line_mode_search(
                         &mut matches,
                         &content,
                         &file_result.path,
-                        &workspace_id_clone,
                         &strategy,
                         base_limit,
                     );
@@ -224,7 +221,6 @@ fn collect_line_matches(
     destination: &mut Vec<LineMatch>,
     content: &str,
     file_path: &str,
-    _workspace_id: &str,
     strategy: &LineMatchStrategy,
     max_results: usize,
 ) {
