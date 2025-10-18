@@ -71,16 +71,15 @@ async fn cross_language_callers_found_via_naming_variant() {
         };
 
         db_guard
-            .store_file_info(&file_target, workspace_id)
+            .store_file_info(&file_target)
             .expect("store target file");
         db_guard
-            .store_file_info(&file_variant, workspace_id)
+            .store_file_info(&file_variant)
             .expect("store variant file");
 
         db_guard
             .store_symbols(
                 &[target.clone(), variant.clone(), other.clone()],
-                workspace_id,
             )
             .expect("store symbols");
 

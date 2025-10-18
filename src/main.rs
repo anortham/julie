@@ -355,7 +355,7 @@ async fn update_workspace_statistics(
     // Reconcile embedding status - fix registry if embeddings exist but status is wrong
     let embedding_count = if let Some(db_arc) = &workspace.db {
         let db = db_arc.lock().unwrap();
-        db.count_embeddings(&workspace_id).unwrap_or(0)
+        db.count_embeddings().unwrap_or(0)
     } else {
         0
     };

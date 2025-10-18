@@ -77,11 +77,11 @@ impl ManageWorkspaceTool {
                         let registry_service =
                             WorkspaceRegistryService::new(workspace.root.clone());
                         match registry_service.get_primary_workspace_id().await {
-                            Ok(Some(workspace_id)) => {
+                            Ok(Some(_workspace_id)) => {
                                 let db_lock = db.lock().unwrap();
                                 // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
                                 db_lock
-                                    .count_symbols_for_workspace(&workspace_id)
+                                    .count_symbols_for_workspace()
                                     .unwrap_or(0)
                             }
                             _ => {

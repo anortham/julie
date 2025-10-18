@@ -41,7 +41,7 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
             }
         };
 
-        match db.has_symbols_for_workspace(&primary_workspace_id) {
+        match db.has_symbols_for_workspace() {
             Ok(has_symbols) => {
                 if !has_symbols {
                     info!("📊 Database is empty - indexing needed");
@@ -69,7 +69,7 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
                 // ✅ NEW: Check for new files not in database
                 let indexed_files_raw: Vec<String> =
-                    db.get_all_indexed_files(&primary_workspace_id)?;
+                    db.get_all_indexed_files()?;
 
                 // Normalize indexed files to relative paths (database stores absolute paths)
                 let indexed_files: HashSet<String> = indexed_files_raw

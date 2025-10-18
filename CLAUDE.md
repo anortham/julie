@@ -1,5 +1,44 @@
 # CLAUDE.md - Project Julie Development Guidelines
 
+## 🔥 CRITICAL: WORKSPACE ARCHITECTURE (READ THIS FIRST) 🔥
+
+**STOP! If you're about to write code that deals with workspaces, databases, or filtering, READ THIS SECTION FIRST.**
+
+### The #1 Confusion Point: Workspace Filtering
+
+**EACH WORKSPACE HAS SEPARATE PHYSICAL FILES:**
+- Primary workspace: `.julie/indexes/julie_316c0b08/db/symbols.db` + `vectors/`
+- Reference workspace: `.julie/indexes/coa-mcp-framework_c77f81e4/db/symbols.db` + `vectors/`
+
+**WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
+
+```
+Tool receives workspace param → Routes to correct .db file → Opens connection
+                                                                      ↓
+                                                    Connection is LOCKED to that workspace
+                                                    Database functions can ONLY query that workspace
+                                                    NO SQL filtering on workspace_id possible!
+```
+
+**TOOL LEVEL (workspace parameter is ESSENTIAL):**
+```rust
+FastSearchTool {
+    workspace: Some("primary")  // ← THIS MATTERS - routes to correct DB file
+}
+```
+
+**DATABASE LEVEL (vestigial parameters REMOVED as of 2025-10-18):**
+```rust
+pub fn count_symbols(&self) -> Result<i64> {
+    // ✅ CLEAN: No _workspace_id parameter - connection is already scoped to ONE workspace
+    // Connection was opened to a specific .db file, can't query other workspaces
+}
+```
+
+**See "Workspace Storage Architecture" section below for full details.**
+
+---
+
 ## 🚨 PROJECT ORGANIZATION STANDARDS (NON-NEGOTIABLE)
 
 ### File Size Limits
@@ -155,6 +194,82 @@ mod tests {
 5. **Agent Usage**: make use of the @agent-rust-tdd-implementer whenver possible
 
 ### Workspace Storage Architecture
+
+# 🚨 READ THIS FIRST - WORKSPACE ROUTING 🚨
+
+**IF YOU'RE CONFUSED ABOUT WORKSPACE FILTERING, READ THIS SECTION NOW:**
+
+## How Workspace Isolation ACTUALLY Works
+
+**Each workspace has its own PHYSICAL database and HNSW index files:**
+
+```
+.julie/indexes/
+├── julie_316c0b08/              ← PRIMARY workspace
+│   ├── db/symbols.db            ← SEPARATE SQLite database
+│   └── vectors/                 ← SEPARATE HNSW index
+│       ├── hnsw_index.hnsw.graph
+│       └── hnsw_index.hnsw.data
+│
+└── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace
+    ├── db/symbols.db            ← SEPARATE SQLite database
+    └── vectors/                 ← SEPARATE HNSW index
+        ├── hnsw_index.hnsw.graph
+        └── hnsw_index.hnsw.data
+```
+
+### Workspace Routing Happens in TWO Places:
+
+**1. TOOL LEVEL (Where You Specify Workspace) - THIS IS CORRECT:**
+```rust
+// Tool receives workspace parameter - THIS ROUTES TO THE CORRECT DB FILE
+FastSearchTool {
+    query: "getUserData",
+    workspace: Some("primary")  // ← Routes to julie_316c0b08/db/symbols.db
+}
+
+FastSearchTool {
+    query: "getUserData", 
+    workspace: Some("coa-mcp-framework_c77f81e4")  // ← Routes to coa-mcp-framework_c77f81e4/db/symbols.db
+}
+```
+
+**2. DATABASE LAYER (Connection Already Scoped) - VESTIGIAL PARAMS REMOVED:**
+```rust
+// ✅ CLEAN (as of 2025-10-18): No _workspace_id parameter - connection already scoped
+impl Database {
+    pub fn count_symbols(&self) -> Result<i64> {
+        // self.conn is ALREADY connected to ONE specific symbols.db file
+        // Can't filter by workspace here - wrong architectural layer!
+        // Vestigial _workspace_id parameters have been removed for clarity
+    }
+}
+```
+
+### KEY ARCHITECTURAL FACTS:
+
+1. **Workspace selection happens when opening the DB connection** (tool → handler → workspace registry → open DB file)
+2. **Once DB is open, you're locked to that workspace** - can't query other workspaces
+3. **Database functions have NO workspace parameters** (removed 2025-10-18) - connection is already scoped
+4. **Tool-level `workspace` parameters are ESSENTIAL** - they route to the correct DB file
+5. **Each workspace is PHYSICALLY ISOLATED** - separate .db files, separate HNSW indexes
+
+### What This Means For You:
+
+- ✅ **DO** pass `workspace` parameter in tool calls (routes to correct DB)
+- ❌ **DON'T** think database functions filter by workspace (they can't - connection is scoped)
+- ✅ **DO** understand workspace isolation is PHYSICAL (separate files)
+- ❌ **DON'T** look for SQL WHERE clauses on workspace_id (wrong layer!)
+
+### Common Mistakes:
+
+**WRONG ASSUMPTION:** "The database has all workspaces in one .db file and filters with WHERE workspace_id = ?"
+**REALITY:** Each workspace has its OWN .db file. Filtering happens by opening the right file.
+
+**WRONG ASSUMPTION:** "_workspace_id parameters in DB functions filter queries"
+**REALITY (FIXED 2025-10-18):** DB connection is already scoped. Vestigial parameters have been removed for clarity.
+
+---
 
 **CRITICAL CONCEPT: Primary vs Reference Workspaces**
 

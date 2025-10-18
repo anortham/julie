@@ -58,26 +58,36 @@ pub struct FindLogicTool {
 }
 
 impl FindLogicTool {
+    /// Detect architectural layer from file path
+    fn detect_architectural_layer(file_path: &str) -> &'static str {
+        let path_lower = file_path.to_lowercase();
+        if path_lower.contains("/controller") || path_lower.ends_with("controller.") {
+            "Controllers"
+        } else if path_lower.contains("/service") || path_lower.ends_with("service.") {
+            "Services"
+        } else if path_lower.contains("/model") || path_lower.ends_with("model.") {
+            "Models"
+        } else if path_lower.contains("/repository") || path_lower.ends_with("repository.") {
+            "Repositories"
+        } else if path_lower.contains("/util") || path_lower.contains("/utils") {
+            "Utilities"
+        } else if path_lower.contains("/handler") || path_lower.ends_with("handler.") {
+            "Handlers"
+        } else if path_lower.contains("/middleware") {
+            "Middleware"
+        } else {
+            "Other"
+        }
+    }
+
     /// Helper: Create structured result with markdown for dual output
     fn create_result(
         &self,
-        business_symbols: Vec<Symbol>,
+        business_logic_symbols: Vec<BusinessLogicSymbol>,
         intelligence_layers: Vec<String>,
         next_actions: Vec<String>,
         markdown: String,
     ) -> Result<CallToolResult> {
-        let business_logic_symbols: Vec<BusinessLogicSymbol> = business_symbols
-            .iter()
-            .map(|symbol| BusinessLogicSymbol {
-                name: symbol.name.clone(),
-                kind: format!("{:?}", symbol.kind),
-                language: symbol.language.clone(),
-                file_path: symbol.file_path.clone(),
-                start_line: symbol.start_line,
-                confidence: symbol.confidence.unwrap_or(0.0),
-                signature: symbol.signature.clone(),
-            })
-            .collect();
 
         let result = FindLogicResult {
             tool: "find_logic".to_string(),
@@ -234,6 +244,19 @@ impl FindLogicTool {
             .get_business_relationships(&business_symbols, handler)
             .await?;
 
+        let business_logic_symbols: Vec<BusinessLogicSymbol> = business_symbols
+            .iter()
+            .map(|symbol| BusinessLogicSymbol {
+                name: symbol.name.clone(),
+                kind: format!("{:?}", symbol.kind),
+                language: symbol.language.clone(),
+                file_path: symbol.file_path.clone(),
+                start_line: symbol.start_line,
+                confidence: symbol.confidence.unwrap_or(0.0),
+                signature: symbol.signature.clone(),
+            })
+            .collect();
+
         // Format with intelligence insights
         let mut message = "🧠 SUPER GENIUS Business Logic Discovery\n".to_string();
         message.push_str(&format!(
@@ -241,10 +264,10 @@ impl FindLogicTool {
             search_insights.join(" | ")
         ));
         message
-            .push_str(&self.format_optimized_results(&business_symbols, &business_relationships));
+            .push_str(&self.format_optimized_results(&business_logic_symbols, &business_relationships));
 
         self.create_result(
-            business_symbols,
+            business_logic_symbols,
             search_insights,
             vec![
                 "Review business logic symbols".to_string(),
@@ -297,9 +320,11 @@ impl FindLogicTool {
     /// Format optimized results for FindLogicTool
     pub fn format_optimized_results(
         &self,
-        symbols: &[Symbol],
+        symbols: &[BusinessLogicSymbol],
         _relationships: &[Relationship],
     ) -> String {
+        use std::collections::HashMap;
+
         if symbols.is_empty() {
             return format!(
                 "No business logic found for domain '{}'\nTry lowering min_business_score or different keywords",
@@ -307,14 +332,93 @@ impl FindLogicTool {
             );
         }
 
-        // Get top symbol names for summary
-        let top_symbols: Vec<String> = symbols.iter().take(5).map(|s| s.name.clone()).collect();
+        if self.group_by_layer {
+            // Group symbols by architectural layer
+            let mut layers: HashMap<&str, Vec<&BusinessLogicSymbol>> = HashMap::new();
+            for symbol in symbols {
+                let layer = Self::detect_architectural_layer(&symbol.file_path);
+                layers.entry(layer).or_default().push(symbol);
+            }
 
-        format!(
-            "Found {} business logic components for '{}'\nTop: {}",
-            symbols.len(),
-            self.domain,
-            top_symbols.join(", ")
-        )
+            // Format grouped output
+            let mut result = format!(
+                "Found {} business logic components for '{}' (grouped by layer):\n\n",
+                symbols.len(),
+                self.domain
+            );
+
+            // Sort layers for consistent output
+            let mut layer_names: Vec<&str> = layers.keys().copied().collect();
+            layer_names.sort();
+
+            for layer_name in layer_names {
+                let layer_symbols = &layers[layer_name];
+                result.push_str(&format!("## {} ({} components)\n", layer_name, layer_symbols.len()));
+
+                // Sort symbols by confidence score (highest first)
+                let mut sorted_symbols = layer_symbols.clone();
+                sorted_symbols.sort_by(|a, b| {
+                    b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                for symbol in sorted_symbols.iter().take(10) { // Show top 10 per layer
+                    result.push_str(&format!(
+                        "- **{}** ({}) - {} - {}:{}\n",
+                        symbol.name,
+                        symbol.kind,
+                        symbol.language,
+                        symbol.file_path,
+                        symbol.start_line
+                    ));
+                    if let Some(sig) = &symbol.signature {
+                        if !sig.is_empty() {
+                            result.push_str(&format!("  └─ `{}`\n", sig));
+                        }
+                    }
+                }
+
+                if layer_symbols.len() > 10 {
+                    result.push_str(&format!("... and {} more\n", layer_symbols.len() - 10));
+                }
+                result.push('\n');
+            }
+
+            result
+        } else {
+            // Flat list sorted by relevance score
+            let mut sorted_symbols = symbols.to_vec();
+            sorted_symbols.sort_by(|a, b| {
+                b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            let mut result = format!(
+                "Found {} business logic components for '{}' (sorted by relevance):\n\n",
+                symbols.len(),
+                self.domain
+            );
+
+            for symbol in sorted_symbols.iter().take(20) { // Show top 20 in flat view
+                result.push_str(&format!(
+                    "- **{}** ({}) - {} - {}:{} (score: {:.2})\n",
+                    symbol.name,
+                    symbol.kind,
+                    symbol.language,
+                    symbol.file_path,
+                    symbol.start_line,
+                    symbol.confidence
+                ));
+                if let Some(sig) = &symbol.signature {
+                    if !sig.is_empty() {
+                        result.push_str(&format!("  └─ `{}`\n", sig));
+                    }
+                }
+            }
+
+            if symbols.len() > 20 {
+                result.push_str(&format!("\n... and {} more components", symbols.len() - 20));
+            }
+
+            result
+        }
     }
 }

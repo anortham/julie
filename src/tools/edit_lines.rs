@@ -306,24 +306,32 @@ impl EditLinesTool {
         modified: usize,
         dry_run: bool,
     ) -> Result<CallToolResult> {
+        // Format line range differently for insert vs replace/delete
+        let line_description = match self.operation.as_str() {
+            "insert" => format!("at line {}", self.start_line),
+            _ => format!(
+                "lines {} - {}",
+                self.start_line,
+                self.end_line.unwrap_or(self.start_line)
+            ),
+        };
+
         let message = if dry_run {
             format!(
-                "Dry run: {} operation on {} (lines {} - {})\nWould modify {} lines: {} -> {} lines (no changes applied)",
+                "Dry run: {} operation on {} ({})\nWould modify {} lines: {} -> {} lines (no changes applied)",
                 self.operation,
                 display_path,
-                self.start_line,
-                self.end_line.unwrap_or(self.start_line),
+                line_description,
                 modified,
                 original_lines,
                 new_lines
             )
         } else {
             format!(
-                "Edit complete: {} operation on {} (lines {} - {})\nModified {} lines: {} -> {} lines",
+                "Edit complete: {} operation on {} ({})\nModified {} lines: {} -> {} lines",
                 self.operation,
                 display_path,
-                self.start_line,
-                self.end_line.unwrap_or(self.start_line),
+                line_description,
                 modified,
                 original_lines,
                 new_lines
@@ -334,18 +342,18 @@ impl EditLinesTool {
     }
 
     async fn resolve_file_path(&self, handler: &JulieServerHandler) -> Result<PathBuf> {
-        let candidate = Path::new(&self.file_path);
-        if candidate.is_absolute() {
-            return Ok(candidate.to_path_buf());
-        }
+        use crate::utils::file_utils::secure_path_resolution;
 
-        if let Some(workspace) = handler.get_workspace().await? {
-            Ok(workspace.root.join(candidate))
+        // Get workspace root for security validation
+        let workspace_root = if let Some(workspace) = handler.get_workspace().await? {
+            workspace.root.clone()
         } else {
-            Ok(env::current_dir()
+            env::current_dir()
                 .map_err(|e| anyhow!("Failed to determine current directory: {}", e))?
-                .join(candidate))
-        }
+        };
+
+        // Use secure path resolution to prevent traversal attacks
+        secure_path_resolution(&self.file_path, &workspace_root)
     }
 
     fn detect_line_ending(content: &str) -> &'static str {

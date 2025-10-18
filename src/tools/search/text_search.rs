@@ -113,7 +113,7 @@ async fn database_search_with_workspace_filter(
 
         tokio::task::block_in_place(|| {
             let db_lock = db.lock().unwrap();
-            db_lock.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
+            db_lock.find_symbols_by_pattern(&processed_query)
         })?
     } else {
         // Open reference workspace database
@@ -129,7 +129,7 @@ async fn database_search_with_workspace_filter(
 
         tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-            ref_db.find_symbols_by_pattern(&processed_query, Some(workspace_ids.clone()))
+            ref_db.find_symbols_by_pattern(&processed_query)
         })
         .await
         .map_err(|e| anyhow::anyhow!("Failed to search reference workspace: {}", e))??

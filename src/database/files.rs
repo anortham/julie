@@ -8,7 +8,7 @@ use std::path::Path;
 use tracing::{debug, info, warn};
 
 impl SymbolDatabase {
-    pub fn store_file_info(&self, file_info: &FileInfo, _workspace_id: &str) -> Result<()> {
+    pub fn store_file_info(&self, file_info: &FileInfo) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -42,7 +42,7 @@ impl SymbolDatabase {
     /// 4. Rebuild FTS once atomically
     /// 5. Recreate regular indexes
     /// 6. Re-enable FTS triggers
-    pub fn bulk_store_files(&mut self, files: &[FileInfo], _workspace_id: &str) -> Result<()> {
+    pub fn bulk_store_files(&mut self, files: &[FileInfo]) -> Result<()> {
         if files.is_empty() {
             return Ok(());
         }

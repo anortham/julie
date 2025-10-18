@@ -24,7 +24,7 @@ impl FindLogicTool {
 
                 // Search by each keyword using indexed database queries
                 for keyword in &domain_keywords {
-                    if let Ok(results) = db_lock.find_symbols_by_pattern(keyword, None) {
+                    if let Ok(results) = db_lock.find_symbols_by_pattern(keyword) {
                         for mut symbol in results {
                             symbol.confidence = Some(0.5); // Base FTS5 score
                             keyword_results.push(symbol);
@@ -78,7 +78,7 @@ impl FindLogicTool {
             for keyword in &domain_keywords {
                 // Search for classes like "PaymentService", "UserController", etc.
                 let query = format!("{}{}", keyword, pattern);
-                if let Ok(results) = db_lock.find_symbols_by_pattern(&query, None) {
+                if let Ok(results) = db_lock.find_symbols_by_pattern(&query) {
                     for mut symbol in results {
                         // High score for architectural pattern matches
                         if matches!(symbol.kind, SymbolKind::Class | SymbolKind::Struct) {
@@ -110,7 +110,7 @@ impl FindLogicTool {
             for keyword in &domain_keywords {
                 // Search for methods like "processPayment", "validateUser", etc.
                 let query = format!("{}{}", prefix, keyword);
-                if let Ok(results) = db_lock.find_symbols_by_pattern(&query, None) {
+                if let Ok(results) = db_lock.find_symbols_by_pattern(&query) {
                     for mut symbol in results {
                         if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
                             symbol.confidence = Some(0.7);

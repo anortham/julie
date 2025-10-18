@@ -185,7 +185,6 @@ impl SymbolDatabase {
     pub fn find_symbols_by_pattern(
         &self,
         pattern: &str,
-        _workspace_ids: Option<Vec<String>>,
     ) -> Result<Vec<Symbol>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
         let sanitized_pattern = Self::sanitize_fts5_query(pattern);

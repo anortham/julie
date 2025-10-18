@@ -84,14 +84,11 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
-    /// Get symbols by exact name match with workspace filtering
+    /// Get symbols by exact name match
     /// PERFORMANCE: Uses indexed WHERE name = ?1 instead of LIKE for O(log n) lookup
-    /// Note: workspace_ids parameter kept for API compatibility, but workspace selection
-    /// happens at DB file level (.julie/indexes/{workspace_id}/db/symbols.db)
     pub fn get_symbols_by_name_and_workspace(
         &self,
         name: &str,
-        _workspace_ids: Vec<String>,
     ) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature,
@@ -231,7 +228,7 @@ impl SymbolDatabase {
     ///
     /// Returns a vector of relative file paths that are currently indexed in the database
     /// Note: workspace_id kept for API, DB file is already workspace-specific
-    pub fn get_all_indexed_files(&self, _workspace_id: &str) -> Result<Vec<String>> {
+    pub fn get_all_indexed_files(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare("SELECT path FROM files")?;
 
         let file_paths: Vec<String> = stmt
@@ -242,8 +239,7 @@ impl SymbolDatabase {
     }
 
     /// Check if workspace has any symbols (quick health check)
-    /// Note: workspace_id kept for API, DB file is already workspace-specific
-    pub fn has_symbols_for_workspace(&self, _workspace_id: &str) -> Result<bool> {
+    pub fn has_symbols_for_workspace(&self) -> Result<bool> {
         let exists: i64 =
             self.conn
                 .query_row("SELECT EXISTS(SELECT 1 FROM symbols LIMIT 1)", [], |row| {
@@ -254,8 +250,7 @@ impl SymbolDatabase {
     }
 
     /// Count total symbols for a workspace (for statistics)
-    /// Note: workspace_id kept for API, DB file is already workspace-specific
-    pub fn count_symbols_for_workspace(&self, _workspace_id: &str) -> Result<usize> {
+    pub fn count_symbols_for_workspace(&self) -> Result<usize> {
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
@@ -265,12 +260,10 @@ impl SymbolDatabase {
 
     /// Query symbols by name pattern (LIKE search) with optional filters
     /// Uses idx_symbols_name, idx_symbols_language for fast lookup
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn query_symbols_by_name_pattern(
         &self,
         pattern: &str,
         language: Option<&str>,
-        _workspace_ids: &[String],
     ) -> Result<Vec<Symbol>> {
         let pattern_like = format!("%{}%", pattern);
 
@@ -312,11 +305,9 @@ impl SymbolDatabase {
 
     /// Query symbols by kind
     /// Uses idx_symbols_kind for fast lookup
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn query_symbols_by_kind(
         &self,
         kind: &SymbolKind,
-        _workspace_ids: &[String],
     ) -> Result<Vec<Symbol>> {
         let kind_str = match kind {
             SymbolKind::Function => "function",
@@ -365,11 +356,9 @@ impl SymbolDatabase {
 
     /// Query symbols by language
     /// Uses idx_symbols_language for fast lookup
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn query_symbols_by_language(
         &self,
         language: &str,
-        _workspace_ids: &[String],
     ) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
@@ -392,10 +381,8 @@ impl SymbolDatabase {
 
     /// Get aggregate symbol statistics (fast COUNT queries with GROUP BY)
     /// Returns counts by kind and by language
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn get_symbol_statistics(
         &self,
-        _workspace_ids: &[String],
     ) -> Result<(
         std::collections::HashMap<String, usize>,
         std::collections::HashMap<String, usize>,
@@ -432,10 +419,8 @@ impl SymbolDatabase {
         Ok((by_kind, by_language))
     }
     /// Get file-level symbol counts (GROUP BY file_path)
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn get_file_statistics(
         &self,
-        _workspace_ids: &[String],
     ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
@@ -457,8 +442,7 @@ impl SymbolDatabase {
     }
 
     /// Get total symbol count using SQL COUNT (O(1) database operation)
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
-    pub fn get_total_symbol_count(&self, _workspace_ids: &[String]) -> Result<usize> {
+    pub fn get_total_symbol_count(&self) -> Result<usize> {
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
@@ -466,14 +450,9 @@ impl SymbolDatabase {
         Ok(count as usize)
     }
 
-    /// Get file-level relationship statistics using SQL (for hotspot analysis)
-    ///
-    /// Returns: HashMap<file_path, relationship_count> counting relationships where symbols from this file participate
     /// Get most referenced symbols (GROUP BY aggregation on relationships)
-    /// Note: workspace_ids kept for API, DB file is already workspace-specific
     pub fn get_most_referenced_symbols(
         &self,
-        _workspace_ids: &[String],
         limit: usize,
     ) -> Result<Vec<(String, usize)>> {
         let mut results = Vec::new();

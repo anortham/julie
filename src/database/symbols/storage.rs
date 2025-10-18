@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    pub fn store_symbols(&mut self, symbols: &[Symbol], _workspace_id: &str) -> Result<()> {
+    pub fn store_symbols(&mut self, symbols: &[Symbol]) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }

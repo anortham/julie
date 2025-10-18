@@ -107,11 +107,25 @@ pub struct FuzzyReplaceTool {
 impl FuzzyReplaceTool {
     pub async fn call_tool(
         &self,
-        _handler: &crate::handler::JulieServerHandler,
+        handler: &crate::handler::JulieServerHandler,
     ) -> Result<CallToolResult> {
+        use crate::utils::file_utils::secure_path_resolution;
+        use std::env;
+
+        // Secure path resolution to prevent traversal attacks
+        let workspace_root = if let Some(workspace) = handler.get_workspace().await? {
+            workspace.root.clone()
+        } else {
+            env::current_dir()
+                .map_err(|e| anyhow!("Failed to determine current directory: {}", e))?
+        };
+
+        let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+
         info!(
             "🔍 Fuzzy replace in: {} (threshold: {}, distance: {})",
-            self.file_path, self.threshold, self.distance
+            resolved_path.display(), self.threshold, self.distance
         );
 
         // Validate parameters
@@ -128,13 +142,13 @@ impl FuzzyReplaceTool {
         }
 
         // Read file (async to avoid blocking executor thread)
-        let original_content = fs::read_to_string(&self.file_path)
+        let original_content = fs::read_to_string(&resolved_path)
             .await
-            .map_err(|e| anyhow!("Failed to read file '{}': {}", self.file_path, e))?;
+            .map_err(|e| anyhow!("Failed to read file '{}': {}", resolved_path.display(), e))?;
 
         if original_content.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                format!("Error: File is empty: {}", self.file_path),
+                format!("Error: File is empty: {}", resolved_path.display()),
             )]));
         }
 
@@ -179,7 +193,7 @@ impl FuzzyReplaceTool {
             // Create structured result
             let result = FuzzyReplaceResult {
                 tool: "fuzzy_replace".to_string(),
-                file_path: self.file_path.clone(),
+                file_path: resolved_path.display().to_string(),
                 pattern: self.pattern.clone(),
                 replacement: self.replacement.clone(),
                 matches_found,
@@ -215,7 +229,7 @@ impl FuzzyReplaceTool {
         }
 
         // Apply changes atomically using EditingTransaction
-        let transaction = EditingTransaction::begin(&self.file_path)
+        let transaction = EditingTransaction::begin(&resolved_path_str)
             .map_err(|e| anyhow!("Failed to begin transaction: {}", e))?;
         transaction
             .commit(&modified_content)
@@ -224,7 +238,7 @@ impl FuzzyReplaceTool {
         // Create structured result
         let result = FuzzyReplaceResult {
             tool: "fuzzy_replace".to_string(),
-            file_path: self.file_path.clone(),
+            file_path: resolved_path.display().to_string(),
             pattern: self.pattern.clone(),
             replacement: self.replacement.clone(),
             matches_found,
@@ -232,7 +246,7 @@ impl FuzzyReplaceTool {
             dry_run: false,
             validation_passed: true,
             next_actions: vec![
-                format!("Review changes in: {}", self.file_path),
+                format!("Review changes in: {}", resolved_path.display()),
                 "Run tests to verify functionality".to_string(),
             ],
         };
@@ -337,10 +351,6 @@ impl FuzzyReplaceTool {
                             search_from_byte = search_from_byte + byte_offset + matched_byte_len;
                             search_from_char = absolute_char_pos + pattern_char_len;
                         } else {
-                            debug!(
-                                "DMP match rejected (similarity {:.2} < threshold {}): '{}'",
-                                similarity, self.threshold, matched_text
-                            );
                             // DMP found something, but it's not good enough - advance by 1 char and keep looking
                             // Need to find next char boundary for UTF-8 safety
                             let next_char_byte_len = content[search_from_byte + byte_offset..]

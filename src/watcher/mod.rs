@@ -392,7 +392,7 @@ impl IncrementalIndexer {
         db.delete_symbols_for_file(&path_str)?;
 
         // Insert new symbols (file watcher only operates on primary workspace)
-        db.store_symbols(&symbols, "primary")?;
+        db.store_symbols(&symbols)?;
 
         // Update file hash (store as hex string)
         let new_hash_str = hex::encode(new_hash.as_bytes());

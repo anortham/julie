@@ -170,7 +170,6 @@ async fn test_manage_workspace_recent_files() {
                 symbol_count: 5,
                 content: Some("fn main() {}".to_string()),
             },
-            "primary",
         )
         .unwrap();
 
@@ -187,7 +186,6 @@ async fn test_manage_workspace_recent_files() {
                 symbol_count: 3,
                 content: Some("fn test() {}".to_string()),
             },
-            "primary",
         )
         .unwrap();
 
@@ -204,7 +202,6 @@ async fn test_manage_workspace_recent_files() {
                 symbol_count: 2,
                 content: Some("fn old() {}".to_string()),
             },
-            "primary",
         )
         .unwrap();
 
@@ -307,7 +304,6 @@ async fn test_manage_workspace_recent_files_respects_limit() {
                     symbol_count: 1,
                     content: Some("fn demo() {}".to_string()),
                 },
-                "primary",
             )
             .unwrap();
     }

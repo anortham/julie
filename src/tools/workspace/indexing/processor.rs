@@ -246,7 +246,7 @@ impl ManageWorkspaceTool {
                 let bulk_start = std::time::Instant::now();
 
                 // Bulk store files
-                if let Err(e) = db_lock.bulk_store_files(&all_file_infos, &workspace_id) {
+                if let Err(e) = db_lock.bulk_store_files(&all_file_infos) {
                     warn!("Failed to bulk store files: {}", e);
                 }
 

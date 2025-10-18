@@ -46,7 +46,7 @@ mod edit_lines_tests {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
         // Setup: Copy SOURCE to temp location
-        let (_temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
 
         // Load CONTROL (expected result)
         let expected_content = load_control_file("line_edit_insert_import.py")?;
@@ -56,6 +56,7 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
+        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -78,7 +79,7 @@ mod edit_lines_tests {
     async fn test_edit_lines_delete_comment() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (_temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
         let expected_content = load_control_file("line_edit_delete_comment.py")?;
 
         // Operation: Delete line 15 ("# Test data" comment)
@@ -86,6 +87,7 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
+        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -106,7 +108,7 @@ mod edit_lines_tests {
     async fn test_edit_lines_replace_function() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (_temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
         let expected_content = load_control_file("line_edit_replace_function_only.py")?;
 
         // Operation: Replace lines 7-12 (calculate_sum function) with calculate_average
@@ -121,6 +123,7 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
+        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -221,13 +224,14 @@ mod edit_lines_tests {
     async fn test_edit_lines_dry_run() -> Result<()> {
         // TDD RED: Verify dry_run doesn't modify file
 
-        let (_temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
         let original_content = fs::read_to_string(&test_file)?;
 
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
+        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -246,6 +250,156 @@ mod edit_lines_tests {
             original_content, after_content,
             "dry_run should not modify file"
         );
+
+        Ok(())
+    }
+
+    // ===== SECURITY TESTS =====
+
+    #[tokio::test]
+    async fn test_path_traversal_prevention_absolute_path() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+
+        let temp_dir = TempDir::new()?;
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Try to access /etc/passwd using absolute path
+        let edit_tool = EditLinesTool {
+            file_path: "/etc/passwd".to_string(),
+            operation: "insert".to_string(),
+            start_line: 1,
+            end_line: None,
+            content: Some("malicious content".to_string()),
+            dry_run: false,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should fail with security error
+        assert!(result.is_err(), "Absolute path outside workspace should be blocked");
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("traversal"),
+            "Error should mention security/traversal: {}",
+            error_msg
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_prevention_relative_traversal() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+
+        let temp_dir = TempDir::new()?;
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Try to access ../../../../etc/passwd using relative path traversal
+        let edit_tool = EditLinesTool {
+            file_path: "../../../../etc/passwd".to_string(),
+            operation: "insert".to_string(),
+            start_line: 1,
+            end_line: None,
+            content: Some("malicious content".to_string()),
+            dry_run: false,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should fail with security error or path not found (both secure outcomes)
+        assert!(result.is_err(), "Relative path traversal should be blocked");
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("traversal") || error_msg.contains("does not exist"),
+            "Error should indicate security block or non-existent path: {}",
+            error_msg
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_prevention_symlink_outside_workspace() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new()?;
+        let workspace_dir = TempDir::new()?;
+
+        // Create a symlink in workspace pointing outside
+        let symlink_path = workspace_dir.path().join("evil_link");
+        symlink("/etc/passwd", &symlink_path)?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(workspace_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Try to access through symlink
+        let edit_tool = EditLinesTool {
+            file_path: "evil_link".to_string(),
+            operation: "insert".to_string(),
+            start_line: 1,
+            end_line: None,
+            content: Some("malicious content".to_string()),
+            dry_run: false,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should fail with security error
+        assert!(result.is_err(), "Symlink outside workspace should be blocked");
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("traversal"),
+            "Error should mention security/traversal: {}",
+            error_msg
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_secure_path_resolution_valid_paths() -> Result<()> {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::edit_lines::EditLinesTool;
+
+        let temp_dir = TempDir::new()?;
+        let test_file = temp_dir.path().join("test.py");
+        fs::write(&test_file, "print('hello')")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Valid absolute path should work
+        let edit_tool = EditLinesTool {
+            file_path: test_file.to_string_lossy().to_string(),
+            operation: "insert".to_string(),
+            start_line: 1,
+            end_line: None,
+            content: Some("# comment".to_string()),
+            dry_run: false,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Valid relative path should work: {:?}", result);
+
+        // Verify the file was actually modified
+        let content = fs::read_to_string(&test_file)?;
+        assert!(content.contains("# comment"), "File should contain inserted comment");
 
         Ok(())
     }

@@ -253,6 +253,116 @@ fn test_calculate_balance_in_strings() {
     assert_eq!(parens, 1, "Counts parens even in strings");
 }
 
+// ===== SECURITY TESTS =====
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use crate::handler::JulieServerHandler;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_path_traversal_prevention_absolute_path() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Try to access /etc/passwd using absolute path
+        let edit_tool = FuzzyReplaceTool {
+            file_path: "/etc/passwd".to_string(),
+            pattern: "root".to_string(),
+            replacement: "hacked".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should fail with security error
+        assert!(result.is_err(), "Absolute path outside workspace should be blocked");
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("traversal"),
+            "Error should mention security/traversal: {}",
+            error_msg
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_path_traversal_prevention_relative_traversal() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Try to access ../../../../etc/passwd using relative path traversal
+        let edit_tool = FuzzyReplaceTool {
+            file_path: "../../../../etc/passwd".to_string(),
+            pattern: "root".to_string(),
+            replacement: "hacked".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should fail with security error or path not found (both secure outcomes)
+        assert!(result.is_err(), "Relative path traversal should be blocked");
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("traversal") || error_msg.contains("does not exist"),
+            "Error should indicate security block or non-existent path: {}",
+            error_msg
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_secure_path_resolution_valid_paths() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let test_file = temp_dir.path().join("test.txt");
+        fs::write(&test_file, "Hello world, this is a test file.")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // Valid absolute path should work
+        let edit_tool = FuzzyReplaceTool {
+            file_path: test_file.to_string_lossy().to_string(),
+            pattern: "world".to_string(),
+            replacement: "universe".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = edit_tool.call_tool(&handler).await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Valid relative path should work: {:?}", result);
+
+        // Verify the file was actually modified
+        let content = fs::read_to_string(&test_file)?;
+        assert!(content.contains("universe"), "File should contain replacement text");
+
+        Ok(())
+    }
+}
+
 // Helper function to create a tool with basic params
 fn create_tool(pattern: &str, replacement: &str) -> FuzzyReplaceTool {
     FuzzyReplaceTool {

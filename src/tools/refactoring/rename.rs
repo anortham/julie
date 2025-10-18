@@ -36,12 +36,12 @@ impl SmartRefactorTool {
         let scope = params
             .get("scope")
             .and_then(|v| v.as_str())
-            .unwrap_or("workspace");
+            .unwrap_or("workspace"); // "workspace", "file:<path>", or "all"
 
         let update_imports = params
             .get("update_imports")
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .unwrap_or(false); // Changed default to false for safety
 
         let update_comments = params
             .get("update_comments")
@@ -64,7 +64,7 @@ impl SmartRefactorTool {
         let refs_result = refs_tool.call_tool(handler).await?;
 
         // Extract file locations from the refs result
-        let file_locations = self.parse_refs_result(&refs_result)?;
+        let mut file_locations = self.parse_refs_result(&refs_result)?;
 
         if file_locations.is_empty() {
             let message = format!("No references found for symbol '{}'", old_name);
@@ -80,6 +80,35 @@ impl SmartRefactorTool {
                 message,
                 None,
             );
+        }
+
+        // Apply scope filtering
+        if scope != "workspace" && scope != "all" {
+            if let Some(file_path) = scope.strip_prefix("file:") {
+                // Scope to specific file
+                file_locations.retain(|path, _| path == file_path);
+                if file_locations.is_empty() {
+                    let message = format!(
+                        "Symbol '{}' not found in specified file: {}",
+                        old_name, file_path
+                    );
+                    return self.create_result(
+                        "rename_symbol",
+                        false,
+                        vec![],
+                        0,
+                        vec!["Check the file path is correct".to_string()],
+                        message,
+                        None,
+                    );
+                }
+                debug!("📍 Scope limited to file: {}", file_path);
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Invalid scope '{}'. Must be 'workspace', 'all', or 'file:<path>'",
+                    scope
+                ));
+            }
         }
 
         debug!(
@@ -115,6 +144,33 @@ impl SmartRefactorTool {
                 }
                 Err(e) => {
                     _errors.push(format!("❌ {}: {}", file_path, e));
+                }
+            }
+        }
+
+        // Step 2.5: Update import statements if requested
+        if update_imports && !renamed_files.is_empty() {
+            debug!("🔄 Updating import statements for renamed symbol");
+            match self
+                .update_import_statements(handler, old_name, new_name, &dmp)
+                .await
+            {
+                Ok(updated_files) => {
+                    for (file_path, changes) in updated_files {
+                        // Add to renamed_files or increment count if already present
+                        if let Some((_, existing_changes)) = renamed_files
+                            .iter_mut()
+                            .find(|(path, _)| path == &file_path)
+                        {
+                            *existing_changes += changes;
+                        } else {
+                            renamed_files.push((file_path, changes));
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("⚠️  Failed to update import statements: {}", e);
+                    // Don't fail the entire operation, just log the issue
                 }
             }
         }
@@ -161,6 +217,175 @@ impl SmartRefactorTool {
             message,
             None,
         )
+    }
+
+    /// Update import statements across the workspace
+    async fn update_import_statements(
+        &self,
+        handler: &JulieServerHandler,
+        old_name: &str,
+        new_name: &str,
+        dmp: &DiffMatchPatch,
+    ) -> Result<Vec<(String, usize)>> {
+        use crate::tools::search::FastSearchTool;
+
+        let mut updated_files = Vec::new();
+
+        // Search for import/use statements containing the old symbol name
+        let search_patterns = vec![
+            format!("import.*{}.*from", old_name),
+            format!("from.*import.*{}", old_name),
+            format!("use.*::{}", old_name),
+            format!("import {{ {} }}", old_name),
+        ];
+
+        for pattern in search_patterns {
+            let search_tool = FastSearchTool {
+                query: pattern.clone(),
+                mode: "text".to_string(),
+                limit: 100,
+                scope: "content".to_string(),
+                language: None,
+                file_pattern: None,
+                context_lines: Some(0),
+                workspace: Some("primary".to_string()),
+                output: None,
+            };
+
+            match search_tool.call_tool(handler).await {
+                Ok(result) => {
+                    let file_paths = self.extract_file_paths_from_search(&result)?;
+                    for file_path in file_paths {
+                        match self
+                            .update_imports_in_file(&file_path, old_name, new_name, dmp)
+                            .await
+                        {
+                            Ok(changes) if changes > 0 => {
+                                debug!("✅ Updated {} import(s) in {}", changes, file_path);
+                                updated_files.push((file_path, changes));
+                            }
+                            Ok(_) => {
+                                // No changes needed
+                            }
+                            Err(e) => {
+                                debug!("⚠️  Failed to update imports in {}: {}", file_path, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("⚠️  Import search failed for pattern '{}': {}", pattern, e);
+                }
+            }
+        }
+
+        Ok(updated_files)
+    }
+
+    /// Update imports in a single file
+    async fn update_imports_in_file(
+        &self,
+        file_path: &str,
+        old_name: &str,
+        new_name: &str,
+        _dmp: &DiffMatchPatch,
+    ) -> Result<usize> {
+        use regex::Regex;
+
+        let content = std::fs::read_to_string(file_path)?;
+        let mut changes = 0;
+
+        // Build regex patterns with word boundaries to avoid partial matches
+        // \b ensures we match whole identifiers, not substrings like getUserData in getUserDataFromCache
+        let patterns = vec![
+            // JavaScript/TypeScript: import { getUserData } from 'module'
+            Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*\}}", regex::escape(old_name)))?,
+            // JavaScript/TypeScript: import { getUserData, other } (leading position)
+            Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*,", regex::escape(old_name)))?,
+            // JavaScript/TypeScript: import { other, getUserData } (trailing position)
+            Regex::new(&format!(r",\s*{}\s*\}}", regex::escape(old_name)))?,
+            // Python: from module import getUserData (word boundary)
+            Regex::new(&format!(r"\bfrom\s+\S+\s+import\s+{}\b", regex::escape(old_name)))?,
+            // Rust: use module::getUserData (word boundary)
+            Regex::new(&format!(r"\buse\s+.*::{}\b", regex::escape(old_name)))?,
+        ];
+
+        let mut modified_content = content.clone();
+
+        for regex in patterns {
+            if regex.is_match(&modified_content) {
+                let before = modified_content.clone();
+
+                // Use regex replace_all with callback to replace old_name with new_name
+                // This preserves the rest of the matched pattern (imports, from, use keywords, etc.)
+                modified_content = regex.replace_all(&modified_content, |caps: &regex::Captures| {
+                    caps[0].replace(old_name, new_name)
+                }).to_string();
+
+                if modified_content != before {
+                    changes += 1;
+                }
+            }
+        }
+
+        if changes > 0 && !self.dry_run {
+            use crate::tools::editing::EditingTransaction;
+            let tx = EditingTransaction::begin(file_path)?;
+            tx.commit(&modified_content)?;
+        }
+
+        Ok(changes)
+    }
+
+    /// Extract file paths from search results
+    fn extract_file_paths_from_search(
+        &self,
+        search_result: &CallToolResult,
+    ) -> Result<Vec<String>> {
+        let mut file_paths = Vec::new();
+
+        // Try structured content first
+        if let Some(structured) = &search_result.structured_content {
+            if let Some(results) = structured.get("results").and_then(|v| v.as_array()) {
+                for result in results {
+                    if let Some(file_path) = result.get("file_path").and_then(|v| v.as_str()) {
+                        if !file_paths.contains(&file_path.to_string()) {
+                            file_paths.push(file_path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback to parsing text content
+        if file_paths.is_empty() {
+            let content = search_result
+                .content
+                .iter()
+                .filter_map(|block| {
+                    if let Ok(json_value) = serde_json::to_value(block) {
+                        json_value
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            for line in content.lines() {
+                if let Some(path_end) = line.find(':') {
+                    let file_path = line[..path_end].trim();
+                    if !file_path.is_empty() && !file_paths.contains(&file_path.to_string()) {
+                        file_paths.push(file_path.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(file_paths)
     }
 
     /// Parse the result from fast_refs to extract file locations

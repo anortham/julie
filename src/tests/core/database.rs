@@ -56,7 +56,7 @@ async fn test_debug_foreign_key_constraint() {
     // Store file info
     let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
     println!("File path in file_info: {}", file_info.path);
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     // Create a symbol with the same file path (canonicalized to match file_info)
     let file_path = test_file
@@ -89,7 +89,7 @@ async fn test_debug_foreign_key_constraint() {
     };
 
     // This should work without foreign key constraint error
-    let result = db.store_symbols(&[symbol], "test");
+    let result = db.store_symbols(&[symbol]);
     assert!(
         result.is_ok(),
         "Foreign key constraint failed: {:?}",
@@ -160,7 +160,7 @@ async fn test_file_info_storage() {
         content: None,
     };
 
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     let hash = db.get_file_hash("test.rs").unwrap();
     assert_eq!(hash, Some("abcd1234".to_string()));
@@ -205,9 +205,9 @@ async fn test_symbol_storage_and_retrieval() {
         symbol_count: 1,
         content: None,
     };
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
-    db.store_symbols(&[symbol.clone()], "test").unwrap();
+    db.store_symbols(&[symbol.clone()]).unwrap();
 
     let retrieved = db.get_symbol_by_id("test-symbol-1").unwrap();
     assert!(retrieved.is_some());
@@ -229,7 +229,7 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
     let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
     let file_info = crate::database::create_file_info(&fixture_path, "go").unwrap();
-    db.bulk_store_files(&[file_info], "test_workspace").unwrap();
+    db.bulk_store_files(&[file_info]).unwrap();
 
     let mut parser = Parser::new();
     parser
@@ -302,10 +302,10 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
     println!("DEBUG: File path in file_info: {}", file_info.path);
     println!("DEBUG: Symbol file path: {}", symbol.file_path);
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     // Store the symbol
-    db.store_symbols(&[symbol.clone()], "test").unwrap();
+    db.store_symbols(&[symbol.clone()]).unwrap();
 
     // Retrieve and verify all fields are preserved
     let retrieved = db.get_symbol_by_id("test-symbol-complex").unwrap().unwrap();
@@ -354,7 +354,7 @@ async fn test_relationship_with_id_field() {
         symbol_count: 2,
         content: None,
     };
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     let caller_symbol = Symbol {
         id: "caller_func".to_string(),
@@ -400,7 +400,7 @@ async fn test_relationship_with_id_field() {
         code_context: None,
     };
 
-    db.store_symbols(&[caller_symbol, called_symbol], "test")
+    db.store_symbols(&[caller_symbol, called_symbol])
         .unwrap();
 
     // Create relationship with generated id
@@ -491,7 +491,7 @@ async fn test_cross_language_semantic_grouping() {
         symbol_count: 1,
         content: None,
     };
-    db.store_file_info(&ts_file_info, "test").unwrap();
+    db.store_file_info(&ts_file_info).unwrap();
 
     let rust_file_info = FileInfo {
         path: "user.rs".to_string(),
@@ -503,10 +503,10 @@ async fn test_cross_language_semantic_grouping() {
         symbol_count: 1,
         content: None,
     };
-    db.store_file_info(&rust_file_info, "test").unwrap();
+    db.store_file_info(&rust_file_info).unwrap();
 
     // Store both symbols
-    db.store_symbols(&[ts_interface, rust_struct], "test")
+    db.store_symbols(&[ts_interface, rust_struct])
         .unwrap();
 
     // Query symbols by semantic group (this will fail initially - need to implement)
@@ -586,10 +586,10 @@ async fn test_extractor_database_integration() {
         symbol_count: 1,
         content: None,
     };
-    db.store_file_info(&file_info, "test").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     // Test that extractor-generated symbols work with database
-    db.store_symbols(&[symbol.clone()], "test").unwrap();
+    db.store_symbols(&[symbol.clone()]).unwrap();
 
     let retrieved = db.get_symbol_by_id(&symbol.id).unwrap().unwrap();
     assert_eq!(retrieved.name, "getUserById");
@@ -621,7 +621,7 @@ async fn test_complete_symbol_field_persistence() {
         symbol_count: 1,
         content: None,
     };
-    db.store_file_info(&file_info, "test_workspace").unwrap();
+    db.store_file_info(&file_info).unwrap();
 
     // Create symbol with ALL fields populated (including the missing ones)
     let symbol = Symbol {
@@ -651,7 +651,7 @@ async fn test_complete_symbol_field_persistence() {
     };
 
     // Store the symbol
-    db.store_symbols(&[symbol.clone()], "test_workspace")
+    db.store_symbols(&[symbol.clone()])
         .unwrap();
 
     // Retrieve and verify ALL fields are preserved

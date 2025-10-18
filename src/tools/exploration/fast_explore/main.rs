@@ -94,11 +94,16 @@ impl FastExploreTool {
             }
             "all" => {
                 debug!("🌍 Comprehensive analysis mode");
-                // For "all" mode, combine insights from multiple modes
+                // For "all" mode, combine insights from all modes
                 let mut combined = String::new();
+                combined.push_str("## Overview\n");
                 combined.push_str(&self.intelligent_overview(handler).await?);
-                combined.push_str("\n\n");
+                combined.push_str("\n\n## Dependencies\n");
+                combined.push_str(&self.intelligent_dependencies(handler).await?);
+                combined.push_str("\n\n## Hotspots\n");
                 combined.push_str(&self.intelligent_hotspots(handler).await?);
+                combined.push_str("\n\n## Trace Analysis\n");
+                combined.push_str(&self.intelligent_trace(handler).await?);
                 (combined, true)
             }
             _ => (
@@ -135,12 +140,23 @@ impl FastExploreTool {
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().unwrap();
 
-        let workspace_id =
-            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
-        let workspace_ids = vec![workspace_id];
-        let (_kind_counts, language_counts) = db_lock.get_symbol_statistics(&workspace_ids)?;
-        let file_counts = db_lock.get_file_statistics(&workspace_ids)?;
-        let total_symbols = db_lock.get_total_symbol_count(&workspace_ids)?;
+        let (_kind_counts, mut language_counts) = db_lock.get_symbol_statistics()?;
+        let mut file_counts = db_lock.get_file_statistics()?;
+        let mut total_symbols = db_lock.get_total_symbol_count()?;
+
+        // Apply focus filter if provided
+        if let Some(focus) = &self.focus {
+            // Filter files matching focus keyword
+            file_counts.retain(|file_path, _| {
+                file_path.to_lowercase().contains(&focus.to_lowercase())
+            });
+
+            // Recalculate total symbols from filtered files
+            total_symbols = file_counts.values().sum();
+
+            // Note: We don't recalculate language_counts since it would require
+            // per-symbol queries. This is a limitation of the current aggregation approach.
+        }
 
         let mut sorted_langs: Vec<_> = language_counts.iter().collect();
         sorted_langs.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
@@ -150,8 +166,15 @@ impl FastExploreTool {
             .map(|(lang, _)| (*lang).clone())
             .collect();
 
+        let focus_msg = if self.focus.is_some() {
+            format!(" (filtered by focus: '{}')", self.focus.as_ref().unwrap())
+        } else {
+            String::new()
+        };
+
         Ok(format!(
-            "Codebase overview: {} symbols in {} files\nLanguages: {}",
+            "Codebase overview{}: {} symbols in {} files\nLanguages: {}",
+            focus_msg,
             total_symbols,
             file_counts.len(),
             top_langs.join(", ")
@@ -185,10 +208,17 @@ impl FastExploreTool {
             .map(|(kind, _)| (*kind).clone())
             .collect();
 
+        let focus_note = if let Some(focus) = &self.focus {
+            format!("\n\nNote: For focused dependency analysis on '{}', use mode='trace' with focus parameter.", focus)
+        } else {
+            String::new()
+        };
+
         Ok(format!(
-            "Dependencies: {} total relationships\nTop types: {}",
+            "Dependencies: {} total relationships\nTop types: {}{}",
             total_relationships,
-            top_types.join(", ")
+            top_types.join(", "),
+            focus_note
         ))
     }
 
@@ -203,21 +233,43 @@ impl FastExploreTool {
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().unwrap();
 
-        let workspace_id =
-            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
-        let workspace_ids = vec![workspace_id];
-        let file_symbol_counts = db_lock.get_file_statistics(&workspace_ids)?;
+        let file_symbol_counts = db_lock.get_file_statistics()?;
         let file_rel_counts = db_lock.get_file_relationship_statistics()?;
 
-        let mut complexity_scores: Vec<(String, i64)> = Vec::new();
+        // Calculate complexity using relationship density as a multiplier
+        // Density = relationships / symbols (measures interconnectedness)
+        // Formula: complexity = symbols * (1.0 + density)
+        //
+        // Examples:
+        // - 100 symbols, 10 relationships → density 0.1 → complexity 110
+        // - 100 symbols, 200 relationships → density 2.0 → complexity 300
+        // - 50 symbols, 100 relationships → density 2.0 → complexity 150
+        let mut complexity_scores: Vec<(String, f64)> = Vec::new();
         for (file, symbol_count) in file_symbol_counts.iter() {
-            let symbol_count_i64 = *symbol_count as i64;
-            let rel_count = file_rel_counts.get(file).copied().unwrap_or(0) as i64;
-            let complexity = symbol_count_i64 * (1 + rel_count);
+            let symbol_count_f64 = *symbol_count as f64;
+            let rel_count = file_rel_counts.get(file).copied().unwrap_or(0) as f64;
+
+            // Calculate relationship density (avoid division by zero)
+            let density = if symbol_count_f64 > 0.0 {
+                rel_count / symbol_count_f64
+            } else {
+                0.0
+            };
+
+            // Complexity scales with size and interconnectedness
+            let complexity = symbol_count_f64 * (1.0 + density);
             complexity_scores.push((file.clone(), complexity));
         }
 
-        complexity_scores.sort_by(|a, b| b.1.cmp(&a.1));
+        // Apply focus filter if provided
+        if let Some(focus) = &self.focus {
+            complexity_scores.retain(|(file_path, _)| {
+                file_path.to_lowercase().contains(&focus.to_lowercase())
+            });
+        }
+
+        // Sort by complexity (descending) - use partial_cmp for f64
+        complexity_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let top_files: Vec<String> = complexity_scores
             .iter()
@@ -231,9 +283,16 @@ impl FastExploreTool {
             })
             .collect();
 
+        let focus_msg = if self.focus.is_some() {
+            format!(" (filtered by focus: '{}')", self.focus.as_ref().unwrap())
+        } else {
+            String::new()
+        };
+
         Ok(format!(
-            "Complexity hotspots: {} files analyzed\nTop files: {}",
-            file_symbol_counts.len(),
+            "Complexity hotspots{}: {} files analyzed\nTop files: {}",
+            focus_msg,
+            complexity_scores.len(),
             top_files.join(", ")
         ))
     }
@@ -260,13 +319,58 @@ impl FastExploreTool {
                         .get_relationships_for_symbol(symbol_id)
                         .unwrap_or_default();
 
-                    Ok(format!(
-                        "Tracing '{}': {} relationships found\nIncoming: {}, Outgoing: {}",
-                        focus,
+                    let mut result = format!(
+                        "## Tracing Symbol: '{}' ({}:{})\\n\\n",
+                        target.name, target.file_path, target.start_line
+                    );
+
+                    result.push_str(&format!(
+                        "**Total Relationships**: {} ({} incoming, {} outgoing)\\n\\n",
                         incoming.len() + outgoing.len(),
                         incoming.len(),
                         outgoing.len()
-                    ))
+                    ));
+
+                    // Show incoming relationships (what calls/uses this symbol)
+                    if !incoming.is_empty() {
+                        result.push_str("### Incoming (Used By):\\n");
+                        for rel in incoming.iter().take(10) {
+                            if let Ok(Some(from_symbol)) = db_lock.get_symbol_by_id(&rel.from_symbol_id) {
+                                result.push_str(&format!(
+                                    "- **{}** ({}:{}) via {}\\n",
+                                    from_symbol.name,
+                                    from_symbol.file_path,
+                                    from_symbol.start_line,
+                                    rel.kind
+                                ));
+                            }
+                        }
+                        if incoming.len() > 10 {
+                            result.push_str(&format!("... and {} more\\n", incoming.len() - 10));
+                        }
+                        result.push_str("\\n");
+                    }
+
+                    // Show outgoing relationships (what this symbol calls/uses)
+                    if !outgoing.is_empty() {
+                        result.push_str("### Outgoing (Uses):\\n");
+                        for rel in outgoing.iter().take(10) {
+                            if let Ok(Some(to_symbol)) = db_lock.get_symbol_by_id(&rel.to_symbol_id) {
+                                result.push_str(&format!(
+                                    "- **{}** ({}:{}) via {}\\n",
+                                    to_symbol.name,
+                                    to_symbol.file_path,
+                                    to_symbol.start_line,
+                                    rel.kind
+                                ));
+                            }
+                        }
+                        if outgoing.len() > 10 {
+                            result.push_str(&format!("... and {} more\\n", outgoing.len() - 10));
+                        }
+                    }
+
+                    Ok(result)
                 } else {
                     Ok(format!("Symbol '{}' not found", focus))
                 }

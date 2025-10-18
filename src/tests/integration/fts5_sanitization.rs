@@ -17,7 +17,7 @@ fn test_fts5_hash_symbol_in_query() {
     let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
 
     // This should NOT panic or return an error about syntax
-    let result = db.find_symbols_by_pattern("#[test]", None);
+    let result = db.find_symbols_by_pattern("#[test]");
 
     match result {
         Ok(symbols) => {
@@ -47,7 +47,7 @@ fn test_fts5_column_specifier_in_query() {
     let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
 
     // Search for "fts5 extract" - the error was "no such column: extract"
-    let result = db.find_symbols_by_pattern("fts5 extract", None);
+    let result = db.find_symbols_by_pattern("fts5 extract");
 
     match result {
         Ok(symbols) => {
@@ -90,7 +90,7 @@ fn test_fts5_special_characters() {
     ];
 
     for query in special_queries {
-        let result = db.find_symbols_by_pattern(query, None);
+        let result = db.find_symbols_by_pattern(query);
 
         match result {
             Ok(_) => {
@@ -123,7 +123,7 @@ fn test_fts5_intentional_operators_preserved() {
     ];
 
     for query in operator_queries {
-        let result = db.find_symbols_by_pattern(query, None);
+        let result = db.find_symbols_by_pattern(query);
 
         // These should execute without syntax errors
         // (they might return empty results, but shouldn't crash)
