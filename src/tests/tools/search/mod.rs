@@ -2,6 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod line_mode;
+mod primary_workspace_bug;
 mod quality;
 mod race_condition;
 mod tools;

@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::handler::JulieServerHandler;
-use crate::health::SystemReadiness;
+use crate::health::SystemStatus;
 use crate::tools::shared::OptimizedResponse;
 
 //******************//
@@ -157,7 +157,7 @@ impl FastSearchTool {
         .await?;
 
         match readiness {
-            SystemReadiness::NotReady => {
+            SystemStatus::NotReady => {
                 if self.output.as_deref() == Some("lines") {
                     debug!(
                         "Line-mode search requested before readiness; attempting SQLite fallback"
@@ -169,14 +169,14 @@ impl FastSearchTool {
                     )]));
                 }
             }
-            SystemReadiness::SqliteOnly { symbol_count } => {
+            SystemStatus::SqliteOnly { symbol_count } => {
                 // Graceful degradation: Use SQLite FTS5 for search
                 debug!(
                     "🔍 Using SQLite FTS5 search ({} symbols available)",
                     symbol_count
                 );
             }
-            SystemReadiness::FullyReady { symbol_count } => {
+            SystemStatus::FullyReady { symbol_count } => {
                 debug!(
                     "✅ All systems ready ({} symbols, embeddings available)",
                     symbol_count

@@ -9,7 +9,7 @@ use tracing::debug;
 
 /// System readiness levels for graceful degradation
 #[derive(Debug, Clone)]
-pub enum SystemReadiness {
+pub enum SystemStatus {
     /// No workspace or database available
     NotReady,
     /// Only SQLite database is ready (FTS5 search available)
@@ -28,11 +28,14 @@ impl HealthChecker {
     pub async fn check_system_readiness(
         handler: &JulieServerHandler,
         workspace_id: Option<&str>,
-    ) -> Result<SystemReadiness> {
+    ) -> Result<SystemStatus> {
         // Step 1: Check if workspace and database exist
         let workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
-            None => return Ok(SystemReadiness::NotReady),
+            None => {
+                debug!("❌ Health check failed: handler.get_workspace() returned None");
+                return Ok(SystemStatus::NotReady);
+            }
         };
 
         let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
@@ -51,7 +54,10 @@ impl HealthChecker {
         if target_workspace_id == primary_workspace_id {
             let db = match &workspace.db {
                 Some(db_arc) => db_arc,
-                None => return Ok(SystemReadiness::NotReady),
+                None => {
+                    debug!("❌ Health check failed: workspace.db is None for primary workspace");
+                    return Ok(SystemStatus::NotReady);
+                }
             };
 
             let symbol_count = match db.try_lock() {
@@ -65,7 +71,8 @@ impl HealthChecker {
             };
 
             if symbol_count == 0 {
-                return Ok(SystemReadiness::NotReady);
+                debug!("❌ Health check failed: symbol_count is 0 for primary workspace");
+                return Ok(SystemStatus::NotReady);
             }
 
             let embeddings_ready = workspace.embeddings.is_some()
@@ -74,14 +81,14 @@ impl HealthChecker {
                 );
 
             if embeddings_ready {
-                Ok(SystemReadiness::FullyReady { symbol_count })
+                Ok(SystemStatus::FullyReady { symbol_count })
             } else {
-                Ok(SystemReadiness::SqliteOnly { symbol_count })
+                Ok(SystemStatus::SqliteOnly { symbol_count })
             }
         } else {
             let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
             if !ref_db_path.exists() {
-                return Ok(SystemReadiness::NotReady);
+                return Ok(SystemStatus::NotReady);
             }
 
             let symbol_count = tokio::task::spawn_blocking(move || -> Result<i64> {
@@ -92,17 +99,17 @@ impl HealthChecker {
             .map_err(|e| anyhow!("Failed to open reference workspace database: {}", e))??;
 
             if symbol_count == 0 {
-                return Ok(SystemReadiness::NotReady);
+                return Ok(SystemStatus::NotReady);
             }
 
-            Ok(SystemReadiness::SqliteOnly { symbol_count })
+            Ok(SystemStatus::SqliteOnly { symbol_count })
         }
     }
 
     /// Quick check: Is the system ready for basic operations?
     pub async fn is_ready_for_search(handler: &JulieServerHandler) -> Result<bool> {
         match Self::check_system_readiness(handler, None).await? {
-            SystemReadiness::NotReady => Ok(false),
+            SystemStatus::NotReady => Ok(false),
             _ => Ok(true), // SQLite or better is sufficient for search
         }
     }
@@ -110,7 +117,7 @@ impl HealthChecker {
     /// Quick check: Are embeddings available for semantic search?
     pub async fn are_embeddings_ready(handler: &JulieServerHandler) -> Result<bool> {
         match Self::check_system_readiness(handler, None).await? {
-            SystemReadiness::FullyReady { .. } => Ok(true),
+            SystemStatus::FullyReady { .. } => Ok(true),
             _ => Ok(false),
         }
     }
@@ -120,14 +127,14 @@ impl HealthChecker {
         let readiness = Self::check_system_readiness(handler, None).await?;
 
         match readiness {
-            SystemReadiness::NotReady => {
+            SystemStatus::NotReady => {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
-            SystemReadiness::SqliteOnly { symbol_count } => Ok(format!(
+            SystemStatus::SqliteOnly { symbol_count } => Ok(format!(
                 "🟢 Ready: {} symbols available via SQLite FTS5 search (<5ms)",
                 symbol_count
             )),
-            SystemReadiness::FullyReady { symbol_count } => Ok(format!(
+            SystemStatus::FullyReady { symbol_count } => Ok(format!(
                 "🟢 Fully operational: {} symbols with semantic search enabled!",
                 symbol_count
             )),

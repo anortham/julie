@@ -116,6 +116,7 @@ pub const MAX_USERS: usize = 100;
         limit: None,
         include_body: None,
         mode: None,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -194,6 +195,7 @@ pub fn process_data(input: &str) -> String {
         limit: None,
         include_body: None,
         mode: None,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -261,6 +263,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
                 limit: None,
                 include_body: None,
                 mode: None,
+        workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -330,6 +333,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: None,
         include_body: None,
         mode: None,
+        workspace: None,
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
@@ -352,6 +356,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         include_body: None,
         mode: None,
+        workspace: None,
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;

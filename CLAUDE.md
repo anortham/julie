@@ -174,7 +174,9 @@ mod tests {
 
 ## 🐕 Dogfooding Strategy
 
-**MANDATORY** We will be using Julie to develop Julie (eating our own dog food) **ALWAYS USE JULIE'S TOOLS**:
+**MANDATORY** We will be using Julie to develop Julie (eating our own dog food) **ALWAYS USE JULIE'S TOOLS**
+
+**MANDATORY** When dogfooding, you are also looking for bugs, if you see one, investigate it, don't just work around it and keep going.
 
 ### Development Workflow
 1. **Development Mode**: Always work in `debug` mode for fast iteration

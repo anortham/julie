@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::handler::JulieServerHandler;
+use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::workspace::registry_service::WorkspaceRegistryService;
 
 fn default_max_depth() -> u32 {
     1
@@ -94,6 +96,13 @@ pub struct GetSymbolsTool {
     /// Default: "structure" - maintains backward compatibility
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
+
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "project-b_a3f2b8c1"
+    /// Default: "primary" - search the primary workspace
+    /// To search a reference workspace, provide its workspace ID
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 impl GetSymbolsTool {
@@ -103,7 +112,16 @@ impl GetSymbolsTool {
             self.file_path, self.max_depth
         );
 
-        // Get the workspace and database
+        // Resolve workspace parameter (primary vs reference workspace)
+        let workspace_filter = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+
+        // If reference workspace is specified, handle it separately
+        if let Some(ref_workspace_id) = workspace_filter {
+            debug!("🎯 Querying reference workspace: {}", ref_workspace_id);
+            return self.get_symbols_from_reference(handler, ref_workspace_id).await;
+        }
+
+        // Primary workspace logic continues below
         let workspace = handler.get_workspace().await?.ok_or_else(|| {
             anyhow::anyhow!("No workspace initialized. Run 'manage_workspace index' first")
         })?;
@@ -538,5 +556,383 @@ impl GetSymbolsTool {
         }
 
         Ok(symbols)
+    }
+
+    /// Get symbols from a reference workspace
+    async fn get_symbols_from_reference(
+        &self,
+        handler: &JulieServerHandler,
+        ref_workspace_id: String,
+    ) -> Result<CallToolResult> {
+        // Get primary workspace to access helper methods
+        let primary_workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        // Get path to reference workspace's separate database file
+        let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
+
+        debug!(
+            "🗄️ Opening reference workspace DB: {}",
+            ref_db_path.display()
+        );
+
+        // Get reference workspace entry to access its original_path (workspace root)
+        let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+        let ref_workspace_entry = registry_service
+            .get_workspace(&ref_workspace_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", ref_workspace_id))?;
+
+        // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
+        // Opening SQLite database involves blocking filesystem operations
+        let ref_db =
+            tokio::task::spawn_blocking(move || crate::database::SymbolDatabase::new(ref_db_path))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+
+        // Normalize path: convert user input (relative or absolute) to canonical absolute path
+        // Reference workspace root is from WorkspaceEntry.original_path
+        let ref_workspace_root = std::path::PathBuf::from(&ref_workspace_entry.original_path);
+
+        let absolute_path = if std::path::Path::new(&self.file_path).is_absolute() {
+            // Already absolute - canonicalize to resolve symlinks
+            std::path::Path::new(&self.file_path)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&self.file_path))
+                .to_string_lossy()
+                .to_string()
+        } else {
+            // Relative path - join with reference workspace root and canonicalize
+            ref_workspace_root
+                .join(&self.file_path)
+                .canonicalize()
+                .unwrap_or_else(|_| ref_workspace_root.join(&self.file_path))
+                .to_string_lossy()
+                .to_string()
+        };
+
+        debug!(
+            "🔍 Path normalization: '{}' -> '{}' (ref workspace: {})",
+            self.file_path, absolute_path, ref_workspace_id
+        );
+
+        // Query symbols for this file using normalized path
+        // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
+        let symbols = ref_db
+            .get_symbols_for_file(&absolute_path)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
+
+        if symbols.is_empty() {
+            let message = format!("No symbols found in: {}", self.file_path);
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
+        // Apply the SAME filtering logic as primary workspace path
+        let all_symbols = symbols; // Complete symbol list for hierarchy
+
+        // Build a map of parent_id -> children for efficient lookup
+        let mut parent_to_children: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (idx, symbol) in all_symbols.iter().enumerate() {
+            if let Some(ref parent_id) = symbol.parent_id {
+                parent_to_children
+                    .entry(parent_id.clone())
+                    .or_default()
+                    .push(idx);
+            }
+        }
+
+        // Find top-level symbols (parent_id is None)
+        let top_level_indices: Vec<usize> = all_symbols
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.parent_id.is_none())
+            .map(|(idx, _)| idx)
+            .collect();
+
+        debug!(
+            "📊 Symbol hierarchy: {} total, {} top-level",
+            all_symbols.len(),
+            top_level_indices.len()
+        );
+
+        // Apply max_depth filtering: recursively collect symbols up to max_depth
+        fn collect_symbols_by_depth(
+            indices: &[usize],
+            depth: u32,
+            max_depth: u32,
+            all_symbols: &[crate::extractors::base::Symbol],
+            parent_to_children: &std::collections::HashMap<String, Vec<usize>>,
+            result: &mut Vec<usize>,
+        ) {
+            if depth > max_depth {
+                return;
+            }
+
+            for &idx in indices {
+                result.push(idx);
+                if depth < max_depth {
+                    if let Some(children_indices) = parent_to_children.get(&all_symbols[idx].id) {
+                        collect_symbols_by_depth(
+                            children_indices,
+                            depth + 1,
+                            max_depth,
+                            all_symbols,
+                            parent_to_children,
+                            result,
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut indices_to_include = Vec::new();
+        collect_symbols_by_depth(
+            &top_level_indices,
+            0,
+            self.max_depth,
+            &all_symbols,
+            &parent_to_children,
+            &mut indices_to_include,
+        );
+
+        debug!(
+            "🔍 After max_depth={} filtering: {} -> {} symbols",
+            self.max_depth,
+            all_symbols.len(),
+            indices_to_include.len()
+        );
+
+        // Collect the filtered symbols in original order
+        let mut symbols_after_depth_filter: Vec<crate::extractors::base::Symbol> =
+            indices_to_include
+                .into_iter()
+                .map(|idx| all_symbols[idx].clone())
+                .collect();
+
+        // Apply target filtering if specified
+        if let Some(ref target) = self.target {
+            let target_lower = target.to_lowercase();
+
+            // Find symbols matching the target
+            let matching_indices: Vec<usize> = symbols_after_depth_filter
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.name.to_lowercase().contains(&target_lower))
+                .map(|(idx, _)| idx)
+                .collect();
+
+            if matching_indices.is_empty() {
+                let message = format!(
+                    "No symbols matching '{}' found in: {}",
+                    target, self.file_path
+                );
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]));
+            }
+
+            // For each matching symbol, include it and all its descendants
+            let mut final_indices = Vec::new();
+            for &match_idx in &matching_indices {
+                final_indices.push(match_idx);
+                let matched_id = &symbols_after_depth_filter[match_idx].id;
+
+                // Recursively add all descendants of this symbol
+                fn add_descendants(
+                    parent_id: &str,
+                    symbols: &[crate::extractors::base::Symbol],
+                    result: &mut Vec<usize>,
+                ) {
+                    for (idx, symbol) in symbols.iter().enumerate() {
+                        if let Some(ref pid) = symbol.parent_id {
+                            if pid == parent_id {
+                                result.push(idx);
+                                add_descendants(&symbol.id, symbols, result);
+                            }
+                        }
+                    }
+                }
+                add_descendants(matched_id, &symbols_after_depth_filter, &mut final_indices);
+            }
+
+            symbols_after_depth_filter = final_indices
+                .into_iter()
+                .map(|idx| symbols_after_depth_filter[idx].clone())
+                .collect();
+
+            debug!(
+                "🎯 After target='{}' filtering: {} symbols",
+                target,
+                symbols_after_depth_filter.len()
+            );
+        }
+
+        // Check if we have any matching symbols after filtering
+        if symbols_after_depth_filter.is_empty() {
+            let message = format!("No symbols found after filtering in: {}", self.file_path);
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
+        // Apply hierarchy-preserving limit if specified
+        let total_symbols = all_symbols.len();
+        let top_level_count = all_symbols.iter().filter(|s| s.parent_id.is_none()).count();
+
+        let (symbols_to_return, was_truncated) = if let Some(limit) = self.limit {
+            let limit_usize = limit as usize;
+
+            // Count top-level symbols in filtered list
+            let top_level_in_filtered: Vec<usize> = symbols_after_depth_filter
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.parent_id.is_none())
+                .map(|(idx, _)| idx)
+                .collect();
+
+            if top_level_in_filtered.len() > limit_usize {
+                // Limit applies to top-level symbols; include all their children
+                let mut result = Vec::new();
+                let mut top_level_count = 0;
+
+                for (idx, symbol) in symbols_after_depth_filter.iter().enumerate() {
+                    if symbol.parent_id.is_none() {
+                        if top_level_count >= limit_usize {
+                            break;
+                        }
+                        top_level_count += 1;
+                        result.push(idx);
+                    }
+                }
+
+                // Add all children of included top-level symbols
+                let top_level_ids: std::collections::HashSet<String> = result
+                    .iter()
+                    .map(|&idx| symbols_after_depth_filter[idx].id.clone())
+                    .collect();
+
+                fn add_all_descendants(
+                    parent_ids: &std::collections::HashSet<String>,
+                    symbols: &[crate::extractors::base::Symbol],
+                    result: &mut Vec<usize>,
+                ) {
+                    let mut to_process: Vec<String> = parent_ids.iter().cloned().collect();
+                    let mut processed = std::collections::HashSet::new();
+
+                    while let Some(parent_id) = to_process.pop() {
+                        if processed.contains(&parent_id) {
+                            continue;
+                        }
+                        processed.insert(parent_id.clone());
+
+                        for (idx, symbol) in symbols.iter().enumerate() {
+                            if let Some(ref pid) = symbol.parent_id {
+                                if pid == &parent_id && !result.contains(&idx) {
+                                    result.push(idx);
+                                    to_process.push(symbol.id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                add_all_descendants(&top_level_ids, &symbols_after_depth_filter, &mut result);
+
+                info!(
+                    "⚠️  Truncating to {} top-level symbols (total {} with children)",
+                    limit_usize,
+                    result.len()
+                );
+
+                result.sort();
+                let filtered_symbols: Vec<crate::extractors::base::Symbol> = result
+                    .into_iter()
+                    .map(|idx| symbols_after_depth_filter[idx].clone())
+                    .collect();
+
+                (filtered_symbols, true)
+            } else {
+                (symbols_after_depth_filter, false)
+            }
+        } else {
+            (symbols_after_depth_filter, false)
+        };
+
+        // Phase 2: Smart Read - conditionally extract code bodies based on mode and include_body
+        let symbols_to_return = self.extract_code_bodies(symbols_to_return, &absolute_path)?;
+
+        debug!(
+            "✅ Reference workspace returned {} symbols (target: {:?}, truncated: {})",
+            symbols_to_return.len(),
+            self.target,
+            was_truncated
+        );
+
+        // Minimal text output for AI agents (structured_content has all data)
+        let truncation_warning = if was_truncated {
+            format!(
+                "\n\n⚠️  Showing {} of {} symbols (truncated)\n💡 Use 'target' parameter to filter to specific symbols",
+                symbols_to_return.len(),
+                total_symbols
+            )
+        } else {
+            String::new()
+        };
+
+        let text_summary = if let Some(ref target) = self.target {
+            format!(
+                "{} ({} total symbols, {} matching '{}'){}",
+                self.file_path,
+                total_symbols,
+                symbols_to_return
+                    .iter()
+                    .filter(|s| s.name.to_lowercase().contains(&target.to_lowercase()))
+                    .count(),
+                target,
+                truncation_warning
+            )
+        } else {
+            let top_names: Vec<String> = symbols_to_return
+                .iter()
+                .filter(|s| s.parent_id.is_none())
+                .take(5)
+                .map(|s| s.name.clone())
+                .collect();
+
+            format!(
+                "{} ({} symbols)\nTop-level: {}{}",
+                self.file_path,
+                symbols_to_return.len(),
+                top_names.join(", "),
+                truncation_warning
+            )
+        };
+
+        // Return structured content with symbol data (agents parse this)
+        let structured_json = serde_json::json!({
+            "file_path": self.file_path,
+            "workspace_id": ref_workspace_id,
+            "total_symbols": total_symbols,
+            "returned_symbols": symbols_to_return.len(),
+            "top_level_count": top_level_count,
+            "symbols": symbols_to_return,
+            "max_depth": self.max_depth,
+            "truncated": was_truncated,
+            "limit": self.limit,
+        });
+
+        let mut result = CallToolResult::text_content(vec![TextContent::from(text_summary)]);
+
+        // Convert JSON Value to Map
+        if let serde_json::Value::Object(map) = structured_json {
+            result.structured_content = Some(map);
+        }
+
+        Ok(result)
     }
 }

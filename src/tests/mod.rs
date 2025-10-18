@@ -40,6 +40,7 @@ pub mod core {
 pub mod tools {
     pub mod ast_symbol_finder; // AST symbol finder tests
     pub mod get_symbols; // GetSymbolsTool tests
+    pub mod get_symbols_reference_workspace; // GetSymbolsTool reference workspace bug test
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies

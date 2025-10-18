@@ -111,6 +111,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         limit: None,
         include_body: None,
         mode: None,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -161,6 +162,7 @@ async fn test_include_body_false_strips_context() -> Result<()> {
         limit: None,
         include_body: Some(false),
         mode: Some("structure".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -210,6 +212,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("structure".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -258,6 +261,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("minimal".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -323,6 +327,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("full".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -378,6 +383,7 @@ async fn test_target_with_include_body() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("minimal".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -446,6 +452,7 @@ async fn test_file_read_error_handling() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("minimal".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -500,6 +507,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         limit: None,
         include_body: Some(true),
         mode: Some("minimal".to_string()),
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;

@@ -353,3 +353,115 @@ async fn test_manage_workspace_recent_files_respects_limit() {
         response_text
     );
 }
+
+/// Regression test for Bug #1: handle_add_command must update workspace statistics
+///
+/// Bug: When adding a reference workspace, the statistics (file_count, symbol_count)
+/// were never updated in the registry after indexing, so `manage_workspace list`
+/// would always show 0 files and 0 symbols even though the database had data.
+///
+/// Root cause: handle_add_command called index_workspace_files() and received correct
+/// counts, but never called registry_service.update_workspace_statistics().
+///
+/// Fix: Added update_workspace_statistics() call after successful indexing, mirroring
+/// the implementation in handle_refresh_command.
+#[tokio::test]
+async fn test_add_workspace_updates_statistics() {
+    use crate::workspace::registry_service::WorkspaceRegistryService;
+
+    // Skip background tasks for this test
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+    // Setup: Create test workspaces with actual files
+    let primary_dir = TempDir::new().unwrap();
+    let reference_dir = TempDir::new().unwrap();
+
+    // Create a simple test file in reference workspace
+    let test_file = reference_dir.path().join("test.rs");
+    fs::write(
+        &test_file,
+        r#"
+fn hello_world() {
+    println!("Hello, world!");
+}
+
+fn goodbye_world() {
+    println!("Goodbye, world!");
+}
+        "#,
+    )
+    .unwrap();
+
+    // Initialize primary workspace
+    let _primary_workspace = JulieWorkspace::initialize(primary_dir.path().to_path_buf())
+        .await
+        .unwrap();
+
+    // Create handler (simulates the server context)
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(primary_dir.path().to_str().unwrap().to_string()))
+        .await
+        .unwrap();
+
+    // Add reference workspace using ManageWorkspaceTool
+    let tool = ManageWorkspaceTool {
+        operation: "add".to_string(),
+        path: Some(reference_dir.path().to_str().unwrap().to_string()),
+        name: Some("test-workspace".to_string()),
+        force: None,
+        workspace_id: None,
+        expired_only: None,
+        days: None,
+        max_size_mb: None,
+        detailed: None,
+        limit: None,
+    };
+
+    let result = tool
+        .handle_add_command(
+            &handler,
+            reference_dir.path().to_str().unwrap(),
+            Some("test-workspace".to_string()),
+        )
+        .await;
+
+    assert!(result.is_ok(), "handle_add_command failed: {:?}", result);
+
+    // Verify: Check registry statistics directly
+    let primary_workspace = handler.get_workspace().await.unwrap().unwrap();
+    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+    let workspaces = registry_service.get_all_workspaces().await.unwrap();
+
+    // Find the reference workspace we just added
+    let reference_ws = workspaces
+        .iter()
+        .find(|ws| matches!(ws.workspace_type, crate::workspace::registry::WorkspaceType::Reference))
+        .expect("Reference workspace not found in registry");
+
+    // BUG #1: These were 0 before the fix
+    assert!(
+        reference_ws.file_count > 0,
+        "Bug #1 regression: file_count is {}, should be > 0 after indexing",
+        reference_ws.file_count
+    );
+
+    assert!(
+        reference_ws.symbol_count > 0,
+        "Bug #1 regression: symbol_count is {}, should be > 0 after indexing (file has 2 functions)",
+        reference_ws.symbol_count
+    );
+
+    // Additional validation: symbol count should match the 2 functions in our test file
+    assert_eq!(
+        reference_ws.symbol_count, 2,
+        "Expected 2 symbols (hello_world and goodbye_world), got {}",
+        reference_ws.symbol_count
+    );
+
+    assert_eq!(
+        reference_ws.file_count, 1,
+        "Expected 1 file (test.rs), got {}",
+        reference_ws.file_count
+    );
+}

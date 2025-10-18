@@ -57,6 +57,48 @@ impl ManageWorkspaceTool {
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {
                         debug!("index_workspace_files completed successfully");
+
+                        // Update workspace statistics in registry
+                        // Use per-workspace index path
+                        let index_path = primary_workspace.workspace_index_path(&entry.id);
+
+                        // Calculate directory size asynchronously to avoid blocking
+                        let index_size = if index_path.metadata().is_ok() {
+                            let path = index_path.clone();
+                            match tokio::task::spawn_blocking(move || {
+                                crate::tools::workspace::calculate_dir_size(&path)
+                            })
+                            .await
+                            {
+                                Ok(Ok(size)) => size,
+                                Ok(Err(e)) => {
+                                    warn!("Failed to calculate index directory size for {}: {}", entry.id, e);
+                                    0
+                                }
+                                Err(e) => {
+                                    warn!("spawn_blocking task failed for directory size calculation: {}", e);
+                                    0
+                                }
+                            }
+                        } else {
+                            0
+                        };
+
+                        if let Err(e) = registry_service
+                            .update_workspace_statistics(
+                                &entry.id,
+                                symbol_count,
+                                file_count,
+                                index_size,
+                            )
+                            .await
+                        {
+                            warn!("Failed to update workspace statistics: {}", e);
+                        } else {
+                            info!("Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
+                                  entry.id, file_count, symbol_count, index_size);
+                        }
+
                         let message = format!(
                             "Reference workspace added and indexed!\n\
                              Workspace ID: {}\n\
