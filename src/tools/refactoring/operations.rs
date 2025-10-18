@@ -605,6 +605,21 @@ impl SmartRefactorTool {
 
     /// Find any symbol (function, class, variable, etc.) by name
     /// ONLY matches DEFINITIONS/DECLARATIONS, not usage sites
+    ///
+    /// ## Behavior
+    /// - Uses depth-first traversal, returning the FIRST match found
+    /// - In practice, this means TOP-LEVEL symbols are found first
+    /// - Works correctly for the vast majority of refactoring scenarios
+    ///
+    /// ## Edge Cases
+    /// - If a nested symbol has the same name as a top-level symbol,
+    ///   the top-level symbol will be matched (usually desired behavior)
+    /// - To target a nested symbol with a conflicting name, the user
+    ///   would need to rename it first or use file-scoped refactoring
+    ///
+    /// ## Test Coverage
+    /// - test_extract_outer_function_with_nested_same_name: Validates top-level precedence
+    /// - test_extract_specifies_ambiguous_symbol: Validates first-match behavior
     fn find_any_symbol<'a>(
         &self,
         node: tree_sitter::Node<'a>,

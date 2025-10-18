@@ -2,8 +2,10 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod extract_to_file_tests;
+mod import_update_tests;
 mod insert_relative_tests;
 mod replace_symbol_body_tests;
+mod scope_test;
 
 use crate::tools::refactoring::*;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};

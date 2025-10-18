@@ -122,7 +122,7 @@ impl SmartRefactorTool {
 
         // Step 2: Apply renames file by file
         let mut renamed_files = Vec::new();
-        let mut _errors = Vec::new();
+        let mut errors = Vec::new();
         let dmp = DiffMatchPatch::new();
 
         for file_path in file_locations.keys() {
@@ -143,7 +143,7 @@ impl SmartRefactorTool {
                     }
                 }
                 Err(e) => {
-                    _errors.push(format!("❌ {}: {}", file_path, e));
+                    errors.push(format!("❌ {}: {}", file_path, e));
                 }
             }
         }
@@ -151,8 +151,10 @@ impl SmartRefactorTool {
         // Step 2.5: Update import statements if requested
         if update_imports && !renamed_files.is_empty() {
             debug!("🔄 Updating import statements for renamed symbol");
+            // Pass the files we already found - no need to search again
+            let file_paths: Vec<String> = file_locations.keys().cloned().collect();
             match self
-                .update_import_statements(handler, old_name, new_name, &dmp)
+                .update_import_statements_in_files(&file_paths, old_name, new_name, &dmp)
                 .await
             {
                 Ok(updated_files) => {
@@ -179,6 +181,46 @@ impl SmartRefactorTool {
         let total_files = renamed_files.len();
         let total_changes: usize = renamed_files.iter().map(|(_, count)| count).sum();
 
+        // FIX: Check for errors and report partial failures
+        if !errors.is_empty() {
+            let error_summary = errors.join("\n");
+            let message = if total_files > 0 {
+                format!(
+                    "⚠️  Partial rename: '{}' -> '{}'\n\
+                    ✅ Successfully modified {} files with {} changes\n\
+                    ❌ Failed to modify {} files:\n{}",
+                    old_name,
+                    new_name,
+                    total_files,
+                    total_changes,
+                    errors.len(),
+                    error_summary
+                )
+            } else {
+                format!(
+                    "❌ Rename failed: '{}' -> '{}'\n\
+                    All {} files failed:\n{}",
+                    old_name, new_name, errors.len(), error_summary
+                )
+            };
+
+            let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
+            let warnings = vec![
+                "Check file permissions and paths".to_string(),
+                "Review errors above for details".to_string(),
+                "Use git status to see which files were modified".to_string(),
+            ];
+            return self.create_result(
+                "rename_symbol",
+                total_files > 0, // Partial success if some files succeeded
+                files,
+                total_changes,
+                warnings,
+                message,
+                None,
+            );
+        }
+
         if self.dry_run {
             let message = format!(
                 "DRY RUN: Rename '{}' -> '{}'\nWould modify {} files with {} changes",
@@ -197,9 +239,9 @@ impl SmartRefactorTool {
             );
         }
 
-        // Final success message
+        // Final success message (no errors)
         let message = format!(
-            "Rename successful: '{}' -> '{}'\nModified {} files with {} changes",
+            "✅ Rename successful: '{}' -> '{}'\nModified {} files with {} changes",
             old_name, new_name, total_files, total_changes
         );
 
@@ -219,62 +261,33 @@ impl SmartRefactorTool {
         )
     }
 
-    /// Update import statements across the workspace
-    async fn update_import_statements(
+    /// Update import statements in the specified files
+    /// FIX: Instead of searching the workspace, we directly check the files we already identified
+    /// This works for both indexed files and temp test files
+    async fn update_import_statements_in_files(
         &self,
-        handler: &JulieServerHandler,
+        file_paths: &[String],
         old_name: &str,
         new_name: &str,
         dmp: &DiffMatchPatch,
     ) -> Result<Vec<(String, usize)>> {
-        use crate::tools::search::FastSearchTool;
-
         let mut updated_files = Vec::new();
 
-        // Search for import/use statements containing the old symbol name
-        let search_patterns = vec![
-            format!("import.*{}.*from", old_name),
-            format!("from.*import.*{}", old_name),
-            format!("use.*::{}", old_name),
-            format!("import {{ {} }}", old_name),
-        ];
-
-        for pattern in search_patterns {
-            let search_tool = FastSearchTool {
-                query: pattern.clone(),
-                mode: "text".to_string(),
-                limit: 100,
-                scope: "content".to_string(),
-                language: None,
-                file_pattern: None,
-                context_lines: Some(0),
-                workspace: Some("primary".to_string()),
-                output: None,
-            };
-
-            match search_tool.call_tool(handler).await {
-                Ok(result) => {
-                    let file_paths = self.extract_file_paths_from_search(&result)?;
-                    for file_path in file_paths {
-                        match self
-                            .update_imports_in_file(&file_path, old_name, new_name, dmp)
-                            .await
-                        {
-                            Ok(changes) if changes > 0 => {
-                                debug!("✅ Updated {} import(s) in {}", changes, file_path);
-                                updated_files.push((file_path, changes));
-                            }
-                            Ok(_) => {
-                                // No changes needed
-                            }
-                            Err(e) => {
-                                debug!("⚠️  Failed to update imports in {}: {}", file_path, e);
-                            }
-                        }
-                    }
+        // Check each file directly - no search needed since we already know which files to check
+        for file_path in file_paths {
+            match self
+                .update_imports_in_file(file_path, old_name, new_name, dmp)
+                .await
+            {
+                Ok(changes) if changes > 0 => {
+                    debug!("✅ Updated {} import(s) in {}", changes, file_path);
+                    updated_files.push((file_path.clone(), changes));
+                }
+                Ok(_) => {
+                    // No import changes needed in this file
                 }
                 Err(e) => {
-                    debug!("⚠️  Import search failed for pattern '{}': {}", pattern, e);
+                    debug!("⚠️  Failed to update imports in {}: {}", file_path, e);
                 }
             }
         }
