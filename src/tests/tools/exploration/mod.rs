@@ -1,6 +1,8 @@
 //! Token optimization tests for exploration tools
 //! Following TDD methodology: RED -> GREEN -> REFACTOR
 
+mod fast_explore_bug;
+
 #[cfg(test)]
 mod exploration_tools_tests {
     use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};

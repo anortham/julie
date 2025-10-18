@@ -140,7 +140,7 @@ impl FastExploreTool {
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
         let db_lock = db.lock().unwrap();
 
-        let (_kind_counts, mut language_counts) = db_lock.get_symbol_statistics()?;
+        let (_kind_counts, language_counts) = db_lock.get_symbol_statistics()?;
         let mut file_counts = db_lock.get_file_statistics()?;
         let mut total_symbols = db_lock.get_total_symbol_count()?;
 
@@ -194,10 +194,11 @@ impl FastExploreTool {
         let _workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())?;
 
-        let relationship_counts = tokio::task::block_in_place(|| {
+        // Acquire lock without blocking the async executor
+        let relationship_counts = {
             let db_lock = db.lock().unwrap();
             db_lock.get_relationship_type_statistics()
-        })?;
+        }?;
 
         let total_relationships: i64 = relationship_counts.values().sum();
         let mut sorted_rel_types: Vec<_> = relationship_counts.iter().collect();
