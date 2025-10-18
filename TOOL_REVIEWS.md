@@ -411,31 +411,22 @@ The `manage_workspace` tool is a comprehensive tool for managing workspaces, inc
     - **IMPACT**: Users get raw `anyhow::Error` messages instead of friendly formatted output
     - **RECOMMENDATION**: Wrap all `.await?` in system handlers with match/Result pattern
 
-*   **✅ VALIDATED - 🔴 CRITICAL: Blocking I/O in THREE Places:**
-    1. **handle_refresh_command** (lines 511-527): Nested `calculate_dir_size` closure uses `std::fs::read_dir` synchronously
-    2. **handle_health_command** (line 884): Calls `Self::calculate_directory_size` (lines 962-978) which uses `std::fs::read_dir` synchronously
-    3. **utils.rs** (lines 27-43): Public `calculate_dir_size` function uses `std::fs::read_dir` synchronously
+*   **✅ FIXED 2025-10-18 - Blocking I/O Eliminated:**
+    1. **handle_refresh_command** (lines 510-529): Now uses `tokio::task::spawn_blocking` with shared `utils::calculate_dir_size`
+    2. **handle_health_command** (lines 877-902): Now uses `tokio::task::spawn_blocking` with scoped lock for Send safety
+    3. **Code duplication removed**: Eliminated duplicate `calculate_directory_size` method (17 lines)
 
-    **ROOT CAUSE**: All three functions perform recursive directory traversal with blocking I/O in async contexts
+    **THE FIX**:
+    - Replaced inline blocking function with `spawn_blocking` + shared utils function
+    - Added proper error matching with `warn!` logging (no more silent `.unwrap_or()`)
+    - Scoped MutexGuard to avoid Send issues across await boundaries
+    - All directory size calculations now non-blocking
 
-    **EVIDENCE**:
-    ```rust
-    // registry.rs:513 (nested in handle_refresh_command)
-    if let Ok(entries) = std::fs::read_dir(path) {
-
-    // registry.rs:966 (calculate_directory_size method)
-    for entry in std::fs::read_dir(path)? {
-
-    // utils.rs:29 (calculate_dir_size function)
-    let entries = std::fs::read_dir(path)?;
-    ```
-
-    **IMPACT**: Can block tokio thread pool during large directory traversals (indexes can be 100MB+)
-
-    **RECOMMENDATION**:
-    - Consolidate into ONE async function
-    - Wrap blocking operations in `tokio::task::spawn_blocking`
-    - Or use `tokio::fs::read_dir` instead
+    **RESULT**:
+    - ✅ All 897 tests passing
+    - ✅ No thread pool blocking during directory traversals
+    - ✅ Proper async execution throughout
+    - ✅ Error visibility with contextual logging
 
 **Low-Priority Issues:**
 
@@ -464,11 +455,11 @@ The `manage_workspace` tool is a comprehensive tool for managing workspaces, inc
 
     **RECOMMENDATION**: Low priority - values are reasonable defaults for most use cases
 
-*   **✅ VALIDATED - Code Duplication:** THREE separate directory size functions (confirmed duplication):
-    - `calculate_dir_size` (nested closure in handle_refresh_command, lines 511-527)
-    - `calculate_directory_size` (method in ManageWorkspaceTool, lines 962-978)
-    - `calculate_dir_size` (public function in utils.rs, lines 27-43)
-    - **RECOMMENDATION**: Consolidate into single async implementation
+*   **✅ FIXED 2025-10-18 - Code Duplication Eliminated:**
+    - **Before**: THREE separate implementations (nested inline, duplicate method, utils function)
+    - **After**: Single shared `utils::calculate_dir_size` function used everywhere
+    - **Impact**: 17 lines of duplicate code removed
+    - **Pattern**: All call sites now use `tokio::task::spawn_blocking` wrapper for async safety
 
 ## Usefulness and Additional Functionality
 

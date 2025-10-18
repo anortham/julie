@@ -505,28 +505,28 @@ impl ManageWorkspaceTool {
                         if let Ok(Some(workspace)) = handler.get_workspace().await {
                             // Use per-workspace index path
                             let index_path = workspace.workspace_index_path(workspace_id);
-                            let index_size = index_path
-                                .metadata()
-                                .map(|_m| {
-                                    fn calculate_dir_size(path: &std::path::Path) -> u64 {
-                                        let mut total_size = 0u64;
-                                        if let Ok(entries) = std::fs::read_dir(path) {
-                                            for entry in entries.flatten() {
-                                                if let Ok(metadata) = entry.metadata() {
-                                                    if metadata.is_file() {
-                                                        total_size += metadata.len();
-                                                    } else if metadata.is_dir() {
-                                                        total_size +=
-                                                            calculate_dir_size(&entry.path());
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        total_size
-                                    }
-                                    calculate_dir_size(&index_path)
+
+                            // Calculate directory size asynchronously to avoid blocking
+                            let index_size = if index_path.metadata().is_ok() {
+                                let path = index_path.clone();
+                                match tokio::task::spawn_blocking(move || {
+                                    crate::tools::workspace::calculate_dir_size(&path)
                                 })
-                                .unwrap_or(0);
+                                .await
+                                {
+                                    Ok(Ok(size)) => size,
+                                    Ok(Err(e)) => {
+                                        warn!("Failed to calculate index directory size for {}: {}", workspace_id, e);
+                                        0
+                                    }
+                                    Err(e) => {
+                                        warn!("spawn_blocking task failed for directory size calculation: {}", e);
+                                        0
+                                    }
+                                }
+                            } else {
+                                0
+                            };
 
                             if let Err(e) = registry_service
                                 .update_workspace_statistics(
@@ -864,16 +864,18 @@ impl ManageWorkspaceTool {
 
         match &workspace.embeddings {
             Some(embedding_arc) => {
-                let _embeddings = embedding_arc.lock().unwrap();
-
                 // Compute workspace ID for per-workspace path
                 use crate::workspace::registry as ws_registry;
                 let workspace_id =
                     ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
-                // Check if embedding data exists
-                let embedding_path = workspace.workspace_vectors_path(&workspace_id);
-                let embeddings_exist = embedding_path.exists();
+                // Check if embedding data exists (scoped lock to avoid Send issues)
+                let (embeddings_exist, embedding_path) = {
+                    let _embeddings = embedding_arc.lock().unwrap();
+                    let path = workspace.workspace_vectors_path(&workspace_id);
+                    let exists = path.exists();
+                    (exists, path)
+                }; // Lock dropped here
 
                 if embeddings_exist {
                     status.push_str("Embeddings Status: READY\n");
@@ -881,7 +883,24 @@ impl ManageWorkspaceTool {
                     status.push_str("Features: Concept-based search and similarity matching\n");
 
                     if detailed {
-                        let embedding_size = Self::calculate_directory_size(&embedding_path)?;
+                        // Calculate directory size asynchronously to avoid blocking
+                        let path = embedding_path.clone();
+                        let embedding_size = match tokio::task::spawn_blocking(move || {
+                            crate::tools::workspace::calculate_dir_size(&path)
+                        })
+                        .await
+                        {
+                            Ok(Ok(size)) => size as f64,
+                            Ok(Err(e)) => {
+                                warn!("Failed to calculate embedding directory size: {}", e);
+                                0.0
+                            }
+                            Err(e) => {
+                                warn!("spawn_blocking task failed for embedding size calculation: {}", e);
+                                0.0
+                            }
+                        };
+
                         status.push_str(&format!(
                             "Embedding Details:\n\
                             • Model: FastEmbed all-MiniLM-L6-v2\n\
@@ -956,25 +975,6 @@ impl ManageWorkspaceTool {
         }
 
         Ok(assessment)
-    }
-
-    /// Calculate directory size in bytes
-    fn calculate_directory_size(path: &std::path::Path) -> Result<f64> {
-        let mut total_size = 0u64;
-
-        if path.is_dir() {
-            for entry in std::fs::read_dir(path)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    total_size += Self::calculate_directory_size(&path)? as u64;
-                } else {
-                    total_size += entry.metadata()?.len();
-                }
-            }
-        }
-
-        Ok(total_size as f64)
     }
 
     /// Handle recent command - show recently modified files
