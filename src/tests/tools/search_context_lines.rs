@@ -82,6 +82,7 @@ pub fn process_user_data(input: &str) -> String {
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
+        scope: "symbols".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Use default (1)
     };
@@ -173,6 +174,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
+        scope: "symbols".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(0), // 0 = just match line
     };
@@ -267,6 +269,7 @@ pub fn validate_input(data: &str) -> bool {
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
+        scope: "symbols".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(3), // 3 = grep default (7 total lines)
     };
@@ -350,6 +353,7 @@ pub fn short_func() -> i32 { 42 }
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
+        scope: "symbols".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Default (1)
     };

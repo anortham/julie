@@ -18,22 +18,26 @@ impl SymbolDatabase {
             workspace_id
         );
 
-        // STEP 1: Drop all indexes for maximum insert speed
+        // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates
+        debug!("🔇 Disabling FTS triggers for bulk insert optimization");
+        self.disable_symbols_fts_triggers()?;
+
+        // STEP 2: Drop all indexes for maximum insert speed
         debug!("🗑️ Dropping indexes for bulk insert optimization");
         self.drop_symbol_indexes()?;
 
-        // STEP 2: Optimize SQLite for bulk operations (DANGEROUS but FAST!)
+        // STEP 3: Optimize SQLite for bulk operations (DANGEROUS but FAST!)
         self.conn.execute("PRAGMA synchronous = OFF", [])?; // No disk sync - risky but fast
                                                             // NOTE: Don't change journal_mode here - database is already in WAL mode
                                                             // Changing from WAL to MEMORY requires exclusive access and causes "database is locked" errors
                                                             // self.conn.execute_batch("PRAGMA journal_mode = MEMORY")?; // REMOVED: Causes lock conflicts
         self.conn.execute("PRAGMA cache_size = 20000", [])?; // Large cache for bulk ops
 
-        // STEP 3: Start transaction for atomic bulk insert
+        // STEP 4: Start transaction for atomic bulk insert
         // Use regular transaction (not unchecked) to ensure foreign key constraints are enforced
         let tx = self.conn.transaction()?;
 
-        // STEP 3.5: Insert file records first to satisfy foreign key constraints
+        // STEP 4.5: Insert file records first to satisfy foreign key constraints
         // Extract unique file paths with their languages from symbols
         let mut unique_files: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -59,7 +63,7 @@ impl SymbolDatabase {
         }
         drop(file_stmt);
 
-        // STEP 4: Prepare statement once, use many times
+        // STEP 5: Prepare statement once, use many times
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO symbols
              (id, name, kind, language, file_path, signature, start_line, start_col,
@@ -68,7 +72,7 @@ impl SymbolDatabase {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         )?;
 
-        // STEP 5: Sort symbols in parent-first order to avoid foreign key violations
+        // STEP 5.5: Sort symbols in parent-first order to avoid foreign key violations
         // Symbols with no parent go first, then their children, etc.
         let all_symbol_ids: std::collections::HashSet<_> =
             symbols.iter().map(|s| s.id.clone()).collect();
@@ -220,23 +224,31 @@ impl SymbolDatabase {
         drop(stmt);
         tx.commit()?;
 
-        // STEP 7: Restore safe SQLite settings
+        // STEP 7: Rebuild FTS once atomically (1000s of inserts → 1 rebuild)
+        debug!("🔄 Rebuilding symbols FTS index atomically");
+        self.rebuild_symbols_fts()?;
+
+        // STEP 8: Restore safe SQLite settings
         self.conn.execute("PRAGMA synchronous = NORMAL", [])?;
         // journal_mode returns a result, so we need to use query_row or execute_batch
         self.conn.execute_batch("PRAGMA journal_mode = WAL")?;
 
-        // STEP 8: Rebuild all indexes (still faster than incremental with indexes!)
+        // STEP 9: Rebuild all indexes (still faster than incremental with indexes!)
         debug!("🏗️ Rebuilding indexes after bulk insert");
         self.create_symbol_indexes()?;
 
-        // STEP 9: Force WAL checkpoint to flush writes to main database
-        // This prevents large WAL files (>10MB) that cause "database malformed" errors during auto-checkpoint
-        debug!("💾 Checkpointing WAL to flush bulk changes to main database");
-        match self.conn.pragma_update(None, "wal_checkpoint", "TRUNCATE") {
-            Ok(_) => debug!("✅ WAL checkpoint completed successfully"),
+        // STEP 10: Re-enable FTS triggers for incremental updates
+        debug!("🔊 Re-enabling FTS triggers");
+        self.enable_symbols_fts_triggers()?;
+
+        // STEP 11: Passive WAL checkpoint (let auto-checkpoint handle heavy lifting)
+        // PASSIVE doesn't block readers, unlike TRUNCATE which demands exclusive access
+        debug!("💾 Passive WAL checkpoint (non-blocking)");
+        match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
+            Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
             Err(e) => {
                 // Don't fail the operation if checkpoint fails - WAL will auto-checkpoint eventually
-                warn!("⚠️ WAL checkpoint failed (non-fatal): {}", e);
+                debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e);
             }
         }
 
