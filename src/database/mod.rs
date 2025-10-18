@@ -46,6 +46,11 @@ impl SymbolDatabase {
         // Set busy timeout for concurrent access - wait up to 5 seconds for locks
         conn.busy_timeout(std::time::Duration::from_millis(5000))?;
 
+        // Configure WAL autocheckpoint to prevent large WAL files
+        // Default is 1000 pages (~4MB), we set to 2000 pages (~8MB) for better performance
+        // This prevents WAL from growing to 20MB+ which causes "database malformed" errors
+        conn.pragma_update(None, "wal_autocheckpoint", 2000)?;
+
         let mut db = Self { conn, file_path };
 
         // Run schema migrations BEFORE initializing schema

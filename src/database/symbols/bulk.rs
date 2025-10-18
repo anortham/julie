@@ -3,7 +3,7 @@
 use super::super::*;
 use anyhow::Result;
 use rusqlite::params;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 impl SymbolDatabase {
     pub fn bulk_store_symbols(&mut self, symbols: &[Symbol], workspace_id: &str) -> Result<()> {
@@ -228,6 +228,17 @@ impl SymbolDatabase {
         // STEP 8: Rebuild all indexes (still faster than incremental with indexes!)
         debug!("🏗️ Rebuilding indexes after bulk insert");
         self.create_symbol_indexes()?;
+
+        // STEP 9: Force WAL checkpoint to flush writes to main database
+        // This prevents large WAL files (>10MB) that cause "database malformed" errors during auto-checkpoint
+        debug!("💾 Checkpointing WAL to flush bulk changes to main database");
+        match self.conn.pragma_update(None, "wal_checkpoint", "TRUNCATE") {
+            Ok(_) => debug!("✅ WAL checkpoint completed successfully"),
+            Err(e) => {
+                // Don't fail the operation if checkpoint fails - WAL will auto-checkpoint eventually
+                warn!("⚠️ WAL checkpoint failed (non-fatal): {}", e);
+            }
+        }
 
         let duration = start_time.elapsed();
         info!(
