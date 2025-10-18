@@ -83,9 +83,12 @@ The tool is a good starting point, but the current implementation is incomplete 
     - **LOCATION**: `src/tools/exploration/fast_explore/main.rs:49`
     - **FIX**: Implement depth-based detail control or remove parameter entirely
 
-*   **`focus` Parameter is Underutilized:** ⚠️ **PARTIALLY VALIDATED** - The `focus` parameter is only used in "trace" mode (line 92-93). It could be used in all modes for more targeted analysis.
-    - **LOCATION**: `src/tools/exploration/fast_explore/main.rs:71-72`
-    - **FIX**: Add focus filtering to overview/dependencies/hotspots modes
+*   **`focus` Parameter is Underutilized:** ✅ **COMPLETED 2025-10-18** - Extended focus filtering to all modes for consistent "zoom in" functionality
+    - **LOCATIONS**:
+      - Overview mode: `src/tools/exploration/fast_explore/main.rs:147-159` - Filters files by focus keyword, recalculates statistics
+      - Hotspots mode: `src/tools/exploration/fast_explore/main.rs:236-241` - Filters complexity scores by file path
+      - Dependencies mode: `src/tools/exploration/fast_explore/main.rs:211-215` - Shows helpful note directing to trace mode for focused dependency analysis
+    - **COMPLETED**: 2025-10-18 - Focus now works consistently across all exploration modes
 
 *   **"all" Mode is Incomplete:** ✅ **VALIDATED** - The "all" mode **ONLY COMBINES overview + hotspots** (lines 98-102), missing dependencies and trace modes.
     - **LOCATION**: `src/tools/exploration/fast_explore/main.rs:95-103`
@@ -93,10 +96,10 @@ The tool is a good starting point, but the current implementation is incomplete 
 
 *   **`intelligent_trace` is Too Simple:** ✅ **VALIDATED & FIXED** - Was only returning counts ("Incoming: 5, Outgoing: 3"). Now shows actual relationship details with symbol names, file paths, and relationship types.
 
-*   **Simple Complexity Heuristic:** ✅ **VALIDATED** - Complexity is `symbol_count * (1 + rel_count)`. Very basic - doesn't consider cyclomatic complexity, nesting depth, or code metrics.
-    - **LOCATION**: `src/tools/exploration/fast_explore/main.rs:221`
-    - **IMPACT**: Low - Works but could be more sophisticated
-    - **FIX**: Add proper complexity metrics (cyclomatic, cognitive complexity)
+*   **Simple Complexity Heuristic:** ✅ **COMPLETED 2025-10-18** - Replaced with density-based formula: `symbols * (1.0 + density)` where `density = relationships / symbols`
+    - **LOCATION**: `src/tools/exploration/fast_explore/main.rs:211-233`
+    - **IMPROVEMENT**: Now accurately measures interconnectedness. A file with 100 symbols and 200 relationships (density 2.0) gets complexity 300, vs 100 symbols with 10 relationships (density 0.1) gets complexity 110.
+    - **COMPLETED**: 2025-10-18 - Density-based heuristic with proper f64 sorting
 
 *   **Inconsistent Workspace Filtering:** ✅ **COMPLETED 2025-10-18 - VESTIGIAL PARAMETERS REMOVED**
     - **FINDING**: Database functions had `_workspace_ids` parameters (underscore = ignored)
@@ -296,13 +299,23 @@ The `smart_refactor` tool is a very ambitious tool with a lot of potential for p
     - **IMPACT**: Low - Works for most cases, scope conflicts are rare
     - **FIX**: Add scope-awareness if needed (check parent nodes for context)
     
-*   **Import Generation is Simplistic:** ⏸️ **NOT VALIDATED YET** - Need to examine `generate_import_statement`
-    
-*   **`scope` and `update_imports` are Not Used in `rename_symbol`:** ✅ **VALIDATED - CONFIRMED** - Parameters are parsed and logged but NEVER USED
-    - **LOCATION**: `src/tools/refactoring/rename.rs:36-43,52-53`  
-    - **EVIDENCE**: Extracted from JSON (lines 36-43), logged (lines 52-53), but never referenced in rename logic
-    - **IMPACT**: Medium - Advertised features that don't work
-    - **FIX**: Implement scope filtering (file/workspace) and import statement updates
+*   **Import Update Logic Was Critically Broken:** 🔴 **CRITICAL BUG FOUND & FIXED 2025-10-18**
+    - **FINDING**: `update_imports_in_file` used regex patterns as literal strings (e.g., `r"from .* import {}"` → `"from  import getUserData"`)
+    - **IMPACT**: **HIGH** - Import updates never worked. Silent failures when renaming symbols with imports.
+    - **LOCATION**: `src/tools/refactoring/rename.rs:286-371`
+    - **ROOT CAUSE**: Lines 316-317 stripped `r"\.\*"` from pattern strings, creating invalid match strings
+    - **FIX APPLIED**:
+      - Replaced string patterns with proper `Regex` objects
+      - Added word boundaries (`\b`) to prevent partial matches (getUserData vs getUserDataFromCache)
+      - Added `regex::escape()` for safe identifier matching
+      - Handles JS/TS (`import { X }`), Python (`from M import X`), Rust (`use M::X`)
+    - **COMPLETED**: 2025-10-18 - Found through systematic validation (dogfooding)
+
+*   **`scope` and `update_imports` Parameters:** ✅ **COMPLETED 2025-10-18** - Both features now fully implemented
+    - **LOCATION**: `src/tools/refactoring/rename.rs:85-110 (scope), 151-182 (update_imports)`
+    - **SCOPE**: Now filters rename operations to "workspace" (all files), "file:<path>" (specific file), or "all"
+    - **UPDATE_IMPORTS**: Now searches for and updates import statements across workspace (with proper regex - see above)
+    - **COMPLETED**: 2025-10-18 - Scope filtering and import updates working correctly
     
 *   **Error Handling in `rename_symbol`:** ⏸️ **NOT VALIDATED YET** - Need to check error propagation from `rename_in_file`
 
