@@ -112,6 +112,7 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -192,6 +193,7 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -218,6 +220,7 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_id".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -279,6 +282,7 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -357,6 +361,7 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -444,6 +449,7 @@ def python_function():
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -472,6 +478,7 @@ def python_function():
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -542,6 +549,7 @@ def python_function():
             file_pattern: Some("src/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -567,6 +575,7 @@ def python_function():
             file_pattern: Some("tests/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -634,6 +643,7 @@ def python_function():
             file_pattern: Some("src/**/*.rs".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };

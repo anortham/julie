@@ -17,6 +17,7 @@ fn test_preprocess_fallback_query_multi_word() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -37,6 +38,7 @@ fn test_preprocess_fallback_query_single_word() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -57,6 +59,7 @@ fn test_preprocess_fallback_query_quoted() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -77,6 +80,7 @@ fn test_preprocess_fallback_query_exclusion() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -97,6 +101,7 @@ fn test_preprocess_fallback_query_wildcard() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -117,6 +122,7 @@ fn test_preprocess_fallback_query_explicit_or() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -137,6 +143,7 @@ fn test_preprocess_fallback_query_explicit_and() {
         file_pattern: None,
         limit: 15,
         workspace: None,
+        scope: "content".to_string(),
         output: None,
         context_lines: None,
     };

@@ -3,6 +3,7 @@
 /// - Impl blocks and two-phase processing
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::extractors::rust::RustExtractor;
+use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 use super::helpers::{
@@ -135,7 +136,6 @@ pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id
 /// Extracts methods from impl blocks and links them to their parent types
 pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, symbols: &mut Vec<Symbol>) {
     let impl_blocks = extractor.get_impl_blocks().to_vec();
-    let _base = extractor.get_base_mut();
 
     for impl_block in impl_blocks {
         // Find the struct/enum this impl is for
@@ -144,31 +144,40 @@ pub(super) fn process_impl_blocks(extractor: &mut RustExtractor, tree: &Tree, sy
                 && (s.kind == SymbolKind::Class || s.kind == SymbolKind::Interface)
         });
 
-        if let Some(struct_symbol) = struct_symbol {
-            let parent_id = struct_symbol.id.clone();
+        let parent_id = struct_symbol.map(|s| s.id.clone());
 
-            // SAFETY FIX: Reconstruct node from byte range using the tree
-            // This is safe because we have a valid tree reference with proper lifetime
-            let node = tree
-                .root_node()
-                .descendant_for_byte_range(impl_block.start_byte, impl_block.end_byte);
+        // SAFETY FIX: Reconstruct node from byte range using the tree
+        // This is safe because we have a valid tree reference with proper lifetime
+        let node = tree
+            .root_node()
+            .descendant_for_byte_range(impl_block.start_byte, impl_block.end_byte);
 
-            if let Some(node) = node {
-                // Extract methods with correct parent_id
-                if let Some(declaration_list) = node
-                    .children(&mut node.walk())
-                    .find(|c| c.kind() == "declaration_list")
-                {
-                    for child in declaration_list.children(&mut declaration_list.walk()) {
-                        if child.kind() == "function_item" {
-                            let mut method_symbol = extract_function(extractor, child, Some(parent_id.clone()));
-                            method_symbol.kind = SymbolKind::Method;
-                            symbols.push(method_symbol);
-                        }
+        if let Some(node) = node {
+            // Extract methods with correct parent_id (or none for cross-file impls)
+            if let Some(declaration_list) = node
+                .children(&mut node.walk())
+                .find(|c| c.kind() == "declaration_list")
+            {
+                for child in declaration_list.children(&mut declaration_list.walk()) {
+                    if child.kind() == "function_item" {
+                        let mut method_symbol = extract_function(extractor, child, parent_id.clone());
+                        method_symbol.kind = SymbolKind::Method;
+
+                        // Preserve the impl type name in metadata so cross-file methods stay discoverable
+                        let metadata = method_symbol.metadata.get_or_insert_with(HashMap::new);
+                        metadata.insert(
+                            "impl_type_name".to_string(),
+                            Value::String(impl_block.type_name.clone()),
+                        );
+                        metadata.insert(
+                            "impl_parent_id_resolved".to_string(),
+                            Value::Bool(parent_id.is_some()),
+                        );
+
+                        symbols.push(method_symbol);
                     }
                 }
             }
         }
     }
 }
-

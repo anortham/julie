@@ -34,7 +34,15 @@ impl SymbolDatabase {
     }
 
     /// 🚀 BLAZING-FAST bulk file storage for initial indexing
-    pub fn bulk_store_files(&self, files: &[FileInfo], _workspace_id: &str) -> Result<()> {
+    ///
+    /// Uses the standard SQLite FTS bulk pattern:
+    /// 1. Disable FTS triggers (prevents row-by-row FTS updates)
+    /// 2. Drop regular indexes (improves insert speed)
+    /// 3. Bulk insert in single transaction
+    /// 4. Rebuild FTS once atomically
+    /// 5. Recreate regular indexes
+    /// 6. Re-enable FTS triggers
+    pub fn bulk_store_files(&mut self, files: &[FileInfo], _workspace_id: &str) -> Result<()> {
         if files.is_empty() {
             return Ok(());
         }
@@ -50,35 +58,44 @@ impl SymbolDatabase {
             .unwrap()
             .as_secs() as i64;
 
-        // Drop file indexes
+        // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates
+        self.disable_files_fts_triggers()?;
+
+        // STEP 2: Drop regular indexes for faster inserts
         self.drop_file_indexes()?;
 
-        let tx = self.conn.unchecked_transaction()?;
-        let mut stmt = tx.prepare(
-            "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )?;
+        // STEP 3: Bulk insert in single transaction with auto-rollback safety
+        let tx = self.conn.transaction()?;  // Changed from unchecked_transaction()
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO files
+                 (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
 
-        for file in files {
-            stmt.execute(params![
-                file.path,
-                file.language,
-                file.hash,
-                file.size,
-                file.last_modified,
-                now,
-                file.symbol_count,
-                file.content.as_deref().unwrap_or("") // CASCADE: Include content
-            ])?;
-        }
-
-        // Drop statement before committing transaction
-        drop(stmt);
+            for file in files {
+                stmt.execute(params![
+                    file.path,
+                    file.language,
+                    file.hash,
+                    file.size,
+                    file.last_modified,
+                    now,
+                    file.symbol_count,
+                    file.content.as_deref().unwrap_or("") // CASCADE: Include content
+                ])?;
+            }
+        }  // stmt dropped here
         tx.commit()?;
 
-        // Rebuild file indexes
+        // STEP 4: Rebuild FTS once atomically (1000 inserts → 1 rebuild)
+        self.rebuild_files_fts()?;
+
+        // STEP 5: Recreate regular indexes
         self.create_file_indexes()?;
+
+        // STEP 6: Re-enable FTS triggers for incremental updates
+        self.enable_files_fts_triggers()?;
 
         let duration = start_time.elapsed();
         info!(

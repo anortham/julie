@@ -321,6 +321,65 @@ impl Calculator {
                 .unwrap()
                 .contains("&self"));
         }
+
+        #[test]
+        fn test_extract_methods_from_impl_blocks_without_local_struct_definition() {
+            let rust_code = r#"
+impl SymbolDatabase {
+    pub fn store_file_info(&self, path: &str) {
+        let _ = path;
+    }
+
+    fn drop_file_indexes(&mut self) {}
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "database/files.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let store_method = symbols.iter().find(|s| s.name == "store_file_info");
+            assert!(
+                store_method.is_some(),
+                "expected to find method extracted from cross-file impl"
+            );
+            let store_method = store_method.unwrap();
+            assert_eq!(store_method.kind, SymbolKind::Method);
+            let metadata = store_method
+                .metadata
+                .as_ref()
+                .expect("method metadata should be populated for impl methods");
+            assert_eq!(
+                metadata
+                    .get("impl_type_name")
+                    .and_then(|value| value.as_str()),
+                Some("SymbolDatabase"),
+                "method metadata should preserve impl type name for cross-file resolution"
+            );
+            assert!(
+                store_method.parent_id.is_none(),
+                "cross-file impl methods should not assume a parent id from another file"
+            );
+
+            let drop_method = symbols.iter().find(|s| s.name == "drop_file_indexes");
+            assert!(
+                drop_method.is_some(),
+                "expected private impl method to be extracted"
+            );
+            let drop_method = drop_method.unwrap();
+            assert_eq!(drop_method.kind, SymbolKind::Method);
+            assert!(
+                drop_method.visibility.as_ref().unwrap() == &Visibility::Private,
+                "non-pub methods in impls should remain private"
+            );
+        }
     }
 
     mod module_extraction {

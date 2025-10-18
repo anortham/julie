@@ -181,6 +181,7 @@ pub fn reference_function() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -207,6 +208,7 @@ pub fn reference_function() {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_workspace_id.clone()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -234,6 +236,7 @@ pub fn reference_function() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -276,6 +279,7 @@ pub fn reference_function() {
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_12345".to_string()),
+            scope: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -400,6 +404,7 @@ pub fn compute_system_statistics() {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_workspace_id.clone()),
+            scope: "content".to_string(),
             output: Some("symbols".to_string()),
             context_lines: None,
         };

@@ -146,6 +146,35 @@ impl SymbolDatabase {
         Ok(())
     }
 
+    /// CASCADE: Disable FTS5 triggers for bulk operations
+    /// This prevents row-by-row FTS updates during bulk inserts
+    pub(crate) fn disable_files_fts_triggers(&self) -> Result<()> {
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
+        debug!("Disabled files FTS5 triggers for bulk operation");
+        Ok(())
+    }
+
+    /// CASCADE: Re-enable FTS5 triggers after bulk operations
+    pub(crate) fn enable_files_fts_triggers(&self) -> Result<()> {
+        self.create_files_fts_triggers()?;
+        debug!("Re-enabled files FTS5 triggers");
+        Ok(())
+    }
+
+    /// CASCADE: Rebuild files FTS5 index atomically
+    /// Use after bulk operations with disabled triggers
+    pub(crate) fn rebuild_files_fts(&self) -> Result<()> {
+        debug!("Rebuilding files FTS5 index...");
+        // First, delete all existing FTS content
+        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
+        // Then rebuild from base table
+        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+        debug!("✅ Files FTS5 index rebuilt successfully");
+        Ok(())
+    }
+
     /// Create the symbols table with rich metadata
     pub(crate) fn create_symbols_table(&self) -> Result<()> {
         self.conn.execute(
@@ -271,6 +300,35 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created symbols_fts synchronization triggers");
+        Ok(())
+    }
+
+    /// CASCADE: Disable symbols FTS5 triggers for bulk operations
+    /// This prevents row-by-row FTS updates during bulk inserts
+    pub(crate) fn disable_symbols_fts_triggers(&self) -> Result<()> {
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_au", [])?;
+        debug!("Disabled symbols FTS5 triggers for bulk operation");
+        Ok(())
+    }
+
+    /// CASCADE: Re-enable symbols FTS5 triggers after bulk operations
+    pub(crate) fn enable_symbols_fts_triggers(&self) -> Result<()> {
+        self.create_symbols_fts_triggers()?;
+        debug!("Re-enabled symbols FTS5 triggers");
+        Ok(())
+    }
+
+    /// CASCADE: Rebuild symbols FTS5 index atomically
+    /// Use after bulk operations with disabled triggers
+    pub(crate) fn rebuild_symbols_fts(&self) -> Result<()> {
+        debug!("Rebuilding symbols FTS5 index...");
+        // First, delete all existing FTS content
+        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')", [])?;
+        // Then rebuild from base table
+        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+        debug!("✅ Symbols FTS5 index rebuilt successfully");
         Ok(())
     }
 

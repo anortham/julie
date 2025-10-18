@@ -64,6 +64,7 @@ mod tests {
             file_pattern: None,
             language: None,
             workspace: None,
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -122,6 +123,7 @@ mod tests {
                     file_pattern: None,
                     language: None,
                     workspace: None,
+                    scope: "content".to_string(),
                     output: None,
                     context_lines: None,
                 };
@@ -173,6 +175,7 @@ mod tests {
             file_pattern: None,
             language: None,
             workspace: None,
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -247,6 +250,7 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
+                scope: "content".to_string(),
                 output: None,
                 context_lines: None,
             };
@@ -258,6 +262,7 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
+                scope: "content".to_string(),
                 output: None,
                 context_lines: None,
             };
@@ -361,6 +366,7 @@ pub fn embedding_vector_semantic() {}
             file_pattern: None,
             language: None,
             workspace: None,
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -501,6 +507,7 @@ pub fn embedding_vector_semantic() {}
             file_pattern: None,
             language: None,
             workspace: Some(workspace_id.clone()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };

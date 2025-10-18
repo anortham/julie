@@ -18,6 +18,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -78,6 +79,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -144,6 +146,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -214,6 +217,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -291,6 +295,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -303,6 +308,7 @@ mod search_tools_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("all".to_string()),
+            scope: "content".to_string(),
             output: None,
             context_lines: None,
         };
