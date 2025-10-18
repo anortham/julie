@@ -44,7 +44,7 @@ async fn cross_language_callers_found_via_naming_variant() {
     let other = make_symbol("other", "helper", "csharp", "Payment.cs");
 
     {
-        let db_guard = db.lock().unwrap();
+        let mut db_guard = db.lock().unwrap();
         let file_target = FileInfo {
             path: target.file_path.clone(),
             language: target.language.clone(),

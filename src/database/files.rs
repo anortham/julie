@@ -1,11 +1,11 @@
 // File operations
 
 use super::*;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use blake3;
 use rusqlite::params;
 use std::path::Path;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 impl SymbolDatabase {
     pub fn store_file_info(&self, file_info: &FileInfo, _workspace_id: &str) -> Result<()> {
@@ -53,58 +53,133 @@ impl SymbolDatabase {
             files.len()
         );
 
+        let original_sync: i64 = self
+            .conn
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))?;
+
+        let current_journal: String = self
+            .conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
+        if current_journal.to_ascii_lowercase() != "wal" {
+            warn!(
+                "Journal mode '{}' detected before bulk file insert; forcing WAL",
+                current_journal
+            );
+            self.conn
+                .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        }
+
+        // SAFETY: drop to NORMAL only for the scope of this bulk insert and restore
+        // the caller's previous synchronous level afterwards (see finalizer below).
+        self.conn.pragma_update(None, "synchronous", 1)?;
+
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
 
-        // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates
+        // SAFETY: disable triggers/indexes and remember state so we can always
+        // restore them even if the bulk insert returns early with an error.
         self.disable_files_fts_triggers()?;
+        // Flags let us attempt to rebuild indexes/re-enable triggers even if we
+        // return early with an error.
+        let mut triggers_disabled = true;
+        let mut indexes_need_restore = false;
 
-        // STEP 2: Drop regular indexes for faster inserts
-        self.drop_file_indexes()?;
+        let mut result: Result<()> = (|| -> Result<()> {
+            self.drop_file_indexes()?;
+            indexes_need_restore = true;
 
-        // STEP 3: Bulk insert in single transaction with auto-rollback safety
-        let tx = self.conn.transaction()?;  // Changed from unchecked_transaction()
-        {
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO files
-                 (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            )?;
+            let tx = self.conn.transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT OR REPLACE INTO files
+                     (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                )?;
 
-            for file in files {
-                stmt.execute(params![
-                    file.path,
-                    file.language,
-                    file.hash,
-                    file.size,
-                    file.last_modified,
-                    now,
-                    file.symbol_count,
-                    file.content.as_deref().unwrap_or("") // CASCADE: Include content
-                ])?;
+                for file in files {
+                    stmt.execute(params![
+                        file.path,
+                        file.language,
+                        file.hash,
+                        file.size,
+                        file.last_modified,
+                        now,
+                        file.symbol_count,
+                        file.content.as_deref().unwrap_or("") // CASCADE: Include content
+                    ])?;
+                }
             }
-        }  // stmt dropped here
-        tx.commit()?;
+            tx.commit()?;
 
-        // STEP 4: Rebuild FTS once atomically (1000 inserts → 1 rebuild)
-        self.rebuild_files_fts()?;
+            self.rebuild_files_fts()?;
 
-        // STEP 5: Recreate regular indexes
-        self.create_file_indexes()?;
+            self.create_file_indexes()?;
+            indexes_need_restore = false;
 
-        // STEP 6: Re-enable FTS triggers for incremental updates
-        self.enable_files_fts_triggers()?;
+            self.enable_files_fts_triggers()?;
+            triggers_disabled = false;
 
-        let duration = start_time.elapsed();
-        info!(
-            "✅ Bulk file insert complete! {} files in {:.2}ms",
-            files.len(),
-            duration.as_millis()
-        );
+            Ok(())
+        })();
 
-        Ok(())
+        if indexes_need_restore {
+            if let Err(e) = self.create_file_indexes() {
+                warn!(
+                    "Failed to rebuild file indexes after bulk insert error: {}",
+                    e
+                );
+                if result.is_ok() {
+                    result = Err(e);
+                }
+            } else {
+                debug!("🏗️ Rebuilt file indexes after recoverable error");
+            }
+        }
+
+        if triggers_disabled {
+            if let Err(e) = self.enable_files_fts_triggers() {
+                warn!(
+                    "Failed to re-enable file FTS triggers after bulk insert error: {}",
+                    e
+                );
+                if result.is_ok() {
+                    result = Err(e);
+                }
+            } else {
+                debug!("🔊 Re-enabled file FTS triggers after recoverable error");
+            }
+        }
+
+        if let Err(e) = self.conn.pragma_update(None, "synchronous", original_sync) {
+            warn!(
+                "Failed to restore PRAGMA synchronous to {}: {}",
+                original_sync, e
+            );
+            if result.is_ok() {
+                result = Err(anyhow!("Failed to restore PRAGMA synchronous: {}", e));
+            }
+        }
+
+        if result.is_ok() {
+            debug!("💾 Passive WAL checkpoint (non-blocking)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
+                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            }
+        }
+
+        if let Ok(()) = result.as_ref() {
+            let duration = start_time.elapsed();
+            info!(
+                "✅ Bulk file insert complete! {} files in {:.2}ms",
+                files.len(),
+                duration.as_millis()
+            );
+        }
+
+        result
     }
 
     /// Drop all file table indexes for bulk operations
@@ -166,7 +241,15 @@ impl SymbolDatabase {
             "INSERT OR REPLACE INTO files
              (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)",
-            params![path, language, hash, size as i64, last_modified as i64, now, content],
+            params![
+                path,
+                language,
+                hash,
+                size as i64,
+                last_modified as i64,
+                now,
+                content
+            ],
         )?;
 
         Ok(())
@@ -187,9 +270,9 @@ impl SymbolDatabase {
 
     /// CASCADE: Get all file contents for workspace
     pub fn get_all_file_contents(&self) -> Result<Vec<(String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, content FROM files WHERE content IS NOT NULL",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, content FROM files WHERE content IS NOT NULL")?;
 
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -242,7 +325,11 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Search file content using FTS5
-    pub fn search_file_content_fts(&self, query: &str, limit: usize) -> Result<Vec<FileSearchResult>> {
+    pub fn search_file_content_fts(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<FileSearchResult>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
         // This prevents errors like "fts5: syntax error near '.'" when searching for dotted names
         let sanitized_query = Self::sanitize_fts5_query(query);
@@ -337,10 +424,9 @@ impl SymbolDatabase {
 
     /// Delete file record for a specific workspace (workspace-aware cleanup)
     pub fn delete_file_record_in_workspace(&self, file_path: &str) -> Result<()> {
-        let count = self.conn.execute(
-            "DELETE FROM files WHERE path = ?1",
-            params![file_path],
-        )?;
+        let count = self
+            .conn
+            .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
         debug!(
             "Deleted file record for '{}' ({} rows affected)",
@@ -350,7 +436,9 @@ impl SymbolDatabase {
     }
 
     /// Store symbols in a transaction (regular method for incremental updates)
-    pub fn get_file_hashes_for_workspace(&self) -> Result<std::collections::HashMap<String, String>> {
+    pub fn get_file_hashes_for_workspace(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>> {
         let mut stmt = self.conn.prepare(
             "SELECT path, hash
              FROM files
@@ -370,13 +458,9 @@ impl SymbolDatabase {
             file_hashes.insert(path, hash);
         }
 
-        debug!(
-            "Retrieved {} file hashes from database",
-            file_hashes.len()
-        );
+        debug!("Retrieved {} file hashes from database", file_hashes.len());
         Ok(file_hashes)
     }
-
 }
 
 pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {

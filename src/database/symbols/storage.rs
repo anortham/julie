@@ -6,14 +6,14 @@ use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    pub fn store_symbols(&self, symbols: &[Symbol], _workspace_id: &str) -> Result<()> {
+    pub fn store_symbols(&mut self, symbols: &[Symbol], _workspace_id: &str) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
 
         debug!("Storing {} symbols", symbols.len());
 
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.conn.transaction()?;
 
         for symbol in symbols {
             let metadata_json = symbol
@@ -78,10 +78,7 @@ impl SymbolDatabase {
             params![file_path],
         )?;
 
-        debug!(
-            "Deleted {} symbols for file '{}'",
-            count, file_path
-        );
+        debug!("Deleted {} symbols for file '{}'", count, file_path);
         Ok(())
     }
 }

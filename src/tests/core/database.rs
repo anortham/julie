@@ -14,7 +14,8 @@ async fn test_database_creation() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
 
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
     let stats = db.get_stats().unwrap();
 
     assert_eq!(stats.total_symbols, 0);
@@ -45,7 +46,8 @@ fn test_minimal_database_creation() {
 async fn test_debug_foreign_key_constraint() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("debug.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Create a temporary file
     let test_file = temp_dir.path().join("test.ts");
@@ -144,7 +146,8 @@ fn test_individual_table_creation() {
 async fn test_file_info_storage() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     let file_info = FileInfo {
         path: "test.rs".to_string(),
@@ -167,7 +170,7 @@ async fn test_file_info_storage() {
 async fn test_symbol_storage_and_retrieval() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     let symbol = Symbol {
         id: "test-symbol-1".to_string(),
@@ -255,7 +258,7 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
 async fn test_symbol_with_metadata_and_semantic_fields() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Create a temporary file for the test
     let test_file = temp_dir.path().join("user.ts");
@@ -338,7 +341,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
 async fn test_relationship_with_id_field() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Following foreign key contract: create file and symbols first
     let file_info = FileInfo {
@@ -413,8 +416,7 @@ async fn test_relationship_with_id_field() {
     };
 
     // Store the relationship
-    db.store_relationships(&[relationship.clone()])
-        .unwrap();
+    db.store_relationships(&[relationship.clone()]).unwrap();
 
     // Retrieve relationships for the from_symbol
     let relationships = db.get_relationships_for_symbol("caller_func").unwrap();
@@ -431,7 +433,7 @@ async fn test_relationship_with_id_field() {
 async fn test_cross_language_semantic_grouping() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Create symbols from different languages but same semantic group
     let ts_interface = Symbol {
@@ -524,7 +526,7 @@ async fn test_cross_language_semantic_grouping() {
 async fn test_extractor_database_integration() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Simulate what an extractor would create
     use crate::extractors::base::BaseExtractor;
@@ -606,7 +608,7 @@ async fn test_extractor_database_integration() {
 async fn test_complete_symbol_field_persistence() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("complete_fields.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Create file record first (FK requirement)
     let file_info = FileInfo {
@@ -693,7 +695,8 @@ async fn test_complete_symbol_field_persistence() {
 fn test_store_file_with_content() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_with_content(
         "test.md",
@@ -706,9 +709,7 @@ fn test_store_file_with_content() {
     )
     .unwrap();
 
-    let content = db
-        .get_file_content("test.md")
-        .unwrap();
+    let content = db.get_file_content("test.md").unwrap();
     assert_eq!(content, Some("# Test\nThis is test content".to_string()));
 }
 
@@ -716,7 +717,8 @@ fn test_store_file_with_content() {
 fn test_fts_search_file_content() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_with_content(
         "docs/architecture.md",
@@ -730,9 +732,7 @@ fn test_fts_search_file_content() {
     .unwrap();
 
     // Search for "SQLite"
-    let results = db
-        .search_file_content_fts("SQLite", 10)
-        .unwrap();
+    let results = db.search_file_content_fts("SQLite", 10).unwrap();
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].path, "docs/architecture.md");
@@ -743,7 +743,8 @@ fn test_fts_search_file_content() {
 fn test_fts_search_ranks_by_relevance() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // File 1: "cascade" appears once in longer document
     db.store_file_with_content(
@@ -773,9 +774,7 @@ fn test_fts_search_ranks_by_relevance() {
     )
     .unwrap();
 
-    let results = db
-        .search_file_content_fts("cascade", 10)
-        .unwrap();
+    let results = db.search_file_content_fts("cascade", 10).unwrap();
 
     // Verify both files are found
     assert_eq!(results.len(), 2);
@@ -803,8 +802,8 @@ fn test_fts_search_ranks_by_relevance() {
 fn test_migration_fresh_database_at_latest_version() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Fresh database should be at latest version
     let version = db.get_schema_version().unwrap();
@@ -815,8 +814,8 @@ fn test_migration_fresh_database_at_latest_version() {
 fn test_migration_version_table_exists() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Verify schema_version table exists
     let result: Result<i64, rusqlite::Error> =
@@ -830,8 +829,8 @@ fn test_migration_version_table_exists() {
 fn test_migration_adds_content_column() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Verify content column exists in files table
     let has_content = db.has_column("files", "content").unwrap();
@@ -878,7 +877,8 @@ fn test_migration_from_legacy_v1_database() {
     }
 
     // Now open with new code - should trigger migration
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Verify migration occurred
     let version = db.get_schema_version().unwrap();
@@ -917,7 +917,8 @@ fn test_migration_idempotent() {
     }
 
     // Open again (should handle already-migrated database)
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
     let version = db.get_schema_version().unwrap();
     assert_eq!(version, LATEST_SCHEMA_VERSION);
 
@@ -952,7 +953,8 @@ fn test_fts_triggers_work_after_migration() {
     }
 
     // Open and migrate
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Store file with content (should trigger FTS5 sync via triggers)
     db.store_file_with_content(
@@ -983,16 +985,14 @@ fn test_sanitize_fts5_query_dot_character() {
     // Query with dot should be split and OR'd (matches tokenized content)
     let sanitized = SymbolDatabase::sanitize_fts5_query("CurrentUserService.ApplicationUser");
     assert_eq!(
-        sanitized,
-        "CurrentUserService OR ApplicationUser",
+        sanitized, "CurrentUserService OR ApplicationUser",
         "Queries with dots should be split and OR'd to match tokenized content"
     );
 
     // Multiple dots should be split into multiple OR terms
     let multi_dot = SymbolDatabase::sanitize_fts5_query("System.Collections.Generic");
     assert_eq!(
-        multi_dot,
-        "System OR Collections OR Generic",
+        multi_dot, "System OR Collections OR Generic",
         "Multi-dot queries should split all parts"
     );
 
