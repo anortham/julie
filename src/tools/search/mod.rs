@@ -86,6 +86,12 @@ pub struct FastSearchTool {
     /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Search scope: "content" (default) or "symbols"
+    /// - "content": Search full file content (grep-like, all text including comments, strings, etc.)
+    /// - "symbols": Search symbol definitions only (function names, class names, method signatures)
+    /// Default: "content" - most users want to search all code, not just symbol names
+    #[serde(default = "default_scope")]
+    pub scope: String,
     /// Output format: "symbols" (default), "lines" (grep-style)
     ///
     /// Examples:
@@ -117,6 +123,10 @@ fn default_output() -> Option<String> {
 }
 fn default_context_lines() -> Option<u32> {
     Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
+}
+
+fn default_scope() -> String {
+    "content".to_string()
 }
 
 impl FastSearchTool {
@@ -224,6 +234,7 @@ impl FastSearchTool {
                     &self.file_pattern,
                     self.limit,
                     workspace_ids,
+                    &self.scope,
                     handler,
                 )
                 .await?

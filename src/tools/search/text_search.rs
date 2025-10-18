@@ -14,36 +14,55 @@ use crate::utils::{
 
 use super::query::{matches_glob_pattern, preprocess_fallback_query};
 
-/// Text search with workspace filtering
+/// Text search with workspace filtering and scope selection
 ///
-/// Uses SQLite database for fast symbol pattern matching.
-/// With Tantivy removed, we rely on SQLite FTS5 for fast symbol search.
+/// Scope determines what to search:
+/// - "symbols": Search symbol definitions (functions, classes) using symbols_fts
+/// - "content": Search full file content (grep-like) using files_fts
 pub async fn text_search_impl(
     query: &str,
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
+    scope: &str,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    if let Some(workspace_ids) = workspace_ids {
-        debug!(
-            "🔍 Using database search with workspace filter: {:?}",
-            workspace_ids
-        );
-        database_search_with_workspace_filter(
-            query,
-            language,
-            file_pattern,
-            limit,
-            workspace_ids,
-            handler,
-        )
-        .await
-    } else {
-        // For "all" workspaces, use SQLite FTS5 file content search
-        debug!("🔍 Using SQLite FTS5 for cross-workspace search");
-        sqlite_fts_search(query, language, file_pattern, limit, handler).await
+    match scope {
+        "symbols" => {
+            // Search symbol definitions only (symbols_fts index)
+            if let Some(workspace_ids) = workspace_ids {
+                debug!(
+                    "🔍 Symbol search with workspace filter: {:?}",
+                    workspace_ids
+                );
+                database_search_with_workspace_filter(
+                    query,
+                    language,
+                    file_pattern,
+                    limit,
+                    workspace_ids,
+                    handler,
+                )
+                .await
+            } else {
+                debug!("🔍 Symbol search across all workspaces");
+                database_search_with_workspace_filter(
+                    query,
+                    language,
+                    file_pattern,
+                    limit,
+                    vec![], // Empty vec means search primary workspace
+                    handler,
+                )
+                .await
+            }
+        }
+        _ => {
+            // "content" or any other value: Search full file content (files_fts index)
+            debug!("🔍 Content search (full file text)");
+            sqlite_fts_search(query, language, file_pattern, limit, handler).await
+        }
     }
 }
 
@@ -201,18 +220,33 @@ async fn sqlite_fts_search(
     // Apply basic query intelligence even in fallback mode
     // This improves search quality during the 20-30s window while HNSW builds
     let processed_query = preprocess_fallback_query(query);
+
+    // 🔥 CONTENT SEARCH FIX: Use AND logic for multi-word queries
+    // Unlike symbol search which uses OR for flexibility, content search (grep-like)
+    // expects AND behavior - all words must be present, but not necessarily adjacent.
+    // Example: "LazyScripts System Administration" → "LazyScripts AND System AND Administration"
+    let content_query = if processed_query.split_whitespace().count() > 1
+        && !processed_query.contains('"')
+        && !processed_query.contains(" OR ")
+        && !processed_query.contains(" AND ")
+    {
+        processed_query.split_whitespace().collect::<Vec<_>>().join(" AND ")
+    } else {
+        processed_query.clone()
+    };
+
     debug!(
-        "📝 Fallback query preprocessed: '{}' -> '{}'",
-        query, processed_query
+        "📝 Content search query: '{}' -> '{}'",
+        query, content_query
     );
 
-    // Use FTS5 for file content search with processed query
+    // Use FTS5 for file content search with content-optimized query
     // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
     // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
     let file_results = tokio::task::block_in_place(|| {
         let db_lock = db.lock().unwrap();
         db_lock.search_file_content_fts(
-            &processed_query,
+            &content_query,  // Use phrase-wrapped query for content search
             limit as usize,
         )
     })?;

@@ -29,7 +29,7 @@ pub async fn semantic_search_impl(
     handler.ensure_vector_store().await?;
 
     // Get the primary workspace (needed for paths even when searching reference workspaces)
-    let primary_workspace = handler
+    let primary_workspace = handler // After scope parameter
         .get_workspace()
         .await?
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized for semantic search"))?;
@@ -119,7 +119,7 @@ pub async fn semantic_search_impl(
                 language,
                 file_pattern,
                 limit,
-                workspace_ids,
+                workspace_ids, "symbols", // Semantic fallback searches symbols
                 handler,
             )
             .await;
@@ -141,7 +141,7 @@ pub async fn semantic_search_impl(
                     language,
                     file_pattern,
                     limit,
-                    workspace_ids,
+                    workspace_ids, "symbols", // Semantic fallback searches symbols
                     handler,
                 )
                 .await;
@@ -195,7 +195,7 @@ pub async fn semantic_search_impl(
             language,
             file_pattern,
             limit,
-            workspace_ids,
+            workspace_ids, "symbols", // Semantic fallback searches symbols
             handler,
         )
         .await;
@@ -216,7 +216,7 @@ pub async fn semantic_search_impl(
                 language,
                 file_pattern,
                 limit,
-                workspace_ids,
+                workspace_ids, "symbols", // Semantic fallback searches symbols
                 handler,
             )
             .await;

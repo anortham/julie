@@ -14,6 +14,18 @@ pub mod search;
 // Re-export for use in tool
 pub use search::MAX_GRAPH_ANALYSIS_CANDIDATES;
 
+fn default_max_results() -> i32 {
+    50
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_min_score() -> f32 {
+    0.3
+}
+
 #[mcp_tool(
     name = "find_logic",
     description = "DISCOVER CORE LOGIC - Filter framework noise, focus on domain business logic",
@@ -28,14 +40,20 @@ pub struct FindLogicTool {
     /// Maximum number of business logic symbols to return
     /// Higher values = more comprehensive results but longer response
     /// Recommended: 20-50 for focused analysis, 100+ for comprehensive review
+    /// Default: 50 - balanced for most use cases
+    #[serde(default = "default_max_results")]
     pub max_results: i32,
     /// Group results by architectural layer (controllers, services, models, etc.)
     /// true = organized by layer for architectural understanding
     /// false = flat list sorted by relevance score
+    /// Default: true - better organization
+    #[serde(default = "default_true")]
     pub group_by_layer: bool,
     /// Minimum business relevance score threshold (0.0 to 1.0)
     /// Higher values = more selective, only highly relevant business logic
     /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
+    /// Default: 0.3 - broad coverage
+    #[serde(default = "default_min_score")]
     pub min_business_score: f32,
 }
 
