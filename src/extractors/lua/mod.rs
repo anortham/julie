@@ -17,6 +17,7 @@ mod core;
 mod functions;
 pub(crate) mod helpers;
 mod identifiers;
+mod relationships;
 mod tables;
 mod variables;
 
@@ -53,11 +54,9 @@ impl LuaExtractor {
         self.symbols.clone()
     }
 
-    pub fn extract_relationships(
-        &mut self,
-        _tree: &Tree,
-        _symbols: &[Symbol],
-    ) -> Vec<Relationship> {
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        self.relationships.clear();
+        relationships::extract_relationships(&mut self.relationships, &self.base, tree, symbols);
         self.relationships.clone()
     }
 

@@ -23,6 +23,9 @@ fn extract_relationships(code: &str, symbols: &[Symbol]) -> Vec<Relationship> {
 }
 
 #[cfg(test)]
+mod relationships;
+
+#[cfg(test)]
 mod razor_extractor_tests {
     use super::*;
 

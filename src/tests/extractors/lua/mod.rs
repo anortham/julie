@@ -9,6 +9,7 @@ pub mod variables;
 pub mod identifiers;
 pub mod helpers;
 pub mod tables;
+pub mod relationships;
 
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::lua::LuaExtractor;

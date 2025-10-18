@@ -411,7 +411,70 @@ impl super::RazorExtractor {
     }
 
     /// Extract Razor attribute (stub - to be implemented)
-    pub(super) fn extract_razor_attribute(&mut self, _node: Node, _parent_id: Option<&str>) -> Option<Symbol> {
-        None // TODO: Implement when needed
+    pub(super) fn extract_razor_attribute(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let name = if let Some(name_node) = self.find_child_by_type(node, "identifier") {
+            self.base.get_node_text(&name_node)
+        } else {
+            let raw = self.base.get_node_text(&node);
+            raw.split('=').next().map(|s| s.trim().to_string()).unwrap_or_default()
+        };
+
+        if name.is_empty() {
+            return None;
+        }
+
+        let value = if let Some(value_node) = self.find_child_by_types(node, &["attribute_value", "string_literal"]) {
+            Some(self.base.get_node_text(&value_node))
+        } else {
+            None
+        };
+
+        let signature = if let Some(value) = &value {
+            format!("{}={}", name, value)
+        } else {
+            name.clone()
+        };
+
+        Some(self.base.create_symbol(
+            &node,
+            name.clone(),
+            SymbolKind::Variable,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some({
+                    let mut metadata = HashMap::new();
+                    metadata.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("razor-attribute".to_string()),
+                    );
+                    metadata.insert(
+                        "attributeName".to_string(),
+                        serde_json::Value::String(name.clone()),
+                    );
+                    if let Some(value) = value {
+                        metadata.insert(
+                            "attributeValue".to_string(),
+                            serde_json::Value::String(value),
+                        );
+                    }
+                    if name.starts_with("@bind") {
+                        metadata.insert(
+                            "isDataBinding".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
+                    if name.starts_with("@on") {
+                        metadata.insert(
+                            "isEventBinding".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
+                    metadata
+                }),
+                doc_comment: None,
+            },
+        ))
     }
 }

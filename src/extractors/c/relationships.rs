@@ -93,10 +93,11 @@ fn extract_include_relationships(
 
 /// Find the symbol that contains this node
 fn find_containing_symbol<'a>(
-    _extractor: &CExtractor,
-    _node: tree_sitter::Node,
-    _symbols: &'a [Symbol],
+    extractor: &CExtractor,
+    node: tree_sitter::Node,
+    symbols: &'a [Symbol],
 ) -> Option<&'a Symbol> {
-    // Simplified implementation - would need more sophisticated logic to find the containing function
-    None
+    // Reuse the shared BaseExtractor containment logic so we correctly match
+    // call expressions with their enclosing function definition (mirrors Miller).
+    extractor.base.find_containing_symbol(&node, symbols)
 }
