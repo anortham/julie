@@ -61,7 +61,7 @@ pub async fn text_search_impl(
         _ => {
             // "content" or any other value: Search full file content (files_fts index)
             debug!("🔍 Content search (full file text)");
-            sqlite_fts_search(query, language, file_pattern, limit, handler).await
+            sqlite_fts_search(query, language, file_pattern, limit, workspace_ids, handler).await
         }
     }
 }
@@ -190,31 +190,74 @@ async fn sqlite_fts_search(
     _language: &Option<String>,
     _file_pattern: &Option<String>,
     limit: u32,
+    workspace_ids: Option<Vec<String>>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     debug!("🔍 CASCADE: Using SQLite FTS5 search (file content)");
 
-    // Get workspace and database
+    // Get workspace
     let workspace = handler
         .get_workspace()
         .await?
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized for FTS search"))?;
 
-    let db = workspace
-        .db
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No database available for FTS search"))?;
-
-    // Get workspace ID for filtering
-    let _workspace_id = {
-        let registry_service =
-            crate::workspace::registry_service::WorkspaceRegistryService::new(
-                workspace.root.clone(),
-            );
-        registry_service
+    // Get the correct database based on workspace filter
+    let db = if let Some(workspace_ids) = workspace_ids {
+        // Workspace filter specified - determine if primary or reference
+        let registry_service = crate::workspace::registry_service::WorkspaceRegistryService::new(
+            workspace.root.clone(),
+        );
+        let primary_workspace_id = registry_service
             .get_primary_workspace_id()
             .await?
-            .unwrap_or_else(|| "primary".to_string())
+            .unwrap_or_else(|| "primary".to_string());
+
+        let target_workspace_id = workspace_ids
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Empty workspace ID list"))?;
+
+        let is_primary = target_workspace_id == &primary_workspace_id;
+
+        debug!(
+            "🔍 Content search targeting workspace: {} (is_primary: {})",
+            target_workspace_id, is_primary
+        );
+
+        if is_primary {
+            // Use primary workspace database
+            workspace
+                .db
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("No database available for FTS search"))?
+                .clone()
+        } else {
+            // Open reference workspace database
+            let ref_db_path = workspace.workspace_db_path(target_workspace_id);
+            if !ref_db_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Reference workspace database not found: {}",
+                    target_workspace_id
+                ));
+            }
+
+            debug!(
+                "📂 Opening reference workspace DB for content search: {:?}",
+                ref_db_path
+            );
+
+            // Create Arc<Mutex<SymbolDatabase>> for consistent type
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::database::SymbolDatabase::new(&ref_db_path)?
+            ))
+        }
+    } else {
+        // No workspace filter - use primary workspace database directly
+        debug!("🔍 Content search using primary workspace (no filter specified)");
+        workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available for FTS search"))?
+            .clone()
     };
 
     // Apply basic query intelligence even in fallback mode
