@@ -1,3 +1,16 @@
+1. ✅ FIXED: Workspace search issue (commit 86d33fe)
+   - Content search now respects workspace parameter
+   - Both scope="symbols" and scope="content" work with reference workspaces
+
+2. fix the rust extractors, fix ALL the extractors
+3. We refactored the HUGE database file to multiple modules today, Could that be causing the corruption issues with sqlite we're seeing?
+
+
+
+
+
+
+
 That's a seriously impressive and ambitious project! Building a language-agnostic developer toolset that rivals LSP by using Tree-sitter for parsing and embeddings for semantics is a fantastic approach. You've already built the most complex parts: the data extraction and semantic indexing.
 
 Here are some ideas for a universal code formatter and other tools you could build on your existing foundation.
