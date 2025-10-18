@@ -5,10 +5,88 @@
 
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::debug;
 
+use crate::database::SymbolDatabase;
+use crate::embeddings::vector_store::VectorStore;
 use crate::extractors::{Relationship, RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
+
+/// Find semantically similar definitions using a provided vector store and database path
+///
+/// This is a generalized version that works with any workspace's vector store and database.
+/// Used by both primary workspace (fast_goto.rs) and reference workspaces (reference_workspace.rs).
+///
+/// Parameters:
+/// - `vector_store`: The vector store to search (can be primary or reference workspace)
+/// - `db_path`: Path to the symbol database
+/// - `query_embedding`: The embedding vector for the symbol to search for
+///
+/// Returns: Vec of Symbol definitions that are semantically similar
+pub async fn find_semantic_definitions_with_store(
+    vector_store: Arc<RwLock<VectorStore>>,
+    db_path: std::path::PathBuf,
+    query_embedding: Vec<f32>,
+) -> Result<Vec<Symbol>> {
+    let mut semantic_symbols = Vec::new();
+
+    // Check if HNSW index is built
+    let has_hnsw = {
+        let store_guard = vector_store.read().await;
+        store_guard.has_hnsw_index()
+    };
+
+    if !has_hnsw {
+        debug!("⚠️ HNSW index not available in vector store - skipping embedding search fallback");
+        return Ok(Vec::new());
+    }
+
+    // Do HNSW search inside spawn_blocking (database is not Send)
+    let vector_store_clone = vector_store.clone();
+    let db_path_for_search = db_path.clone();
+    let similar_symbols = tokio::task::spawn_blocking(move || {
+        // Open database inside blocking context
+        if let Ok(database) = SymbolDatabase::new(&db_path_for_search) {
+            let store_guard_sync = vector_store_clone.blocking_read();
+            let model_name = "bge-small";
+            // INTENTIONALLY HARDCODED threshold (0.7): Conservative fallback for definition lookup.
+            // This prevents AI agents from iterating through multiple thresholds and wasting context.
+            store_guard_sync.search_similar_hnsw(&database, &query_embedding, 10, 0.7, model_name)
+        } else {
+            Err(anyhow::anyhow!("Failed to open database at {:?}", db_path_for_search))
+        }
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
+    debug!(
+        "🚀 HNSW search found {} similar definitions",
+        similar_symbols.len()
+    );
+
+    // Get actual symbol data from database (also needs to be in blocking context)
+    if !similar_symbols.is_empty() {
+        let symbol_ids: Vec<String> =
+            similar_symbols.iter().map(|r| r.symbol_id.clone()).collect();
+
+        let db_path_for_fetch = db_path.clone();
+        let symbols = tokio::task::spawn_blocking(move || {
+            if let Ok(database) = SymbolDatabase::new(&db_path_for_fetch) {
+                database.get_symbols_by_ids(&symbol_ids)
+            } else {
+                Err(anyhow::anyhow!("Failed to open database at {:?}", db_path_for_fetch))
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
+        semantic_symbols.extend(symbols);
+    }
+
+    Ok(semantic_symbols)
+}
 
 /// Find semantically similar symbols and create reference relationships
 ///
@@ -51,6 +129,9 @@ pub async fn find_semantic_references(
 
                     if let Some(embedding) = query_embedding {
                         // STRICT threshold: 0.75 = only VERY similar symbols
+                        // INTENTIONALLY HARDCODED to prevent false positives and context waste.
+                        // AI agents would try multiple thresholds (0.9, 0.7, 0.5, ...) if exposed,
+                        // wasting 3+ tool calls for a single search operation.
                         let similarity_threshold = 0.75;
                         let max_semantic_matches = 5;
 

@@ -186,65 +186,21 @@ impl FastGotoTool {
             }
         }
 
-        // Strategy 2: Use relationships to find actual definitions
-        // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
-        // This changes from O(n) linear scan to O(k * log n) indexed queries where k = exact_matches.len()
-        // REDUNDANCY FIX: Reuse exact_matches instead of querying database again
-        if !exact_matches.is_empty() {
-            if let Ok(Some(workspace)) = handler.get_workspace().await {
-                if let Some(db) = workspace.db.as_ref() {
-                    // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
-                    let symbols_to_check = exact_matches.clone();
-                    let db_arc = db.clone();
-
-                    let additional_matches = tokio::task::spawn_blocking(move || {
-                        let db_lock = db_arc.lock().unwrap();
-                        let mut matches = Vec::new();
-
-                        // Query relationships for each matching symbol using indexed query
-                        for symbol in &symbols_to_check {
-                            if let Ok(relationships) =
-                                db_lock.get_relationships_for_symbol(&symbol.id)
-                            {
-                                for relationship in relationships {
-                                    // Check if this relationship represents a definition or import
-                                    match &relationship.kind {
-                                        crate::extractors::base::RelationshipKind::Imports
-                                        | crate::extractors::base::RelationshipKind::Defines
-                                        | crate::extractors::base::RelationshipKind::Extends => {
-                                            // The symbol itself is the definition we want
-                                            matches.push(symbol.clone());
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                        matches
-                    })
-                    .await
-                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
-
-                    exact_matches.extend(additional_matches);
-                }
-            }
-        }
-
         // Remove duplicates based on symbol id
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
         exact_matches.dedup_by(|a, b| a.id == b.id);
 
-        // Strategy 3: Cross-language resolution with naming conventions + semantic search
+        // Strategy 2: Cross-language resolution with naming conventions
         // This leverages Julie's unique CASCADE architecture:
-        // - Fast: Naming convention variants (Tantivy indexed search)
-        // - Smart: Semantic embeddings (HNSW similarity)
+        // - Fast: Naming convention variants (SQLite indexed search)
+        // - Smart: Semantic embeddings (HNSW similarity) in Strategy 3
         if exact_matches.is_empty() {
             debug!(
                 "🌍 Attempting cross-language resolution for '{}'",
                 self.symbol
             );
 
-            // 3a. Try naming convention variants (fast, works across Python/JS/C#/Rust)
+            // 2a. Try naming convention variants (fast, works across Python/JS/C#/Rust)
             // Examples: getUserData -> get_user_data (Python), GetUserData (C#)
             // Uses Julie's Intelligence Layer for smart variant generation
             if let Ok(Some(workspace)) = handler.get_workspace().await {
@@ -285,12 +241,12 @@ impl FastGotoTool {
                 }
             }
 
-            // 3b. If still no matches, embeddings will catch semantically similar symbols
+            // 2b. If still no matches, embeddings will catch semantically similar symbols
             // (e.g., getUserData -> fetchUserInfo, retrieveUserDetails)
-            // This happens automatically in Strategy 4 below
+            // This happens automatically in Strategy 3 below
         }
 
-        // Strategy 4: HNSW-powered semantic matching (FAST!)
+        // Strategy 3: HNSW-powered semantic matching (FAST!)
         if exact_matches.is_empty() {
             debug!("🧠 Using HNSW semantic search for: {}", self.symbol);
             if let Ok(semantic_symbols) = semantic_matching::find_semantic_definitions(handler, &self.symbol).await {

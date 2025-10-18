@@ -334,6 +334,10 @@ impl FastRefsTool {
             a.line_number.cmp(&b.line_number)
         });
 
+        // Apply user-specified limit to prevent massive responses
+        // Truncate AFTER sorting to return the top N most relevant references
+        references.truncate(self.limit as usize);
+
         debug!(
             "✅ Found {} definitions and {} references for '{}'",
             definitions.len(),

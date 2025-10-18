@@ -148,6 +148,10 @@ mod tests {
    - This is an MCP server not a REST API
    - We aren't concerned with backward compatiblity
    - We aren't concerned with maintaining API compatibiility
+4. **Target User**: YOU, CLAUDE (and other AI coding agents) are the target user of this app
+   - You should review code from the standpoint of you being the target user
+   - Tool output should be optimized for YOU
+   - Tool functionality should be optimized for YOU
 
 ### Workspace Storage Architecture
 
