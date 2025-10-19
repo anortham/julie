@@ -107,11 +107,11 @@ src/database/
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier single source of truth with progressive enhancement
 - **Origin**: Rebuilt from Miller (TypeScript/Bun) due to Windows compatibility issues
-- **Crown Jewels**: 26 tree-sitter extractors with comprehensive test suites (100% Miller parity)
+- **Crown Jewels**: 25 tree-sitter extractors with comprehensive test suites (100% Miller parity)
 
-### 🏆 Current Language Support (26/26 - Complete Miller Parity)
+### 🏆 Current Language Support (25/25 - Complete Miller Parity)
 
-**All 26 extractors operational and validated against real-world GitHub code:**
+**All 25 extractors operational and validated against real-world GitHub code:**
 
 **Core Languages:**
 - Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
@@ -446,7 +446,7 @@ src/
 │   ├── mod.rs          # Extractor management
 │   ├── base.rs         # BaseExtractor trait and common types
 │   ├── typescript.rs   # TypeScript/JavaScript extractor
-│   └── ...             # All other language extractors (26 total)
+│   └── ...             # All other language extractors (25 total)
 ├── embeddings/          # ONNX-based semantic search
 ├── database/            # SQLite symbol storage (includes FTS5 search)
 ├── tools/               # MCP tool implementations
@@ -495,7 +495,7 @@ src/tests/                           # Central test infrastructure
 │   ├── mod.rs                     # Extractor test management
 │   ├── typescript_tests.rs       # TypeScript/JavaScript tests
 │   ├── python_tests.rs           # Python tests
-│   └── ...                       # All 26 language extractors
+│   └── ...                       # All 25 language extractors
 │
 ├── tools/                          # Tool-specific tests
 │   ├── fuzzy_replace_tests.rs     # FuzzyReplaceTool tests (18 tests, all passing)
@@ -818,7 +818,7 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 **Project Status**: Phase 7 - 2-Tier CASCADE Architecture (Tantivy Removed) ✅
 **Current Achievements**:
-- ✅ All 26 Language Extractors Operational (Miller Parity)
+- ✅ All 25 Language Extractors Operational (Miller Parity)
 - ✅ **CASCADE Architecture Simplified**: SQLite FTS5 → HNSW Semantic (2-tier)
 - ✅ **Tantivy Removed**: Eliminated Arc<RwLock> deadlocks, simpler architecture
 - ✅ **Per-Workspace Isolation**: Complete workspace separation in `indexes/{workspace_id}/`
