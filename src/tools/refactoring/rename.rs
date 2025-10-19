@@ -350,57 +350,6 @@ impl SmartRefactorTool {
         Ok(changes)
     }
 
-    /// Extract file paths from search results
-    fn extract_file_paths_from_search(
-        &self,
-        search_result: &CallToolResult,
-    ) -> Result<Vec<String>> {
-        let mut file_paths = Vec::new();
-
-        // Try structured content first
-        if let Some(structured) = &search_result.structured_content {
-            if let Some(results) = structured.get("results").and_then(|v| v.as_array()) {
-                for result in results {
-                    if let Some(file_path) = result.get("file_path").and_then(|v| v.as_str()) {
-                        if !file_paths.contains(&file_path.to_string()) {
-                            file_paths.push(file_path.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback to parsing text content
-        if file_paths.is_empty() {
-            let content = search_result
-                .content
-                .iter()
-                .filter_map(|block| {
-                    if let Ok(json_value) = serde_json::to_value(block) {
-                        json_value
-                            .get("text")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            for line in content.lines() {
-                if let Some(path_end) = line.find(':') {
-                    let file_path = line[..path_end].trim();
-                    if !file_path.is_empty() && !file_paths.contains(&file_path.to_string()) {
-                        file_paths.push(file_path.to_string());
-                    }
-                }
-            }
-        }
-
-        Ok(file_paths)
-    }
-
     /// Parse the result from fast_refs to extract file locations
     pub(crate) fn parse_refs_result(
         &self,

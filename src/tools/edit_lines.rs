@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
 use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{env, fs};
 use tracing::{debug, info};
 
