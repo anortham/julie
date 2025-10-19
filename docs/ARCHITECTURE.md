@@ -233,7 +233,6 @@ fn optimize_collection(&self, items: &[T]) -> Vec<T> {
 **Tools using this pattern:**
 - ManageWorkspaceTool (list: 10K, recent: 12K targets)
 - TraceCallPathTool (15K token target for call trees)
-- FastExploreTool (varies by mode)
 
 ---
 
@@ -281,7 +280,6 @@ self.optimize_response(&output)
 
 **Tools using this pattern:**
 - TraceCallPathTool (call breadth + code context + final truncation)
-- FastExploreTool (result reduction + context truncation + response limit)
 
 **Why this works:**
 1. **Data-level** optimization prevents generating excess data
@@ -302,7 +300,6 @@ Different tools have different token budgets based on their purpose:
 | **GetSymbolsTool** | 15,000 | File structure overviews; moderate size sufficient |
 | **TraceCallPathTool** | 15,000 (data), 20,000 (final) | Call graphs can explode; dual-layer protection |
 | **ManageWorkspaceTool** | 10,000 (list), 12,000 (recent) | Administrative commands; compact summaries preferred |
-| **FastExploreTool** | Varies (5K-20K) | Depends on mode (overview vs deep analysis) |
 | **FindLogicTool** | 12,000 | Business logic summaries; focused results |
 
 **General principle:** Navigation tools (search, goto, refs) get higher budgets than administrative tools (manage, list)

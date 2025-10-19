@@ -21,7 +21,7 @@ cargo test --lib test_name
 - **CLI tool tests** - julie-codesearch and julie-semantic integration (fail fast if binary missing)
 - **Fuzzy replace tests** - Levenshtein matching and UTF-8 safety
 - **Trace call path tests** - Cross-language call tracing
-- **Search quality tests** - Tantivy search functionality
+- **Search quality tests** - SQLite FTS5 and semantic search functionality
 - **Syntax validation tests** - AST-based syntax fixing
 
 ### ⏸️ Ignored Tests (30 tests - Run Manually)
@@ -47,7 +47,7 @@ cargo test --lib --ignored test_reference_workspace_search
 - `test_target_filtering_partial_match`
 - `test_reference_workspace_search`
 
-**Reason:** Index entire workspace (300+ files) with Tantivy, which is slow (~60+ seconds) and can hang under certain conditions. Not critical for CLI tool validation.
+**Reason:** Index entire workspace (300+ files), which can be slow (~60+ seconds) and may require background HNSW indexing. Not critical for CLI tool validation.
 
 **2. Concurrent Stress Tests (1 test)**
 - `test_concurrent_manage_workspace_index_does_not_lock_search_index`

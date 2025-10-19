@@ -63,7 +63,6 @@ TraceCallPathTool   → Cross-language call tracing with embeddings
 
 ### 🚀 **Advanced Intelligence & Editing**
 ```
-FastExploreTool     → Architectural analysis with dependency mapping
 FindLogicTool       → Discover core business logic fast
 FuzzyReplaceTool    → DMP-backed replacements with safety rails
 SmartRefactorTool   → Rename/replace/insert with AST awareness
@@ -82,7 +81,7 @@ Every tool includes **bulletproof safety mechanisms**:
 
 - **🔥 Single Binary** - Zero external dependencies, instant deployment
 - **🌳 Tree-sitter Native** - Direct Rust bindings, no FFI overhead
-- **⚡ Tantivy Search** - 2x faster than Lucene, pure Rust performance
+- **⚡ CASCADE 2-Tier Architecture** - SQLite FTS5 → HNSW Semantic, eliminates deadlocks
 - **🧠 ONNX Embeddings** - Semantic understanding with ort crate
 - **🔗 MCP Protocol** - Seamless integration with Claude Code and AI agents
 
@@ -94,7 +93,7 @@ Every tool includes **bulletproof safety mechanisms**:
 | **Memory Usage** | <100MB | ~500MB | **5x more efficient** |
 | **Startup Time** | <1s | 3-5s | **5x quicker** |
 | **Token Efficiency** | Optimized | Verbose | **54% reduction** |
-| **Tool Count** | 7 optimized | 12+ cluttered | **Cognitive clarity** |
+| **Tool Count** | 9 optimized | 12+ cluttered | **Cognitive clarity** |
 
 ## 🛡️ Bulletproof Testing Methodology
 
@@ -150,7 +149,7 @@ cargo test editing_tests --lib -- --nocapture
 - **26/26 Language Extractors** - Complete Miller parity with zero compromises
 - **Revolutionary Tool Design** - Psychologically optimized fast_ prefixes
 - **Token Optimization** - 54% efficiency gain through OptimizedResponse
-- **Surgical Editing** - Zero-corruption SafeEditTool with DMP safety verification
+- **Surgical Editing** - Zero-corruption FuzzyReplaceTool with DMP safety verification
 - **Production Testing** - Bulletproof test suite with control/target validation
 - **Cross-Platform Build** - Single binary deployment on all platforms
 
