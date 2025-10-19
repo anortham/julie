@@ -20,7 +20,7 @@ pub mod workspace;
 // Re-export all tools for external use
 pub use edit_lines::EditLinesTool; // Surgical line editing (insert/replace/delete)
 pub use editing::EditingTransaction; // Shared transaction infrastructure
-pub use exploration::{FastExploreTool, FindLogicTool};
+pub use exploration::FindLogicTool;
 pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use refactoring::SmartRefactorTool;
@@ -47,7 +47,6 @@ tool_box!(
         FastRefsTool,
         GetSymbolsTool,
         TraceCallPathTool,
-        FastExploreTool,
         FindLogicTool,
         // Editing tools
         EditLinesTool,

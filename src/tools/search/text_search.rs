@@ -305,7 +305,10 @@ async fn sqlite_fts_search(
             // Search for the snippet in file content
             let mut found_line: Option<(usize, String)> = None;
             for (line_idx, line) in content.lines().enumerate() {
-                if line.contains(&clean_snippet) || clean_snippet.contains(line.trim()) {
+                // 🐛 FIX: Check for non-empty trimmed lines before matching
+                // Bug: "anything".contains("") returns true, so blank lines would match
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && (line.contains(&clean_snippet) || clean_snippet.contains(trimmed)) {
                     found_line = Some((line_idx + 1, line.to_string()));
                     break;
                 }

@@ -153,7 +153,8 @@ impl SymbolDatabase {
         // . is a separator BUT also FTS5 column syntax, handled specially above
         // + is not officially documented as special, but causes "syntax error near +" in practice
         // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
-        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')'];
+        // = causes "syntax error near =" when used in queries
+        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '='];
 
         // Check if query contains any special characters
         let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));

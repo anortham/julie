@@ -26,15 +26,3 @@ pub struct FindLogicResult {
     pub business_symbols: Vec<BusinessLogicSymbol>,
     pub next_actions: Vec<String>,
 }
-
-/// Structured result from fast_explore operation
-#[derive(Debug, Clone, Serialize)]
-pub struct FastExploreResult {
-    pub tool: String,
-    pub mode: String,
-    pub depth: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub focus: Option<String>,
-    pub success: bool,
-    pub next_actions: Vec<String>,
-}
