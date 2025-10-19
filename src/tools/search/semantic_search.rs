@@ -143,6 +143,7 @@ pub async fn semantic_search_impl(
                 limit,
                 workspace_ids,
                 "symbols", // Semantic fallback searches symbols
+                None, // context_lines: use default
                 handler,
             )
             .await;
@@ -166,6 +167,7 @@ pub async fn semantic_search_impl(
                     limit,
                     workspace_ids,
                     "symbols", // Semantic fallback searches symbols
+                None, // context_lines: use default
                     handler,
                 )
                 .await;
@@ -221,6 +223,7 @@ pub async fn semantic_search_impl(
             limit,
             workspace_ids,
             "symbols", // Semantic fallback searches symbols
+                None, // context_lines: use default
             handler,
         )
         .await;
@@ -252,6 +255,7 @@ pub async fn semantic_search_impl(
                 limit,
                 workspace_ids,
                 "symbols", // Semantic fallback searches symbols
+                None, // context_lines: use default
                 handler,
             )
             .await;

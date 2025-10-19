@@ -36,6 +36,7 @@ pub async fn hybrid_search_impl(
             limit,
             workspace_ids.clone(),
             "symbols", // Hybrid search is for finding symbols
+            None, // context_lines: use default
             handler
         ),
         crate::tools::search::semantic_search::semantic_search_impl(

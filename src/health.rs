@@ -48,7 +48,15 @@ impl HealthChecker {
             .unwrap_or_else(|| "primary".to_string());
 
         let target_workspace_id = workspace_id
-            .map(|id| id.to_string())
+            .map(|id| {
+                // Normalize "primary" to actual primary workspace ID
+                // This allows users to pass workspace="primary" consistently
+                if id == "primary" {
+                    primary_workspace_id.clone()
+                } else {
+                    id.to_string()
+                }
+            })
             .unwrap_or_else(|| primary_workspace_id.clone());
 
         if target_workspace_id == primary_workspace_id {

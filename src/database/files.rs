@@ -339,8 +339,63 @@ impl SymbolDatabase {
         );
 
         let mut stmt = self.conn.prepare(
-            "SELECT path, snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet, bm25(files_fts) as rank
-             FROM files_fts
+            "SELECT
+                f.path,
+                snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet,
+                -- Custom ranking with Lucene-style boosting
+                -- 🔥 FIX: Negate BM25 (returns negative scores) so multipliers work correctly
+                -- Without negation: test files get -0.17, source files get -18.00 (test files rank higher!)
+                -- With negation: test files get 0.17, source files get 18.00 (source files rank higher!)
+                -bm25(files_fts) *
+
+                -- BOOST: Symbol-rich files (likely source code, not tests)
+                -- Each symbol adds 5% boost (capped by symbol count)
+                (1.0 + COALESCE(s.symbol_count, 0) * 0.05) *
+
+                -- BOOST: Files in src/, lib/ (production code paths)
+                -- Increased to 3.0x (was 1.5x) for stronger definition prioritization
+                CASE
+                    WHEN f.path GLOB '*/src/*' OR f.path GLOB '*/lib/*' THEN 3.0
+                    ELSE 1.0
+                END *
+
+                -- DE-BOOST: Test files (0.01x weight - 99% reduction, strongly pushed to bottom)
+                -- BM25 term frequency heavily favors test files (imports, usages, instantiations)
+                -- while source files only have 1-2 definition occurrences.
+                -- Very strong de-boost (0.01, was 0.1) overcomes ~10-20x term frequency advantage.
+                CASE
+                    WHEN f.path GLOB '*test*' OR
+                         f.path GLOB '*spec*' OR
+                         f.path GLOB '*__tests__*' OR
+                         f.path GLOB '*.test.*' OR
+                         f.path GLOB '*.spec.*'
+                    THEN 0.01
+                    ELSE 1.0
+                END *
+
+                -- DE-BOOST: Generated/vendor code (0.1x weight - mostly filtered out)
+                CASE
+                    WHEN f.path GLOB '*node_modules*' OR
+                         f.path GLOB '*vendor*' OR
+                         f.path GLOB '*dist/*' OR
+                         f.path GLOB '*build/*' OR
+                         f.path GLOB '*.min.*' OR
+                         f.path GLOB '*target/debug*' OR
+                         f.path GLOB '*target/release*'
+                    THEN 0.1
+                    ELSE 1.0
+                END
+                as rank
+
+             FROM files_fts f
+             LEFT JOIN files ON f.path = files.path
+             LEFT JOIN (
+                 -- Count symbols (functions, classes, etc.) per file
+                 SELECT file_path, COUNT(*) as symbol_count
+                 FROM symbols
+                 WHERE kind IN ('function', 'class', 'struct', 'interface', 'method', 'impl')
+                 GROUP BY file_path
+             ) s ON f.path = s.file_path
              WHERE files_fts MATCH ?1
              ORDER BY rank DESC
              LIMIT ?2"

@@ -24,6 +24,7 @@ pub async fn text_search_impl(
     limit: u32,
     workspace_ids: Option<Vec<String>>,
     scope: &str,
+    context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     match scope {
@@ -59,7 +60,7 @@ pub async fn text_search_impl(
         _ => {
             // "content" or any other value: Search full file content (files_fts index)
             debug!("🔍 Content search (full file text)");
-            sqlite_fts_search(query, language, file_pattern, limit, workspace_ids, handler).await
+            sqlite_fts_search(query, language, file_pattern, limit, workspace_ids, context_lines, handler).await
         }
     }
 }
@@ -175,6 +176,101 @@ async fn database_search_with_workspace_filter(
     Ok(results)
 }
 
+/// Check if a line contains useful code context (not just punctuation/whitespace)
+fn is_useful_line(line: &str) -> bool {
+    let trimmed = line.trim();
+
+    // Empty or very short lines are not useful
+    if trimmed.is_empty() || trimmed.len() < 2 {
+        return false;
+    }
+
+    // Lines that are ONLY punctuation are not useful
+    if trimmed == "}" || trimmed == "{" || trimmed == ");" || trimmed == "(" ||
+       trimmed == "//" || trimmed == "/*" || trimmed == "*/" || trimmed == "*" ||
+       trimmed == "---" || trimmed == "```" || trimmed == "///" {
+        return false;
+    }
+
+    // Lines with useful patterns are good
+    if trimmed.starts_with("pub ") || trimmed.starts_with("fn ") ||
+       trimmed.starts_with("class ") || trimmed.starts_with("impl ") ||
+       trimmed.starts_with("struct ") || trimmed.starts_with("enum ") ||
+       trimmed.starts_with("interface ") || trimmed.starts_with("function ") ||
+       trimmed.starts_with("async ") || trimmed.starts_with("export ") ||
+       trimmed.starts_with("///") || trimmed.starts_with("/**") {
+        return true;
+    }
+
+    // Default: useful if it has substantial content (not just punctuation)
+    let has_alphanumeric = trimmed.chars().any(|c| c.is_alphanumeric());
+    has_alphanumeric && trimmed.len() >= 10
+}
+
+/// Extract context lines around a match with line numbers (grep-style)
+fn extract_context_lines(
+    content: &str,
+    match_line_num: usize,
+    context_lines: u32,
+) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let num_context = context_lines as usize;
+
+    // Calculate window bounds
+    let start_idx = match_line_num.saturating_sub(num_context + 1); // -1 because line_num is 1-indexed
+    let end_idx = std::cmp::min(match_line_num + num_context, lines.len());
+
+    // Extract lines with line numbers
+    let mut result = Vec::new();
+    for (idx, line) in lines.iter().enumerate().skip(start_idx).take(end_idx - start_idx) {
+        let line_num = idx + 1; // 1-indexed line numbers
+        if line_num == match_line_num {
+            // Mark the matched line with an arrow
+            result.push(format!("{}→ {}", line_num, line));
+        } else {
+            result.push(format!("{}: {}", line_num, line));
+        }
+    }
+
+    result.join("\n")
+}
+
+/// Find intelligent context when the matched line is useless
+/// Searches nearby lines for symbol definitions or meaningful code
+fn find_intelligent_context(
+    lines: &[&str],
+    match_line_idx: usize, // 0-indexed
+) -> Option<(usize, String)> {
+    // Search window: ±3 lines around match
+    let start = match_line_idx.saturating_sub(3);
+    let end = std::cmp::min(match_line_idx + 4, lines.len());
+
+    // Priority 1: Find symbol definitions (pub fn, class, struct, etc.)
+    for (idx, line) in lines.iter().enumerate().skip(start).take(end - start) {
+        if is_useful_line(line) {
+            let trimmed = line.trim();
+            // Prioritize symbol definitions
+            if trimmed.starts_with("pub ") || trimmed.starts_with("fn ") ||
+               trimmed.starts_with("class ") || trimmed.starts_with("impl ") ||
+               trimmed.starts_with("struct ") || trimmed.starts_with("enum ") ||
+               trimmed.starts_with("interface ") || trimmed.starts_with("function ") ||
+               trimmed.starts_with("export class ") || trimmed.starts_with("export function ") {
+                return Some((idx + 1, line.to_string())); // Return 1-indexed line number
+            }
+        }
+    }
+
+    // Priority 2: Find any useful line (doc comments, meaningful code)
+    for (idx, line) in lines.iter().enumerate().skip(start).take(end - start) {
+        if is_useful_line(line) {
+            return Some((idx + 1, line.to_string())); // Return 1-indexed line number
+        }
+    }
+
+    // Fallback: return the original match if nothing better found
+    None
+}
+
 /// Graceful degradation: SQLite-based search when HNSW semantic search isn't ready
 ///
 /// CASCADE: Search using SQLite FTS5 (file content full-text search).
@@ -185,6 +281,7 @@ async fn sqlite_fts_search(
     file_pattern: &Option<String>,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
+    context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     debug!("🔍 CASCADE: Using SQLite FTS5 search (file content)");
@@ -303,18 +400,58 @@ async fn sqlite_fts_search(
             let clean_snippet = result.snippet.replace("...", "").trim().to_string();
 
             // Search for the snippet in file content
+            let content_lines: Vec<&str> = content.lines().collect();
             let mut found_line: Option<(usize, String)> = None;
-            for (line_idx, line) in content.lines().enumerate() {
-                // 🐛 FIX: Check for non-empty trimmed lines before matching
-                // Bug: "anything".contains("") returns true, so blank lines would match
+
+            for (line_idx, line) in content_lines.iter().enumerate() {
+                // Check for non-empty trimmed lines before matching
                 let trimmed = line.trim();
                 if !trimmed.is_empty() && (line.contains(&clean_snippet) || clean_snippet.contains(trimmed)) {
-                    found_line = Some((line_idx + 1, line.to_string()));
+                    let initial_line_num = line_idx + 1; // 1-indexed
+                    let initial_line_content = line.to_string();
+
+                    // Phase 3: Intelligent line selection
+                    // If the matched line is useless (just punctuation), find better context nearby
+                    if !is_useful_line(line) {
+                        debug!(
+                            "⚠️ Matched line {} in {} is not useful ('{}'), searching for better context",
+                            initial_line_num, result.path, trimmed
+                        );
+
+                        if let Some((better_line_num, better_content)) =
+                            find_intelligent_context(&content_lines, line_idx)
+                        {
+                            debug!(
+                                "✓ Found better context at line {} in {}",
+                                better_line_num, result.path
+                            );
+                            found_line = Some((better_line_num, better_content));
+                        } else {
+                            // No better context found, use original
+                            found_line = Some((initial_line_num, initial_line_content));
+                        }
+                    } else {
+                        // Line is already useful, use it
+                        found_line = Some((initial_line_num, initial_line_content));
+                    }
                     break;
                 }
             }
 
-            if let Some((line_num, line_content)) = found_line {
+            if let Some((line_num, _line_content)) = found_line {
+                // Phase 2: Multi-line context extraction
+                // Extract context based on context_lines parameter (default: 1 = ±1 line)
+                let num_context_lines = context_lines.unwrap_or(1);
+                let code_context_text = if num_context_lines == 0 {
+                    // Single line only - use the line content directly
+                    content_lines.get(line_num - 1)
+                        .map(|l| l.to_string())
+                        .unwrap_or_default()
+                } else {
+                    // Multi-line with grep-style formatting (line numbers + arrow indicator)
+                    extract_context_lines(&content, line_num, num_context_lines)
+                };
+
                 // Create a proper symbol with real line location
                 let symbol = crate::extractors::Symbol {
                     id: format!("fts_{}_{}", result.path.replace(['/', '\\'], "_"), line_num),
@@ -332,7 +469,7 @@ async fn sqlite_fts_search(
                     start_line: line_num as u32,
                     start_column: 0,
                     end_line: line_num as u32,
-                    end_column: line_content.len() as u32,
+                    end_column: code_context_text.len() as u32,
                     start_byte: 0,
                     end_byte: 0,
                     signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
@@ -342,7 +479,7 @@ async fn sqlite_fts_search(
                     metadata: None,
                     semantic_group: Some("fts_match".to_string()),
                     confidence: Some(result.rank),
-                    code_context: Some(line_content.trim().to_string()),
+                    code_context: Some(code_context_text),
                 };
                 symbols.push(symbol);
             } else {

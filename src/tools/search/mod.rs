@@ -75,9 +75,9 @@ pub struct FastSearchTool {
     /// Supports: directories, extensions, nested paths, exclusions with !
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum results to return (default: 15, range: 1-500).
+    /// Maximum results to return (default: 10, range: 1-500).
     /// Lower = faster response, Higher = more comprehensive
-    /// Tip: Start with default, increase if you need more results
+    /// Tip: With enhanced scoring, 10 results is usually sufficient. Increase if needed.
     #[serde(default = "default_limit")]
     pub limit: u32,
     /// Workspace filter (optional): "primary" (default) or specific workspace ID
@@ -86,10 +86,12 @@ pub struct FastSearchTool {
     /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Search scope: "content" (default) or "symbols"
-    /// - "content": Search full file content (grep-like, all text including comments, strings, etc.)
-    /// - "symbols": Search symbol definitions only (function names, class names, method signatures)
-    /// Default: "content" - most users want to search all code, not just symbol names
+    /// Search scope: "symbols" (default) or "content"
+    /// - "symbols": Find WHERE code is DEFINED (structs, functions, classes) - USE THIS 80% OF THE TIME
+    /// - "content": Find text patterns (TODOs, comments, string literals) - grep-like search
+    /// Default: "symbols" - AI agents typically search for definitions, not mentions
+    ///
+    /// TIP: Use fast_refs to find WHERE code is USED, not search with scope="content"
     #[serde(default = "default_scope")]
     pub scope: String,
     /// Output format: "symbols" (default), "lines" (grep-style)
@@ -110,7 +112,7 @@ pub struct FastSearchTool {
 }
 
 fn default_limit() -> u32 {
-    15
+    10  // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
 fn default_text() -> String {
     "text".to_string()
@@ -126,7 +128,7 @@ fn default_context_lines() -> Option<u32> {
 }
 
 fn default_scope() -> String {
-    "content".to_string()
+    "symbols".to_string() // AI agents search for definitions 80% of the time
 }
 
 impl FastSearchTool {
@@ -234,6 +236,7 @@ impl FastSearchTool {
                     self.limit,
                     workspace_ids,
                     &self.scope,
+                    self.context_lines,
                     handler,
                 )
                 .await?
