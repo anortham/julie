@@ -327,6 +327,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)] // Symlink test only applicable on Unix systems
     async fn test_path_traversal_prevention_symlink_outside_workspace() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;

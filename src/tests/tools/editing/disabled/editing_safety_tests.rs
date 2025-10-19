@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -46,6 +47,7 @@ impl SafetyTestFixture {
         Ok(file_path.to_string_lossy().to_string())
     }
 
+    #[cfg(unix)]
     fn make_readonly(&self, file_path: &str) -> Result<()> {
         let path = std::path::Path::new(file_path);
         let mut perms = fs::metadata(path)?.permissions();
@@ -54,6 +56,7 @@ impl SafetyTestFixture {
         Ok(())
     }
 
+    #[cfg(unix)]
     fn restore_permissions(&self, file_path: &str) -> Result<()> {
         let path = std::path::Path::new(file_path);
         let mut perms = fs::metadata(path)?.permissions();
@@ -291,6 +294,7 @@ mod permission_tests {
     use super::*;
 
     #[tokio::test]
+    #[cfg(unix)] // File permissions handling is Unix-specific
     async fn test_readonly_file_handling() {
         let fixture = SafetyTestFixture::new().unwrap();
         let file_path = fixture
@@ -369,6 +373,7 @@ mod permission_tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)] // Directory permissions handling is Unix-specific
     async fn test_directory_readonly_handling() {
         let fixture = SafetyTestFixture::new().unwrap();
         let file_path = fixture.create_test_file("file.txt", "content").unwrap();
