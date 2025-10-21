@@ -122,8 +122,10 @@ impl JulieWorkspace {
     /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
     pub async fn initialize(root: PathBuf) -> Result<Self> {
         info!("Initializing Julie workspace at: {}", root.display());
+        debug!("🔍 DEBUG: JulieWorkspace::initialize called with root: {}", root.display());
 
         let julie_dir = root.join(".julie");
+        debug!("🔍 DEBUG: Julie directory will be: {}", julie_dir.display());
 
         // Create the workspace folder structure
         Self::create_folder_structure(&julie_dir)?;
@@ -154,16 +156,19 @@ impl JulieWorkspace {
     /// Searches up the directory tree from the given path to find a .julie folder
     /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
     pub async fn detect_and_load(start_path: PathBuf) -> Result<Option<Self>> {
+        debug!("🔍 DEBUG: detect_and_load called with start_path: {}", start_path.display());
         let julie_dir = Self::find_workspace_root(&start_path)?;
 
         match julie_dir {
             Some(julie_path) => {
+                debug!("🔍 DEBUG: find_workspace_root returned: {}", julie_path.display());
                 let root = julie_path
                     .parent()
                     .ok_or_else(|| anyhow!("Invalid workspace structure"))?
                     .to_path_buf();
 
                 info!("Found existing Julie workspace at: {}", root.display());
+                debug!("🔍 DEBUG: Workspace root will be: {}", root.display());
 
                 // Load configuration
                 let config = Self::load_config(&julie_path)?;

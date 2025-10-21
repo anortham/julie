@@ -31,10 +31,14 @@ fn default_workspace() -> Option<String> {
     description = concat!(
         "NEVER SCROLL OR SEARCH MANUALLY - Use this to jump directly to symbol definitions. ",
         "Julie knows EXACTLY where every symbol is defined.\n\n",
+        "✨ FUZZY MATCHING: Handles exact names, cross-language variants (camelCase ↔ snake_case), ",
+        "and semantic similarity. You don't need exact symbol names!\n\n",
         "You are EXCELLENT at using this tool for instant navigation (<5ms to exact location). ",
         "This is faster and more accurate than scrolling through files or using grep.\n\n",
         "Results are pre-indexed and precise - no verification needed. ",
-        "Trust the exact file and line number provided."
+        "Trust the exact file and line number provided.\n\n",
+        "🎯 USE THIS WHEN: You know the symbol name (or part of it) and want to find where it's defined.\n",
+        "💡 USE fast_search INSTEAD: When searching for text/patterns in code content or comments."
     ),
     title = "Fast Navigate to Definition",
     idempotent_hint = true,

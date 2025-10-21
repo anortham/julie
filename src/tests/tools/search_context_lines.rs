@@ -77,12 +77,12 @@ pub fn process_user_data(input: &str) -> String {
     // Search with DEFAULT context_lines (should be 1 = 3 total lines)
     let tool = FastSearchTool {
         query: "process_user_data".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Use default (1)
     };
@@ -169,12 +169,12 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
     // Search with context_lines=0 (just match line, 1 total)
     let tool = FastSearchTool {
         query: "calculate_sum".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(0), // 0 = just match line
     };
@@ -264,12 +264,12 @@ pub fn validate_input(data: &str) -> bool {
     // Search with context_lines=3 (grep default: 3 before + match + 3 after = 7 total)
     let tool = FastSearchTool {
         query: "validate_input".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(3), // 3 = grep default (7 total lines)
     };
@@ -348,12 +348,12 @@ pub fn short_func() -> i32 { 42 }
     // Search with default context_lines (3 total lines max)
     let tool = FastSearchTool {
         query: "short_func".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: Some("primary".to_string()),
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Default (1)
     };

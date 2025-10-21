@@ -13,12 +13,12 @@ mod search_tools_tests {
     fn test_short_response_unchanged() {
         let search_tool = FastSearchTool {
             query: "test".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -74,12 +74,12 @@ mod search_tools_tests {
     fn test_context_truncation_with_long_code() {
         let search_tool = FastSearchTool {
             query: "longFunction".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -141,12 +141,12 @@ mod search_tools_tests {
 
         let search_tool = FastSearchTool {
             query: "manyResults".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -215,12 +215,12 @@ mod search_tools_tests {
 
         let search_tool = FastSearchTool {
             query: "manyResults".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 100,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -296,12 +296,12 @@ mod search_tools_tests {
         // Test 1: workspace="primary" (default) - this currently fails due to database routing
         let search_tool_primary = FastSearchTool {
             query: multi_word_query.to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -309,12 +309,12 @@ mod search_tools_tests {
         // Test 2: workspace="all" - this works because it routes to Tantivy
         let search_tool_all = FastSearchTool {
             query: multi_word_query.to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("all".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };

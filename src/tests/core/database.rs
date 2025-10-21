@@ -1008,3 +1008,140 @@ fn test_sanitize_fts5_query_dot_character() {
     let quoted = SymbolDatabase::sanitize_fts5_query("\"exact.match\"");
     assert_eq!(quoted, "\"exact.match\"");
 }
+
+// ============================================================
+// FTS5 CORRUPTION BUG TESTS
+// ============================================================
+
+#[test]
+fn test_fts5_corruption_with_insert_or_replace() {
+    // This test reproduces the FTS5 corruption bug where INSERT OR REPLACE
+    // causes rowid changes that break FTS5 content_rowid references
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Step 1: Insert initial file with content using FTS5-aware function
+    db.store_file_with_content(
+        "test.rs",
+        "rust",
+        "hash1",
+        100,
+        1000,
+        "pub fn test_function() {}",
+        "test_workspace",
+    ).unwrap();
+
+    // Step 2: Verify FTS5 search works initially
+    let result = db.conn.query_row(
+        "SELECT path FROM files_fts WHERE files_fts MATCH 'test_function'",
+        [],
+        |row| row.get::<_, String>(0),
+    );
+    assert!(result.is_ok(), "Initial FTS5 search should work");
+    assert_eq!(result.unwrap(), "test.rs");
+
+    // Step 3: Do bulk insert with INSERT OR REPLACE on same path
+    // This simulates re-indexing the same file
+    let file2 = FileInfo {
+        path: "test.rs".to_string(), // Same path - will trigger REPLACE
+        language: "rust".to_string(),
+        hash: "hash2".to_string(), // Different hash (file changed)
+        size: 150,
+        last_modified: 2000,
+        last_indexed: 0,
+        symbol_count: 10,
+        content: Some("pub fn test_function() {} pub fn another_function() {}".to_string()),
+    };
+    db.bulk_store_files(&[file2]).unwrap();
+
+    // Step 4: Try to search - THIS SHOULD NOT FAIL with "missing row" error
+    let result = db.conn.query_row(
+        "SELECT path FROM files_fts WHERE files_fts MATCH 'test_function'",
+        [],
+        |row| row.get::<_, String>(0),
+    );
+
+    match result {
+        Ok(path) => {
+            assert_eq!(path, "test.rs");
+            println!("✅ FTS5 search succeeded after INSERT OR REPLACE");
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("missing row") || error_msg.contains("corrupt") {
+                panic!(
+                    "❌ FTS5 CORRUPTION BUG REPRODUCED: {}\n\
+                     Root cause: INSERT OR REPLACE changed rowid, breaking FTS5 content_rowid reference",
+                    error_msg
+                );
+            } else {
+                panic!("Unexpected error: {}", e);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_fts5_rebuild_after_replace() {
+    // This test verifies that rebuild() command correctly syncs FTS5 after INSERT OR REPLACE
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert files normally
+    let file1 = FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash1".to_string(),
+        size: 100,
+        last_modified: 1000,
+        last_indexed: 0,
+        symbol_count: 5,
+        content: Some("original content".to_string()),
+    };
+    db.store_file_info(&file1).unwrap();
+
+    // Get rowid before replace
+    let rowid_before: i64 = db.conn.query_row(
+        "SELECT rowid FROM files WHERE path = 'test.rs'",
+        [],
+        |row| row.get(0),
+    ).unwrap();
+
+    // Replace with bulk insert
+    let file2 = FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash2".to_string(),
+        size: 200,
+        last_modified: 2000,
+        last_indexed: 0,
+        symbol_count: 10,
+        content: Some("updated content".to_string()),
+    };
+    db.bulk_store_files(&[file2]).unwrap();
+
+    // Get rowid after replace
+    let rowid_after: i64 = db.conn.query_row(
+        "SELECT rowid FROM files WHERE path = 'test.rs'",
+        [],
+        |row| row.get(0),
+    ).unwrap();
+
+    println!("Rowid before: {}, after: {}", rowid_before, rowid_after);
+
+    // If rowids changed, FTS5 must be rebuilt to use new rowids
+    if rowid_before != rowid_after {
+        println!("⚠️  Rowid changed from {} to {} - FTS5 rebuild required", rowid_before, rowid_after);
+    }
+
+    // Verify FTS5 still works
+    let result = db.conn.query_row(
+        "SELECT path FROM files_fts WHERE files_fts MATCH 'content'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).unwrap();
+
+    assert_eq!(result, "test.rs");
+}

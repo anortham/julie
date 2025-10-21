@@ -29,7 +29,7 @@ mod fast_search_tests {
         // Test 1: Lowercase "extractor" should find RustExtractor, TypeScriptExtractor, etc.
         let lowercase_tool = FastSearchTool {
             query: "extractor".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 10,
             language: None,
             file_pattern: None,
@@ -40,7 +40,7 @@ mod fast_search_tests {
         // Test 2: Exact case "RustExtractor" should also work
         let exactcase_tool = FastSearchTool {
             query: "RustExtractor".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 10,
             language: None,
             file_pattern: None,
@@ -75,7 +75,7 @@ mod fast_search_tests {
 
         let lowercase_tool = FastSearchTool {
             query: "rust".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 5,
             language: None,
             file_pattern: None,
@@ -83,7 +83,7 @@ mod fast_search_tests {
 
         let capitalized_tool = FastSearchTool {
             query: "Rust".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 5,
             language: None,
             file_pattern: None,
@@ -116,7 +116,7 @@ mod fast_search_tests {
         // Test 1: "extractor" should find all *Extractor classes
         let partial_tool = FastSearchTool {
             query: "extractor".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 10,
             language: None,
             file_pattern: None,
@@ -127,7 +127,7 @@ mod fast_search_tests {
         // Test 2: Exact "RustExtractor" should work (sanity check)
         let exact_tool = FastSearchTool {
             query: "RustExtractor".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 10,
             language: None,
             file_pattern: None,
@@ -138,7 +138,7 @@ mod fast_search_tests {
         // Test 3: "Script" should find "TypeScriptExtractor"
         let script_tool = FastSearchTool {
             query: "Script".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 10,
             language: None,
             file_pattern: None,
@@ -192,7 +192,7 @@ mod fast_search_tests {
         for (query, description) in test_cases {
             let tool = FastSearchTool {
                 query: query.to_string(),
-                mode: "text".to_string(),
+                search_method: "text".to_string(),
                 limit: 10,
                 language: None,
                 file_pattern: None,

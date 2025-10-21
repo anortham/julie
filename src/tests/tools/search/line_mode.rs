@@ -107,12 +107,12 @@ fn processPayment() {
 
         let search_tool = FastSearchTool {
             query: "TODO".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -188,12 +188,12 @@ fn processPayment() {
         // Test 1: Search primary workspace explicitly - should find results
         let search_primary = FastSearchTool {
             query: "alpha_marker".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -215,12 +215,12 @@ fn processPayment() {
         // Test 2: Search with invalid workspace ID - should return error
         let search_invalid = FastSearchTool {
             query: "alpha_marker".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_id".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -277,12 +277,12 @@ fn processPayment() {
 
         let search_tool = FastSearchTool {
             query: "user -password".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -356,12 +356,12 @@ fn processPayment() {
 
         let search_tool = FastSearchTool {
             query: "getUserData".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -446,12 +446,12 @@ def python_function():
         // Test: Search with rust language filter
         let search_rust = FastSearchTool {
             query: "TODO".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: Some("rust".to_string()),
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -475,12 +475,12 @@ def python_function():
         // Test: Search with typescript language filter
         let search_ts = FastSearchTool {
             query: "TODO".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: Some("typescript".to_string()),
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -546,12 +546,12 @@ def python_function():
         // Test: Search with src/** file pattern
         let search_src = FastSearchTool {
             query: "FIXME".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: Some("src/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -572,12 +572,12 @@ def python_function():
         // Test: Search with tests/** file pattern
         let search_tests = FastSearchTool {
             query: "FIXME".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: None,
             file_pattern: Some("tests/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };
@@ -640,12 +640,12 @@ def python_function():
         // Test: Search with BOTH language AND file_pattern filters
         let search_combined = FastSearchTool {
             query: "TODO".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             language: Some("rust".to_string()),
             file_pattern: Some("src/**/*.rs".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
         };

@@ -89,12 +89,14 @@ pub mod utils {
 // INTEGRATION TESTS - End-to-end and cross-component tests
 // ============================================================================
 pub mod integration {
+    pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
     pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod watcher; // File watcher tests
+    pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
                      // pub mod tracing;                 // Tracing integration tests - DISABLED
                      // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }

@@ -48,9 +48,54 @@ impl ManageWorkspaceTool {
             return Ok(all_files);
         };
 
-        // Get database to check existing file hashes
-        let existing_file_hashes = if let Some(workspace) = handler.get_workspace().await? {
-            if let Some(db) = &workspace.db {
+        // 🔥 CRITICAL FIX: Query the CORRECT database based on workspace_id
+        // Primary workspace: use handler.get_workspace().db
+        // Reference workspace: open its separate database at indexes/{workspace_id}/db/symbols.db
+        let existing_file_hashes = if let Some(primary_workspace) = handler.get_workspace().await? {
+            // Check if this is the primary workspace by comparing workspace IDs
+            let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
+                &primary_workspace.root.to_string_lossy().to_string()
+            ) {
+                Ok(id) => id,
+                Err(_) => {
+                    warn!("Failed to generate primary workspace ID - treating all files as new");
+                    return Ok(all_files);
+                }
+            };
+
+            let is_primary = workspace_id == primary_workspace_id;
+
+            // Get the correct database based on workspace type
+            let db_to_query = if is_primary {
+                // Primary workspace - use handler's database connection
+                primary_workspace.db.clone()
+            } else {
+                // Reference workspace - open its separate database
+                let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
+
+                if ref_db_path.exists() {
+                    match tokio::task::spawn_blocking(move || {
+                        crate::database::SymbolDatabase::new(ref_db_path)
+                    }).await {
+                        Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
+                        Ok(Err(e)) => {
+                            debug!("Reference workspace DB doesn't exist yet: {} - treating all files as new", e);
+                            return Ok(all_files);
+                        }
+                        Err(e) => {
+                            warn!("Failed to open reference workspace DB: {} - treating all files as new", e);
+                            return Ok(all_files);
+                        }
+                    }
+                } else {
+                    // Reference workspace database doesn't exist yet - all files are new
+                    debug!("Reference workspace DB doesn't exist yet - treating all files as new");
+                    return Ok(all_files);
+                }
+            };
+
+            // Query the correct database
+            if let Some(db) = db_to_query {
                 let db_lock = db.lock().unwrap();
                 match db_lock.get_file_hashes_for_workspace() {
                     Ok(hashes) => hashes,
@@ -63,7 +108,6 @@ impl ManageWorkspaceTool {
                     }
                 }
             } else {
-                // No database - all files are new
                 return Ok(all_files);
             }
         } else {
@@ -203,15 +247,43 @@ impl ManageWorkspaceTool {
 
         debug!("Found {} orphaned files to clean up", orphaned_files.len());
 
-        // Get database connection
-        let workspace = match handler.get_workspace().await? {
+        // 🔥 CRITICAL FIX: Get the CORRECT database based on workspace_id
+        // This function was using handler.get_workspace().db which is ALWAYS the primary workspace
+        // causing reference workspace indexing to delete primary workspace files!
+        let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => return Ok(0),
         };
 
-        let db = match &workspace.db {
-            Some(db_arc) => db_arc,
-            None => return Ok(0),
+        // Check if this is the primary workspace by comparing workspace IDs
+        let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
+            &primary_workspace.root.to_string_lossy().to_string()
+        ) {
+            Ok(id) => id,
+            Err(_) => {
+                warn!("Failed to generate primary workspace ID");
+                return Ok(0);
+            }
+        };
+
+        let is_primary = _workspace_id == primary_workspace_id;
+
+        // Get the correct database based on workspace type
+        let db = if is_primary {
+            // Primary workspace - use handler's database connection
+            match &primary_workspace.db {
+                Some(db_arc) => db_arc,
+                None => return Ok(0),
+            }
+        } else {
+            // Reference workspace - DON'T delete from primary workspace DB!
+            // This is the bug: we were comparing reference workspace files against primary DB
+            // and deleting all primary files as "orphaned"
+            warn!("🚨 CRITICAL BUG PREVENTED: Attempted to clean orphaned files for reference workspace using primary DB!");
+            warn!("   This would have deleted all primary workspace files!");
+            warn!("   Reference workspace orphan cleanup is not yet implemented - skipping.");
+            // TODO: Implement reference workspace orphan cleanup by opening the correct DB
+            return Ok(0);
         };
 
         // Delete orphaned entries

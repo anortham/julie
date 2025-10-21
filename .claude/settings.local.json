@@ -152,7 +152,8 @@
       "mcp__goldfish__recall",
       "Bash(mkdir:*)",
       "Read(//home/murphy/source/coa-codesearch-mcp/COA.CodeSearch.McpServer/Tools/**)",
-      "Read(//home/murphy/source/coa-codesearch-mcp/**)"
+      "Read(//home/murphy/source/coa-codesearch-mcp/**)",
+      "Bash(brew install starship)"
     ],
     "deny": [],
     "ask": []

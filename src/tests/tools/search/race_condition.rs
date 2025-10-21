@@ -59,12 +59,12 @@ mod tests {
         // This is the exact scenario that caused the hang - search waits for READ lock
         let search_tool = FastSearchTool {
             query: "handle_validate_syntax".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 15,
             file_pattern: None,
             language: None,
             workspace: None,
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -118,12 +118,12 @@ mod tests {
             let handle = tokio::spawn(async move {
                 let search_tool = FastSearchTool {
                     query: format!("test_function_{}", i),
-                    mode: "text".to_string(),
+                    search_method: "text".to_string(),
                     limit: 15,
                     file_pattern: None,
                     language: None,
                     workspace: None,
-                    scope: "content".to_string(),
+                    search_target: "content".to_string(),
                     output: None,
                     context_lines: None,
                 };
@@ -170,12 +170,12 @@ mod tests {
         // Now search should definitely work
         let search_tool = FastSearchTool {
             query: "target_function".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 15,
             file_pattern: None,
             language: None,
             workspace: None,
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -245,24 +245,24 @@ pub fn helper_function() {}
         for iteration in 0..10 {
             let fast_search_query_a = FastSearchTool {
                 query: "diff-match-patch dmp".to_string(),
-                mode: "text".to_string(),
+                search_method: "text".to_string(),
                 limit: 15,
                 file_pattern: None,
                 language: None,
                 workspace: None,
-                scope: "content".to_string(),
+                search_target: "content".to_string(),
                 output: None,
                 context_lines: None,
             };
 
             let fast_search_query_b = FastSearchTool {
                 query: "embedding vector semantic".to_string(),
-                mode: "text".to_string(),
+                search_method: "text".to_string(),
                 limit: 15,
                 file_pattern: None,
                 language: None,
                 workspace: None,
-                scope: "content".to_string(),
+                search_target: "content".to_string(),
                 output: None,
                 context_lines: None,
             };
@@ -367,12 +367,12 @@ pub fn embedding_vector_semantic() {}
 
         let fast_search_tool = FastSearchTool {
             query: "diff-match-patch dmp".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 15,
             file_pattern: None,
             language: None,
             workspace: None,
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };
@@ -508,12 +508,12 @@ pub fn embedding_vector_semantic() {}
         println!("🐛 TEST TRACE 9: Creating fast_search_tool");
         let fast_search_tool = FastSearchTool {
             query: "semantic_diff_tool".to_string(),
-            mode: "text".to_string(),
+            search_method: "text".to_string(),
             limit: 15,
             file_pattern: None,
             language: None,
             workspace: Some(workspace_id.clone()),
-            scope: "content".to_string(),
+            search_target: "content".to_string(),
             output: None,
             context_lines: None,
         };

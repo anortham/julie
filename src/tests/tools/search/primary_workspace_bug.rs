@@ -72,9 +72,9 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
     // THE BUG: This should work but may return "Workspace not indexed yet!"
     let search_tool = FastSearchTool {
         query: "TestStruct".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         limit: 10,
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         file_pattern: None,
         language: None,
         output: None,
@@ -163,9 +163,9 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
     // Search using the explicit workspace ID
     let search_tool = FastSearchTool {
         query: "another_function".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         limit: 10,
-        scope: "symbols".to_string(),
+        search_target: "definitions".to_string(),
         file_pattern: None,
         language: None,
         output: None,

@@ -1,7 +1,7 @@
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use tracing::info;
+use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
     pub(crate) fn resolve_workspace_path(&self, workspace_path: Option<String>) -> Result<PathBuf> {
@@ -45,6 +45,20 @@ impl ManageWorkspaceTool {
             "package.json",
             ".project",
         ];
+
+        // 🔥 CRITICAL FIX: Check if start_path itself has a .julie directory FIRST
+        // This prevents walking up and finding a parent workspace when an explicit
+        // workspace path is provided (fixes fixture test isolation bug)
+        let julie_dir = start_path.join(".julie");
+        if julie_dir.exists() && julie_dir.is_dir() {
+            debug!("Found .julie directory at provided path: {}", start_path.display());
+            info!(
+                "🎯 Found .julie directory at provided path: {}",
+                start_path.display()
+            );
+            return Ok(start_path.to_path_buf());
+        }
+        debug!("No .julie at start_path, walking up the tree");
 
         let mut current_path = start_path.to_path_buf();
 

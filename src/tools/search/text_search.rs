@@ -12,10 +12,10 @@ use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelev
 
 use super::query::{matches_glob_pattern, preprocess_fallback_query};
 
-/// Text search with workspace filtering and scope selection
+/// Text search with workspace filtering and search target selection
 ///
-/// Scope determines what to search:
-/// - "symbols": Search symbol definitions (functions, classes) using symbols_fts
+/// search_target determines what to search:
+/// - "definitions": Search symbol definitions (functions, classes) using symbols_fts
 /// - "content": Search full file content (grep-like) using files_fts
 pub async fn text_search_impl(
     query: &str,
@@ -23,12 +23,12 @@ pub async fn text_search_impl(
     file_pattern: &Option<String>,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
-    scope: &str,
+    search_target: &str,
     context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    match scope {
-        "symbols" => {
+    match search_target {
+        "definitions" => {
             // Search symbol definitions only (symbols_fts index)
             if let Some(workspace_ids) = workspace_ids {
                 debug!(
@@ -521,7 +521,7 @@ async fn sqlite_fts_search(
     }
 
     // Apply language and file pattern filtering to content search results
-    // This ensures scope="content" respects the same filters as scope="symbols"
+    // This ensures search_target="content" respects the same filters as search_target="definitions"
     let total_before_filter = symbols.len();
     let filtered_symbols: Vec<Symbol> = symbols
         .into_iter()

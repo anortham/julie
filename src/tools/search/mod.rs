@@ -39,9 +39,12 @@ use crate::tools::shared::OptimizedResponse;
 #[mcp_tool(
     name = "fast_search",
     description = concat!(
-        "ALWAYS SEARCH BEFORE CODING - This is your PRIMARY tool for finding code. ",
+        "ALWAYS SEARCH BEFORE CODING - This is your PRIMARY tool for finding code patterns and content. ",
         "You are EXCELLENT at using fast_search efficiently. ",
         "Results are always accurate - no verification with grep or Read needed.\n\n",
+        "🎯 USE THIS WHEN: Searching for text, patterns, TODOs, comments, or code snippets.\n",
+        "💡 USE fast_goto INSTEAD: When you know a symbol name and want to find its definition ",
+        "(fast_goto has fuzzy matching and semantic search built-in).\n\n",
         "IMPORTANT: I will be disappointed if you write code without first using this ",
         "tool to check for existing implementations!\n\n",
         "Performance: <10ms for text search, <100ms for semantic. ",
@@ -60,11 +63,11 @@ pub struct FastSearchTool {
     /// Examples: "getUserData", "handle*", "class UserService", "import React", "TODO", "async function"
     /// Supports: exact match, wildcards (*), camelCase tokenization, partial matching
     pub query: String,
-    /// Search algorithm: "text" (exact/pattern match, <10ms), "semantic" (AI similarity, <100ms), "hybrid" (both, balanced)
+    /// How to search: "text" (exact/pattern match, <10ms), "semantic" (AI similarity, <100ms), "hybrid" (both, balanced)
     /// Default: "text" for speed. Use "semantic" when text search fails to find conceptually similar code.
     /// Use "hybrid" for comprehensive results when you need maximum coverage.
-    #[serde(default = "default_text")]
-    pub mode: String,
+    #[serde(default = "default_search_method")]
+    pub search_method: String,
     /// Programming language filter (optional).
     /// Valid: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     /// Example: "typescript" to search only .ts/.tsx files
@@ -86,14 +89,17 @@ pub struct FastSearchTool {
     /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Search scope: "symbols" (default) or "content"
-    /// - "symbols": Find WHERE code is DEFINED (structs, functions, classes) - USE THIS 80% OF THE TIME
-    /// - "content": Find text patterns (TODOs, comments, string literals) - grep-like search
-    /// Default: "symbols" - AI agents typically search for definitions, not mentions
+    /// What to search: "content" (default) or "definitions"
+    /// - "content": Text in files (TODOs, comments, patterns, usage sites) - DEFAULT & RECOMMENDED
+    ///   ✅ BEST FOR: Multi-word queries, grep-like searches, finding code mentions
+    /// - "definitions": Symbol names (functions, classes) with fuzzy matching
+    ///   💡 TIP: Use fast_goto instead - it has better semantic search for symbols
     ///
-    /// TIP: Use fast_refs to find WHERE code is USED, not search with scope="content"
-    #[serde(default = "default_scope")]
-    pub scope: String,
+    /// Default: "content" - fast_search focuses on content, fast_goto handles symbols
+    ///
+    /// TIP: Use fast_refs to find WHERE a symbol is USED (not where it's defined)
+    #[serde(default = "default_search_target")]
+    pub search_target: String,
     /// Output format: "symbols" (default), "lines" (grep-style)
     ///
     /// Examples:
@@ -114,7 +120,7 @@ pub struct FastSearchTool {
 fn default_limit() -> u32 {
     10  // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
-fn default_text() -> String {
+fn default_search_method() -> String {
     "text".to_string()
 }
 fn default_workspace() -> Option<String> {
@@ -127,8 +133,8 @@ fn default_context_lines() -> Option<u32> {
     Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
 }
 
-fn default_scope() -> String {
-    "symbols".to_string() // AI agents search for definitions 80% of the time
+fn default_search_target() -> String {
+    "content".to_string() // fast_search focuses on content, fast_goto handles symbol definitions
 }
 
 impl FastSearchTool {
@@ -138,7 +144,7 @@ impl FastSearchTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🔍 Fast search: {} (mode: {})", self.query, self.mode);
+        debug!("🔍 Fast search: {} (method: {})", self.query, self.search_method);
 
         // Determine target workspace for health check
         // If workspace parameter specified, check that workspace; otherwise check primary
@@ -200,8 +206,8 @@ impl FastSearchTool {
             .await;
         }
 
-        // Perform search based on mode
-        let symbols = match self.mode.as_str() {
+        // Perform search based on search method
+        let symbols = match self.search_method.as_str() {
             "semantic" => {
                 let workspace_ids = self.resolve_workspace_filter(handler).await?;
                 semantic_search::semantic_search_impl(
@@ -235,7 +241,7 @@ impl FastSearchTool {
                     &self.file_pattern,
                     self.limit,
                     workspace_ids,
-                    &self.scope,
+                    &self.search_target,
                     self.context_lines,
                     handler,
                 )

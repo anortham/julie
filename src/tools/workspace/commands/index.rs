@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 // calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
 // Use crate::tools::workspace::calculate_dir_size() instead
@@ -28,7 +28,39 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
 
-        let workspace_path = self.resolve_workspace_path(path)?;
+        // Get original path for reference workspace check BEFORE resolution
+        let original_path = match path {
+            Some(ref p) => {
+                let expanded = shellexpand::tilde(p).to_string();
+                PathBuf::from(expanded)
+            }
+            None => std::env::current_dir()?,
+        };
+
+        // 🔥 CRITICAL FIX: Check if this is a reference workspace FIRST before calling find_workspace_root
+        // Reference workspaces don't have .julie/ directories, so find_workspace_root will walk up
+        // to the primary workspace and return the wrong path!
+        let is_reference_check = if let Ok(Some(primary_ws)) = handler.get_workspace().await {
+            let registry_service = WorkspaceRegistryService::new(primary_ws.root.clone());
+            registry_service.get_workspace_by_path(&original_path.to_string_lossy().to_string())
+                .await
+                .ok()
+                .flatten()
+                .map(|entry| entry.workspace_type == WorkspaceType::Reference)
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        // For reference workspaces, use the original path directly (no workspace root resolution)
+        // For primary workspaces, resolve to workspace root using markers
+        let workspace_path = if is_reference_check {
+            debug!("Reference workspace detected - using original path directly");
+            original_path.clone()
+        } else {
+            self.resolve_workspace_path(path)?
+        };
+
         let canonical_path = workspace_path
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.clone());
@@ -53,17 +85,46 @@ impl ManageWorkspaceTool {
             // Database will be cleared by initialize_workspace_with_force
         }
 
-        // Only initialize workspace if not already loaded or if forcing reindex
-        // This prevents Tantivy lock failures from duplicate initialization
+        // 🔥 CRITICAL FIX: Only initialize workspace if it's the PRIMARY workspace being indexed
+        // Reference workspaces should NEVER reinitialize the handler's workspace!
+        // They are indexed into the primary workspace's indexes/{workspace_id}/ directory
         let workspace_already_loaded = handler.get_workspace().await?.is_some();
 
-        if !workspace_already_loaded || force_reindex {
+        // Check if this path is a reference workspace (check ORIGINAL path, not resolved path!)
+        let is_reference_workspace = if let Ok(Some(primary_ws)) = handler.get_workspace().await {
+            let registry_service = WorkspaceRegistryService::new(primary_ws.root.clone());
+            match registry_service.get_workspace_by_path(&original_path.to_string_lossy().to_string()).await {
+                Ok(Some(entry)) => {
+                    let is_ref = entry.workspace_type == WorkspaceType::Reference;
+                    debug!("Found in registry - workspace_type: {:?}, is_reference: {}", entry.workspace_type, is_ref);
+                    is_ref
+                }
+                Ok(None) => {
+                    debug!("Path not found in registry");
+                    false
+                }
+                Err(e) => {
+                    debug!("Error checking registry: {}", e);
+                    false
+                }
+            }
+        } else {
+            debug!("No primary workspace loaded");
+            false
+        };
+
+        // Only initialize if:
+        // 1. Workspace not loaded yet, OR
+        // 2. Forcing reindex AND this is NOT a reference workspace
+        if !workspace_already_loaded || (force_reindex && !is_reference_workspace) {
             handler
                 .initialize_workspace_with_force(
                     Some(canonical_path.to_string_lossy().to_string()),
                     force_reindex,
                 )
                 .await?;
+        } else if is_reference_workspace {
+            info!("🔒 Reference workspace detected - keeping handler workspace unchanged");
         }
 
         // Check if already indexed and not forcing reindex

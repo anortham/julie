@@ -13,12 +13,12 @@ use crate::tools::search::*;
 fn test_preprocess_fallback_query_multi_word() {
     let tool = FastSearchTool {
         query: "user authentication".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -34,12 +34,12 @@ fn test_preprocess_fallback_query_multi_word() {
 fn test_preprocess_fallback_query_single_word() {
     let tool = FastSearchTool {
         query: "getUserData".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -55,12 +55,12 @@ fn test_preprocess_fallback_query_single_word() {
 fn test_preprocess_fallback_query_quoted() {
     let tool = FastSearchTool {
         query: "\"exact match\"".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -76,12 +76,12 @@ fn test_preprocess_fallback_query_quoted() {
 fn test_preprocess_fallback_query_exclusion() {
     let tool = FastSearchTool {
         query: "user -password".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -97,12 +97,12 @@ fn test_preprocess_fallback_query_exclusion() {
 fn test_preprocess_fallback_query_wildcard() {
     let tool = FastSearchTool {
         query: "getUser*".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -118,12 +118,12 @@ fn test_preprocess_fallback_query_wildcard() {
 fn test_preprocess_fallback_query_explicit_or() {
     let tool = FastSearchTool {
         query: "getUserData OR fetchUserData".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
@@ -139,12 +139,12 @@ fn test_preprocess_fallback_query_explicit_or() {
 fn test_preprocess_fallback_query_explicit_and() {
     let tool = FastSearchTool {
         query: "user AND authentication".to_string(),
-        mode: "text".to_string(),
+        search_method: "text".to_string(),
         language: None,
         file_pattern: None,
         limit: 15,
         workspace: None,
-        scope: "content".to_string(),
+        search_target: "content".to_string(),
         output: None,
         context_lines: None,
     };
