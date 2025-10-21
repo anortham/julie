@@ -14,7 +14,10 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 
 - Search latency: <10ms (text), <100ms (semantic)
 - Memory usage: <100MB typical workload
-- Startup time: <2s (background indexing for semantic features)
+- Startup time: <2s (database indexing - text search available immediately)
+- Semantic indexing: 2-5 minutes per 10,000 symbols (background, non-blocking)
+  - Faster on Apple Silicon (~30-60s per 10,000 symbols)
+  - Text search works instantly while semantic search builds
 - Single binary deployment with no external dependencies
 
 ## Supported Languages (25)
@@ -107,7 +110,7 @@ Alternatively, manually configure in your MCP client settings:
 }
 ```
 
-The server will automatically index your workspace on first use. Search tools are available immediately; semantic search builds in the background.
+The server will automatically index your workspace on first use. Text search is available immediately (<2s); semantic search builds in the background (2-5 minutes per 10,000 symbols, faster on Apple Silicon). You can use text search while semantic indexing completes.
 
 ## Testing
 
