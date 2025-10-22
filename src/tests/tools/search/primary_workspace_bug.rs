@@ -41,10 +41,11 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
         .await?;
 
     // Index the workspace using ManageWorkspaceTool
+    // 🔥 CRITICAL: Must pass workspace_path explicitly - path: None uses current_dir()!
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
-        path: None,
+        path: Some(workspace_path.to_string_lossy().to_string()),
         name: None,
         force: Some(false),
         expired_only: None,
@@ -132,10 +133,11 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
         .await?;
 
     // Index the workspace
+    // 🔥 CRITICAL: Must pass workspace_path explicitly - path: None uses current_dir()!
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         workspace_id: None,
-        path: None,
+        path: Some(workspace_path.to_string_lossy().to_string()),
         name: None,
         force: Some(false),
         expired_only: None,
