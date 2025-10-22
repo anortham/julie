@@ -92,6 +92,7 @@ pub mod integration {
     pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
     pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests
+    pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)

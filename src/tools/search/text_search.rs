@@ -8,6 +8,7 @@ use tracing::debug;
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::tools::search::query_preprocessor::{preprocess_query, QueryType};
 use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 
 use super::query::{matches_glob_pattern, preprocess_fallback_query};
@@ -27,7 +28,37 @@ pub async fn text_search_impl(
     context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    match search_target {
+    // Step 1: Preprocess query (validate, detect type, sanitize)
+    let preprocessed = match preprocess_query(query) {
+        Ok(p) => {
+            debug!(
+                "✨ Query preprocessor: '{}' → {:?} → FTS5: '{}'",
+                query, p.query_type, p.fts5_query
+            );
+            p
+        }
+        Err(e) => {
+            // Preprocessing failed (e.g., pure wildcard query)
+            return Err(anyhow::anyhow!("Invalid query: {}", e));
+        }
+    };
+
+    // Step 2: Use preprocessed FTS5 query for search
+    let fts5_query = &preprocessed.fts5_query;
+
+    // Step 3: Route based on query type and search_target
+    // Symbol queries go to definitions, Pattern/Standard to content
+    let effective_search_target = match preprocessed.query_type {
+        QueryType::Symbol if search_target != "content" => "definitions",
+        QueryType::Glob if file_pattern.is_none() => {
+            // For glob queries without explicit file_pattern, search content
+            // The glob matching will happen via the file_path field
+            "content"
+        }
+        _ => search_target, // Respect user's explicit search_target
+    };
+
+    match effective_search_target {
         "definitions" => {
             // Search symbol definitions only (symbols_fts index)
             if let Some(workspace_ids) = workspace_ids {
@@ -36,7 +67,7 @@ pub async fn text_search_impl(
                     workspace_ids
                 );
                 database_search_with_workspace_filter(
-                    query,
+                    fts5_query,
                     language,
                     file_pattern,
                     limit,
@@ -47,7 +78,7 @@ pub async fn text_search_impl(
             } else {
                 debug!("🔍 Symbol search across all workspaces");
                 database_search_with_workspace_filter(
-                    query,
+                    fts5_query,
                     language,
                     file_pattern,
                     limit,
@@ -60,7 +91,7 @@ pub async fn text_search_impl(
         _ => {
             // "content" or any other value: Search full file content (files_fts index)
             debug!("🔍 Content search (full file text)");
-            sqlite_fts_search(query, language, file_pattern, limit, workspace_ids, context_lines, handler).await
+            sqlite_fts_search(fts5_query, language, file_pattern, limit, workspace_ids, context_lines, handler).await
         }
     }
 }

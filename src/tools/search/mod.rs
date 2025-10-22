@@ -9,6 +9,9 @@
 
 // Public API re-exports
 pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
+pub use self::query_preprocessor::{detect_query_type, preprocess_query, validate_query,
+                                    sanitize_query, sanitize_for_fts5, process_query,
+                                    QueryType, PreprocessedQuery};
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
@@ -16,6 +19,7 @@ pub(crate) mod formatting; // Exposed for testing
 mod hybrid_search;
 mod line_mode;
 mod query;
+pub mod query_preprocessor; // Public for testing
 mod scoring;
 mod semantic_search;
 mod text_search;
@@ -353,7 +357,7 @@ impl FastSearchTool {
                         None => {
                             // Invalid workspace ID
                             Err(anyhow::anyhow!(
-                                "Workspace '{}' not found. Use 'all', 'primary', or a valid workspace ID",
+                                "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
                                 workspace_id
                             ))
                         }
