@@ -97,10 +97,17 @@ pub fn matches_glob_pattern(file_path: &str, pattern: &str) -> bool {
         }
 
         // Standard glob matching for patterns with wildcards or path separators
-        match Glob::new(pattern) {
+        // CRITICAL: Normalize Windows paths to Unix-style for glob matching
+        // The glob crate expects forward slashes, but Windows paths use backslashes
+        // Example: \\?\C:\source\project\file.rs → //?/C:/source/project/file.rs
+        let normalized_path = file_path.replace('\\', "/");
+        let normalized_pattern = pattern.replace('\\', "/");
+
+        match Glob::new(&normalized_pattern) {
             Ok(glob) => {
                 let matcher = glob.compile_matcher();
-                matcher.is_match(file_path)
+                // Match against normalized path (forward slashes)
+                matcher.is_match(&normalized_path)
             }
             Err(e) => {
                 warn!("Invalid glob pattern '{}': {}", pattern, e);
