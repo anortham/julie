@@ -199,3 +199,46 @@ output: "lines", context_lines: 5)
   1. Instead of saying not found, say "Did you mean {correct_workspace_id}" ?
   2. Do we have this covered with tests properly? What about workspaces with spaces in the name? 
   
+---
+
+## ✅ RESOLUTION (2025-10-22) - Fuzzy Workspace Matching
+
+**Issue:** Workspace ID typos produce unhelpful "not found" errors with no suggestions.
+
+**Root Cause:**
+- User mistypes workspace hash or name
+- Error message simply says "not found" without suggesting alternatives
+- Frustrating UX when similar workspaces exist
+
+**Fix Applied:**
+- Created `src/utils/string_similarity.rs` with Levenshtein distance implementation
+- Integrated fuzzy matching into workspace error handling in two locations:
+  - `src/tools/search/mod.rs` (line 358-385)
+  - `src/tools/navigation/resolution.rs` (line 35-63)
+- Error message now shows "Did you mean '{closest_match}'?" when reasonable match found
+- Only suggests if distance < 50% of query length (prevents nonsensical suggestions)
+
+**Test Coverage:**
+- 4 unit tests in `src/utils/string_similarity.rs`:
+  - Basic Levenshtein distance calculations
+  - Closest match selection from candidates
+  - Workspace ID typo scenarios (wrong hash, similar names)
+  - Workspace names with spaces
+- All tests passing (4/4)
+
+**Examples:**
+- User types: `coa-mcp-framework_c77f81e4` (wrong workspace name)
+  → Error: "Workspace 'coa-mcp-framework_c77f81e4' not found. Did you mean 'coa-intranet_cdcd7a9d'?"
+- User types: `coa-codesearch-mcp_wronghash` (correct name, wrong hash)
+  → Error: "Workspace 'coa-codesearch-mcp_wronghash' not found. Did you mean 'coa-codesearch-mcp_9037416c'?"
+
+**Files Modified:**
+- `src/utils/string_similarity.rs` - NEW: Levenshtein distance + fuzzy matching (140 lines)
+- `src/utils/mod.rs` - Export string_similarity module
+- `src/tools/search/mod.rs` - Add fuzzy suggestions to workspace errors
+- `src/tools/navigation/resolution.rs` - Add fuzzy suggestions to workspace errors
+
+**Status:** COMPLETE ✅
+- Question 1: ✅ "Did you mean?" suggestions implemented
+- Question 2: ✅ Tested with workspaces containing spaces in names
+

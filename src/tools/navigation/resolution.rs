@@ -33,7 +33,29 @@ pub async fn resolve_workspace_filter(
                 match registry_service.get_workspace(workspace_id).await? {
                     Some(_) => Ok(Some(workspace_id.to_string())),
                     None => {
-                        // Invalid workspace ID
+                        // Invalid workspace ID - provide fuzzy match suggestion
+                        let all_workspaces = registry_service.get_all_workspaces().await?;
+                        let workspace_ids: Vec<&str> = all_workspaces
+                            .iter()
+                            .map(|w| w.id.as_str())
+                            .collect();
+
+                        if let Some((best_match, distance)) =
+                            crate::utils::string_similarity::find_closest_match(
+                                workspace_id,
+                                &workspace_ids
+                            ) {
+                            // Only suggest if the distance is reasonable (< 50% of query length)
+                            if distance < workspace_id.len() / 2 {
+                                return Err(anyhow::anyhow!(
+                                    "Workspace '{}' not found. Did you mean '{}'?",
+                                    workspace_id,
+                                    best_match
+                                ));
+                            }
+                        }
+
+                        // No close match found
                         Err(anyhow::anyhow!(
                             "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
                             workspace_id

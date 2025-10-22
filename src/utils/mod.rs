@@ -164,6 +164,9 @@ pub mod exact_match_boost;
 /// Query expansion utilities for multi-word search
 pub mod query_expansion;
 
+/// String similarity utilities for fuzzy matching
+pub mod string_similarity;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;
