@@ -79,27 +79,28 @@ pub struct FuzzyReplaceTool {
     /// Example: "function fetchUserData()"
     pub replacement: String,
 
-    /// Fuzzy match threshold (0.0-1.0)
+    /// Fuzzy match threshold (default: 0.8, range: 0.0-1.0).
     /// 0.0 = perfect match only
     /// 0.5 = moderate tolerance
-    /// 0.8 = high tolerance (default)
+    /// 0.8 = high tolerance (recommended)
     /// 1.0 = match anything
     #[serde(default = "default_threshold")]
     pub threshold: f32,
 
-    /// Match distance - how far to search (in characters)
-    /// Default: 1000 - reasonable for most code files
-    /// Higher = slower but more comprehensive
+    /// Match distance - how far to search in characters (default: 1000).
+    /// Higher values = slower but more comprehensive search
+    /// Recommended: 1000 for most code files
     #[serde(default = "default_distance")]
     pub distance: i32,
 
-    /// Preview changes without applying them (RECOMMENDED for first run)
-    /// Default: false
+    /// Preview changes without applying them (default: false).
+    /// RECOMMENDED: Set true for first run to verify changes before applying
     #[serde(default)]
     pub dry_run: bool,
 
-    /// Validate changes before applying (brace/bracket matching)
-    /// Default: true - recommended for safety
+    /// Validate changes before applying (default: true).
+    /// Performs brace/bracket matching to ensure structural integrity
+    /// Recommended: true for safety
     #[serde(default = "default_true")]
     pub validate: bool,
 }

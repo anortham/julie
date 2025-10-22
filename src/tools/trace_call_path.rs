@@ -118,52 +118,55 @@ pub struct TraceCallPathTool {
     /// Examples: "getUserData", "UserService.create", "processPayment"
     pub symbol: String,
 
-    /// Trace direction: "upstream" (find callers), "downstream" (find callees), "both"
-    /// Default: "upstream" - most common use case (who calls this?)
+    /// Trace direction (default: "upstream").
+    /// Options: "upstream" (find callers), "downstream" (find callees), "both"
+    /// Most common: "upstream" - who calls this function?
     #[serde(default = "default_upstream")]
     pub direction: String,
 
-    /// Maximum levels to trace (prevents infinite recursion)
-    /// Default: 3 - balance between depth and performance
-    /// Range: 1-10 (higher values may be slow)
+    /// Maximum levels to trace (default: 3, range: 1-10).
+    /// Prevents infinite recursion while balancing depth and performance
+    /// Higher values may be slow
     #[serde(default = "default_depth")]
     pub max_depth: u32,
 
-    /// Enable cross-language tracing (uses naming variants - slower but powerful)
-    /// Default: true - this is Julie's differentiator!
+    /// Enable cross-language tracing (default: true).
+    /// Uses naming variants - slower but this is Julie's unique capability!
     /// Set false for faster same-language-only tracing
     #[serde(default = "default_true")]
     pub cross_language: bool,
 
-    /// Minimum similarity threshold for cross-language matches (0.0-1.0)
+    /// Minimum similarity threshold for cross-language matches (default: 0.7, range: 0.0-1.0).
     /// Higher = fewer false positives, Lower = more comprehensive
-    /// Default: 0.7 - good balance
+    /// Recommended: 0.7 for good balance
     #[serde(default = "default_similarity")]
     pub similarity_threshold: f32,
 
-    /// Optional: Starting file for context (helps disambiguate)
+    /// Starting file for context (default: None, optional).
+    /// Helps disambiguate when multiple symbols have the same name
     /// Example: "src/services/user.ts"
     #[serde(default)]
     pub context_file: Option<String>,
 
-    /// Workspace filter: "all", "primary", or specific workspace ID
+    /// Workspace filter (default: "primary").
+    /// Options: "all", "primary", or specific workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 
-    /// Output format: "json" (structured, default) or "tree" (ASCII visualization)
-    /// json = Machine-parseable for AI agents (includes full structured data)
-    /// tree = Human-readable ASCII tree diagram with file locations
+    /// Output format (default: "json").
+    /// "json" = Machine-parseable structured data (recommended for AI agents)
+    /// "tree" = Human-readable ASCII tree diagram with file locations
     #[serde(default = "default_output_format")]
     pub output_format: String,
 
-    /// Maximum semantic neighbors to check per symbol
-    /// Default: None (uses 8 internally) - balance between coverage and performance
+    /// Maximum semantic neighbors to check per symbol (default: None, uses 8 internally).
+    /// Balance between coverage and performance
     /// Higher values may find more connections but slower
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_limit: Option<u32>,
 
-    /// Cross-language recursion depth limit
-    /// Default: None (uses max_depth) - no artificial limitation
+    /// Cross-language recursion depth limit (default: None, uses max_depth).
+    /// No artificial limitation by default
     /// Set lower if cross-language paths cause explosion
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cross_language_max_depth: Option<u32>,

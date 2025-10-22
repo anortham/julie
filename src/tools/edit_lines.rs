@@ -50,15 +50,16 @@ pub struct EditLinesTool {
     /// Starting line number (1-indexed, like editors show)
     pub start_line: u32,
 
-    /// Ending line number (required for replace/delete, ignored for insert)
+    /// Ending line number (default: None, required for replace/delete, ignored for insert)
     #[serde(default)]
     pub end_line: Option<u32>,
 
-    /// Content to insert or replace (required for insert/replace, ignored for delete)
+    /// Content to insert or replace (default: None, required for insert/replace, ignored for delete)
     #[serde(default)]
     pub content: Option<String>,
 
-    /// Preview changes without applying (default: false)
+    /// Preview changes without applying (default: false).
+    /// Set true to see what would change before actually modifying files
     #[serde(default)]
     pub dry_run: bool,
 }

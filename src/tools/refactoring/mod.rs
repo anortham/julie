@@ -82,7 +82,8 @@ pub struct SmartRefactorTool {
     #[serde(default = "default_empty_json")]
     pub params: String,
 
-    /// Preview changes without applying them (default: false)
+    /// Preview changes without applying them (default: false).
+    /// Set true to see what would change before actually modifying files
     #[serde(default)]
     pub dry_run: bool,
 }

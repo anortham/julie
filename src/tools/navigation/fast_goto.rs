@@ -53,19 +53,20 @@ pub struct FastGotoTool {
     /// Examples: "UserService", "MyClass::method", "std::vector", "React.Component", "getUserData"
     /// Julie intelligently resolves across languages (Python imports, Rust use statements, TypeScript imports)
     pub symbol: String,
-    /// Current file path for context (helps resolve ambiguous symbols).
+    /// Current file path for context (default: None, optional).
+    /// Helps resolve ambiguous symbols when multiple definitions exist.
     /// Example: "src/services/user.ts" when multiple "UserService" classes exist
     /// Format: Relative path from workspace root
     #[serde(default)]
     pub context_file: Option<String>,
-    /// Line number in context file where symbol is referenced.
+    /// Line number in context file where symbol is referenced (default: None, optional).
     /// Helps disambiguate when symbol appears multiple times in the same file.
     /// Example: 142 (line where "UserService" is imported or used)
     #[serde(default)]
     pub line_number: Option<u32>,
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Workspace filter (default: "primary").
+    /// Specify which workspace to search: "primary" (default) or specific workspace ID
     /// Examples: "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search the primary workspace
     /// To search a reference workspace, provide its workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,

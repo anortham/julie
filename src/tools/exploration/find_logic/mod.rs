@@ -37,22 +37,19 @@ pub struct FindLogicTool {
     /// Examples: "payment" for payment processing logic, "auth" for authentication, "user" for user management, "order" for order processing
     /// Can use multiple keywords: "payment checkout billing" for broader coverage
     pub domain: String,
-    /// Maximum number of business logic symbols to return
+    /// Maximum number of business logic symbols to return (default: 50).
     /// Higher values = more comprehensive results but longer response
     /// Recommended: 20-50 for focused analysis, 100+ for comprehensive review
-    /// Default: 50 - balanced for most use cases
     #[serde(default = "default_max_results")]
     pub max_results: i32,
-    /// Group results by architectural layer (controllers, services, models, etc.)
-    /// true = organized by layer for architectural understanding
+    /// Group results by architectural layer (default: true).
+    /// true = organized by layer (controllers, services, models) for architectural understanding
     /// false = flat list sorted by relevance score
-    /// Default: true - better organization
     #[serde(default = "default_true")]
     pub group_by_layer: bool,
-    /// Minimum business relevance score threshold (0.0 to 1.0)
+    /// Minimum business relevance score threshold (default: 0.3, range: 0.0-1.0).
     /// Higher values = more selective, only highly relevant business logic
     /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
-    /// Default: 0.3 - broad coverage
     #[serde(default = "default_min_score")]
     pub min_business_score: f32,
 }

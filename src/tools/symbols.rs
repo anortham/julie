@@ -60,21 +60,21 @@ pub struct GetSymbolsTool {
     /// Example: "src/user.rs", "lib/services/auth.py"
     pub file_path: String,
 
-    /// Maximum depth for nested symbols
+    /// Maximum depth for nested symbols (default: 1).
     /// 0 = top-level only (classes, functions)
     /// 1 = include one level (class methods, nested functions)
     /// 2+ = deeper nesting
-    /// Default: 1 - good balance for most files
+    /// Recommended: 1 - good balance for most files
     #[serde(default = "default_max_depth")]
     pub max_depth: u32,
 
-    /// Filter to specific symbol(s) by name (optional)
+    /// Filter to specific symbol(s) by name (default: None, optional).
     /// Example: "UserService" to show only UserService class
     /// Supports partial matching (case-insensitive)
     #[serde(default)]
     pub target: Option<String>,
 
-    /// Maximum number of symbols to return (default: 50)
+    /// Maximum number of symbols to return (default: 50).
     /// When set, truncates results to first N symbols
     /// Use 'target' parameter to filter to specific symbols instead of truncating
     /// Set to None for unlimited, or specific value to override default
@@ -82,24 +82,24 @@ pub struct GetSymbolsTool {
     #[serde(default = "default_limit")]
     pub limit: Option<u32>,
 
-    /// Extract complete function/class bodies (default: false)
+    /// Extract complete function/class bodies (default: false).
     /// When false: Strip code_context (current behavior)
     /// When true: Read source file and populate code_context with actual code
     /// Note: Ignored if mode="structure"
     #[serde(default)]
     pub include_body: Option<bool>,
 
-    /// Reading mode: "structure" (default), "minimal", "full"
+    /// Reading mode (default: "structure").
     /// - "structure": No bodies, structure only (ignore include_body)
     /// - "minimal": Bodies for top-level symbols only
     /// - "full": Bodies for ALL symbols including nested methods
-    /// Default: "structure" - maintains backward compatibility
+    /// Recommended: "structure" for initial exploration, "minimal" for targeted body extraction
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
 
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Workspace filter (default: "primary").
+    /// Specify which workspace to search: "primary" (default) or specific workspace ID
     /// Examples: "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search the primary workspace
     /// To search a reference workspace, provide its workspace ID
     #[serde(default)]
     pub workspace: Option<String>,
