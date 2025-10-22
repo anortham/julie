@@ -7,6 +7,10 @@ mod insert_relative_tests;
 mod replace_symbol_body_tests;
 mod scope_test;
 
+// New focused tools (Phase 2 - Tool Adoption Improvements)
+mod rename_symbol;
+mod edit_symbol;
+
 use crate::tools::refactoring::*;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde_json::json;

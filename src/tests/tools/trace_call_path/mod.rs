@@ -78,7 +78,7 @@ async fn cross_language_callers_found_via_naming_variant() {
             .expect("store variant file");
 
         db_guard
-            .store_symbols(
+            .store_symbols_transactional(
                 &[target.clone(), variant.clone(), other.clone()],
             )
             .expect("store symbols");

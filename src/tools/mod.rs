@@ -23,7 +23,8 @@ pub use editing::EditingTransaction; // Shared transaction infrastructure
 pub use exploration::FindLogicTool;
 pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use navigation::{FastGotoTool, FastRefsTool};
-pub use refactoring::SmartRefactorTool;
+pub use refactoring::{EditSymbolTool, RenameSymbolTool};
+// SmartRefactorTool is internal only - not exposed to MCP clients
 pub use search::FastSearchTool;
 pub use symbols::GetSymbolsTool;
 pub use trace_call_path::TraceCallPathTool;
@@ -51,8 +52,9 @@ tool_box!(
         // Editing tools
         EditLinesTool,
         FuzzyReplaceTool,
-        // Semantic refactoring tool
-        SmartRefactorTool,
+        // Semantic refactoring tools (simplified, agent-friendly APIs)
+        RenameSymbolTool,
+        EditSymbolTool,
         // Workspace management
         ManageWorkspaceTool,
     ]

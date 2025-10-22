@@ -89,7 +89,7 @@ async fn test_debug_foreign_key_constraint() {
     };
 
     // This should work without foreign key constraint error
-    let result = db.store_symbols(&[symbol]);
+    let result = db.store_symbols_transactional(&[symbol]);
     assert!(
         result.is_ok(),
         "Foreign key constraint failed: {:?}",
@@ -207,7 +207,7 @@ async fn test_symbol_storage_and_retrieval() {
     };
     db.store_file_info(&file_info).unwrap();
 
-    db.store_symbols(&[symbol.clone()]).unwrap();
+    db.store_symbols_transactional(&[symbol.clone()]).unwrap();
 
     let retrieved = db.get_symbol_by_id("test-symbol-1").unwrap();
     assert!(retrieved.is_some());
@@ -305,7 +305,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     db.store_file_info(&file_info).unwrap();
 
     // Store the symbol
-    db.store_symbols(&[symbol.clone()]).unwrap();
+    db.store_symbols_transactional(&[symbol.clone()]).unwrap();
 
     // Retrieve and verify all fields are preserved
     let retrieved = db.get_symbol_by_id("test-symbol-complex").unwrap().unwrap();
@@ -400,7 +400,7 @@ async fn test_relationship_with_id_field() {
         code_context: None,
     };
 
-    db.store_symbols(&[caller_symbol, called_symbol])
+    db.store_symbols_transactional(&[caller_symbol, called_symbol])
         .unwrap();
 
     // Create relationship with generated id
@@ -506,7 +506,7 @@ async fn test_cross_language_semantic_grouping() {
     db.store_file_info(&rust_file_info).unwrap();
 
     // Store both symbols
-    db.store_symbols(&[ts_interface, rust_struct])
+    db.store_symbols_transactional(&[ts_interface, rust_struct])
         .unwrap();
 
     // Query symbols by semantic group (this will fail initially - need to implement)
@@ -589,7 +589,7 @@ async fn test_extractor_database_integration() {
     db.store_file_info(&file_info).unwrap();
 
     // Test that extractor-generated symbols work with database
-    db.store_symbols(&[symbol.clone()]).unwrap();
+    db.store_symbols_transactional(&[symbol.clone()]).unwrap();
 
     let retrieved = db.get_symbol_by_id(&symbol.id).unwrap().unwrap();
     assert_eq!(retrieved.name, "getUserById");
@@ -651,7 +651,7 @@ async fn test_complete_symbol_field_persistence() {
     };
 
     // Store the symbol
-    db.store_symbols(&[symbol.clone()])
+    db.store_symbols_transactional(&[symbol.clone()])
         .unwrap();
 
     // Retrieve and verify ALL fields are preserved

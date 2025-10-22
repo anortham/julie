@@ -20,6 +20,94 @@ pub use types::{
     AutoFixResult, DelimiterError, RefactorOperation, SmartRefactorResult, SyntaxError,
 };
 
+// ===== NEW FOCUSED TOOLS (Phase 2 - Tool Adoption Improvements) =====
+
+/// Edit operation type for EditSymbolTool
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EditOperation {
+    /// Replace function/method body
+    ReplaceBody,
+    /// Insert code before/after a symbol
+    InsertRelative,
+    /// Extract symbol to another file
+    ExtractToFile,
+}
+
+/// Focused tool for workspace-wide symbol renaming (replaces rename_symbol operation)
+#[mcp_tool(
+    name = "rename_symbol",
+    description = concat!(
+        "WORKSPACE-WIDE SYMBOL RENAMING - Rename symbols across all files in the workspace. ",
+        "You are EXCELLENT at using this for refactoring variable, function, and class names. ",
+        "This tool understands code structure and updates all references atomically.\n\n",
+        "**Perfect for**: Renaming functions, classes, variables across entire workspace\n\n",
+        "**Always use fast_refs BEFORE renaming** to see impact!\n\n",
+        "Unlike text search-and-replace, this preserves code semantics and avoids strings/comments."
+    ),
+    title = "Workspace-Wide Symbol Renaming"
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct RenameSymbolTool {
+    /// Current symbol name
+    pub old_name: String,
+
+    /// New symbol name
+    pub new_name: String,
+
+    /// Optional scope limitation (future enhancement)
+    #[serde(default)]
+    pub scope: Option<String>,
+
+    /// Preview changes without applying them (default: false)
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Focused tool for file-specific semantic editing (replaces replace_symbol_body, insert_relative_to_symbol, extract_symbol_to_file)
+#[mcp_tool(
+    name = "edit_symbol",
+    description = concat!(
+        "FILE-SPECIFIC SEMANTIC EDITING - Modify function bodies, insert code, or move symbols between files. ",
+        "You are EXCELLENT at using this for precise code transformations. ",
+        "This tool understands code structure and preserves formatting automatically.\n\n",
+        "**Operations**:\n",
+        "• ReplaceBody: Replace function/method implementation\n",
+        "• InsertRelative: Add code before/after symbols\n",
+        "• ExtractToFile: Move symbols to different files with import updates\n\n",
+        "**Perfect for**: Updating implementations, adding helper functions, reorganizing code\n\n",
+        "Unlike text editing, this preserves indentation and code structure automatically."
+    ),
+    title = "File-Specific Semantic Editing"
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct EditSymbolTool {
+    /// File path to edit
+    pub file_path: String,
+
+    /// Symbol name to edit (function, method, class)
+    pub symbol_name: String,
+
+    /// Type of edit operation
+    pub operation: EditOperation,
+
+    /// Content to insert or replacement body
+    /// (For ReplaceBody: new function body, For InsertRelative: code to insert, For ExtractToFile: unused)
+    pub content: String,
+
+    /// Position for InsertRelative operation: "before" or "after" (default: "after")
+    #[serde(default)]
+    pub position: Option<String>,
+
+    /// Target file for ExtractToFile operation
+    #[serde(default)]
+    pub target_file: Option<String>,
+
+    /// Preview changes without applying them (default: false)
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
 use rust_mcp_sdk::macros::mcp_tool;
@@ -90,6 +178,100 @@ pub struct SmartRefactorTool {
 
 fn default_empty_json() -> String {
     "{}".to_string()
+}
+
+// ===== RENAME SYMBOL TOOL IMPLEMENTATION =====
+
+impl RenameSymbolTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        // Validation
+        if self.old_name.is_empty() || self.new_name.is_empty() {
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                "Error: old_name and new_name are required and cannot be empty".to_string(),
+            )]));
+        }
+
+        if self.old_name == self.new_name {
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                "Error: old_name and new_name are identical - no rename needed".to_string(),
+            )]));
+        }
+
+        // Delegate to SmartRefactorTool's rename logic
+        let smart_refactor = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: serde_json::json!({
+                "old_name": self.old_name,
+                "new_name": self.new_name,
+                "scope": self.scope,
+            })
+            .to_string(),
+            dry_run: self.dry_run,
+        };
+
+        smart_refactor.handle_rename_symbol(handler).await
+    }
+}
+
+// ===== EDIT SYMBOL TOOL IMPLEMENTATION =====
+
+impl EditSymbolTool {
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        // Validate based on operation type
+        match self.operation {
+            EditOperation::ReplaceBody => {
+                // Delegate to SmartRefactorTool's replace_symbol_body logic
+                let smart_refactor = SmartRefactorTool {
+                    operation: "replace_symbol_body".to_string(),
+                    params: serde_json::json!({
+                        "file": self.file_path,
+                        "symbol_name": self.symbol_name,
+                        "new_body": self.content,
+                    })
+                    .to_string(),
+                    dry_run: self.dry_run,
+                };
+                smart_refactor.handle_replace_symbol_body(handler).await
+            }
+            EditOperation::InsertRelative => {
+                // Delegate to SmartRefactorTool's insert_relative_to_symbol logic
+                let smart_refactor = SmartRefactorTool {
+                    operation: "insert_relative_to_symbol".to_string(),
+                    params: serde_json::json!({
+                        "file": self.file_path,
+                        "target_symbol": self.symbol_name,
+                        "position": self.position.as_deref().unwrap_or("after"),
+                        "content": self.content,
+                    })
+                    .to_string(),
+                    dry_run: self.dry_run,
+                };
+                smart_refactor.handle_insert_relative_to_symbol(handler).await
+            }
+            EditOperation::ExtractToFile => {
+                // Validate target_file is provided
+                if self.target_file.is_none() {
+                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                        "Error: target_file is required for ExtractToFile operation".to_string(),
+                    )]));
+                }
+
+                // Delegate to SmartRefactorTool's extract_symbol_to_file logic
+                let smart_refactor = SmartRefactorTool {
+                    operation: "extract_symbol_to_file".to_string(),
+                    params: serde_json::json!({
+                        "source_file": self.file_path,
+                        "target_file": self.target_file.as_ref().unwrap(),
+                        "symbol_name": self.symbol_name,
+                        "update_imports": false,  // Can add parameter later if needed
+                    })
+                    .to_string(),
+                    dry_run: self.dry_run,
+                };
+                smart_refactor.handle_extract_symbol_to_file(handler).await
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -219,9 +401,11 @@ impl SmartRefactorTool {
             return Ok(0); // No changes
         }
 
-        // Write back using atomic operations
-        let tx = EditingTransaction::begin(file_path)?;
-        tx.commit(&updated_content)?;
+        // Write back using atomic operations (skip if dry-run)
+        if !self.dry_run {
+            let tx = EditingTransaction::begin(file_path)?;
+            tx.commit(&updated_content)?;
+        }
 
         // Count changes by line differences
         let content_lines = content.lines().count();

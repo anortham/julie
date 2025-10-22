@@ -1,244 +1,252 @@
-In Intranet project:
+# Julie TODO - Improving Tool Adoption
 
-● julie - fast_search (MCP)(query: "DirectusCmsService", search_method: "text", search_target: "content", file_pattern: "\*\*/CoA.Intranet.Client/Program.cs", limit:
-5, output: "lines", context_lines: 5)
-⎿  🔍 No lines found matching: 'DirectusCmsService'
-💡 Try a broader search term or different query
+## <� Goal: Make Julie's editing tools as discoverable as CodeSearch's search_and_replace
 
-     This should have found something
-
-● julie - fast_search (MCP)(query: "OnSpreadsheetFileSelected", search_method: "text", search_target: "content", file_pattern: "\*\*/RfaFormPageV2.razor", limit: 5,
-output: "lines", context_lines: 10)
-⎿  🔍 No lines found matching: 'OnSpreadsheetFileSelected'
-💡 Try a broader search term or different query
-
-● julie - fast_search (MCP)(query: "InputFile.\*spreadsheet", search_method: "text", search_target: "content", file_pattern: "\*\*/RfaFormPageV2.razor", limit: 5,
-output: "lines", context_lines: 5)
-⎿  Error: Tool execution failed: fts5: syntax error near "."
+**Problem Identified (2025-10-22):**
+- Agents use fast_search extensively but ignore Julie's powerful editing tools
+- CodeSearch's search_and_replace gets heavy use because it consolidates workflow
+- Julie has the tech (DMP, semantic understanding) but poor discoverability
 
 ---
 
-## INVESTIGATION RESULTS
+## Phase 1: Multi-File FuzzyReplaceTool (OPTION 2 + 3)
 
-### Issue 1: DirectusCmsService in Program.cs - No Results
+### Technical Changes
 
-**Root Cause:**
-- CONFIRMED: Content exists in CoA.Intranet.Client/Program.cs line 63
-- Problem 1: Low limit (5) + test file has more matches, so test results dominate
-- Problem 2: file_pattern `**/CoA.Intranet.Client/Program.cs` doesn't work at all
+**Current API (single-file only):**
+```rust
+pub struct FuzzyReplaceTool {
+    pub file_path: String,  // L Single file only
+    pub pattern: String,
+    pub replacement: String,
+    pub threshold: f32,
+    pub distance: i32,
+    pub dry_run: bool,
+    pub validate: bool,
+}
+```
 
-**Tests Performed:**
-- ✅ No file_pattern, limit=50 → Found 50 results (including Program.cs)
-- ❌ file_pattern="Program.cs" → No results
-- ❌ file_pattern="**/Program.cs" → No results
-- ❌ file_pattern="CoA.Intranet.Client/Program.cs" → No results
-- ❌ file_pattern="*Program.cs" → No results
-- ✅ file_pattern="*.cs" → Works (but returns test files first)
-- ✅ file_pattern="**/*.cs" → Works
+**New API (single OR multi-file):**
+```rust
+pub struct FuzzyReplaceTool {
+    /// File path for single-file mode
+    /// Omit when using file_pattern for multi-file mode
+    pub file_path: Option<String>,  //  Optional now
 
-**Workarounds:**
-- Increase limit to 50+ and don't use file_pattern for specific files
-- Use extension-based patterns like `*.cs` or `**/*.cs`
+    /// Glob pattern for multi-file mode (NEW)
+    /// Examples: "**/*.rs", "src/**/*.ts", "*.py"
+    pub file_pattern: Option<String>,  //  NEW
 
-### Issue 2: OnSpreadsheetSelected in RfaFormPageV2.razor - No Results
+    pub pattern: String,
+    pub replacement: String,
+    pub threshold: f32,
+    pub distance: i32,
+    pub dry_run: bool,
+    pub validate: bool,
+}
+```
 
-**Root Cause:**
-- CONFIRMED: Content exists in RfaFormPageV2.razor line 1152 (note: original TODO had typo "OnSpreadsheetFileSelected" vs actual "OnSpreadsheetSelected")
-- Problem: file_pattern `**/RfaFormPageV2.razor` doesn't work - specific filenames after `**/` fail
+**Validation**: Require exactly ONE of file_path OR file_pattern
 
-**Tests Performed:**
-- ❌ file_pattern="**/RfaFormPageV2.razor" → No results
-- ✅ file_pattern="*.razor" → Works! Found 2 matches
-- ✅ file_pattern="*RfaFormPageV2.razor" → Works! Found 2 matches
+**Multi-file behavior:**
+1. Use Glob to find matching files
+2. Apply fuzzy replace to each file
+3. Aggregate results (files changed, total replacements)
+4. Atomic transaction per file
 
-**Workaround:**
-- Use `*RfaFormPageV2.razor` instead of `**/RfaFormPageV2.razor`
-- Or just use `*.razor` for all razor files
+### Description Rewrite (Behavioral Nudges)
 
-### Issue 3: InputFile.*spreadsheet - FTS5 Syntax Error
+```rust
+description = concat!(
+    "BULK PATTERN REPLACEMENT - Replace patterns across one file or many files at once. ",
+    "You are EXCELLENT at using this for refactoring, renaming, and fixing patterns. ",
+    "This consolidates your search�read�edit workflow into one atomic operation.\n\n",
 
-**Root Cause:**
-- Query string is passed directly to SQLite FTS5 full-text search
-- FTS5 has special syntax where `.` is a query operator
-- User expected regex pattern matching, but julie uses FTS5 text search (not regex)
+    "**Multi-file mode**: Use file_pattern to replace across multiple files ",
+    "(e.g., '**/*.rs' for all Rust files, 'src/**/*.ts' for TypeScript in src/)\n\n",
 
-**Test Performed:**
-- ❌ query="InputFile.*spreadsheet" → `fts5: syntax error near "."`
-- This is expected behavior - FTS5 doesn't support regex
+    "**Single-file mode**: Use file_path for precise single-file edits\n\n",
 
-**Recommendation:**
-- Document that queries are FTS5 text search, NOT regex
-- Consider escaping special characters in queries, or add a regex mode
+    "**Fuzzy matching**: Unlike exact search, this handles typos and variations ",
+    "(e.g., 'getUserData()' matches 'getUserDat()' with threshold 0.8)\n\n",
 
----
+    "**Preview by default**: Set dry_run=true to see EXACTLY what changes before applying. ",
+    "When preview looks good, set dry_run=false and the operation succeeds perfectly. ",
+    "You never need to verify results - the tool validates everything atomically.\n\n",
 
-## FILE_PATTERN BUG ANALYSIS
+    "**Perfect for**: Renaming, refactoring patterns, fixing typos across codebase"
+)
+```
 
-### Working Patterns ✅
+### Implementation Tasks
 
-| Pattern | Example | Result |
-|---------|---------|--------|
-| Extension only | `*.cs`, `*.razor` | ✅ Works |
-| Recursive extension | `**/*.cs`, `**/*.razor` | ✅ Works |
-| Wildcard prefix | `*RfaFormPageV2.razor` | ✅ Works |
-| Directory wildcard | `**/Services/*.cs` | ✅ Works |
-
-### Broken Patterns ❌
-
-| Pattern | Example | Result |
-|---------|---------|--------|
-| Specific filename with ** | `**/Program.cs` | ❌ Returns no results |
-| Specific filename alone | `Program.cs` | ❌ Returns no results |
-| Full path | `**/CoA.Intranet.Client/Program.cs` | ❌ Returns no results |
-| Directory pattern | `CoA.Intranet.Client/**` | ❌ Returns no results |
-| Wildcard + filename | `*Program.cs` | ❌ Returns no results |
-
-**Key Finding:** Specific filenames don't work with glob matching, even with wildcards. Only extension-based patterns work reliably.
-
-**Hypothesis:** The glob matching is checking against the full UNC path (`\?\C:\source\CoA Intranet\...`), and patterns like `**/Program.cs` aren't matching because:
-1. The UNC prefix might not be handled correctly
-2. Path separator handling (backslash vs forward slash)
-3. Glob library might not handle `**/filename.ext` pattern correctly
+- [ ] Change `file_path: String` � `file_path: Option<String>`
+- [ ] Add `file_pattern: Option<String>` parameter
+- [ ] Add validation: require exactly one of file_path/file_pattern
+- [ ] Write TDD tests for multi-file mode
+- [ ] Implement multi-file glob matching + replacement
+- [ ] Update result format to show per-file breakdown
+- [ ] Rewrite tool description with behavioral nudges
+- [ ] Test in production (dogfooding)
 
 ---
 
-## ✅ RESOLUTION (2025-10-22)
+## Phase 2: Fix JSON Params Hell in SmartRefactorTool
 
-**All issues fixed with comprehensive regression tests!**
+### Problem: JSON Params Are Unusable
 
-### Issue 1: Glob Pattern Matching - FIXED ✅
+**Current (BROKEN UX):**
+```json
+{
+  "operation": "rename_symbol",
+  "params": "{\"old_name\": \"getUserData\", \"new_name\": \"fetchUserData\"}",
+  "dry_run": false
+}
+```
 
-**Root Cause (Corrected):**
-- Simple filenames (e.g., `Program.cs`) without wildcards failed to match UNC paths
-- Globset library expects patterns to match entire path, not just basename
-- `**/Program.cs` patterns actually WORK (TODO.md initial finding was incorrect)
+**Why this fails:**
+- String escaping hell (`\"`)
+- No schema validation until runtime
+- Agents can't introspect what parameters are needed
+- Different operations need different schemas - confusing!
 
-**Fix Applied:**
-- Added special case in `matches_glob_pattern()` for simple filenames (no wildcards, no path separators)
-- Simple filenames now match against basename only, not full UNC path
-- Location: `src/tools/search/query.rs:80-96`
+### Solution: REPLACE SmartRefactorTool with Focused Tools
+
+**✅ DECISION: Option A - Two Tools**
+
+**Rationale:** Cognitive overhead > token overhead. Clear, focused tools beat complex multi-mode tools.
+
+**Option A: Two Tools (SELECTED)**
+
+1. **RenameSymbolTool** - Workspace-wide renaming
+```rust
+#[mcp_tool(name = "rename_symbol")]
+pub struct RenameSymbolTool {
+    pub old_name: String,
+    pub new_name: String,
+    #[serde(default = "default_true")]
+    pub dry_run: bool,
+}
+```
+
+2. **EditSymbolTool** - File-specific semantic editing
+```rust
+#[mcp_tool(name = "edit_symbol")]
+pub struct EditSymbolTool {
+    pub file_path: String,
+    pub symbol_name: String,
+    pub operation: EditOperation,  // enum: ReplaceBody | InsertBefore | InsertAfter
+    pub content: String,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+```
+
+### Implementation Tasks
+
+- [x] Decide on tool structure (Option A selected)
+- [ ] Create RenameSymbolTool with flat parameters
+- [ ] Create EditSymbolTool with flat parameters
+- [ ] Reuse existing SmartRefactorTool backend logic
+- [ ] Write focused descriptions with behavioral nudges
+- [ ] Delete SmartRefactorTool completely (no backward compat needed)
+- [ ] Update tool registration in mod.rs
+- [ ] Test in production
+
+---
+
+## Key Insights
+
+**Why CodeSearch's search_and_replace succeeds:**
+1. Description says "BULK updates" - consolidates workflow
+2. Says "You are skilled at pattern-based refactoring" - confidence nudge
+3. Says "You never need to verify results" - trust building
+4. Clear parameters, no JSON hell
+5. Preview by default - safety
+
+**Why Julie's tools get ignored:**
+1. FuzzyReplaceTool says "fuzzy" not "bulk" - doesn't position as workflow consolidator
+2. Single-file only - doesn't handle common "rename everywhere" case
+3. SmartRefactorTool has JSON params - too complex
+4. No behavioral nudges - agents don't know when to use them
+
+**The Fix:**
+- Enhanced FuzzyReplaceTool with multi-file = bulk replacement
+- Clear parameter tools = usability
+- Behavioral nudges in descriptions = discoverability
+
+---
+
+## Next Steps
+
+1. Implement Phase 1 (multi-file FuzzyReplaceTool) with TDD
+2. Get user feedback on Option A vs B vs C for Phase 2
+3. Implement chosen approach
+4. Dogfood both changes
+5. Monitor agent adoption patterns
+
+---
+
+*Last Updated: 2025-10-22*
+
+Remember to check the server instructions for references to removed, renamed, or new tools too.
+
+why did all this fail??
+
+⏺ julie - get_symbols (MCP)(file_path: "src/tools/refactoring/mod.rs", max_depth: 2, target: "RenameSymbolTool", include_body: true, mode: "minimal")
+  ⎿  No symbols matching 'RenameSymbolTool' found in: src/tools/refactoring/mod.rs
+
+⏺ Let me search for the RenameSymbolTool implementation:
+
+⏺ julie - fast_search (MCP)(query: "impl RenameSymbolTool", search_method: "text", limit: 5, search_target: "content", output: "lines", context_lines: 3)
+  ⎿  🔍 No lines found matching: 'impl RenameSymbolTool'
+     💡 Try a broader search term or different query
+
+⏺ julie - fast_search (MCP)(query: "RenameSymbolTool call_tool", search_method: "text", limit: 10, search_target: "content", output: "lines", context_lines: 5)
+  ⎿  🔍 No lines found matching: 'RenameSymbolTool call_tool'
+     💡 Try a broader search term or different query
+
+     
+## ✅ FILE WATCHER FIXED (2025-10-22)
+
+**Root Cause (Identified and Fixed):**
+The file watcher was completely non-functional because `process_pending_changes()` was never called!
+
+**What Was Broken:**
+1. File watcher detected changes and queued events ✓
+2. BUT events were never processed (no background task)
+3. Index ONLY updated at startup when staleness was detected
+4. This caused searches for newly created symbols to fail until restart
+
+**The Fix (3 Parts):**
+
+**Part 1: Background Task**
+- Added tokio::spawn background task that runs every 1 second
+- Processes all queued file events automatically
+- Calls static handler methods to avoid `&self` in spawned tasks
+
+**Part 2: SQLite Transaction Bug**
+- Fixed nested transaction bug in `store_symbols()`
+- Split into two methods:
+  - `store_symbols()` - no transaction management (for use within existing transaction)
+  - `store_symbols_transactional()` - manages its own transaction (for standalone use)
+- File watcher uses `begin_transaction()` → `store_symbols()` → `commit_transaction()`
+
+**Part 3: Foreign Key Constraint**
+- Added file record insertion before storing symbols
+- Uses `crate::database::create_file_info()` to ensure file exists
+- Prevents "FOREIGN KEY constraint failed" errors
 
 **Test Coverage:**
-- 7 glob pattern regression tests added (all passing)
-- Tests cover: simple filenames, `**` patterns, paths with spaces, UNC paths, wildcards
+- Added `test_real_time_file_watcher_indexing()` - TDD approach
+- Test creates file after watcher starts and verifies symbols appear in DB
+- All 32 database tests pass with the changes
 
-### Issue 2: FTS5 Syntax Errors - FIXED ✅
+**Result:**
+✅ File watcher now works correctly - new files are indexed in real-time
+✅ No more restart required to see newly created symbols
+✅ Embeddings still need optimization (currently skipped in background task due to std::sync::Mutex)
 
-**Root Cause:**
-- Users entering regex patterns (`InputFile.*`, `end$`, `foo|bar`, `file\.txt`)
-- FTS5 interprets these as operators, causing syntax errors
-- Existing sanitization missed: `$`, `.*` combo, `|`, and backslash escapes
-
-**Fix Applied:**
-- Added early backslash stripping (removes regex escape sequences)
-- Added `$` detection for end-of-line anchors
-- Added `.*` detection for regex wildcard patterns
-- Added `|` to special characters list (regex alternation)
-- All regex-like patterns now quoted as literal phrases
-- Location: `src/database/symbols/queries.rs:115-130, 171`
-
-**Test Coverage:**
-- 3 FTS5 syntax regression tests added (all passing)
-- Tests cover: dot patterns, asterisk patterns, all common regex metacharacters
-
-### Issue 3: Limit/Ranking Interaction - DOCUMENTED 📝
-
-**Status:** Tests deferred (requires database bulk insert API)
-
-**Workaround:**
-- Use higher limit values (default: 50, not 5)
-- TODO: Add ranking boost for non-test files in future iteration
-
----
-
-### Test Results Summary
-
-**10 regression tests created:**
-- ✅ 7 glob pattern tests (all passing)
-- ✅ 3 FTS5 syntax tests (all passing)
-- 📝 Limit/ranking tests documented for future implementation
-
-**Full test suite:**
-- ✅ 929 tests passing
-- ❌ 0 failures
-- ✅ No regressions introduced
-
-**Files Modified:**
-- `src/tools/search/query.rs` - Glob pattern matching fix
-- `src/database/symbols/queries.rs` - FTS5 sanitization improvements
-- `src/tests/integration/search_regression_tests.rs` - New regression test suite
-- `src/tests/mod.rs` - Register new test module
-- `src/tools/search/mod.rs` - Export matches_glob_pattern for testing
-
----
-
-### Recommended Fixes (COMPLETED - see above)
-
-~~1. **File Pattern Matching:**~~
-   ~~- Debug glob matching logic - check how patterns are applied to indexed file paths~~
-   ~~- Verify UNC paths (`\?\C:\...`) are normalized before glob matching~~
-   ~~- Test glob library with Windows UNC paths~~
-   ~~- Add test cases for all common glob patterns~~
-
-~~2. **Query Syntax:**~~
-   ~~- Document that queries use FTS5 syntax, not regex~~
-   ~~- Consider adding query escaping for FTS5 special chars (`.` `*` `"` etc)~~
-   ~~- Or add separate `regex_search` mode using LIKE/REGEXP~~
-
-~~3. **User Experience:**~~
-   ~~- Better error messages for unsupported glob patterns~~
-   ~~- Show example patterns that work~~
-   ~~- Validate file_pattern before executing search~~
-
-
-
-⏺ julie - fast_search (MCP)(query: "SanitizeQuery", search_method: "text", limit: 10, search_target: "content", workspace: "coa-mcp-framework_c77f81e4")
-  ⎿  Error: Tool execution failed: Workspace 'coa-mcp-framework_c77f81e4' not found. Use 'primary' or a valid workspace ID
-
-  in this case, the coa-mcp-framework workspace was already registered, but the supplied hash was wrong. what can we do so this works smoother?
-  1. Instead of saying not found, say "Did you mean {correct_workspace_id}" ?
-  2. Do we have this covered with tests properly? What about workspaces with spaces in the name? 
-  
----
-
-## ✅ RESOLUTION (2025-10-22) - Fuzzy Workspace Matching
-
-**Issue:** Workspace ID typos produce unhelpful "not found" errors with no suggestions.
-
-**Root Cause:**
-- User mistypes workspace hash or name
-- Error message simply says "not found" without suggesting alternatives
-- Frustrating UX when similar workspaces exist
-
-**Fix Applied:**
-- Created `src/utils/string_similarity.rs` with Levenshtein distance implementation
-- Integrated fuzzy matching into workspace error handling in two locations:
-  - `src/tools/search/mod.rs` (line 358-385)
-  - `src/tools/navigation/resolution.rs` (line 35-63)
-- Error message now shows "Did you mean '{closest_match}'?" when reasonable match found
-- Only suggests if distance < 50% of query length (prevents nonsensical suggestions)
-
-**Test Coverage:**
-- 4 unit tests in `src/utils/string_similarity.rs`:
-  - Basic Levenshtein distance calculations
-  - Closest match selection from candidates
-  - Workspace ID typo scenarios (wrong hash, similar names)
-  - Workspace names with spaces
-- All tests passing (4/4)
-
-**Examples:**
-- User types: `coa-mcp-framework_c77f81e4` (wrong workspace name)
-  → Error: "Workspace 'coa-mcp-framework_c77f81e4' not found. Did you mean 'coa-intranet_cdcd7a9d'?"
-- User types: `coa-codesearch-mcp_wronghash` (correct name, wrong hash)
-  → Error: "Workspace 'coa-codesearch-mcp_wronghash' not found. Did you mean 'coa-codesearch-mcp_9037416c'?"
-
-**Files Modified:**
-- `src/utils/string_similarity.rs` - NEW: Levenshtein distance + fuzzy matching (140 lines)
-- `src/utils/mod.rs` - Export string_similarity module
-- `src/tools/search/mod.rs` - Add fuzzy suggestions to workspace errors
-- `src/tools/navigation/resolution.rs` - Add fuzzy suggestions to workspace errors
-
-**Status:** COMPLETE ✅
-- Question 1: ✅ "Did you mean?" suggestions implemented
-- Question 2: ✅ Tested with workspaces containing spaces in names
+**Future Enhancement:**
+Consider adding debounce timing for delete+create sequences from editors (noted by user)
 

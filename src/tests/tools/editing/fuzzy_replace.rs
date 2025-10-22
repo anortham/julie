@@ -253,6 +253,250 @@ fn test_calculate_balance_in_strings() {
     assert_eq!(parens, 1, "Counts parens even in strings");
 }
 
+// ===== MULTI-FILE TESTS (TDD - THESE WILL FAIL INITIALLY) =====
+
+#[cfg(test)]
+mod multi_file_tests {
+    use super::*;
+    use crate::handler::JulieServerHandler;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_multi_file_basic_glob() -> Result<()> {
+        // Setup: Create temp workspace with multiple Rust files
+        let temp_dir = TempDir::new()?;
+        let file1 = temp_dir.path().join("src/main.rs");
+        let file2 = temp_dir.path().join("src/lib.rs");
+        let file3 = temp_dir.path().join("tests/test.rs");
+
+        fs::create_dir_all(temp_dir.path().join("src"))?;
+        fs::create_dir_all(temp_dir.path().join("tests"))?;
+
+        fs::write(&file1, "fn getUserData() { /* main */ }")?;
+        fs::write(&file2, "fn getUserData() { /* lib */ }")?;
+        fs::write(&file3, "fn getUserData() { /* test */ }")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // NEW API: file_pattern for multi-file mode
+        let tool = FuzzyReplaceTool {
+            file_path: None,  // ← This will fail: file_path is currently String, not Option<String>
+            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist yet
+            pattern: "getUserData".to_string(),
+            replacement: "fetchUserData".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+
+        // Verify all 3 files were modified
+        assert!(fs::read_to_string(&file1)?.contains("fetchUserData"));
+        assert!(fs::read_to_string(&file2)?.contains("fetchUserData"));
+        assert!(fs::read_to_string(&file3)?.contains("fetchUserData"));
+
+        // Verify result summary mentions 3 files
+        let result_text = format!("{:?}", result);
+        assert!(result_text.contains("3"), "Should report 3 files changed");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_single_file_still_works() -> Result<()> {
+        // Ensure backward compatibility: single-file mode still works
+        let temp_dir = TempDir::new()?;
+        let test_file = temp_dir.path().join("test.rs");
+        fs::write(&test_file, "fn getUserData() {}")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // OLD API: file_path for single-file mode
+        let tool = FuzzyReplaceTool {
+            file_path: Some(test_file.to_string_lossy().to_string()),  // ← This will fail: file_path is String, not Option<String>
+            file_pattern: None,  // ← This will fail: field doesn't exist yet
+            pattern: "getUserData".to_string(),
+            replacement: "fetchUserData".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool.call_tool(&handler).await;
+        assert!(result.is_ok(), "Single-file mode should still work");
+
+        let content = fs::read_to_string(&test_file)?;
+        assert!(content.contains("fetchUserData"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_validation_requires_exactly_one() -> Result<()> {
+        // Validation: Must provide EXACTLY ONE of file_path or file_pattern
+        let temp_dir = TempDir::new()?;
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        // ERROR CASE 1: Both provided
+        let tool_both = FuzzyReplaceTool {
+            file_path: Some("test.rs".to_string()),  // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            pattern: "old".to_string(),
+            replacement: "new".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool_both.call_tool(&handler).await;
+        assert!(result.is_ok(), "Should return Ok with error message");
+        let result_text = format!("{:?}", result);
+        assert!(result_text.contains("exactly one") || result_text.contains("Cannot provide both"),
+                "Should reject when both file_path and file_pattern provided: {}", result_text);
+
+        // ERROR CASE 2: Neither provided
+        let tool_neither = FuzzyReplaceTool {
+            file_path: None,  // ← This will fail: field type wrong
+            file_pattern: None,  // ← This will fail: field doesn't exist
+            pattern: "old".to_string(),
+            replacement: "new".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool_neither.call_tool(&handler).await;
+        assert!(result.is_ok(), "Should return Ok with error message");
+        let result_text = format!("{:?}", result);
+        assert!(result_text.contains("exactly one") || result_text.contains("Must provide"),
+                "Should reject when neither file_path nor file_pattern provided: {}", result_text);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_multi_file_results_aggregation() -> Result<()> {
+        // Verify result format aggregates: total files changed, total replacements
+        let temp_dir = TempDir::new()?;
+        let file1 = temp_dir.path().join("a.rs");
+        let file2 = temp_dir.path().join("b.rs");
+
+        // file1: 2 occurrences, file2: 1 occurrence
+        fs::write(&file1, "test test")?;
+        fs::write(&file2, "test")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        let tool = FuzzyReplaceTool {
+            file_path: None,  // ← This will fail: field type wrong
+            file_pattern: Some("*.rs".to_string()),  // ← This will fail: field doesn't exist
+            pattern: "test".to_string(),
+            replacement: "TEST".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let result_text = format!("{:?}", result);
+
+        // Should report: 2 files changed, 3 total replacements
+        assert!(result_text.contains("2") && result_text.contains("files"), "Should mention 2 files");
+        assert!(result_text.contains("3") && result_text.contains("replacement"), "Should mention 3 replacements");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_multi_file_dry_run() -> Result<()> {
+        // Dry run should preview changes without modifying files
+        let temp_dir = TempDir::new()?;
+        let file1 = temp_dir.path().join("test.rs");
+        fs::write(&file1, "fn getUserData() {}")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        let tool = FuzzyReplaceTool {
+            file_path: None,  // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            pattern: "getUserData".to_string(),
+            replacement: "fetchUserData".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: true,  // DRY RUN
+            validate: true,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let result_text = format!("{:?}", result);
+
+        // Should show preview (case-insensitive)
+        let result_text_lower = result_text.to_lowercase();
+        assert!(result_text_lower.contains("preview") || result_text_lower.contains("would"), "Expected 'preview' or 'would' in result: {}", result_text);
+
+        // File should NOT be modified
+        let content = fs::read_to_string(&file1)?;
+        assert!(content.contains("getUserData"), "Dry run should not modify file");
+        assert!(!content.contains("fetchUserData"), "Dry run should not modify file");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_replace_multi_file_no_matches() -> Result<()> {
+        // Multi-file mode with no matches should report clearly
+        let temp_dir = TempDir::new()?;
+        let file1 = temp_dir.path().join("test.rs");
+        fs::write(&file1, "fn existingFunction() {}")?;
+
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
+
+        let tool = FuzzyReplaceTool {
+            file_path: None,  // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            pattern: "nonExistentFunction".to_string(),
+            replacement: "newFunction".to_string(),
+            threshold: 1.0,
+            distance: 1000,
+            dry_run: false,
+            validate: true,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let result_text = format!("{:?}", result);
+
+        // Should report 0 matches/files
+        assert!(result_text.contains("0") || result_text.contains("No matches"));
+
+        Ok(())
+    }
+}
+
 // ===== SECURITY TESTS =====
 
 #[cfg(test)]
@@ -272,7 +516,8 @@ mod security_tests {
 
         // Try to access /etc/passwd using absolute path
         let edit_tool = FuzzyReplaceTool {
-            file_path: "/etc/passwd".to_string(),
+            file_path: Some("/etc/passwd".to_string()),
+            file_pattern: None,
             pattern: "root".to_string(),
             replacement: "hacked".to_string(),
             threshold: 1.0,
@@ -305,7 +550,8 @@ mod security_tests {
 
         // Try to access ../../../../etc/passwd using relative path traversal
         let edit_tool = FuzzyReplaceTool {
-            file_path: "../../../../etc/passwd".to_string(),
+            file_path: Some("../../../../etc/passwd".to_string()),
+            file_pattern: None,
             pattern: "root".to_string(),
             replacement: "hacked".to_string(),
             threshold: 1.0,
@@ -341,7 +587,8 @@ mod security_tests {
 
         // Valid absolute path should work
         let edit_tool = FuzzyReplaceTool {
-            file_path: test_file.to_string_lossy().to_string(),
+            file_path: Some(test_file.to_string_lossy().to_string()),
+            file_pattern: None,
             pattern: "world".to_string(),
             replacement: "universe".to_string(),
             threshold: 1.0,
@@ -363,10 +610,66 @@ mod security_tests {
     }
 }
 
+// ===== PERFORMANCE REGRESSION TESTS =====
+
+#[test]
+#[ignore] // Ignored by default - run with: cargo test test_fuzzy_replace_performance_mod_rs -- --ignored
+fn test_fuzzy_replace_performance_mod_rs() -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    // Load the actual mod.rs that caused the hang
+    let mod_rs_path = "src/tools/refactoring/mod.rs";
+    let content = std::fs::read_to_string(mod_rs_path)
+        .expect("mod.rs should exist for this test");
+
+    // Create tool with same params that caused the hang
+    let tool = FuzzyReplaceTool {
+        file_path: None,
+        file_pattern: None,
+        pattern: "SmartRefactorTool".to_string(),
+        replacement: "CoreRefactoringEngine".to_string(),
+        threshold: 0.9,
+        distance: 1000,
+        dry_run: true,
+        validate: true,
+    };
+
+    // Time the operation - should complete in reasonable time
+    let start = Instant::now();
+    let result = tool.fuzzy_search_replace(&content);
+    let elapsed = start.elapsed();
+
+    // Assert it completed successfully
+    assert!(
+        result.is_ok(),
+        "Fuzzy replace should complete without error: {:?}",
+        result
+    );
+
+    // Performance assertion - should complete in under 10 seconds
+    // (Fuzzy matching is computationally expensive, ~7s is expected for 20KB files)
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "Fuzzy replace took {:?} - this is a performance regression! Should complete in <10s",
+        elapsed
+    );
+
+    let (modified, matches) = result.unwrap();
+    println!(
+        "✅ Processed {} bytes in {:?}, found {} matches",
+        content.len(),
+        elapsed,
+        matches
+    );
+
+    Ok(())
+}
+
 // Helper function to create a tool with basic params
 fn create_tool(pattern: &str, replacement: &str) -> FuzzyReplaceTool {
     FuzzyReplaceTool {
-        file_path: "/tmp/test.txt".to_string(),
+        file_path: Some("/tmp/test.txt".to_string()),
+        file_pattern: None,
         pattern: pattern.to_string(),
         replacement: replacement.to_string(),
         threshold: 1.0, // Default to exact match

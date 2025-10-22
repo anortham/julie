@@ -494,8 +494,12 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🏢 Find business logic: {:?}", tool);
                 tool.call_tool(self).await
             }
-            JulieTools::SmartRefactorTool(tool) => {
-                debug!("🔄 Smart refactor: {:?}", tool);
+            JulieTools::RenameSymbolTool(tool) => {
+                debug!("✏️  Rename symbol: {:?}", tool);
+                tool.call_tool(self).await
+            }
+            JulieTools::EditSymbolTool(tool) => {
+                debug!("✂️  Edit symbol: {:?}", tool);
                 tool.call_tool(self).await
             }
         };

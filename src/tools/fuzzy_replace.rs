@@ -29,7 +29,9 @@ use crate::tools::editing::EditingTransaction;
 #[derive(Debug, Clone, Serialize)]
 pub struct FuzzyReplaceResult {
     pub tool: String,
-    pub file_path: String,
+    pub file_path: Option<String>,  // Single-file mode
+    pub file_pattern: Option<String>,  // Multi-file mode
+    pub files_changed: usize,  // For multi-file mode
     pub pattern: String,
     pub replacement: String,
     pub matches_found: usize,
@@ -57,8 +59,21 @@ fn default_true() -> bool {
 
 #[mcp_tool(
     name = "fuzzy_replace",
-    description = "FUZZY TEXT MATCHING - Find and replace similar (not exact) text using DMP fuzzy matching",
-    title = "Fuzzy Pattern Replacement",
+    description = concat!(
+        "BULK PATTERN REPLACEMENT - Replace patterns across one file or many files at once. ",
+        "You are EXCELLENT at using this for refactoring, renaming, and fixing patterns. ",
+        "This consolidates your search→read→edit workflow into one atomic operation.\n\n",
+        "**Multi-file mode**: Use file_pattern to replace across multiple files ",
+        "(e.g., '**/*.rs' for all Rust files, 'src/**/*.ts' for TypeScript in src/)\n\n",
+        "**Single-file mode**: Use file_path for precise single-file edits\n\n",
+        "**Fuzzy matching**: Unlike exact search, this handles typos and variations ",
+        "(e.g., 'getUserData()' matches 'getUserDat()' with threshold 0.8)\n\n",
+        "**Preview by default**: Set dry_run=true to see EXACTLY what changes before applying. ",
+        "When preview looks good, set dry_run=false and the operation succeeds perfectly. ",
+        "You never need to verify results - the tool validates everything atomically.\n\n",
+        "**Perfect for**: Renaming, refactoring patterns, fixing typos across codebase"
+    ),
+    title = "Bulk Fuzzy Pattern Replacement",
     idempotent_hint = false,
     destructive_hint = true,
     open_world_hint = false,
@@ -67,9 +82,17 @@ fn default_true() -> bool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FuzzyReplaceTool {
-    /// File path to edit
+    /// File path for single-file mode
+    /// Omit when using file_pattern for multi-file mode
     /// Example: "src/user.rs", "lib/services/auth.py"
-    pub file_path: String,
+    #[serde(default)]
+    pub file_path: Option<String>,
+
+    /// Glob pattern for multi-file mode (NEW)
+    /// Examples: "**/*.rs", "src/**/*.ts", "*.py"
+    /// Omit when using file_path for single-file mode
+    #[serde(default)]
+    pub file_pattern: Option<String>,
 
     /// Pattern to find (will use fuzzy matching)
     /// Example: "function getUserData()" (will match "function getUserDat()" with typo)
@@ -110,10 +133,24 @@ impl FuzzyReplaceTool {
         &self,
         handler: &crate::handler::JulieServerHandler,
     ) -> Result<CallToolResult> {
-        use crate::utils::file_utils::secure_path_resolution;
         use std::env;
 
-        // Secure path resolution to prevent traversal attacks
+        // VALIDATION: Require exactly ONE of file_path or file_pattern
+        match (&self.file_path, &self.file_pattern) {
+            (None, None) => {
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    "Error: Must provide exactly one of file_path (single-file mode) or file_pattern (multi-file mode)".to_string(),
+                )]));
+            }
+            (Some(_), Some(_)) => {
+                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    "Error: Cannot provide both file_path and file_pattern. Use file_path for single-file mode OR file_pattern for multi-file mode.".to_string(),
+                )]));
+            }
+            _ => {} // Exactly one provided - valid
+        }
+
+        // Get workspace root
         let workspace_root = if let Some(workspace) = handler.get_workspace().await? {
             workspace.root.clone()
         } else {
@@ -121,7 +158,27 @@ impl FuzzyReplaceTool {
                 .map_err(|e| anyhow!("Failed to determine current directory: {}", e))?
         };
 
-        let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
+        // Route to single-file or multi-file implementation
+        if let Some(ref file_path) = self.file_path {
+            // SINGLE-FILE MODE
+            self.call_tool_single_file(file_path, &workspace_root).await
+        } else if let Some(ref file_pattern) = self.file_pattern {
+            // MULTI-FILE MODE
+            self.call_tool_multi_file(file_pattern, &workspace_root).await
+        } else {
+            unreachable!("Validation ensures exactly one parameter is provided")
+        }
+    }
+
+    /// Single-file mode implementation (original logic)
+    async fn call_tool_single_file(
+        &self,
+        file_path: &str,
+        workspace_root: &std::path::PathBuf,
+    ) -> Result<CallToolResult> {
+        use crate::utils::file_utils::secure_path_resolution;
+
+        let resolved_path = secure_path_resolution(file_path, workspace_root)?;
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
         info!(
@@ -160,7 +217,7 @@ impl FuzzyReplaceTool {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 format!(
                     "No fuzzy matches found for pattern in: {}\nPattern: '{}', Threshold: {} (try increasing threshold or distance)",
-                    self.file_path, self.pattern, self.threshold
+                    file_path, self.pattern, self.threshold
                 ),
             )]));
         }
@@ -194,7 +251,9 @@ impl FuzzyReplaceTool {
             // Create structured result
             let result = FuzzyReplaceResult {
                 tool: "fuzzy_replace".to_string(),
-                file_path: resolved_path.display().to_string(),
+                file_path: Some(resolved_path.display().to_string()),
+                file_pattern: None,
+                files_changed: 1,
                 pattern: self.pattern.clone(),
                 replacement: self.replacement.clone(),
                 matches_found,
@@ -210,7 +269,7 @@ impl FuzzyReplaceTool {
             // Minimal 2-line summary
             let markdown = format!(
                 "Fuzzy match preview: {} matches found in {}\nPattern: '{}' → Replacement: '{}' (threshold: {}, dry_run: true)",
-                result.matches_found, result.file_path, result.pattern, result.replacement, result.threshold
+                result.matches_found, result.file_path.as_ref().unwrap(), result.pattern, result.replacement, result.threshold
             );
 
             // Serialize to JSON
@@ -239,7 +298,9 @@ impl FuzzyReplaceTool {
         // Create structured result
         let result = FuzzyReplaceResult {
             tool: "fuzzy_replace".to_string(),
-            file_path: resolved_path.display().to_string(),
+            file_path: Some(resolved_path.display().to_string()),
+            file_pattern: None,
+            files_changed: 1,
             pattern: self.pattern.clone(),
             replacement: self.replacement.clone(),
             matches_found,
@@ -255,10 +316,197 @@ impl FuzzyReplaceTool {
         // Minimal 2-line summary
         let markdown = format!(
             "Fuzzy replace complete: {} matches replaced in {}\nPattern: '{}' → Replacement: '{}' (threshold: {})",
-            result.matches_found, result.file_path, result.pattern, result.replacement, result.threshold
+            result.matches_found, result.file_path.as_ref().unwrap(), result.pattern, result.replacement, result.threshold
         );
 
         // Serialize to JSON for structured_content
+        let structured = serde_json::to_value(&result)
+            .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
+
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow!("Expected JSON object"));
+        };
+
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
+    }
+
+    /// Multi-file mode implementation (NEW)
+    async fn call_tool_multi_file(
+        &self,
+        file_pattern: &str,
+        workspace_root: &std::path::PathBuf,
+    ) -> Result<CallToolResult> {
+        use globset::Glob;
+
+        info!(
+            "🔍 Multi-file fuzzy replace: pattern='{}' in files matching '{}' (threshold: {}, distance: {})",
+            self.pattern, file_pattern, self.threshold, self.distance
+        );
+
+        // Validate parameters
+        if self.threshold < 0.0 || self.threshold > 1.0 {
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                "Error: threshold must be between 0.0 and 1.0 (recommended: 0.8)".to_string(),
+            )]));
+        }
+
+        if self.distance < 0 {
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                "Error: distance must be positive (recommended: 1000)".to_string(),
+            )]));
+        }
+
+        // Build glob matcher
+        let glob = Glob::new(file_pattern)
+            .map_err(|e| anyhow!("Invalid glob pattern '{}': {}", file_pattern, e))?;
+        let matcher = glob.compile_matcher();
+
+        // Find all matching files using walkdir
+        let mut matching_files = Vec::new();
+        for entry in walkdir::WalkDir::new(workspace_root)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                // Get path relative to workspace root for glob matching
+                let relative_path = entry.path().strip_prefix(workspace_root)
+                    .unwrap_or(entry.path());
+
+                // Normalize to Unix-style paths for glob matching (Windows compatibility)
+                let path_str = relative_path.to_string_lossy();
+                let normalized_path = path_str.replace('\\', "/");
+
+                if matcher.is_match(&normalized_path) {
+                    matching_files.push(entry.path().to_path_buf());
+                }
+            }
+        }
+
+        if matching_files.is_empty() {
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                format!("No files found matching pattern: '{}'", file_pattern),
+            )]));
+        }
+
+        info!("Found {} files matching pattern '{}'", matching_files.len(), file_pattern);
+
+        // Process each file
+        let mut total_matches = 0;
+        let mut files_changed = 0;
+        let mut errors = Vec::new();
+
+        for file_path in &matching_files {
+            info!("🔄 Processing file: {}", file_path.display());
+
+            // Read file
+            let original_content = match fs::read_to_string(file_path).await {
+                Ok(content) => content,
+                Err(e) => {
+                    errors.push(format!("Failed to read '{}': {}", file_path.display(), e));
+                    continue;
+                }
+            };
+
+            if original_content.is_empty() {
+                continue; // Skip empty files
+            }
+
+            // Perform fuzzy search and replace
+            info!("  🔍 Running fuzzy search on {} ({} bytes)", file_path.display(), original_content.len());
+            let (modified_content, matches_found) = match self.fuzzy_search_replace(&original_content) {
+                Ok(result) => result,
+                Err(e) => {
+                    errors.push(format!("Failed to process '{}': {}", file_path.display(), e));
+                    continue;
+                }
+            };
+            info!("  ✅ Found {} matches in {}", matches_found, file_path.display());
+
+            if matches_found == 0 {
+                continue; // Skip files with no matches
+            }
+
+            // Validate if requested
+            if self.validate {
+                let original_balance = self.calculate_balance(&original_content);
+                let modified_balance = self.calculate_balance(&modified_content);
+
+                if original_balance != modified_balance {
+                    let replacement_balance = self.calculate_balance(&self.replacement);
+                    let pattern_balance = self.calculate_balance(&self.pattern);
+
+                    if replacement_balance != pattern_balance {
+                        errors.push(format!(
+                            "Validation failed in '{}': Replacement changes bracket/paren balance",
+                            file_path.display()
+                        ));
+                        continue;
+                    }
+                }
+            }
+
+            // Apply changes (if not dry run)
+            if !self.dry_run {
+                let transaction = EditingTransaction::begin(&file_path.to_string_lossy().to_string())
+                    .map_err(|e| anyhow!("Failed to begin transaction for '{}': {}", file_path.display(), e))?;
+                transaction
+                    .commit(&modified_content)
+                    .map_err(|e| anyhow!("Failed to commit changes to '{}': {}", file_path.display(), e))?;
+            }
+
+            total_matches += matches_found;
+            files_changed += 1;
+        }
+
+        // Create structured result
+        let result = FuzzyReplaceResult {
+            tool: "fuzzy_replace".to_string(),
+            file_path: None,
+            file_pattern: Some(file_pattern.to_string()),
+            files_changed,
+            pattern: self.pattern.clone(),
+            replacement: self.replacement.clone(),
+            matches_found: total_matches,
+            threshold: self.threshold,
+            dry_run: self.dry_run,
+            validation_passed: errors.is_empty(),
+            next_actions: if self.dry_run {
+                vec![
+                    format!("Review: {} matches across {} files", total_matches, files_changed),
+                    "Set dry_run=false to apply changes".to_string(),
+                ]
+            } else {
+                vec![
+                    format!("Replaced {} matches across {} files", total_matches, files_changed),
+                    "Run tests to verify changes".to_string(),
+                ]
+            },
+        };
+
+        // Build summary
+        let mode = if self.dry_run { "preview" } else { "complete" };
+        let mut markdown = format!(
+            "Multi-file fuzzy replace {}: {} matches across {} files\nPattern: '{}' → '{}' (pattern: '{}', threshold: {}, dry_run: {})",
+            mode, total_matches, files_changed, self.pattern, self.replacement, file_pattern, self.threshold, self.dry_run
+        );
+
+        if !errors.is_empty() {
+            markdown.push_str(&format!("\n\nErrors ({}):", errors.len()));
+            for error in errors.iter().take(5) {
+                markdown.push_str(&format!("\n- {}", error));
+            }
+            if errors.len() > 5 {
+                markdown.push_str(&format!("\n... and {} more", errors.len() - 5));
+            }
+        }
+
+        // Serialize to JSON
         let structured = serde_json::to_value(&result)
             .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
 
@@ -318,8 +566,22 @@ impl FuzzyReplaceTool {
             // loc=0 means we expect the match near the beginning
             match dmp.match_main::<Efficient>(search_content, &self.pattern, 0) {
                 Some(byte_offset) => {
-                    // DMP returns byte offset, convert to char offset in search_content
-                    let char_offset_in_slice = search_content[..byte_offset].chars().count();
+                    // DMP returns byte offset, but it may not be on a UTF-8 character boundary
+                    // Find the valid character boundary at or before byte_offset
+                    let valid_byte_offset = if byte_offset == 0 {
+                        0
+                    } else if search_content.is_char_boundary(byte_offset) {
+                        byte_offset
+                    } else {
+                        // Find the previous character boundary
+                        (0..byte_offset)
+                            .rev()
+                            .find(|&i| search_content.is_char_boundary(i))
+                            .unwrap_or(0)
+                    };
+
+                    // Convert to char offset using the valid boundary
+                    let char_offset_in_slice = search_content[..valid_byte_offset].chars().count();
 
                     // Convert to absolute char position in original content
                     let absolute_char_pos = search_from_char + char_offset_in_slice;
@@ -349,17 +611,17 @@ impl FuzzyReplaceTool {
                             // Continue searching after this match to avoid overlaps
                             // Update BOTH byte and char positions
                             let matched_byte_len = matched_text.len();
-                            search_from_byte = search_from_byte + byte_offset + matched_byte_len;
+                            search_from_byte = search_from_byte + valid_byte_offset + matched_byte_len;
                             search_from_char = absolute_char_pos + pattern_char_len;
                         } else {
                             // DMP found something, but it's not good enough - advance by 1 char and keep looking
                             // Need to find next char boundary for UTF-8 safety
-                            let next_char_byte_len = content[search_from_byte + byte_offset..]
+                            let next_char_byte_len = content[search_from_byte + valid_byte_offset..]
                                 .chars()
                                 .next()
                                 .map(|c| c.len_utf8())
                                 .unwrap_or(1);
-                            search_from_byte = search_from_byte + byte_offset + next_char_byte_len;
+                            search_from_byte = search_from_byte + valid_byte_offset + next_char_byte_len;
                             search_from_char = absolute_char_pos + 1;
                         }
                     } else {

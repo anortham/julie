@@ -33,7 +33,7 @@ pub struct IncrementalIndexer {
     vector_store: Option<Arc<RwLock<VectorIndex>>>,
 
     // Processing queues
-    index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
+    pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
 
     // File filters
     supported_extensions: HashSet<String>,
@@ -125,9 +125,11 @@ impl IncrementalIndexer {
         let index_queue = self.index_queue.clone();
 
         tokio::spawn(async move {
+            info!("🔍 File system event detector started");
             while let Some(event_result) = rx.recv().await {
                 match event_result {
                     Ok(event) => {
+                        debug!("📁 File system event detected: {:?}", event);
                         if let Err(e) = Self::process_file_system_event_static(
                             &supported_extensions,
                             &ignore_patterns,
@@ -146,10 +148,55 @@ impl IncrementalIndexer {
             }
         });
 
-        // Note: Queue processing will be handled by calling process_pending_changes()
-        // periodically from the main thread to avoid thread safety issues
+        // Spawn background task to process queued events
+        // Clone all the components needed for processing
+        let db = self.db.clone();
+        let embeddings = self.embedding_engine.clone();
+        let extractor_manager = self.extractor_manager.clone();
+        let vector_store = self.vector_store.clone();
+        let queue_for_processing = self.index_queue.clone();
+        let workspace_root = self.workspace_root.clone();
 
-        info!("File watcher started successfully");
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let mut tick = interval(Duration::from_secs(1)); // Process queue every second
+
+            info!("🔄 Background queue processor started");
+            loop {
+                tick.tick().await;
+
+                // Process all items currently in the queue
+                let queue_size = {
+                    let queue = queue_for_processing.lock().await;
+                    queue.len()
+                };
+
+                if queue_size > 0 {
+                    debug!("📦 Processing {} queued file events", queue_size);
+                }
+
+                while let Some(event) = {
+                    let mut queue = queue_for_processing.lock().await;
+                    queue.pop_front()
+                } {
+                    info!("🔄 Background task processing: {:?}", event.path);
+                    if let Err(e) = Self::handle_file_change_static(
+                        event,
+                        &db,
+                        &embeddings,
+                        &extractor_manager,
+                        vector_store.as_ref(),
+                        &workspace_root,
+                    )
+                    .await
+                    {
+                        error!("Failed to handle file change: {}", e);
+                    }
+                }
+            }
+        });
+
+        info!("File watcher started successfully with background queue processing");
         Ok(())
     }
 
@@ -282,6 +329,43 @@ impl IncrementalIndexer {
         }
     }
 
+    /// Handle file change with explicit dependencies (for background task)
+    async fn handle_file_change_static(
+        event: FileChangeEvent,
+        db: &Arc<StdMutex<SymbolDatabase>>,
+        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        extractor_manager: &Arc<ExtractorManager>,
+        vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+        workspace_root: &Path,
+    ) -> Result<()> {
+        let start_time = std::time::Instant::now();
+
+        match event.change_type {
+            FileChangeType::Created | FileChangeType::Modified => {
+                Self::handle_file_created_or_modified_static(
+                    event.path,
+                    db,
+                    embeddings,
+                    extractor_manager,
+                    vector_store,
+                    workspace_root,
+                )
+                .await?;
+            }
+            FileChangeType::Deleted => {
+                Self::handle_file_deleted_static(event.path, db, vector_store).await?;
+            }
+            FileChangeType::Renamed { from, to } => {
+                Self::handle_file_renamed_static(from, to, db, embeddings, extractor_manager, vector_store, workspace_root).await?;
+            }
+        }
+
+        let processing_time = start_time.elapsed();
+        debug!("File change processed in {:?}", processing_time);
+
+        Ok(())
+    }
+
     /// Handle a specific file change event
     async fn handle_file_change(&self, event: FileChangeEvent) -> Result<()> {
         let start_time = std::time::Instant::now();
@@ -387,6 +471,13 @@ impl IncrementalIndexer {
         }
 
         db.begin_transaction()?;
+
+        // Ensure file record exists (required for foreign key constraint)
+        let file_info = crate::database::create_file_info(&path, &language)?;
+        if let Err(e) = db.store_file_info(&file_info) {
+            db.rollback_transaction()?;
+            return Err(e);
+        }
 
         // Remove old symbols for this file (now safe - either we have new symbols or file never had symbols)
         db.delete_symbols_for_file(&path_str)?;
@@ -627,6 +718,137 @@ impl IncrementalIndexer {
                     .map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e))
             })
             .collect()
+    }
+
+    //  ═══════════════════════════════════════════════════════════════════════════
+    //  STATIC HANDLER METHODS (for background task without &self)
+    //  ═══════════════════════════════════════════════════════════════════════════
+
+    /// Static version of handle_file_created_or_modified for background processing
+    async fn handle_file_created_or_modified_static(
+        path: PathBuf,
+        db: &Arc<StdMutex<SymbolDatabase>>,
+        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        extractor_manager: &Arc<ExtractorManager>,
+        _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+        workspace_root: &Path,
+    ) -> Result<()> {
+        info!("Processing file: {}", path.display());
+
+        // 1. Read file content and calculate hash
+        let content = tokio::fs::read(&path).await.context("Failed to read file content")?;
+        let new_hash = blake3::hash(&content);
+
+        // 2. Check if file actually changed using Blake3
+        let path_str = path.to_string_lossy();
+        {
+            let db_lock = db.lock().unwrap();
+            if let Some(old_hash_str) = db_lock.get_file_hash(&path_str)? {
+                let new_hash_str = hex::encode(new_hash.as_bytes());
+                if new_hash_str == old_hash_str {
+                    debug!("File {} unchanged (Blake3 hash match), skipping", path.display());
+                    return Ok(());
+                }
+            }
+        }
+
+        // 3. Detect language and extract symbols
+        let language = Self::detect_language_static(&path, workspace_root)?;
+        let content_str = String::from_utf8_lossy(&content);
+
+        let symbols = match extractor_manager.extract_symbols(&path_str, &content_str) {
+            Ok(symbols) => symbols,
+            Err(e) => {
+                error!("❌ Symbol extraction failed for {}: {}", path_str, e);
+                return Ok(()); // Skip update to preserve existing data
+            }
+        };
+
+        info!("Extracted {} symbols from {} ({})", symbols.len(), path.display(), language);
+
+        // 4. Update SQLite database
+        {
+            let mut db_lock = db.lock().unwrap();
+            let existing_symbols = db_lock.get_symbols_for_file(&path_str)?;
+
+            // Safeguard against data loss
+            if symbols.is_empty() && !existing_symbols.is_empty() {
+                warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {}", existing_symbols.len(), path_str);
+                return Ok(());
+            }
+
+            // Use transaction for atomic updates
+            db_lock.begin_transaction()?;
+
+            // Ensure file record exists (required for foreign key constraint)
+            let file_info = crate::database::create_file_info(&path, &language)?;
+            if let Err(e) = db_lock.store_file_info(&file_info) {
+                db_lock.rollback_transaction()?;
+                return Err(e);
+            }
+
+            // Delete old symbols for this file
+            db_lock.delete_symbols_for_file(&path_str)?;
+
+            // Insert new symbols (within the transaction)
+            db_lock.store_symbols(&symbols)?;
+
+            // Update file hash
+            let new_hash_str = hex::encode(new_hash.as_bytes());
+            db_lock.update_file_hash(&path_str, &new_hash_str)?;
+
+            db_lock.commit_transaction()?;
+        }
+
+        // 5. TODO: Generate embeddings
+        // Currently skipped in background task due to std::sync::Mutex not being Send across await
+        // Embeddings will be generated lazily on-demand by semantic search
+        // To fix: convert EmbeddingEngine to use tokio::sync::Mutex instead of std::sync::Mutex
+        let _ = embeddings; // Silence unused warning
+
+        info!("Successfully indexed {}", path.display());
+        Ok(())
+    }
+
+    /// Static version of handle_file_deleted for background processing
+    async fn handle_file_deleted_static(
+        path: PathBuf,
+        db: &Arc<StdMutex<SymbolDatabase>>,
+        _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+    ) -> Result<()> {
+        info!("Processing file deletion: {}", path.display());
+
+        let path_str = path.to_string_lossy();
+        let db_lock = db.lock().unwrap();
+        db_lock.delete_symbols_for_file(&path_str)?;
+        db_lock.delete_file_record(&path_str)?;
+
+        info!("Successfully removed indexes for {}", path.display());
+        Ok(())
+    }
+
+    /// Static version of handle_file_renamed for background processing
+    async fn handle_file_renamed_static(
+        from: PathBuf,
+        to: PathBuf,
+        db: &Arc<StdMutex<SymbolDatabase>>,
+        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        extractor_manager: &Arc<ExtractorManager>,
+        vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+        workspace_root: &Path,
+    ) -> Result<()> {
+        info!("Handling file rename: {} -> {}", from.display(), to.display());
+
+        // Delete + create
+        Self::handle_file_deleted_static(from, db, vector_store).await?;
+        Self::handle_file_created_or_modified_static(to, db, embeddings, extractor_manager, vector_store, workspace_root).await?;
+
+        Ok(())
+    }
+
+    /// Static language detection helper
+    fn detect_language_static(path: &Path, _workspace_root: &Path) -> Result<String> {
+        Self::detect_language_by_extension(path)
     }
 
     /// Process any pending file changes from the queue
