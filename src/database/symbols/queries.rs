@@ -112,12 +112,31 @@ impl SymbolDatabase {
             return trimmed.to_string();
         }
 
+        // 🔥 FIX: Remove regex escape backslashes early
+        // Users coming from grep/ripgrep might use \. \d \w etc.
+        // These have no meaning in FTS5 and cause syntax errors
+        // Strip them out early so downstream logic doesn't have to handle them
+        let trimmed = trimmed.replace('\\', "");
+
         // Contains explicit FTS5 operators - pass through (user knows FTS5 syntax)
         if trimmed.contains(" AND ") || trimmed.contains(" OR ") || trimmed.contains(" NOT ") {
             return trimmed.to_string();
         }
 
+        // 🔥 FIX: Handle regex-like patterns that FTS5 can't parse
+        // Patterns like "InputFile.*" or "end$" look like regex but cause FTS5 syntax errors
+        // These need to be quoted as literal phrases
+        let has_regex_metachar = trimmed.contains('$') || trimmed.contains('^');
+        let has_dot_star = trimmed.contains(".*");
+
+        if has_regex_metachar || has_dot_star {
+            // Quote as phrase to prevent FTS5 from interpreting these as operators
+            let escaped = trimmed.replace('"', "\"\"");
+            return format!("\"{}\"", escaped);
+        }
+
         // Contains intentional wildcards - pass through
+        // (But only if not combined with problematic chars like . or $, handled above)
         if trimmed.contains('*') {
             return trimmed.to_string();
         }
@@ -154,7 +173,8 @@ impl SymbolDatabase {
         // + is not officially documented as special, but causes "syntax error near +" in practice
         // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
         // = causes "syntax error near =" when used in queries
-        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '='];
+        // | causes "syntax error near |" (regex alternation, not FTS5)
+        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '=', '|'];
 
         // Check if query contains any special characters
         let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
@@ -162,6 +182,7 @@ impl SymbolDatabase {
         if has_special {
             // Quote the entire query to treat it as a literal phrase
             // Use double quotes and escape any internal double quotes
+            // (Backslashes already stripped earlier in this function)
             let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
             format!("\"{}\"", escaped)
         } else {

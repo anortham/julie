@@ -8,7 +8,7 @@
 //! - Per-workspace isolation
 
 // Public API re-exports
-pub use self::query::preprocess_fallback_query;
+pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules

@@ -76,6 +76,27 @@ pub fn matches_glob_pattern(file_path: &str, pattern: &str) -> bool {
         }
     } else {
         // Inclusion: return true if path matches the pattern
+
+        // Special case: Simple filename patterns (no wildcards, no path separators)
+        // Match against basename only, not full UNC path
+        // Example: "Program.cs" should match "\\?\C:\source\project\Program.cs"
+        let is_simple_filename = !pattern.contains('*')
+            && !pattern.contains('?')
+            && !pattern.contains('/')
+            && !pattern.contains('\\');
+
+        if is_simple_filename {
+            // Extract basename from path (handle both / and \ separators, including UNC paths)
+            let basename = file_path
+                .rsplit(|c| c == '/' || c == '\\')
+                .next()
+                .unwrap_or(file_path);
+
+            // Simple string comparison for exact filename match
+            return basename == pattern;
+        }
+
+        // Standard glob matching for patterns with wildcards or path separators
         match Glob::new(pattern) {
             Ok(glob) => {
                 let matcher = glob.compile_matcher();

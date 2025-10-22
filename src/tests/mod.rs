@@ -94,6 +94,7 @@ pub mod integration {
     pub mod lock_contention; // Lock contention regression tests
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
+    pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
     pub mod stale_index_detection; // Stale index detection tests
     pub mod watcher; // File watcher tests
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
