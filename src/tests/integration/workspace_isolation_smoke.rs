@@ -93,6 +93,23 @@ mod workspace_isolation_smoke_tests {
             match registry_service.get_workspace_by_path(&reference_path.to_string_lossy().to_string()).await? {
                 Some(ws) => {
                     println!("✅ Reference workspace already registered: {}", ws.id);
+
+                    // CRITICAL FIX: Index the existing workspace (it may be registered but not indexed)
+                    let index_reference = ManageWorkspaceTool {
+                        operation: "index".to_string(),
+                        path: Some(reference_path.to_string_lossy().to_string()),
+                        force: Some(false),
+                        name: None,
+                        workspace_id: None,
+                        expired_only: None,
+                        days: None,
+                        max_size_mb: None,
+                        detailed: None,
+                        limit: None,
+                    };
+                    index_reference.call_tool(&handler).await?;
+                    mark_index_ready(&handler).await;
+
                     ws.id
                 }
                 None => {
@@ -212,6 +229,23 @@ mod workspace_isolation_smoke_tests {
             match registry_service.get_workspace_by_path(&reference_path.to_string_lossy().to_string()).await? {
                 Some(ws) => {
                     println!("✅ Reference workspace already registered: {}", ws.id);
+
+                    // CRITICAL FIX: Index the existing workspace (it may be registered but not indexed)
+                    let index_reference = ManageWorkspaceTool {
+                        operation: "index".to_string(),
+                        path: Some(reference_path.to_string_lossy().to_string()),
+                        force: Some(false),
+                        name: None,
+                        workspace_id: None,
+                        expired_only: None,
+                        days: None,
+                        max_size_mb: None,
+                        detailed: None,
+                        limit: None,
+                    };
+                    index_reference.call_tool(&handler).await?;
+                    mark_index_ready(&handler).await;
+
                     ws.id
                 }
                 None => {
