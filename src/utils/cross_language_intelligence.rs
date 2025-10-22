@@ -39,9 +39,17 @@
 //!
 //! // Generate naming variants for cross-language search
 //! let variants = generate_naming_variants("getUserData");
-//! // Returns: ["get_user_data", "getUserData", "GetUserData"]
+//! assert!(variants.contains(&"getUserData".to_string()));
+//! assert!(variants.contains(&"get_user_data".to_string()));
+//! assert!(variants.contains(&"GetUserData".to_string()));
+//! // Returns: ["getUserData", "get_user_data", "GetUserData", "get-user-data", "GET_USER_DATA"]
+//! ```
 //!
-//! // Find symbols across languages
+//! For finding cross-language matches with search and embedding engines:
+//! ```rust,ignore
+//! use julie::utils::cross_language_intelligence::*;
+//!
+//! // Find symbols across languages (requires search and embedding engines)
 //! let intelligence = CrossLanguageIntelligence::new();
 //! let matches = intelligence.find_cross_language_matches(
 //!     "getUserData",
@@ -93,8 +101,12 @@ pub enum NamingConvention {
 /// # Examples
 ///
 /// ```
+/// use julie::utils::cross_language_intelligence::generate_naming_variants;
+///
 /// let variants = generate_naming_variants("getUserData");
-/// // Returns: ["get_user_data", "getUserData", "GetUserData", "get-user-data", "GET_USER_DATA"]
+/// assert!(variants.contains(&"getUserData".to_string()));
+/// assert!(variants.contains(&"get_user_data".to_string()));
+/// // Returns: ["getUserData", "get_user_data", "GetUserData", "get-user-data", "GET_USER_DATA"]
 /// ```
 ///
 /// # Performance
@@ -313,6 +325,9 @@ impl SymbolKindEquivalence {
     /// # Examples
     ///
     /// ```
+    /// use julie::utils::cross_language_intelligence::SymbolKindEquivalence;
+    /// use julie::extractors::base::SymbolKind;
+    ///
     /// let eq = SymbolKindEquivalence::new();
     /// assert!(eq.are_equivalent(SymbolKind::Class, SymbolKind::Struct)); // true
     /// assert!(eq.are_equivalent(SymbolKind::Function, SymbolKind::Method)); // true
@@ -335,8 +350,13 @@ impl SymbolKindEquivalence {
     /// # Examples
     ///
     /// ```
+    /// use julie::utils::cross_language_intelligence::SymbolKindEquivalence;
+    /// use julie::extractors::base::SymbolKind;
+    ///
     /// let eq = SymbolKindEquivalence::new();
     /// let equivalents = eq.get_equivalents(SymbolKind::Class);
+    /// assert!(equivalents.contains(&SymbolKind::Class));
+    /// assert!(equivalents.contains(&SymbolKind::Struct));
     /// // Returns: [Class, Struct, Interface]
     /// ```
     pub fn get_equivalents(&self, kind: SymbolKind) -> Vec<SymbolKind> {
