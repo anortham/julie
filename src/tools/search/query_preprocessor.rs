@@ -252,7 +252,30 @@ fn sanitize_pattern_for_fts5(query: &str) -> String {
         result = result.replace(".+", " ");
     }
 
-    // Remove regex anchors
+    // Check if query contains code operators that should be preserved via quoting
+    // IMPORTANT: Do this BEFORE removing . and ? to preserve operators like ?.
+    let should_quote = result.contains('|')  // OR operator
+        || result.contains('[') || result.contains(']')  // Brackets
+        || result.contains('{') || result.contains('}')  // Braces
+        || result.contains("=>")  // Arrow functions
+        || result.contains("::")  // Scope resolution
+        || result.contains("?.");  // Optional chaining
+
+    if should_quote {
+        // Quote to preserve operators as literal search
+        result = format!("\"{}\"", result.replace('"', ""));
+    } else {
+        // Only remove dots and question marks if NOT quoting (no code operators)
+        // Remove standalone dots (FTS5 column separator / operator)
+        // "string.method" → "string method"
+        result = result.replace('.', " ");
+
+        // Remove question marks (FTS5 wildcard operator, C# nullable syntax)
+        // "string?" → "string", "List?" → "List"
+        result = result.replace('?', "");
+    }
+
+    // Remove regex anchors (always)
     if result.contains('$') {
         // "end$" → "end"
         result = result.replace('$', "");
@@ -263,28 +286,21 @@ fn sanitize_pattern_for_fts5(query: &str) -> String {
         result = result.replace('^', "");
     }
 
-    // Quote if it contains | (FTS5 uses | as OR operator)
-    if result.contains('|') {
-        result = format!("\"{}\"", result.replace('"', ""));
-    }
-
-    // For other patterns, quote to preserve as phrase
-    // This handles [Test], async fn, =>, etc.
-    if result.contains('[') || result.contains(']')
-        || result.contains('{') || result.contains('}')
-        || result.contains("=>") || result.contains("::") {
-        result = format!("\"{}\"", result.replace('"', ""));
-    }
-
     result
 }
 
 /// Sanitize glob queries for FTS5
 fn sanitize_glob_for_fts5(query: &str) -> String {
-    // Glob queries search file paths, not content
-    // Just return the pattern as-is for now
-    // File path matching is handled separately in the search logic
-    query.to_string()
+    // Glob queries like "*.razor" need sanitization for FTS5
+    // Remove glob operators (*, ?, **) and FTS5 special chars (.)
+    // This prevents "fts5: syntax error near '.'" errors
+    query
+        .replace("**", "")
+        .replace("*", "")
+        .replace("?", "")
+        .replace(".", "")  // FTS5 treats . as an operator
+        .trim()
+        .to_string()
 }
 
 /// Sanitize standard queries for FTS5
@@ -297,6 +313,11 @@ fn sanitize_standard_for_fts5(query: &str) -> String {
     result = result.replace(".*", " ");
     result = result.replace(".+", " ");
     result = result.replace('$', "");
+
+    // Remove standalone dots and question marks (FTS5 operators)
+    // IMPORTANT: Do this AFTER handling .* and .+ patterns
+    result = result.replace('.', " ");
+    result = result.replace('?', "");
 
     result.trim().to_string()
 }

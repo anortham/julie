@@ -450,6 +450,56 @@ mod integration_tests {
         // Should not contain regex operators
         assert!(!preprocessed.fts5_query.contains(".*"));
     }
+
+    #[test]
+    fn test_glob_pattern_dot_sanitization() {
+        // BUG REPRODUCTION: *.razor causes "fts5: syntax error near ".""
+        // The dot in file extension globs MUST be removed for FTS5
+        let query = "*.razor";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok(), "Glob query should preprocess successfully");
+        let preprocessed = result.unwrap();
+        assert_eq!(preprocessed.query_type, QueryType::Glob);
+
+        // CRITICAL: FTS5 query must NOT contain dots (FTS5 treats . as operator)
+        assert!(
+            !preprocessed.fts5_query.contains("."),
+            "FTS5 query should not contain dots: got '{}'",
+            preprocessed.fts5_query
+        );
+
+        // Should be just "razor" or empty after sanitization
+        assert!(
+            preprocessed.fts5_query == "razor" || preprocessed.fts5_query.is_empty(),
+            "Expected 'razor' or empty, got '{}'",
+            preprocessed.fts5_query
+        );
+    }
+
+    #[test]
+    fn test_csharp_nullable_type_sanitization() {
+        // BUG REPRODUCTION: string? causes "fts5: syntax error near '?'"
+        // C# nullable types use ? which FTS5 treats as a special operator
+        let query = "string?";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok(), "C# nullable query should preprocess successfully");
+        let preprocessed = result.unwrap();
+
+        // Query type can be Standard or Pattern - doesn't matter for sanitization
+        // The key is that ? must be removed to prevent FTS5 errors
+
+        // CRITICAL: FTS5 query must NOT contain ? (FTS5 treats it as wildcard/operator)
+        assert!(
+            !preprocessed.fts5_query.contains("?"),
+            "FTS5 query should not contain '?': got '{}'",
+            preprocessed.fts5_query
+        );
+
+        // Should be just "string" after sanitization
+        assert_eq!(preprocessed.fts5_query, "string");
+    }
 }
 
 // All functions are now implemented in src/tools/search/query_preprocessor.rs

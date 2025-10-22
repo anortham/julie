@@ -189,3 +189,13 @@ output: "lines", context_lines: 5)
    ~~- Better error messages for unsupported glob patterns~~
    ~~- Show example patterns that work~~
    ~~- Validate file_pattern before executing search~~
+
+
+
+⏺ julie - fast_search (MCP)(query: "SanitizeQuery", search_method: "text", limit: 10, search_target: "content", workspace: "coa-mcp-framework_c77f81e4")
+  ⎿  Error: Tool execution failed: Workspace 'coa-mcp-framework_c77f81e4' not found. Use 'primary' or a valid workspace ID
+
+  in this case, the coa-mcp-framework workspace was already registered, but the supplied hash was wrong. what can we do so this works smoother?
+  1. Instead of saying not found, say "Did you mean {correct_workspace_id}" ?
+  2. Do we have this covered with tests properly? What about workspaces with spaces in the name? 
+  
