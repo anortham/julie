@@ -4,6 +4,7 @@
 // Critical for ensuring HNSW index generation is reliable across platforms.
 
 use anyhow::Result;
+use serial_test::serial;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
@@ -90,6 +91,7 @@ mod embed_tests {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_embed_generates_embeddings() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -130,6 +132,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_with_hnsw_output() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -168,6 +171,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_respects_limit() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -195,6 +199,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_empty_database() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -238,6 +243,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_invalid_database() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -261,6 +267,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_output_creates_directory() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -281,6 +288,7 @@ mod embed_tests {
     }
 
     #[test]
+    #[serial]
     fn test_embed_consistent_dimensions() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -308,6 +316,7 @@ mod performance_tests {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_embed_reasonable_speed() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -341,6 +350,7 @@ mod error_handling_tests {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_embed_corrupted_database() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path();
@@ -368,6 +378,7 @@ mod error_handling_tests {
     }
 
     #[test]
+    #[serial]
     #[cfg_attr(windows, ignore = "Windows permissions for C:\\ are unpredictable")]
     fn test_embed_readonly_output() -> Result<()> {
         let temp_dir = TempDir::new()?;
@@ -410,6 +421,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_generates_embedding() -> Result<()> {
         // Run query for a simple text
         let output = run_query("function getUserData", None)?;
@@ -443,6 +455,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_same_text_same_embedding() -> Result<()> {
         let text = "class UserRepository";
 
@@ -466,6 +479,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_different_text_different_embeddings() -> Result<()> {
         let text1 = "function getUserData";
         let text2 = "class DatabaseConnection";
@@ -489,6 +503,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_semantic_similarity() -> Result<()> {
         // Similar concepts should have higher cosine similarity
         let output1 = run_query("authentication function", None)?;
@@ -543,6 +558,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_empty_text() -> Result<()> {
         let output = run_query("", None)?;
 
@@ -562,6 +578,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_long_text() -> Result<()> {
         // Test with text longer than typical token limit
         let long_text = "function getUserData ".repeat(100);
@@ -582,6 +599,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_special_characters() -> Result<()> {
         // Test with special characters and code symbols
         let text = "function(user: User): Promise<Data> => { return data; }";
@@ -602,6 +620,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_model_parameter() -> Result<()> {
         // Test explicit model parameter
         let output = run_query("getUserData", Some("bge-small"))?;
@@ -617,6 +636,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_json_format() -> Result<()> {
         let output = run_query("test query", None)?;
 
@@ -642,6 +662,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_performance() -> Result<()> {
         let start = std::time::Instant::now();
         let output = run_query("function getUserData", None)?;
@@ -660,6 +681,7 @@ mod query_tests {
     }
 
     #[test]
+    #[serial]
     fn test_query_cross_language_similarity() -> Result<()> {
         // Test that similar concepts in different languages have high similarity
         let ts_query = "interface User { id: string; name: string; }";
