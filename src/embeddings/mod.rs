@@ -5,7 +5,7 @@
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::Symbol;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -57,6 +57,10 @@ pub struct EmbeddingEngine {
     dimensions: usize,
     /// Required database connection for persistence (no in-memory fallback)
     db: Arc<Mutex<SymbolDatabase>>,
+    /// Cache directory for model files (needed for reinitialization)
+    cache_dir: PathBuf,
+    /// Track if we've fallen back to CPU mode due to GPU failure
+    cpu_fallback_triggered: bool,
 }
 
 impl EmbeddingEngine {
@@ -71,7 +75,7 @@ impl EmbeddingEngine {
         tracing::info!("🚀 Initializing EmbeddingEngine with GPU acceleration...");
 
         // 1. Set up model manager and download model if needed
-        let model_manager = ModelManager::new(cache_dir)?;
+        let model_manager = ModelManager::new(cache_dir.clone())?;
         let model_paths = model_manager.ensure_model_downloaded(model_name).await?;
 
         // 2. Create GPU-accelerated ORT model
@@ -94,7 +98,46 @@ impl EmbeddingEngine {
             model_name: model_name.to_string(),
             dimensions,
             db,
+            cache_dir,
+            cpu_fallback_triggered: false,
         })
+    }
+
+    /// Reinitialize the embedding engine in CPU-only mode after GPU failure
+    ///
+    /// This is called automatically when DirectML GPU crashes are detected.
+    /// Sets JULIE_FORCE_CPU=1 and recreates the ONNX model without GPU acceleration.
+    async fn reinitialize_with_cpu_fallback(&mut self) -> Result<()> {
+        if self.cpu_fallback_triggered {
+            // Already in CPU mode, don't reinitialize again
+            return Ok(());
+        }
+
+        tracing::error!("🚨 GPU device failure detected - reinitializing in CPU-only mode");
+        tracing::warn!("   This is slower but stable. Future batches will use CPU.");
+
+        // Set environment variable to force CPU mode
+        std::env::set_var("JULIE_FORCE_CPU", "1");
+
+        // Recreate the model manager and get model paths
+        let model_manager = ModelManager::new(self.cache_dir.clone())?;
+        let model_paths = model_manager.ensure_model_downloaded(&self.model_name).await?;
+
+        // Recreate the ONNX model in CPU-only mode
+        let new_model = OrtEmbeddingModel::new(
+            model_paths.model,
+            model_paths.tokenizer,
+            &self.model_name,
+            Some(model_manager.cache_dir()),
+        ).context("Failed to reinitialize embedding model in CPU mode")?;
+
+        // Replace the crashed GPU model with CPU model
+        self.model = new_model;
+        self.cpu_fallback_triggered = true;
+
+        tracing::info!("✅ Successfully reinitialized embedding engine in CPU-only mode");
+
+        Ok(())
     }
 
     /// Generate context-aware embedding for a symbol
@@ -141,13 +184,51 @@ impl EmbeddingEngine {
         }
 
         // Generate embeddings for all symbols in one GPU-accelerated batch call
-        match self.model.encode_batch(batch_texts) {
+        let batch_result = self.model.encode_batch(batch_texts.clone());
+
+        match batch_result {
             Ok(batch_embeddings) => {
                 // Map results back to (id, embedding) pairs
                 let results = symbol_ids.into_iter().zip(batch_embeddings).collect();
                 Ok(results)
             }
             Err(e) => {
+                let error_msg = e.to_string();
+
+                // Check for GPU device failure (DirectML crash: 0x887A0005)
+                let is_gpu_crash = error_msg.contains("887A0005")
+                    || error_msg.contains("GPU device instance has been suspended")
+                    || error_msg.contains("device removed");
+
+                if is_gpu_crash && !self.cpu_fallback_triggered {
+                    tracing::error!(
+                        "🚨 GPU device failure detected during batch embedding: {}",
+                        error_msg
+                    );
+
+                    // Attempt to reinitialize with CPU fallback
+                    match tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(self.reinitialize_with_cpu_fallback())
+                    }) {
+                        Ok(_) => {
+                            tracing::info!("✅ Successfully reinitialized with CPU - retrying batch");
+                            // Retry the batch with CPU mode now active
+                            match self.model.encode_batch(batch_texts) {
+                                Ok(batch_embeddings) => {
+                                    let results = symbol_ids.into_iter().zip(batch_embeddings).collect();
+                                    return Ok(results);
+                                }
+                                Err(retry_err) => {
+                                    tracing::error!("CPU batch embedding also failed: {}", retry_err);
+                                }
+                            }
+                        }
+                        Err(fallback_err) => {
+                            tracing::error!("Failed to reinitialize with CPU fallback: {}", fallback_err);
+                        }
+                    }
+                }
+
                 tracing::warn!(
                     "Batch embedding failed ({} symbols): {}, falling back to individual processing",
                     symbols.len(),
@@ -167,6 +248,25 @@ impl EmbeddingEngine {
                             results.push((symbol.id.clone(), embedding));
                         }
                         Err(e) => {
+                            // Check for GPU crash on individual embedding too
+                            let error_msg = e.to_string();
+                            let is_gpu_crash = error_msg.contains("887A0005")
+                                || error_msg.contains("GPU device instance has been suspended");
+
+                            if is_gpu_crash && !self.cpu_fallback_triggered {
+                                tracing::error!("🚨 GPU crash on individual embedding - triggering fallback");
+                                if let Err(fallback_err) = tokio::task::block_in_place(|| {
+                                    tokio::runtime::Handle::current().block_on(self.reinitialize_with_cpu_fallback())
+                                }) {
+                                    tracing::error!("CPU fallback failed: {}", fallback_err);
+                                }
+                                // Try once more with CPU
+                                if let Ok(embedding) = self.embed_symbol(symbol, &context) {
+                                    results.push((symbol.id.clone(), embedding));
+                                    continue;
+                                }
+                            }
+
                             // Log detailed error information for debugging
                             let embedding_text = self.build_embedding_text(symbol, &context);
                             tracing::warn!(

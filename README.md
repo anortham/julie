@@ -16,9 +16,28 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database indexing - text search available immediately)
 - Semantic indexing: 2-5 minutes per 10,000 symbols (background, non-blocking)
-  - Faster on Apple Silicon (~30-60s per 10,000 symbols)
+  - **GPU-accelerated** on Windows (DirectML) and Linux (CUDA/TensorRT)
+  - Faster on Apple Silicon (~30-60s per 10,000 symbols, CPU-optimized)
   - Text search works instantly while semantic search builds
 - Single binary deployment with no external dependencies
+
+### GPU Acceleration
+
+Julie automatically uses GPU acceleration for semantic embeddings when available:
+
+- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs)
+- **Linux**: CUDA/TensorRT (NVIDIA GPUs)
+- **macOS**: CPU-optimized (faster than CoreML for BERT models)
+
+**Automatic CPU Fallback**: If GPU initialization or inference fails, Julie automatically detects the failure and reinitializes in CPU-only mode. This handles:
+- Incompatible GPU drivers
+- DirectML/CUDA crashes
+- Remote Desktop sessions (GPU unavailable)
+- Specific GPU/model incompatibilities
+
+The fallback happens once at runtime with clear logging - no manual intervention needed. Machines with working GPUs continue using acceleration; machines with GPU issues fall back to stable CPU mode.
+
+**Manual CPU Override**: Set the environment variable `JULIE_FORCE_CPU=1` to skip GPU entirely and use CPU-only mode from startup.
 
 ## Supported Languages (25)
 

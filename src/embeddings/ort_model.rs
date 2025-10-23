@@ -177,8 +177,19 @@ impl OrtEmbeddingModel {
     /// Create ONNX Runtime session with platform-specific execution providers
     ///
     /// Tries GPU acceleration first, ORT automatically falls back to CPU if unavailable.
+    ///
+    /// Set JULIE_FORCE_CPU=1 environment variable to skip GPU and use CPU only.
     #[allow(unused_variables)] // cache_dir used on Windows/Linux but not macOS
     fn create_session_with_gpu(model_path: &Path, cache_dir: Option<impl AsRef<Path>>) -> Result<Session> {
+        // Check if user wants to force CPU mode (optional override)
+        let force_cpu = std::env::var("JULIE_FORCE_CPU")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+        if force_cpu {
+            info!("🖥️  JULIE_FORCE_CPU is set - using CPU-only mode");
+        }
+
         #[cfg(not(target_os = "macos"))]
         let mut builder = Session::builder()
             .context("Failed to create SessionBuilder")?
@@ -193,29 +204,33 @@ impl OrtEmbeddingModel {
         // ORT will automatically fall back to CPU if these aren't available
         #[cfg(target_os = "windows")]
         {
-            use ort::execution_providers::DirectMLExecutionProvider;
+            if !force_cpu {
+                use ort::execution_providers::DirectMLExecutionProvider;
 
-            // Select the most powerful GPU available
-            let device_id = Self::select_best_directml_device()?;
+                // Select the most powerful GPU available
+                let device_id = Self::select_best_directml_device()?;
 
-            info!("🎮 Registering DirectML (Windows GPU) acceleration with device ID {}...", device_id);
-            builder = builder.with_execution_providers([
-                DirectMLExecutionProvider::default()
-                    .with_device_id(device_id)
-                    .build()
-            ])?;
-            info!("✅ DirectML execution provider registered on device {}", device_id);
+                info!("🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...", device_id);
+                builder = builder.with_execution_providers([
+                    DirectMLExecutionProvider::default()
+                        .with_device_id(device_id)
+                        .build()
+                ])?;
+                info!("✅ DirectML execution provider registered on device {}", device_id);
+            }
         }
 
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
-            use ort::execution_providers::{CUDAExecutionProvider, TensorRTExecutionProvider};
-            info!("🎮 Registering CUDA/TensorRT (NVIDIA GPU) acceleration...");
-            builder = builder.with_execution_providers([
-                TensorRTExecutionProvider::default().build(),
-                CUDAExecutionProvider::default().build(),
-            ])?;
-            info!("✅ CUDA/TensorRT execution providers registered");
+            if !force_cpu {
+                use ort::execution_providers::{CUDAExecutionProvider, TensorRTExecutionProvider};
+                info!("🎮 Attempting CUDA/TensorRT (NVIDIA GPU) acceleration...");
+                builder = builder.with_execution_providers([
+                    TensorRTExecutionProvider::default().build(),
+                    CUDAExecutionProvider::default().build(),
+                ])?;
+                info!("✅ CUDA/TensorRT execution providers registered");
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -314,7 +329,19 @@ impl OrtEmbeddingModel {
                 "attention_mask" => attention_mask_tensor,
                 "token_type_ids" => token_type_ids_tensor,
             ])
-            .context("Failed to run ONNX inference")?;
+            .map_err(|e| {
+                // Log detailed error information to help diagnose DirectML/GPU issues
+                tracing::error!(
+                    "🚨 ONNX inference failed - Error: {:?}",
+                    e
+                );
+                tracing::error!(
+                    "   Batch size: {}, Sequence length: {}",
+                    batch_size,
+                    seq_length
+                );
+                anyhow::anyhow!("Failed to run ONNX inference: {}", e)
+            })?;
 
         // 4. Extract embeddings from output
         // BGE models output CLS token embeddings as the sentence representation
