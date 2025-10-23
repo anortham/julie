@@ -201,6 +201,7 @@ impl JulieServerHandler {
             })?;
 
             let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to initialize embedding engine: {}", e))?;
 
             *embedding_guard = Some(engine);

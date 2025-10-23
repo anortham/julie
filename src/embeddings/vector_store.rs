@@ -344,12 +344,58 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Add a vector to existing HNSW index (incremental update)
-    /// Note: Requires index rebuild or insert API - TO BE IMPLEMENTED
-    pub fn add_vector_to_hnsw(&mut self, _symbol_id: String, _vector: Vec<f32>) -> Result<()> {
-        Err(anyhow::anyhow!(
-            "HNSW incremental addition not implemented - requires index rebuild"
-        ))
+    /// Insert multiple vectors into existing HNSW index incrementally
+    /// This is the primary method for real-time updates - maintains id_mapping and inserts vectors
+    /// without rebuilding the entire index.
+    pub fn insert_batch(&mut self, embeddings: &[(String, Vec<f32>)]) -> Result<()> {
+        if embeddings.is_empty() {
+            return Ok(());
+        }
+
+        let hnsw = self.hnsw_index.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("HNSW index not built. Call build_hnsw_index() first")
+        })?;
+
+        tracing::debug!(
+            "Inserting {} new vectors into HNSW index incrementally",
+            embeddings.len()
+        );
+
+        for (symbol_id, vector) in embeddings {
+            // Validate dimensions
+            if vector.len() != self.dimensions {
+                tracing::warn!(
+                    "Skipping symbol {} - vector dimensions {} don't match expected {}",
+                    symbol_id,
+                    vector.len(),
+                    self.dimensions
+                );
+                continue;
+            }
+
+            // Get next index and append to mapping
+            let idx = self.id_mapping.len();
+            self.id_mapping.push(symbol_id.clone());
+
+            // Insert into HNSW with the new index
+            // Note: HNSW insert() takes (&[f32], usize) format
+            hnsw.insert((vector.as_slice(), idx));
+        }
+
+        tracing::debug!(
+            "✅ Successfully inserted {} vectors into HNSW index (total: {})",
+            embeddings.len(),
+            self.id_mapping.len()
+        );
+
+        Ok(())
+    }
+
+    /// Add a single vector to existing HNSW index (incremental update)
+    /// For batch operations, use insert_batch() instead for better performance
+    pub fn add_vector_to_hnsw(&mut self, symbol_id: String, vector: Vec<f32>) -> Result<()> {
+        // Delegate to batch method
+        self.insert_batch(&[(symbol_id, vector)])
     }
 
     /// Remove a vector from HNSW index

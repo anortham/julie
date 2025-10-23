@@ -227,9 +227,23 @@ pub fn sanitize_for_fts5(query: &str, query_type: QueryType) -> String {
 
 /// Sanitize symbol queries for FTS5
 fn sanitize_symbol_for_fts5(query: &str) -> String {
-    // For symbols, we want exact name matching
-    // Quote the query to make it a phrase search
-    format!("\"{}\"", query.replace('"', ""))
+    // CRITICAL FIX: Don't quote Symbol queries!
+    //
+    // The FTS5 tokenizer uses underscore as a separator:
+    //   tokenize = "unicode61 separators '_::->.'"
+    //
+    // This means "handle_file_deleted" → ["handle", "file", "deleted"]
+    //
+    // If we wrap in quotes: "Deleted" → phrase search fails (no phrase "Deleted" exists)
+    // Without quotes: Deleted → token match succeeds (token "deleted" exists)
+    //
+    // Token matching works for both snake_case and camelCase:
+    // - "Deleted" matches "handle_file_deleted" (token "deleted")
+    // - "getUserData" matches "getUserData" (exact match)
+    // - "handle_file_change" matches "handle_file_change_static" (prefix match)
+    //
+    // This is the correct behavior for code search - find tokens, not exact phrases.
+    query.to_string()
 }
 
 /// Sanitize pattern queries for FTS5

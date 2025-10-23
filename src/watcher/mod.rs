@@ -25,7 +25,7 @@ type VectorIndex = crate::embeddings::vector_store::VectorStore;
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
-    embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
+    embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
     extractor_manager: Arc<ExtractorManager>,
 
     // Vector store for HNSW semantic search (kept in sync with incremental updates)
@@ -75,7 +75,7 @@ impl IncrementalIndexer {
     pub fn new(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
-        embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
+        embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: Arc<ExtractorManager>,
         vector_store: Option<Arc<RwLock<VectorIndex>>>,
     ) -> Result<Self> {
@@ -238,12 +238,16 @@ impl IncrementalIndexer {
             }
             EventKind::Remove(_) => {
                 for path in event.paths {
-                    let change_event = FileChangeEvent {
-                        path: path.clone(),
-                        change_type: FileChangeType::Deleted,
-                        timestamp: SystemTime::now(),
-                    };
-                    Self::queue_file_change_static(index_queue.clone(), change_event).await;
+                    // Check ignore patterns before processing deletion (was missing!)
+                    if Self::should_index_file_static(&path, supported_extensions, ignore_patterns)
+                    {
+                        let change_event = FileChangeEvent {
+                            path: path.clone(),
+                            change_type: FileChangeType::Deleted,
+                            timestamp: SystemTime::now(),
+                        };
+                        Self::queue_file_change_static(index_queue.clone(), change_event).await;
+                    }
                 }
             }
             _ => {
@@ -333,7 +337,7 @@ impl IncrementalIndexer {
     async fn handle_file_change_static(
         event: FileChangeEvent,
         db: &Arc<StdMutex<SymbolDatabase>>,
-        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        embeddings: &Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: &Arc<ExtractorManager>,
         vector_store: Option<&Arc<RwLock<VectorIndex>>>,
         workspace_root: &Path,
@@ -492,21 +496,23 @@ impl IncrementalIndexer {
         db.commit_transaction()?;
         drop(db);
 
-        // 5. Update embeddings using mutex-protected engine
+        // 5. Update embeddings using async RwLock
         let _symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         {
-            let mut embedding_engine = self.embedding_engine.lock().unwrap();
-            if let Err(e) = embedding_engine
-                .upsert_file_embeddings(path_str.as_ref(), &symbols)
-                .await
-            {
-                warn!("Failed to update embeddings for {}: {}", path_str, e);
-            } else {
-                debug!(
-                    "Updated cached embeddings for {} symbol(s) in {}",
-                    symbols.len(),
-                    path_str
-                );
+            let mut embedding_guard = self.embedding_engine.write().await;
+            if let Some(ref mut embedding_engine) = embedding_guard.as_mut() {
+                if let Err(e) = embedding_engine
+                    .upsert_file_embeddings(path_str.as_ref(), &symbols)
+                    .await
+                {
+                    warn!("Failed to update embeddings for {}: {}", path_str, e);
+                } else {
+                    debug!(
+                        "Updated cached embeddings for {} symbol(s) in {}",
+                        symbols.len(),
+                        path_str
+                    );
+                }
             }
         } // Release embedding_engine lock
 
@@ -541,12 +547,14 @@ impl IncrementalIndexer {
 
         // Remove from embeddings (database will handle the actual deletion)
         if !symbol_ids.is_empty() {
-            let mut embedding_engine = self.embedding_engine.lock().unwrap();
-            if let Err(e) = embedding_engine
-                .remove_embeddings_for_symbols(&symbol_ids)
-                .await
-            {
-                warn!("Failed to remove embeddings for {}: {}", path_str, e);
+            let mut embedding_guard = self.embedding_engine.write().await;
+            if let Some(ref mut embedding_engine) = embedding_guard.as_mut() {
+                if let Err(e) = embedding_engine
+                    .remove_embeddings_for_symbols(&symbol_ids)
+                    .await
+                {
+                    warn!("Failed to remove embeddings for {}: {}", path_str, e);
+                }
             }
         }
 
@@ -728,9 +736,9 @@ impl IncrementalIndexer {
     async fn handle_file_created_or_modified_static(
         path: PathBuf,
         db: &Arc<StdMutex<SymbolDatabase>>,
-        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        embeddings: &Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: &Arc<ExtractorManager>,
-        _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+        vector_store: Option<&Arc<RwLock<VectorIndex>>>,
         workspace_root: &Path,
     ) -> Result<()> {
         info!("Processing file: {}", path.display());
@@ -800,11 +808,50 @@ impl IncrementalIndexer {
             db_lock.commit_transaction()?;
         }
 
-        // 5. TODO: Generate embeddings
-        // Currently skipped in background task due to std::sync::Mutex not being Send across await
-        // Embeddings will be generated lazily on-demand by semantic search
-        // To fix: convert EmbeddingEngine to use tokio::sync::Mutex instead of std::sync::Mutex
-        let _ = embeddings; // Silence unused warning
+        // 5. Generate embeddings asynchronously (non-blocking)
+        // Spawn background task so file save completes immediately
+        let embeddings_clone = embeddings.clone();
+        let vector_store_clone = vector_store.cloned();
+        let symbols_for_embedding = symbols.clone();
+        let path_for_log = path.clone();
+
+        tokio::spawn(async move {
+            info!("🧠 Generating embeddings for {} symbols in {}", symbols_for_embedding.len(), path_for_log.display());
+
+            // Step 1: Generate embeddings with GPU
+            let mut embedding_guard = embeddings_clone.write().await;
+            let embeddings_result = if let Some(ref mut engine) = embedding_guard.as_mut() {
+                match engine.embed_symbols_batch(&symbols_for_embedding) {
+                    Ok(embeddings_vec) => {
+                        info!("✅ Generated {} embeddings for {}", embeddings_vec.len(), path_for_log.display());
+                        Some(embeddings_vec)
+                    }
+                    Err(e) => {
+                        warn!("⚠️ Failed to generate embeddings for {}: {}", path_for_log.display(), e);
+                        None
+                    }
+                }
+            } else {
+                warn!("⏭️ Embedding engine not initialized, skipping embeddings for {}", path_for_log.display());
+                None
+            };
+            drop(embedding_guard); // Release embedding engine lock
+
+            // Step 2: Update HNSW index incrementally (if embeddings generated successfully)
+            if let (Some(embeddings_vec), Some(vector_store_arc)) = (embeddings_result, vector_store_clone) {
+                info!("📊 Updating HNSW index with {} new vectors", embeddings_vec.len());
+
+                let mut vs_guard = vector_store_arc.write().await;
+                match vs_guard.insert_batch(&embeddings_vec) {
+                    Ok(_) => {
+                        info!("✅ HNSW index updated with {} vectors for {}", embeddings_vec.len(), path_for_log.display());
+                    }
+                    Err(e) => {
+                        warn!("⚠️ Failed to update HNSW index for {}: {}", path_for_log.display(), e);
+                    }
+                }
+            }
+        });
 
         info!("Successfully indexed {}", path.display());
         Ok(())
@@ -820,8 +867,39 @@ impl IncrementalIndexer {
 
         let path_str = path.to_string_lossy();
         let db_lock = db.lock().unwrap();
-        db_lock.delete_symbols_for_file(&path_str)?;
-        db_lock.delete_file_record(&path_str)?;
+
+        // Handle transient DELETE events gracefully (e.g., editor save operations)
+        // Editors often delete-then-recreate files, causing DELETE events before the file
+        // was ever indexed. "no such table" errors are harmless in this case.
+        match db_lock.delete_symbols_for_file(&path_str) {
+            Ok(_) => {},
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("no such table") {
+                    // Transient state - file was never indexed, nothing to delete
+                    info!("Skipping deletion for {} (not yet indexed)", path.display());
+                    return Ok(());
+                } else {
+                    // Real error - propagate it
+                    return Err(e);
+                }
+            }
+        }
+
+        match db_lock.delete_file_record(&path_str) {
+            Ok(_) => {},
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("no such table") {
+                    // Transient state - file record never existed
+                    info!("Skipping file record deletion for {} (not yet indexed)", path.display());
+                    return Ok(());
+                } else {
+                    // Real error - propagate it
+                    return Err(e);
+                }
+            }
+        }
 
         info!("Successfully removed indexes for {}", path.display());
         Ok(())
@@ -832,7 +910,7 @@ impl IncrementalIndexer {
         from: PathBuf,
         to: PathBuf,
         db: &Arc<StdMutex<SymbolDatabase>>,
-        embeddings: &Arc<StdMutex<EmbeddingEngine>>,
+        embeddings: &Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: &Arc<ExtractorManager>,
         vector_store: Option<&Arc<RwLock<VectorIndex>>>,
         workspace_root: &Path,

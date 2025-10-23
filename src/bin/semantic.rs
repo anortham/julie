@@ -226,7 +226,7 @@ async fn generate_embeddings(
     std::fs::create_dir_all(&cache_dir)?;
 
     let db_arc = std::sync::Arc::new(std::sync::Mutex::new(db));
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone()).await?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
     eprintln!("⚡ Batch size: {}", batch_size);
@@ -235,7 +235,7 @@ async fn generate_embeddings(
     let start_time = Instant::now();
     let mut total_embedded = 0;
     let batch_count = (symbols.len() + batch_size - 1) / batch_size;
-    let mut all_embeddings = std::collections::HashMap::new();
+    let mut all_embeddings: std::collections::HashMap<String, Vec<f32>> = std::collections::HashMap::new();
 
     for (i, batch) in symbols.chunks(batch_size).enumerate() {
         let batch_start = Instant::now();
@@ -394,7 +394,7 @@ async fn update_file_embeddings(
     std::fs::create_dir_all(&cache_dir)?;
 
     let db_arc = std::sync::Arc::new(std::sync::Mutex::new(db));
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone())?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc.clone()).await?;
 
     eprintln!("🚀 Model: {} ({}D embeddings)", model, engine.dimensions());
 
@@ -499,7 +499,7 @@ async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Resu
     let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
 
     // Initialize embedding engine
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc).await?;
 
     // Generate embedding for query text
     let embedding = engine.embed_text(text)?;
@@ -550,7 +550,7 @@ async fn search_hnsw(
     let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
     let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
 
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc)?;
+    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc).await?;
 
     let embed_start = Instant::now();
     let query_vector = engine.embed_text(text)?;

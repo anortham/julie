@@ -270,35 +270,18 @@ async fn initialize_embedding_engine(
             cache_dir.display()
         );
 
-        // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
-        // Must run on blocking thread pool to avoid deadlocking the tokio runtime
-        // Same fix as workspace/mod.rs:458
-        let db_clone = db.clone();
-        let cache_dir_clone = cache_dir.clone();
-        match tokio::task::spawn_blocking(move || {
-            crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir_clone, db_clone)
-        })
-        .await
-        {
-            Ok(Ok(engine)) => {
+        // ✅ EmbeddingEngine::new() is now async (downloads model from HuggingFace)
+        // No need for spawn_blocking - async download is non-blocking
+        match crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir.clone(), db.clone()).await {
+            Ok(engine) => {
                 *write_guard = Some(engine);
                 info!("✅ Embedding engine initialized for background task");
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 error!("❌ Failed to initialize embedding engine: {}", e);
                 return Err(anyhow::anyhow!(
                     "Embedding engine initialization failed: {}",
                     e
-                ));
-            }
-            Err(join_err) => {
-                error!(
-                    "❌ Embedding engine initialization task panicked: {}",
-                    join_err
-                );
-                return Err(anyhow::anyhow!(
-                    "Embedding engine initialization task failed: {}",
-                    join_err
                 ));
             }
         }

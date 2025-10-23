@@ -905,19 +905,15 @@ impl ManageWorkspaceTool {
         let mut status = String::new();
 
         match &workspace.embeddings {
-            Some(embedding_arc) => {
+            Some(_embedding_arc) => {
                 // Compute workspace ID for per-workspace path
                 use crate::workspace::registry as ws_registry;
                 let workspace_id =
                     ws_registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""))?;
 
-                // Check if embedding data exists (scoped lock to avoid Send issues)
-                let (embeddings_exist, embedding_path) = {
-                    let _embeddings = embedding_arc.lock().unwrap();
-                    let path = workspace.workspace_vectors_path(&workspace_id);
-                    let exists = path.exists();
-                    (exists, path)
-                }; // Lock dropped here
+                // Check if embedding data exists (no lock needed, just checking filesystem)
+                let embedding_path = workspace.workspace_vectors_path(&workspace_id);
+                let embeddings_exist = embedding_path.exists();
 
                 if embeddings_exist {
                     status.push_str("Embeddings Status: READY\n");

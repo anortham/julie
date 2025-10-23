@@ -81,7 +81,7 @@ async fn test_real_time_file_watcher_indexing() {
 
     let cache_dir = workspace_root.join(".julie/cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
-    let embeddings = Arc::new(Mutex::new(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).unwrap()));
+    let embeddings = Arc::new(tokio::sync::RwLock::new(Some(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).await.unwrap())));
     let extractor_manager = Arc::new(ExtractorManager::new());
 
     // Create initial file to ensure workspace isn't empty

@@ -502,5 +502,119 @@ mod integration_tests {
     }
 }
 
+// ============================================================================
+// Snake Case Tokenization Bug Tests (FTS5 Separator Mismatch)
+// ============================================================================
+// CRITICAL BUG: FTS5 tokenizer uses underscore as separator, but Symbol queries
+// wrap in quotes for "exact matching". This creates a mismatch:
+//
+// - "handle_file_deleted" is tokenized as ["handle", "file", "deleted"]
+// - Query "Deleted" wrapped in quotes: "Deleted"
+// - Phrase search "Deleted" looks for exact phrase, not token
+// - Result: ZERO MATCHES even though data exists!
+//
+// Root Cause: tokenize = "unicode61 separators '_::->.'"
+// Fix: Don't wrap Symbol queries in quotes - use token matching instead
+
+#[cfg(test)]
+mod snake_case_tokenization_bug {
+    use super::*;
+
+    #[test]
+    fn test_search_deleted_should_find_handle_file_deleted() {
+        // BUG REPRODUCTION: Searching "Deleted" should find "handle_file_deleted"
+        // The tokenizer splits on underscore, so "deleted" is a token
+        // But phrase search "Deleted" doesn't match token "deleted"
+        let query = "Deleted";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok());
+        let preprocessed = result.unwrap();
+        assert_eq!(preprocessed.query_type, QueryType::Symbol);
+
+        // CRITICAL: Should NOT wrap in quotes (phrase search fails with underscore tokenization)
+        // Expected: Deleted (token match)
+        // Wrong: "Deleted" (phrase search)
+        assert!(
+            !preprocessed.fts5_query.starts_with("\""),
+            "Symbol query should NOT be wrapped in quotes for snake_case compatibility. Got: {}",
+            preprocessed.fts5_query
+        );
+    }
+
+    #[test]
+    fn test_search_snake_case_function_name() {
+        // BUG REPRODUCTION: Searching "handle_file_change_static" should find itself
+        // With phrase search, this fails because underscores are separators
+        let query = "handle_file_change_static";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok());
+        let preprocessed = result.unwrap();
+        assert_eq!(preprocessed.query_type, QueryType::Symbol);
+
+        // Should NOT wrap in quotes - breaks snake_case token matching
+        assert!(
+            !preprocessed.fts5_query.starts_with("\""),
+            "Snake_case symbol should use token matching, not phrase search. Got: {}",
+            preprocessed.fts5_query
+        );
+    }
+
+    #[test]
+    fn test_search_scope_resolution_with_separator() {
+        // BUG REPRODUCTION: "FileChangeType::Deleted" has :: separator
+        // Both underscore AND :: are separators in tokenizer
+        let query = "FileChangeType::Deleted";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok());
+        let preprocessed = result.unwrap();
+        // Will be detected as Pattern (contains ::)
+        assert_eq!(preprocessed.query_type, QueryType::Pattern);
+
+        // For patterns with code operators, quoting is acceptable
+        // But we need to ensure tokens still match
+        // This test documents the current behavior
+    }
+
+    #[test]
+    fn test_search_partial_snake_case_token() {
+        // Searching for a partial token should work via FTS5 prefix matching
+        // "file_deleted" should find "handle_file_deleted"
+        let query = "file_deleted";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok());
+        let preprocessed = result.unwrap();
+
+        // Should use token matching (no quotes) to find partial matches
+        assert!(
+            !preprocessed.fts5_query.starts_with("\""),
+            "Partial snake_case should use token matching. Got: {}",
+            preprocessed.fts5_query
+        );
+    }
+
+    #[test]
+    fn test_camelcase_doesnt_need_token_workaround() {
+        // CamelCase doesn't have separators, so phrase search would work
+        // But for consistency, we should use token matching for ALL symbols
+        let query = "getUserData";
+        let result = preprocess_query(query);
+
+        assert!(result.is_ok());
+        let preprocessed = result.unwrap();
+        assert_eq!(preprocessed.query_type, QueryType::Symbol);
+
+        // For consistency, don't quote ANY symbol queries
+        assert!(
+            !preprocessed.fts5_query.starts_with("\""),
+            "Symbol queries should use token matching consistently. Got: {}",
+            preprocessed.fts5_query
+        );
+    }
+}
+
 // All functions are now implemented in src/tools/search/query_preprocessor.rs
 // and imported at the top of this file

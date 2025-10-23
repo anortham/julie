@@ -76,11 +76,21 @@ harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
-# Embeddings (using FastEmbed for easy model integration)
-fastembed = "5.2"
+# Embeddings - Direct ONNX Runtime with GPU acceleration
+# Platform-specific dependencies added below for GPU support
+# fastembed = "5.2"  # REMOVED - no GPU support
+
+# Tokenizer for BERT-based embeddings (BGE models)
+tokenizers = "0.20"
+
+# HuggingFace Hub for model downloading
+hf-hub = { version = "0.4", features = ["tokio"] }
 
 # HNSW for fast vector similarity search (semantic code search)
 hnsw_rs = "0.3"
+
+# N-dimensional arrays for ONNX Runtime tensors
+ndarray = "0.16"
 
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }
@@ -145,3 +155,20 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
+
+# Platform-specific ONNX Runtime dependencies for GPU acceleration
+# Each platform gets optimized execution providers for maximum performance
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# DirectML - Windows GPU acceleration (works with NVIDIA, AMD, Intel GPUs)
+ort = { version = "2.0.0-rc.10", features = ["directml", "download-binaries", "ndarray"] }
+# Windows APIs for GPU enumeration via DXGI
+windows = { version = "0.58", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Direct3D12"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+# CUDA + TensorRT - NVIDIA GPU acceleration on Linux
+ort = { version = "2.0.0-rc.10", features = ["cuda", "tensorrt", "download-binaries", "ndarray"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# CoreML - Apple Silicon Neural Engine acceleration
+ort = { version = "2.0.0-rc.10", features = ["coreml", "download-binaries", "ndarray"] }

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::RwLock; // Only RwLock needs to be async (for vector_store)
+use tokio::sync::RwLock; // Async RwLock for embeddings and vector_store
 use tracing::{debug, info, warn};
 // Import IncrementalIndexer from watcher module
 use crate::watcher::IncrementalIndexer;
@@ -43,9 +43,9 @@ pub struct JulieWorkspace {
     pub db: Option<Arc<std::sync::Mutex<SqliteDB>>>,
 
     /// Embedding store (semantic bridge)
-    /// 🚨 DEADLOCK FIX: Using std::sync::Mutex (not tokio::sync::Mutex)
-    /// Embedding operations run in spawn_blocking, so sync Mutex is correct
-    pub embeddings: Option<Arc<std::sync::Mutex<EmbeddingStore>>>,
+    /// Using tokio::sync::RwLock for async-safe access (GPU operations are async-friendly)
+    /// Wrapped in Option for lazy initialization
+    pub embeddings: Option<Arc<RwLock<Option<EmbeddingStore>>>>,
 
     /// Vector store with HNSW index (fast similarity search)
     pub vector_store: Option<Arc<RwLock<VectorIndex>>>,
@@ -460,14 +460,13 @@ impl JulieWorkspace {
             models_path.display()
         );
 
-        // 🚨 CRITICAL: ONNX model loading is BLOCKING and can take seconds (download + init)
-        // Must run on blocking thread pool to avoid deadlocking the tokio runtime
-        let embedding_engine =
-            tokio::task::spawn_blocking(move || EmbeddingStore::new("bge-small", models_path, db))
-                .await
-                .context("Embedding engine initialization task failed")??;
+        // ✅ EmbeddingEngine::new() is now async (downloads model from HuggingFace)
+        // No need for spawn_blocking - async download is non-blocking
+        let embedding_engine = crate::embeddings::EmbeddingEngine::new("bge-small", models_path, db)
+            .await
+            .context("Embedding engine initialization failed")?;
 
-        self.embeddings = Some(Arc::new(std::sync::Mutex::new(embedding_engine)));
+        self.embeddings = Some(Arc::new(RwLock::new(Some(embedding_engine))));
 
         info!("Embedding engine initialized successfully");
         Ok(())
