@@ -539,7 +539,7 @@ impl ManageWorkspaceTool {
                 );
 
                 match self
-                    .index_workspace_files(handler, &workspace_path, true)
+                    .index_workspace_files(handler, &workspace_path, false)  // Incremental update, not force reindex
                     .await
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {

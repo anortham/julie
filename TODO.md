@@ -1,20 +1,50 @@
-● julie - fast_search (MCP)(query: "handle_file_created_or_modified embeddings", search_method: "text", limit: 10, search_target: "content", file_pattern: "src/watcher/**")
-  ⎿  Error: Tool execution failed: fts5: missing row 550 from content table 'main'.'files'
+# Julie Development TODO
 
-  ● julie - fast_search (MCP)(query: "FileChangeType::Deleted", search_method: "text", limit: 10, search_target: "content", output: "content", -n: "true")
-  ⎿  🔍 No results found for: 'FileChangeType::Deleted'
-     💡 Try a broader search term, different mode, or check spelling
+## ✅ Completed Items (2025-10-23)
 
-● julie - fast_search (MCP)(query: "Deleted", search_method: "text", limit: 15, search_target: "content", file_pattern: "src/watcher/**", output: "content", -n: "true")
-  ⎿  🔍 No results found for: 'Deleted'
-     💡 Try a broader search term, different mode, or check spelling
+### FTS5 Database Corruption Fixed
+All searches that were failing with `fts5: missing row 550 from content table` now work properly. The query preprocessor fixes resolved this issue.
 
-● julie - fast_search (MCP)(query: "handle_file_change_static", search_method: "text", limit: 5, search_target: "content", output: "content", -n: "true")
-  ⎿  🔍 No results found for: 'handle_file_change_static'
-     💡 Try a broader search term, different mode, or check spelling
+### Documentation Updates
+**CLAUDE.md** updated to reflect tool changes:
+- Removed `SmartRefactorTool` references
+- Added `RenameSymbolTool` and `EditSymbolTool` documentation
+- Updated module structure and test descriptions
 
-# we need to check server instructions for referneces to old tools now that we removed the smart_refactor tool and replaced it with 2 new tools.
+### Workspace Refresh Incremental Update
+**Fixed:** `refresh` operation now uses incremental updates instead of force reindex
+- File: `src/tools/workspace/commands/registry.rs:542`
+- Changed: `index_workspace_files(..., true)` → `index_workspace_files(..., false)`
+- **User impact:**
+  - `manage_workspace(operation="refresh")` → Fast incremental update (only changed files)
+  - `manage_workspace(operation="index", force=true)` → Full reindex (all files)
 
-# when you call refresh on a reference workspace, we should kick off an incremental update, not a complete rebuild, that's what reindex with the force parameter is for
+### macOS GPU Acceleration Investigation
+**Result:** CoreML disabled for transformer models
+- **Problem:** Only 25% of BERT operations can use Neural Engine
+- **Solution:** CPU-only mode is 10x faster than CoreML hybrid execution
+- **Performance:** Consistent 0.3-3s batches vs 11-26s spikes with CoreML
+- **Documentation:** See `docs/GPU_ACCELERATION_PLAN.md` for full analysis
 
-TODOs, Stubs, garbage! We have got to systematically go through all of them and either implement them or delete them, or at least figure out why they exist!
+---
+
+## 🚧 Remaining Work
+
+### Code Cleanup - TODOs, Stubs, and Garbage
+**Priority:** Medium
+**Status:** Not Started
+
+We need to systematically go through the codebase and:
+1. Find all TODO comments
+2. Categorize them:
+   - Implement now (critical)
+   - Document for future (roadmap)
+   - Delete (obsolete)
+3. Remove stub functions and dead code
+4. Document why incomplete features exist
+
+**Next steps:**
+- Search for all `TODO`, `FIXME`, `XXX`, `HACK` comments
+- Audit stub implementations
+- Clean up test scaffolding
+- Document architectural decisions for incomplete features

@@ -79,6 +79,7 @@ impl EmbeddingEngine {
             model_paths.model,
             model_paths.tokenizer,
             model_name,
+            Some(model_manager.cache_dir()),  // Pass cache dir for CoreML caching
         )?;
 
         let dimensions = model.dimensions();

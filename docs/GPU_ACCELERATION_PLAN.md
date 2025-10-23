@@ -602,10 +602,10 @@ macOS (Intel):
 - [x] DirectML device selection (automatically picks RTX 4080 over Arc)
 
 **Not Yet Tested:**
-- [ ] Cross-platform builds (Linux, macOS)
+- [ ] Cross-platform builds (Linux)
 - [ ] CPU fallback behavior
 - [ ] CUDA/TensorRT performance (Linux NVIDIA)
-- [ ] CoreML performance (macOS Apple Silicon)
+- [x] ~~CoreML performance (macOS Apple Silicon)~~ - **DISABLED** (see findings below)
 
 **⚠️ Known Issues:**
 - 11 symbols (0.13%) fail with "Failed to run ONNX inference"
@@ -615,11 +615,11 @@ macOS (Intel):
 
 Based on ort execution provider documentation:
 
-| Configuration | Before (fastembed CPU) | After (GPU) | Speedup |
-|--------------|------------------------|-------------|---------|
+| Configuration | Before (fastembed CPU) | After (GPU/Optimized) | Speedup |
+|--------------|------------------------|---------------------|---------|
 | DirectML (Windows) | 200-500ms | 10-30ms | 10-30x |
 | CUDA (Linux NVIDIA) | 200-500ms | 5-15ms | 15-40x |
-| CoreML (macOS M1+) | 200-500ms | 8-25ms | 10-25x |
+| CPU (macOS Apple Silicon) | 200-500ms | 100-200ms | 2-3x (ONNX optimized) |
 | CPU Fallback | 200-500ms | 200-500ms | 1x (unchanged) |
 
 **Batch Processing (100 symbols):**
@@ -673,4 +673,84 @@ Based on ort execution provider documentation:
 
 ---
 
-**Next step:** Test GPU acceleration with release binary and measure actual performance improvements!
+## 🍎 macOS CoreML Findings (2025-10-23)
+
+**TL;DR: CoreML disabled for macOS - CPU-only mode is faster.**
+
+### Problem Investigation
+
+**Test Environment:**
+- Hardware: M2 Ultra (Mac14,14)
+- OS: macOS Tahoe 26.0.1
+- Model: BGE-Small-EN-V1.5 ONNX (BERT transformer)
+
+**Configuration Tested:**
+```rust
+CoreMLExecutionProvider::default()
+    .with_compute_units(CoreMLComputeUnits::CPUAndNeuralEngine)
+    .with_model_format(CoreMLModelFormat::MLProgram)  // Requires macOS 12+
+    .with_specialization_strategy(CoreMLSpecializationStrategy::FastPrediction)
+    .with_profile_compute_plan(true)
+    .with_model_cache_dir(cache_path)
+```
+
+**Performance Results:**
+- Batch 1-4: 1.2-2.3 seconds ✅ (good)
+- Batch 5: **11.3 seconds** ❌
+- Batch 10: **11.7 seconds** ❌
+- Batch 11: **23.8 seconds** ❌❌
+- Batch 12: **25.8 seconds** ❌❌
+- Batch 13: **17.1 seconds** ❌
+
+**Conclusion:** Wildly inconsistent performance, often 10-20x slower than expected.
+
+### Root Cause Analysis
+
+**Research Findings:**
+- [ONNX Runtime Issue #19887](https://github.com/microsoft/onnxruntime/issues/19887): Only **25% of transformer nodes** can run on CoreML
+- [ONNX Runtime Issue #16934](https://github.com/microsoft/onnxruntime/issues/16934): "appears to be running on CPU" despite CoreML EP
+- [ONNX Runtime Issue #17654](https://github.com/microsoft/onnxruntime/issues/17654): Performance not utilizing CoreML fully
+
+**Why CoreML Fails for Transformers:**
+1. **Limited operator support** - CoreML doesn't support many transformer operations (attention, layer norm, etc.)
+2. **Automatic CPU fallback** - Unsupported ops run on CPU
+3. **Hybrid execution overhead** - Switching between ANE/CPU adds latency
+4. **No profiling output** - `with_profile_compute_plan(true)` produced no logs (likely ORT bug)
+
+**The Math:**
+- 25% of ops on Neural Engine: ~fast
+- 75% of ops on CPU: ~slow
+- Overhead of switching: ~very slow
+- **Result:** Slower than pure CPU execution
+
+### Solution: Disable CoreML for Transformers
+
+**Implementation:**
+```rust
+#[cfg(target_os = "macos")]
+{
+    info!("🍎 macOS detected - using optimized CPU execution");
+    info!("   ⚠️  CoreML has poor transformer/BERT support");
+    info!("   ✅ M2 Ultra CPU is very fast for ONNX inference");
+    // No execution provider - ORT defaults to optimized CPU
+}
+```
+
+**Expected Performance:**
+- Pure CPU mode on M2 Ultra: Consistent 1-3s per batch
+- Better than CoreML hybrid: No 11-26s spikes
+- Still fast: M2 Ultra has powerful CPU cores
+
+### Future Possibilities
+
+**Potential Solutions (Not Implemented):**
+1. **Model conversion** - Convert ONNX to CoreML-native format (loses portability)
+2. **Different embedding model** - Use CoreML-optimized model (not BERT)
+3. **Wait for ONNX Runtime** - CoreML transformer support may improve
+4. **Metal Performance Shaders** - Not exposed in ort Rust crate
+
+**Recommendation:** Keep CPU-only mode for macOS until transformer support improves.
+
+---
+
+**Next step:** Dogfood CPU-only mode on macOS and measure actual performance improvements!

@@ -13,7 +13,7 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use std::path::Path;
 use tokenizers::Tokenizer;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{
@@ -43,6 +43,7 @@ impl OrtEmbeddingModel {
         model_path: impl AsRef<Path>,
         tokenizer_path: impl AsRef<Path>,
         model_name: &str,
+        cache_dir: Option<impl AsRef<Path>>,
     ) -> Result<Self> {
         info!("🚀 Initializing OrtEmbeddingModel for {}", model_name);
 
@@ -74,7 +75,7 @@ impl OrtEmbeddingModel {
         info!("✅ Tokenizer loaded successfully with padding and truncation configured");
 
         // 3. Create ONNX Runtime session with platform-specific GPU acceleration
-        let session = Self::create_session_with_gpu(model_path.as_ref())
+        let session = Self::create_session_with_gpu(model_path.as_ref(), cache_dir)
             .context("Failed to create ONNX Runtime session")?;
 
         // 4. Determine model dimensions (384 for BGE-Small)
@@ -173,8 +174,15 @@ impl OrtEmbeddingModel {
     /// Create ONNX Runtime session with platform-specific execution providers
     ///
     /// Tries GPU acceleration first, ORT automatically falls back to CPU if unavailable.
-    fn create_session_with_gpu(model_path: &Path) -> Result<Session> {
+    #[allow(unused_variables)] // cache_dir used on Windows/Linux but not macOS
+    fn create_session_with_gpu(model_path: &Path, cache_dir: Option<impl AsRef<Path>>) -> Result<Session> {
+        #[cfg(not(target_os = "macos"))]
         let mut builder = Session::builder()
+            .context("Failed to create SessionBuilder")?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?;
+
+        #[cfg(target_os = "macos")]
+        let builder = Session::builder()
             .context("Failed to create SessionBuilder")?
             .with_optimization_level(GraphOptimizationLevel::Level3)?;
 
@@ -209,10 +217,15 @@ impl OrtEmbeddingModel {
 
         #[cfg(target_os = "macos")]
         {
-            use ort::execution_providers::CoreMLExecutionProvider;
-            info!("🎮 Registering CoreML (Apple Silicon) acceleration...");
-            builder = builder.with_execution_providers([CoreMLExecutionProvider::default().build()])?;
-            info!("✅ CoreML execution provider registered");
+            info!("🍎 macOS detected - using optimized CPU execution");
+            info!("   ⚠️  CoreML has poor transformer/BERT support:");
+            info!("      - Only 25% of operations can use Neural Engine");
+            info!("      - Remaining 75% fall back to CPU with overhead");
+            info!("      - Pure CPU mode is faster than CoreML hybrid");
+            info!("   ✅ GPU acceleration works great on Windows/Linux");
+            info!("   ℹ️  M2 Ultra CPU is still very fast for ONNX inference");
+            // No execution provider registration - ORT defaults to optimized CPU
+            // which is faster for transformers than CoreML's hybrid approach
         }
 
         // Commit session from model file
@@ -311,16 +324,24 @@ impl OrtEmbeddingModel {
         let mut embeddings = Vec::with_capacity(batch_size);
         for i in 0..batch_size {
             // Get the CLS token embedding (index 0 in sequence dimension)
-            let cls_embedding: Vec<f32> = embeddings_array
+            let mut cls_embedding: Vec<f32> = embeddings_array
                 .index_axis(Axis(0), i)
                 .index_axis(Axis(0), 0)
                 .to_owned()
                 .into_raw_vec_and_offset().0;
 
+            // L2 normalize the embedding (required for BGE models)
+            let magnitude: f32 = cls_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if magnitude > 0.0 {
+                for val in &mut cls_embedding {
+                    *val /= magnitude;
+                }
+            }
+
             embeddings.push(cls_embedding);
         }
 
-        debug!("✅ Generated {} embeddings", embeddings.len());
+        debug!("✅ Generated {} L2-normalized embeddings", embeddings.len());
 
         Ok(embeddings)
     }
@@ -385,7 +406,7 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_model_initialization() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test");
+            let model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>);
             assert!(model.is_ok(), "Model initialization should succeed");
 
             let model = model.unwrap();
@@ -400,7 +421,7 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_single_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test")
+            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>)
                 .expect("Model initialization failed");
 
             let embedding = model.encode_single("Hello, world!".to_string());
@@ -421,7 +442,7 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_batch_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test")
+            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>)
                 .expect("Model initialization failed");
 
             let texts = vec![

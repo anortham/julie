@@ -454,7 +454,7 @@ src/
 │   ├── search.rs       # Fast search, goto, refs tools (SQLite FTS5 + semantic)
 │   ├── fuzzy_replace.rs # FuzzyReplaceTool (Levenshtein-based fuzzy matching)
 │   ├── trace_call_path.rs # TraceCallPathTool (cross-language call tracing)
-│   ├── refactoring.rs  # SmartRefactorTool (RenameSymbol, etc.)
+│   ├── refactoring.rs  # RenameSymbolTool, EditSymbolTool (semantic refactoring)
 │   └── workspace/      # Workspace management tools
 ├── workspace/           # Multi-workspace registry
 ├── tracing/             # Logging and telemetry
@@ -500,7 +500,7 @@ src/tests/                           # Central test infrastructure
 ├── tools/                          # Tool-specific tests
 │   ├── fuzzy_replace_tests.rs     # FuzzyReplaceTool tests (18 tests, all passing)
 │   ├── trace_call_path_tests.rs   # TraceCallPathTool tests (15 tests, all passing)
-│   ├── refactoring_tests.rs       # SmartRefactorTool tests
+│   ├── refactoring_tests.rs       # RenameSymbolTool, EditSymbolTool tests
 │   ├── search_tools_tests.rs      # Search/navigation tests
 │   └── [7 disabled SafeEditTool test modules need migration to FuzzyReplaceTool]
 │
@@ -581,8 +581,9 @@ fn run_test(test_case: &EditingTestCase) -> Result<()> {
 **Implemented For:**
 - ✅ FuzzyReplaceTool (18 unit tests - Levenshtein similarity, UTF-8 safety, validation)
 - ✅ TraceCallPathTool (15 unit tests - parameters, naming variants, filtering)
+- ✅ RenameSymbolTool (workspace-wide symbol renaming)
+- ✅ EditSymbolTool (semantic code editing - replace bodies, insert code, extract to file)
 - ⚠️  7 SafeEditTool test modules disabled (need migration to FuzzyReplaceTool)
-- ❌ SmartRefactorTool (TODO)
 
 ### Running Tests
 ```bash
