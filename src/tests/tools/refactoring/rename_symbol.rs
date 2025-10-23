@@ -28,11 +28,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -129,11 +125,7 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -182,11 +174,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 

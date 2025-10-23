@@ -85,11 +85,7 @@ pub fn reference_function() {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -100,11 +96,7 @@ pub fn reference_function() {
         name: Some("test-reference".to_string()),
         force: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     let add_result = add_tool.call_tool(&handler).await?;
     let add_text = extract_text_from_result(&add_result);
@@ -132,7 +124,6 @@ pub fn reference_function() {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: Some(workspace_id.clone()), // ✅ NOW IT EXISTS!
     };
@@ -238,11 +229,7 @@ pub struct Another {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -253,11 +240,7 @@ pub struct Another {
         name: Some("test-reference-filtering".to_string()),
         force: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     let add_result = add_tool.call_tool(&handler).await?;
     let add_text = extract_text_from_result(&add_result);
@@ -280,7 +263,6 @@ pub struct Another {
         max_depth: 999,  // Very deep
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -311,7 +293,6 @@ pub struct Another {
         max_depth: 0,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -341,7 +322,6 @@ pub struct Another {
         max_depth: 999,
         target: Some("Outer".to_string()),
         limit: None,
-        include_body: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };
@@ -369,7 +349,6 @@ pub struct Another {
         max_depth: 999,
         target: None,
         limit: Some(2),
-        include_body: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
     };

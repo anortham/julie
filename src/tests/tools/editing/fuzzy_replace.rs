@@ -665,6 +665,98 @@ fn test_fuzzy_replace_performance_mod_rs() -> Result<()> {
     Ok(())
 }
 
+/// Test validation: neither file_path nor file_pattern provided should error
+#[tokio::test]
+async fn test_validation_neither_parameter_provided() -> Result<()> {
+    use crate::handler::JulieServerHandler;
+
+    let handler = JulieServerHandler::new().await?;
+
+    let tool = FuzzyReplaceTool {
+        file_path: None, // Neither parameter provided
+        file_pattern: None,
+        pattern: "test".to_string(),
+        replacement: "TEST".to_string(),
+        threshold: 0.8,
+        distance: 1000,
+        dry_run: false,
+        validate: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+
+    // Extract error message from result
+    let text = result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(
+        text.contains("Must provide exactly one"),
+        "Should error when neither parameter provided, got: {}",
+        text
+    );
+    assert!(
+        text.contains("file_path") && text.contains("file_pattern"),
+        "Error message should mention both parameters"
+    );
+
+    Ok(())
+}
+
+/// Test validation: both file_path and file_pattern provided should error
+#[tokio::test]
+async fn test_validation_both_parameters_provided() -> Result<()> {
+    use crate::handler::JulieServerHandler;
+
+    let handler = JulieServerHandler::new().await?;
+
+    let tool = FuzzyReplaceTool {
+        file_path: Some("test.rs".to_string()), // Both parameters provided
+        file_pattern: Some("*.rs".to_string()),
+        pattern: "test".to_string(),
+        replacement: "TEST".to_string(),
+        threshold: 0.8,
+        distance: 1000,
+        dry_run: false,
+        validate: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+
+    // Extract error message from result
+    let text = result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(
+        text.contains("Cannot provide both"),
+        "Should error when both parameters provided, got: {}",
+        text
+    );
+    assert!(
+        text.contains("file_path") && text.contains("file_pattern"),
+        "Error message should mention both parameters"
+    );
+
+    Ok(())
+}
+
 // Helper function to create a tool with basic params
 fn create_tool(pattern: &str, replacement: &str) -> FuzzyReplaceTool {
     FuzzyReplaceTool {

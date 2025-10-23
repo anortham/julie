@@ -7,7 +7,6 @@ use tracing::info;
 use crate::handler::JulieServerHandler;
 
 mod index;
-mod limits;
 mod registry;
 
 //******************//
@@ -38,11 +37,8 @@ pub enum WorkspaceCommand {
     },
     /// List all registered workspaces with status
     List,
-    /// Clean up expired or orphaned workspaces
-    Clean {
-        /// Only clean expired workspaces, not orphaned ones
-        expired_only: bool,
-    },
+    /// Clean up expired and orphaned workspaces (comprehensive cleanup)
+    Clean,
     /// Re-index specific workspace
     Refresh {
         /// Workspace ID to refresh
@@ -53,16 +49,6 @@ pub enum WorkspaceCommand {
         /// Optional specific workspace ID (defaults to all)
         workspace_id: Option<String>,
     },
-    /// Set TTL for reference workspaces
-    SetTtl {
-        /// Number of days before reference workspaces expire
-        days: u32,
-    },
-    /// Set storage size limit
-    SetLimit {
-        /// Maximum total index size in MB
-        max_size_mb: u64,
-    },
     /// Show comprehensive system health status
     Health {
         /// Include detailed diagnostic information
@@ -72,7 +58,21 @@ pub enum WorkspaceCommand {
 
 #[mcp_tool(
     name = "manage_workspace",
-    description = "MANAGE PROJECT WORKSPACES - Index, add, remove, and configure multiple project workspaces",
+    description = concat!(
+        "MANAGE PROJECT WORKSPACES - Index, add, remove, and configure multiple project workspaces. ",
+        "You are EXCELLENT at managing Julie's workspace system.\n\n",
+        "**Primary workspace**: Where Julie runs (gets `.julie/` directory)\n",
+        "**Reference workspaces**: Other codebases you want to search (indexed into primary workspace)\n\n",
+        "Common operations:\n",
+        "• index - Index or re-index workspace (run this first!)\n",
+        "• list - See all registered workspaces with status\n",
+        "• add - Add reference workspace for cross-project search\n",
+        "• health - Check system status and index health\n",
+        "• stats - View workspace statistics\n",
+        "• clean - Remove orphaned/expired workspaces\n\n",
+        "💡 TIP: Always run 'index' operation first when starting in a new workspace. ",
+        "Use 'health' operation to diagnose issues."
+    ),
     title = "Manage Julie Workspaces",
     idempotent_hint = false,
     destructive_hint = false,
@@ -82,15 +82,16 @@ pub enum WorkspaceCommand {
 )]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health", "set_ttl", "set_limit", "recent"
+    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
     /// List workspaces:      {"operation": "list"}
     /// Show stats:           {"operation": "stats", "workspace_id": null}
     /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
-    /// Clean expired:        {"operation": "clean", "expired_only": true}
-    /// Recent files:         {"operation": "recent", "days": 2, "limit": 20}
+    /// Clean workspaces:     {"operation": "clean"}
+    /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id"}
+    /// Health check:         {"operation": "health", "detailed": true}
     pub operation: String,
 
     // Optional parameters used by various operations
@@ -110,25 +111,9 @@ pub struct ManageWorkspaceTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
 
-    /// Only clean expired workspaces (used by: clean)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expired_only: Option<bool>,
-
-    /// TTL in days (used by: set_ttl)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub days: Option<u32>,
-
-    /// Max size in MB (used by: set_limit)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_size_mb: Option<u64>,
-
     /// Include detailed diagnostics (used by: health)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detailed: Option<bool>,
-
-    /// Maximum number of results to return (used by: recent)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>,
 }
 
 impl ManageWorkspaceTool {
@@ -163,10 +148,7 @@ impl ManageWorkspaceTool {
                 self.handle_remove_command(handler, workspace_id).await
             }
             "list" => self.handle_list_command(handler).await,
-            "clean" => {
-                self.handle_clean_command(handler, self.expired_only.unwrap_or(false))
-                    .await
-            }
+            "clean" => self.handle_clean_command(handler).await,
             "refresh" => {
                 let workspace_id = self.workspace_id.as_ref()
                     .ok_or_else(|| anyhow::anyhow!("'workspace_id' parameter required for 'refresh' operation"))?;
@@ -176,27 +158,12 @@ impl ManageWorkspaceTool {
                 self.handle_stats_command(handler, self.workspace_id.clone())
                     .await
             }
-            "set_ttl" => {
-                let days = self.days
-                    .ok_or_else(|| anyhow::anyhow!("'days' parameter required for 'set_ttl' operation"))?;
-                self.handle_set_ttl_command(handler, days).await
-            }
-            "set_limit" => {
-                let max_size_mb = self.max_size_mb
-                    .ok_or_else(|| anyhow::anyhow!("'max_size_mb' parameter required for 'set_limit' operation"))?;
-                self.handle_set_limit_command(handler, max_size_mb).await
-            }
             "health" => {
                 self.handle_health_command(handler, self.detailed.unwrap_or(false))
                     .await
             }
-            "recent" => {
-                let days = self.days.unwrap_or(7); // Default to last 7 days
-                let limit = self.limit.unwrap_or(50);
-                self.handle_recent_command(handler, days, limit).await
-            }
             _ => Err(anyhow::anyhow!(
-                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health, set_ttl, set_limit, recent",
+                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health",
                 self.operation
             )),
         }

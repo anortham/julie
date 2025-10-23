@@ -104,13 +104,9 @@ async fn cross_language_callers_found_via_naming_variant() {
         symbol: target.name.clone(),
         direction: "upstream".to_string(),
         max_depth: 3,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some(workspace_id.to_string()),
         output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
     };
 
     let callers = tool

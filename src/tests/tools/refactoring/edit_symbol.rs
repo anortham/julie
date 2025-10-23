@@ -30,11 +30,7 @@ async fn test_edit_symbol_replace_body_basic() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -109,11 +105,7 @@ async fn test_edit_symbol_insert_after() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -162,11 +154,7 @@ async fn test_edit_symbol_insert_before() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -216,11 +204,7 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -298,11 +282,7 @@ async fn test_edit_symbol_dry_run() -> Result<()> {
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 

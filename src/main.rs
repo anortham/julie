@@ -240,11 +240,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
         force: Some(false), // Don't force unless database is completely empty
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
 
     // Perform the indexing

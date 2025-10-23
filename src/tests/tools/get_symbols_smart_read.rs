@@ -1,7 +1,7 @@
 //! Tests for GetSymbolsTool Phase 2 - Smart Read with Code Bodies
 //!
 //! TDD: Write failing tests first, then implement the feature
-//! These tests verify the include_body and mode parameters for code body extraction
+//! These tests verify the mode parameter for code body extraction
 
 use anyhow::Result;
 use std::fs;
@@ -82,7 +82,7 @@ pub const MAX_USERS: usize = 100;
 
 #[tokio::test]
 async fn test_default_behavior_strips_context() -> Result<()> {
-    // Default: include_body=false, mode="structure" -> should strip code_context
+    // Default: mode="structure" (default) -> should strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -94,22 +94,17 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with default parameters (include_body not set, mode not set)
+    // Call with default parameters (mode not set)
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: None,
     };
@@ -132,8 +127,8 @@ async fn test_default_behavior_strips_context() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_include_body_false_strips_context() -> Result<()> {
-    // Explicit include_body=false -> should strip code_context
+async fn test_structure_mode_strips_context() -> Result<()> {
+    // Explicit mode="structure" -> should strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -145,22 +140,17 @@ async fn test_include_body_false_strips_context() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with explicit include_body=false
+    // Call with explicit mode="structure"
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: Some(false),
         mode: Some("structure".to_string()),
         workspace: None,
     };
@@ -173,7 +163,7 @@ async fn test_include_body_false_strips_context() -> Result<()> {
         let code_context = symbol.get("code_context");
         assert!(
             code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-            "Expected code_context to be None/null when include_body=false"
+            "Expected code_context to be None/null in structure mode"
         );
     }
 
@@ -183,7 +173,7 @@ async fn test_include_body_false_strips_context() -> Result<()> {
 
 #[tokio::test]
 async fn test_mode_structure_always_strips() -> Result<()> {
-    // mode="structure" should ALWAYS strip code_context, even if include_body=true
+    // mode="structure" should ALWAYS strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -195,22 +185,17 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with mode="structure" and include_body=true (should ignore include_body)
+    // Call with mode="structure"
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: Some(true),
         mode: Some("structure".to_string()),
         workspace: None,
     };
@@ -218,12 +203,12 @@ async fn test_mode_structure_always_strips() -> Result<()> {
     let result = tool.call_tool(&handler).await?;
     let symbols = extract_symbols_from_result(&result);
 
-    // Verify code_context is still stripped (structure mode overrides include_body)
+    // Verify code_context is still stripped (structure mode)
     for symbol in &symbols {
         let code_context = symbol.get("code_context");
         assert!(
             code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-            "Expected code_context to be None/null in structure mode, even with include_body=true"
+            "Expected code_context to be None/null in structure mode, "
         );
     }
 
@@ -233,7 +218,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
 
 #[tokio::test]
 async fn test_mode_minimal_top_level_only() -> Result<()> {
-    // mode="minimal" with include_body=true -> extract bodies for TOP-LEVEL symbols only
+    // mode="minimal" -> extract bodies for TOP-LEVEL symbols only
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -245,11 +230,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -259,7 +240,6 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: Some(true),
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -299,7 +279,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
 
 #[tokio::test]
 async fn test_mode_full_all_symbols() -> Result<()> {
-    // mode="full" with include_body=true -> extract bodies for ALL symbols including nested
+    // mode="full" -> extract bodies for ALL symbols including nested
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -311,11 +291,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -325,7 +301,6 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         max_depth: 2, // Increase depth to get nested symbols
         target: None,
         limit: None,
-        include_body: Some(true),
         mode: Some("full".to_string()),
         workspace: None,
     };
@@ -354,8 +329,8 @@ async fn test_mode_full_all_symbols() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_target_with_include_body() -> Result<()> {
-    // Test that target filtering works with include_body=true and mode="minimal"
+async fn test_target_with_minimal_mode() -> Result<()> {
+    // Test that target filtering works with mode="minimal"
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
@@ -367,11 +342,7 @@ async fn test_target_with_include_body() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -381,7 +352,6 @@ async fn test_target_with_include_body() -> Result<()> {
         max_depth: 1,
         target: Some("User".to_string()),
         limit: None,
-        include_body: Some(true),
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -435,11 +405,7 @@ async fn test_file_read_error_handling() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -450,7 +416,6 @@ async fn test_file_read_error_handling() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: Some(true),
         mode: Some("minimal".to_string()),
         workspace: None,
     };
@@ -489,11 +454,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -505,7 +466,6 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: Some(true),
         mode: Some("minimal".to_string()),
         workspace: None,
     };

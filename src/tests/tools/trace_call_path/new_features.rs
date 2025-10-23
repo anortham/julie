@@ -16,13 +16,9 @@ fn test_output_format_parameter_json() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 3,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
     };
 
     assert_eq!(tool.output_format, "json");
@@ -35,13 +31,9 @@ fn test_output_format_parameter_tree() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 3,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "tree".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
     };
 
     assert_eq!(tool.output_format, "tree");
@@ -54,16 +46,11 @@ fn test_semantic_limit_parameter() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 3,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
-        semantic_limit: Some(20u32),
-        cross_language_max_depth: None,
     };
 
-    assert_eq!(tool.semantic_limit, Some(20));
 }
 
 #[test]
@@ -73,16 +60,11 @@ fn test_semantic_limit_default() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 3,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
     };
 
-    assert_eq!(tool.semantic_limit, None);
 }
 
 #[test]
@@ -92,16 +74,11 @@ fn test_cross_language_max_depth_parameter() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 5,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: Some(3),
     };
 
-    assert_eq!(tool.cross_language_max_depth, Some(3));
 }
 
 #[test]
@@ -111,16 +88,11 @@ fn test_cross_language_max_depth_default() {
         symbol: "getUserData".to_string(),
         direction: "upstream".to_string(),
         max_depth: 5,
-        cross_language: true,
-        similarity_threshold: 0.7,
         context_file: None,
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
-        semantic_limit: None,
-        cross_language_max_depth: None,
     };
 
-    assert_eq!(tool.cross_language_max_depth, None);
 }
 
 #[test]
@@ -130,17 +102,11 @@ fn test_all_new_parameters_together() {
         symbol: "processPayment".to_string(),
         direction: "both".to_string(),
         max_depth: 5,
-        cross_language: true,
-        similarity_threshold: 0.8,
         context_file: Some("src/payment.ts".to_string()),
         workspace: Some("reference_workspace_id".to_string()),
         output_format: "tree".to_string(),
-        semantic_limit: Some(15u32),
-        cross_language_max_depth: Some(4),
     };
 
     assert_eq!(tool.output_format, "tree");
-    assert_eq!(tool.semantic_limit, Some(15));
-    assert_eq!(tool.cross_language_max_depth, Some(4));
     assert_eq!(tool.workspace, Some("reference_workspace_id".to_string()));
 }

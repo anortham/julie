@@ -381,9 +381,8 @@ impl ManageWorkspaceTool {
     pub(crate) async fn handle_clean_command(
         &self,
         handler: &JulieServerHandler,
-        expired_only: bool,
     ) -> Result<CallToolResult> {
-        info!("Cleaning workspaces (expired_only: {})", expired_only);
+        info!("Cleaning workspaces (comprehensive cleanup: TTL + Size Limits + Orphans)");
 
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
@@ -397,109 +396,68 @@ impl ManageWorkspaceTool {
 
         let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
 
-        if expired_only {
-            // Only clean expired workspaces with full database cleanup
-            match registry_service
-                .cleanup_expired_workspaces_with_data(primary_workspace.db.as_ref())
-                .await
-            {
-                Ok(report) => {
-                    let message = if report.workspaces_removed.is_empty() {
-                        "No expired workspaces to clean.".to_string()
-                    } else {
-                        format!(
-                            "Cleaned {} expired workspace(s):\n{}\n\n\
-                            Database cleanup:\n\
-                            • {} symbols deleted\n\
-                            • {} files deleted\n\
-                            • {} relationships deleted",
-                            report.workspaces_removed.len(),
-                            report
-                                .workspaces_removed
-                                .iter()
-                                .map(|id| format!("  - {}", id))
-                                .collect::<Vec<_>>()
-                                .join("\n"),
-                            report.total_symbols_deleted,
-                            report.total_files_deleted,
-                            report.total_relationships_deleted
-                        )
-                    };
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
-                        message,
-                    )]))
+        // Always do comprehensive cleanup (TTL + Size Limits + Orphans)
+        match registry_service
+            .comprehensive_cleanup(primary_workspace.db.as_ref())
+            .await
+        {
+            Ok(report) => {
+                let ttl_count = report.ttl_cleanup.workspaces_removed.len();
+                let size_count = report.size_cleanup.workspaces_removed.len();
+                let orphan_count = report.orphaned_cleaned.len();
+                let total_symbols = report.ttl_cleanup.total_symbols_deleted
+                    + report.size_cleanup.total_symbols_deleted;
+                let total_files = report.ttl_cleanup.total_files_deleted
+                    + report.size_cleanup.total_files_deleted;
+
+                let mut message_parts = Vec::new();
+
+                if ttl_count > 0 {
+                    message_parts
+                        .push(format!("TTL Cleanup: {} expired workspaces", ttl_count));
                 }
-                Err(e) => {
-                    let message = format!("Failed to clean expired workspaces: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
-                        message,
-                    )]))
+
+                if size_count > 0 {
+                    message_parts.push(format!(
+                        "Size Cleanup: {} workspaces (LRU eviction)",
+                        size_count
+                    ));
                 }
+
+                if orphan_count > 0 {
+                    message_parts.push(format!(
+                        "Orphan Cleanup: {} abandoned indexes",
+                        orphan_count
+                    ));
+                }
+
+                let message = if message_parts.is_empty() {
+                    "No cleanup needed. All workspaces are healthy!".to_string()
+                } else {
+                    format!(
+                        "Comprehensive Cleanup Complete\n\n{}\n\n\
+                        Database Impact:\n\
+                        • {} symbols deleted\n\
+                        • {} files deleted\n\
+                        • {} relationships deleted\n\n\
+                        Cleanup helps maintain optimal performance and storage usage.",
+                        message_parts.join("\n"),
+                        total_symbols,
+                        total_files,
+                        report.ttl_cleanup.total_relationships_deleted
+                            + report.size_cleanup.total_relationships_deleted
+                    )
+                };
+
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
-        } else {
-            // Comprehensive cleanup: TTL + Size Limits + Orphans
-            match registry_service
-                .comprehensive_cleanup(primary_workspace.db.as_ref())
-                .await
-            {
-                Ok(report) => {
-                    let ttl_count = report.ttl_cleanup.workspaces_removed.len();
-                    let size_count = report.size_cleanup.workspaces_removed.len();
-                    let orphan_count = report.orphaned_cleaned.len();
-                    let total_symbols = report.ttl_cleanup.total_symbols_deleted
-                        + report.size_cleanup.total_symbols_deleted;
-                    let total_files = report.ttl_cleanup.total_files_deleted
-                        + report.size_cleanup.total_files_deleted;
-
-                    let mut message_parts = Vec::new();
-
-                    if ttl_count > 0 {
-                        message_parts
-                            .push(format!("TTL Cleanup: {} expired workspaces", ttl_count));
-                    }
-
-                    if size_count > 0 {
-                        message_parts.push(format!(
-                            "Size Cleanup: {} workspaces (LRU eviction)",
-                            size_count
-                        ));
-                    }
-
-                    if orphan_count > 0 {
-                        message_parts.push(format!(
-                            "Orphan Cleanup: {} abandoned indexes",
-                            orphan_count
-                        ));
-                    }
-
-                    let message = if message_parts.is_empty() {
-                        "No cleanup needed. All workspaces are healthy!".to_string()
-                    } else {
-                        format!(
-                            "Comprehensive Cleanup Complete\n\n{}\n\n\
-                            Database Impact:\n\
-                            • {} symbols deleted\n\
-                            • {} files deleted\n\
-                            • {} relationships deleted\n\n\
-                            Cleanup helps maintain optimal performance and storage usage.",
-                            message_parts.join("\n"),
-                            total_symbols,
-                            total_files,
-                            report.ttl_cleanup.total_relationships_deleted
-                                + report.size_cleanup.total_relationships_deleted
-                        )
-                    };
-
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
-                        message,
-                    )]))
-                }
-                Err(e) => {
-                    let message = format!("Failed to perform comprehensive cleanup: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
-                        message,
-                    )]))
-                }
+            Err(e) => {
+                let message = format!("Failed to perform comprehensive cleanup: {}", e);
+                Ok(CallToolResult::text_content(vec![TextContent::from(
+                    message,
+                )]))
             }
         }
     }
@@ -1013,126 +971,5 @@ impl ManageWorkspaceTool {
         }
 
         Ok(assessment)
-    }
-
-    /// Handle recent command - show recently modified files
-    pub(crate) async fn handle_recent_command(
-        &self,
-        handler: &JulieServerHandler,
-        days: u32,
-        limit: u32,
-    ) -> Result<CallToolResult> {
-        info!("Finding files modified in the last {} days", days);
-
-        let primary_workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => {
-                let message = "No primary workspace found. Use 'index' command to create one.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
-            }
-        };
-
-        // Resolve primary workspace ID for workspace-scoped query
-        let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
-        let _workspace_id = registry_service
-            .get_primary_workspace_id()
-            .await?
-            .unwrap_or_else(|| "primary".to_string());
-
-        // Get database access
-        let db = primary_workspace.db.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Database not initialized. Run 'index' command first.")
-        })?;
-
-        let db_lock = db.lock().unwrap();
-
-        // Query recent files from database
-        match db_lock.get_recent_files(days, limit as usize) {
-            Ok(files) => {
-                if files.is_empty() {
-                    let message = format!("📭 No files found modified in the last {} days.", days);
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
-                        message,
-                    )]));
-                }
-
-                // Apply token optimization using ProgressiveReducer
-                let token_estimator = TokenEstimator::new();
-                let reducer = ProgressiveReducer::new();
-
-                // Target 12000 tokens for recent file listings (slightly higher than workspace list)
-                let target_tokens = 12000;
-
-                // Create a token estimation function that formats file entries
-                let estimate_files = |file_subset: &[crate::database::FileInfo]| {
-                    let mut test_output = format!("Files modified in the last {} days:\n\n", days);
-                    for file in file_subset {
-                        let now = chrono::Utc::now().timestamp();
-                        let hours_ago = (now - file.last_modified) / 3600;
-                        let time_ago = if hours_ago < 24 {
-                            format!("{} hours ago", hours_ago)
-                        } else {
-                            format!("{} days ago", hours_ago / 24)
-                        };
-
-                        test_output.push_str(&format!(
-                            "{}\n\
-                            Modified: {}\n\
-                            {} symbols | {} bytes\n\
-                            Language: {}\n\n",
-                            file.path, time_ago, file.symbol_count, file.size, file.language
-                        ));
-                    }
-                    token_estimator.estimate_string(&test_output)
-                };
-
-                // Reduce files if needed to fit token limit
-                let total_count = files.len();
-                let optimized_files = reducer.reduce(&files, target_tokens, estimate_files);
-                let shown_count = optimized_files.len();
-
-                let mut output = format!("Files modified in the last {} days:\n\n", days);
-
-                for file in &optimized_files {
-                    // Calculate how long ago the file was modified
-                    let now = chrono::Utc::now().timestamp();
-                    let hours_ago = (now - file.last_modified) / 3600;
-                    let time_ago = if hours_ago < 24 {
-                        format!("{} hours ago", hours_ago)
-                    } else {
-                        format!("{} days ago", hours_ago / 24)
-                    };
-
-                    output.push_str(&format!(
-                        "{}\n\
-                        Modified: {}\n\
-                        {} symbols | {} bytes\n\
-                        Language: {}\n\n",
-                        file.path, time_ago, file.symbol_count, file.size, file.language
-                    ));
-                }
-
-                // Add truncation notice if results were reduced
-                if shown_count < total_count {
-                    output.push_str(&format!(
-                        "Showing {} of {} recently modified files (token limit applied)\n\
-                        Adjust the 'limit' parameter to control result count\n",
-                        shown_count, total_count
-                    ));
-                }
-
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    output,
-                )]))
-            }
-            Err(e) => {
-                let message = format!("Failed to query recent files: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]))
-            }
-        }
     }
 }

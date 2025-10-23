@@ -74,14 +74,6 @@ fn default_depth() -> u32 {
     3
 }
 
-fn default_true() -> bool {
-    true
-}
-
-fn default_similarity() -> f32 {
-    0.7
-}
-
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
@@ -114,8 +106,10 @@ fn default_output_format() -> String {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct TraceCallPathTool {
-    /// Symbol to start tracing from
-    /// Examples: "getUserData", "UserService.create", "processPayment"
+    /// Symbol to start tracing from. Supports simple and qualified names.
+    /// Examples: "getUserData", "UserService.create", "processPayment", "MyClass::method", "React.Component"
+    /// Julie intelligently traces across languages (TypeScript → Go → Python → SQL) using naming variants
+    /// This is Julie's superpower - cross-language call path tracing
     pub symbol: String,
 
     /// Trace direction (default: "upstream").
@@ -130,26 +124,16 @@ pub struct TraceCallPathTool {
     #[serde(default = "default_depth")]
     pub max_depth: u32,
 
-    /// Enable cross-language tracing (default: true).
-    /// Uses naming variants - slower but this is Julie's unique capability!
-    /// Set false for faster same-language-only tracing
-    #[serde(default = "default_true")]
-    pub cross_language: bool,
-
-    /// Minimum similarity threshold for cross-language matches (default: 0.7, range: 0.0-1.0).
-    /// Higher = fewer false positives, Lower = more comprehensive
-    /// Recommended: 0.7 for good balance
-    #[serde(default = "default_similarity")]
-    pub similarity_threshold: f32,
-
     /// Starting file for context (default: None, optional).
     /// Helps disambiguate when multiple symbols have the same name
     /// Example: "src/services/user.ts"
     #[serde(default)]
     pub context_file: Option<String>,
 
-    /// Workspace filter (default: "primary").
-    /// Options: "all", "primary", or specific workspace ID
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "reference-workspace_abc123"
+    /// Default: "primary" - search the primary workspace
+    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 
@@ -158,18 +142,6 @@ pub struct TraceCallPathTool {
     /// "tree" = Human-readable ASCII tree diagram with file locations
     #[serde(default = "default_output_format")]
     pub output_format: String,
-
-    /// Maximum semantic neighbors to check per symbol (default: None, uses 8 internally).
-    /// Balance between coverage and performance
-    /// Higher values may find more connections but slower
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub semantic_limit: Option<u32>,
-
-    /// Cross-language recursion depth limit (default: None, uses max_depth).
-    /// No artificial limitation by default
-    /// Set lower if cross-language paths cause explosion
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cross_language_max_depth: Option<u32>,
 }
 
 /// Represents a node in the call path tree
@@ -218,7 +190,7 @@ impl TraceCallPathTool {
             symbol: self.symbol.clone(),
             direction: self.direction.clone(),
             max_depth: self.max_depth,
-            cross_language: self.cross_language,
+            cross_language: true, // Always enabled - this is Julie's superpower!
             success,
             paths_found,
             next_actions,
@@ -242,8 +214,8 @@ impl TraceCallPathTool {
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!(
-            "🔍 Tracing call path: {} (direction: {}, depth: {}, cross_lang: {})",
-            self.symbol, self.direction, self.max_depth, self.cross_language
+            "🔍 Tracing call path: {} (direction: {}, depth: {}, cross_lang: enabled)",
+            self.symbol, self.direction, self.max_depth
         );
 
         // Validate parameters
@@ -253,20 +225,6 @@ impl TraceCallPathTool {
                 false,
                 0,
                 vec!["Reduce max_depth to 5 or less".to_string()],
-                message.clone(),
-                Some(message),
-                None,
-            );
-        }
-
-        if self.similarity_threshold < 0.0 || self.similarity_threshold > 1.0 {
-            let message =
-                "Error: similarity_threshold must be between 0.0 and 1.0 (recommended: 0.7)"
-                    .to_string();
-            return self.create_result(
-                false,
-                0,
-                vec!["Set similarity_threshold between 0.0 and 1.0".to_string()],
                 message.clone(),
                 Some(message),
                 None,
@@ -522,8 +480,8 @@ impl TraceCallPathTool {
             nodes.push(node);
         }
 
-        // Step 2: Cross-language matching (if enabled)
-        if self.cross_language && current_depth < self.max_depth {
+        // Step 2: Cross-language matching (always enabled - this is Julie's superpower!)
+        if current_depth < self.max_depth {
             debug!("Finding cross-language callers for: {}", symbol.name);
             let cross_lang_callers = self.find_cross_language_callers(db, symbol).await?;
 
@@ -676,8 +634,8 @@ impl TraceCallPathTool {
             nodes.push(node);
         }
 
-        // Step 2: Cross-language matching (if enabled)
-        if self.cross_language && current_depth < self.max_depth {
+        // Step 2: Cross-language matching (always enabled - this is Julie's superpower!)
+        if current_depth < self.max_depth {
             debug!("Finding cross-language callees for: {}", symbol.name);
             let cross_lang_callees = self.find_cross_language_callees(db, symbol).await?;
 
@@ -895,7 +853,7 @@ impl TraceCallPathTool {
                 &*db_lock,
                 &embedding,
                 max_results,
-                self.similarity_threshold,
+                0.7, // Hardcoded good balance threshold
                 model_name,
             )
         }) {
@@ -932,8 +890,8 @@ impl TraceCallPathTool {
         db: &Arc<Mutex<SymbolDatabase>>,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
-        // Use configurable semantic_limit parameter (default 8 if None)
-        let limit = self.semantic_limit.unwrap_or(8) as usize;
+        // Use hardcoded semantic limit for good balance between coverage and performance
+        let limit = 8;
         let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
 
         if candidates.is_empty() {
@@ -985,8 +943,8 @@ impl TraceCallPathTool {
         db: &Arc<Mutex<SymbolDatabase>>,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
-        // Use configurable semantic_limit parameter (default 8 if None)
-        let limit = self.semantic_limit.unwrap_or(8) as usize;
+        // Use hardcoded semantic limit for good balance between coverage and performance
+        let limit = 8;
         let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
 
         if candidates.is_empty() {
@@ -1066,7 +1024,7 @@ impl TraceCallPathTool {
                 self.symbol,
                 self.direction,
                 self.max_depth,
-                self.cross_language,
+                true, // Cross-language always enabled
                 total_nodes,
                 direction_label,
                 all_languages.len()
@@ -1087,8 +1045,8 @@ impl TraceCallPathTool {
         // Header
         output.push_str(&format!("Call Path Trace: '{}'\n", self.symbol));
         output.push_str(&format!(
-            "Direction: {} | Depth: {} | Cross-language: {}\n",
-            self.direction, self.max_depth, self.cross_language
+            "Direction: {} | Depth: {} | Cross-language: enabled\n",
+            self.direction, self.max_depth
         ));
         output.push_str(&format!(
             "Found {} {} across {} languages\n\n",
@@ -1255,9 +1213,8 @@ impl TraceCallPathTool {
     }
 
     /// Get cross-language recursion depth limit
-    /// Uses cross_language_max_depth if specified, otherwise max_depth - 1
+    /// Uses max_depth - 1 to prevent excessive expansion
     fn get_cross_language_depth_limit(&self) -> u32 {
-        self.cross_language_max_depth
-            .unwrap_or(self.max_depth.saturating_sub(1))
+        self.max_depth.saturating_sub(1)
     }
 }

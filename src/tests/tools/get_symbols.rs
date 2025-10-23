@@ -74,11 +74,7 @@ pub const MAX_USERS: usize = 100;
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     let index_result = index_tool.call_tool(&handler).await?;
     println!(
@@ -114,7 +110,6 @@ pub const MAX_USERS: usize = 100;
         max_depth: 2,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: None,
     };
@@ -176,11 +171,7 @@ pub fn process_data(input: &str) -> String {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -193,7 +184,6 @@ pub fn process_data(input: &str) -> String {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: None,
     };
@@ -238,11 +228,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -261,7 +247,6 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             max_depth: 1,
                 target: None,
                 limit: None,
-                include_body: None,
                 mode: None,
         workspace: None,
         };
@@ -315,11 +300,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -331,7 +312,6 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
-        include_body: None,
         mode: None,
         workspace: None,
     };
@@ -354,7 +334,6 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: Some(5),
-        include_body: None,
         mode: None,
         workspace: None,
     };

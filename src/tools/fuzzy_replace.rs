@@ -53,6 +53,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_dry_run() -> bool {
+    true
+}
+
 //**********************//
 //   Fuzzy Replace Tool //
 //**********************//
@@ -68,8 +72,8 @@ fn default_true() -> bool {
         "**Single-file mode**: Use file_path for precise single-file edits\n\n",
         "**Fuzzy matching**: Unlike exact search, this handles typos and variations ",
         "(e.g., 'getUserData()' matches 'getUserDat()' with threshold 0.8)\n\n",
-        "**Preview by default**: Set dry_run=true to see EXACTLY what changes before applying. ",
-        "When preview looks good, set dry_run=false and the operation succeeds perfectly. ",
+        "**Preview by default**: Tool runs in preview mode first, showing EXACTLY what will change. ",
+        "Review the preview, then set dry_run=false to apply changes. Operation succeeds perfectly. ",
         "You never need to verify results - the tool validates everything atomically.\n\n",
         "**Perfect for**: Renaming, refactoring patterns, fixing typos across codebase"
     ),
@@ -82,9 +86,9 @@ fn default_true() -> bool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FuzzyReplaceTool {
-    /// File path for single-file mode
+    /// File path for single-file mode (relative to workspace root)
     /// Omit when using file_pattern for multi-file mode
-    /// Example: "src/user.rs", "lib/services/auth.py"
+    /// Examples: "src/main.rs", "lib/services/auth.py"
     #[serde(default)]
     pub file_path: Option<String>,
 
@@ -116,9 +120,10 @@ pub struct FuzzyReplaceTool {
     #[serde(default = "default_distance")]
     pub distance: i32,
 
-    /// Preview changes without applying them (default: false).
-    /// RECOMMENDED: Set true for first run to verify changes before applying
-    #[serde(default)]
+    /// Preview changes without applying them (default: true).
+    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
+    /// Set false only when you're confident the changes are correct
+    #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 
     /// Validate changes before applying (default: true).

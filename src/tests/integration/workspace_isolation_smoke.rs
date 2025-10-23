@@ -75,11 +75,7 @@ mod workspace_isolation_smoke_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
@@ -101,11 +97,7 @@ mod workspace_isolation_smoke_tests {
                         force: Some(false),
                         name: None,
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     index_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
@@ -120,11 +112,7 @@ mod workspace_isolation_smoke_tests {
                         force: None,
                         name: Some("Reference Smoke Test".to_string()),
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     let reference_result = add_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
@@ -211,11 +199,7 @@ mod workspace_isolation_smoke_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
@@ -237,11 +221,7 @@ mod workspace_isolation_smoke_tests {
                         force: Some(false),
                         name: None,
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     index_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
@@ -256,11 +236,7 @@ mod workspace_isolation_smoke_tests {
                         force: None,
                         name: Some("Reference Smoke Test".to_string()),
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     let reference_result = add_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
@@ -342,11 +318,7 @@ mod workspace_isolation_smoke_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;

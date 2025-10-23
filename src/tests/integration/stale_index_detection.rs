@@ -174,11 +174,7 @@ async fn index_workspace(
         force: Some(true),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
 
     index_tool.call_tool(handler).await?;

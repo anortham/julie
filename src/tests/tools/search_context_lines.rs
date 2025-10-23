@@ -64,11 +64,7 @@ pub fn process_user_data(input: &str) -> String {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -156,11 +152,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -251,11 +243,7 @@ pub fn validate_input(data: &str) -> bool {
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 
@@ -335,11 +323,7 @@ pub fn short_func() -> i32 { 42 }
         force: Some(false),
         name: None,
         workspace_id: None,
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
         detailed: None,
-        limit: None,
     };
     index_tool.call_tool(&handler).await?;
 

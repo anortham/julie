@@ -63,11 +63,7 @@ mod fts5_minimal_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         let result = index_primary.call_tool(&handler).await?;
         println!("Index result: {}", extract_text_from_result(&result));
@@ -123,11 +119,7 @@ mod fts5_minimal_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
@@ -162,11 +154,7 @@ mod fts5_minimal_tests {
             force: None,
             name: Some("Reference Test Workspace".to_string()),
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         let add_result = add_reference.call_tool(&handler).await?;
         println!("Add reference result: {}", extract_text_from_result(&add_result));

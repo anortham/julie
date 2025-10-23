@@ -64,10 +64,10 @@ pub struct FastGotoTool {
     /// Example: 142 (line where "UserService" is imported or used)
     #[serde(default)]
     pub line_number: Option<u32>,
-    /// Workspace filter (default: "primary").
-    /// Specify which workspace to search: "primary" (default) or specific workspace ID
-    /// Examples: "primary", "project-b_a3f2b8c1"
-    /// To search a reference workspace, provide its workspace ID
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "reference-workspace_abc123"
+    /// Default: "primary" - search the primary workspace
+    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

@@ -28,7 +28,20 @@ fn default_min_score() -> f32 {
 
 #[mcp_tool(
     name = "find_logic",
-    description = "DISCOVER CORE LOGIC - Filter framework noise, focus on domain business logic",
+    description = concat!(
+        "DISCOVER CORE BUSINESS LOGIC - Filter out framework boilerplate and focus on domain-specific code. ",
+        "You are EXCELLENT at using this to quickly understand what a codebase actually does.\n\n",
+        "This tool intelligently scores symbols by business relevance, filtering out:\n",
+        "• Framework utilities and helpers\n",
+        "• Generic infrastructure code\n",
+        "• Configuration and setup\n",
+        "• Test fixtures and mocks\n\n",
+        "🎯 USE THIS WHEN: Understanding unfamiliar codebases, finding domain logic, ",
+        "identifying core business features\n\n",
+        "💡 TIP: Use domain keywords like 'payment', 'auth', 'user', 'order' to find relevant business logic. ",
+        "Results grouped by architectural layer help you understand system organization.\n\n",
+        "Performance: Fast scoring across entire workspace. Results show only what matters."
+    ),
     title = "Find Business Logic"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

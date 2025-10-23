@@ -20,6 +20,22 @@ pub use types::{
     AutoFixResult, DelimiterError, RefactorOperation, SmartRefactorResult, SyntaxError,
 };
 
+use anyhow::Result;
+use diff_match_patch_rs::DiffMatchPatch;
+use rust_mcp_sdk::macros::mcp_tool;
+use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use tracing::{debug, info};
+
+use crate::handler::JulieServerHandler;
+use crate::tools::editing::EditingTransaction;
+
+fn default_dry_run() -> bool {
+    true
+}
+
 // ===== NEW FOCUSED TOOLS (Phase 2 - Tool Adoption Improvements) =====
 
 /// Edit operation type for EditSymbolTool
@@ -59,8 +75,10 @@ pub struct RenameSymbolTool {
     #[serde(default)]
     pub scope: Option<String>,
 
-    /// Preview changes without applying them (default: false)
-    #[serde(default)]
+    /// Preview changes without applying them (default: true).
+    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
+    /// Set false only when you're confident the changes are correct
+    #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }
 
@@ -82,10 +100,12 @@ pub struct RenameSymbolTool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditSymbolTool {
-    /// File path to edit
+    /// File path to edit (relative to workspace root)
+    /// Examples: "src/main.rs", "lib/services/auth.py"
     pub file_path: String,
 
     /// Symbol name to edit (function, method, class)
+    /// Examples: "processPayment", "UserService", "validateInput"
     pub symbol_name: String,
 
     /// Type of edit operation
@@ -103,22 +123,12 @@ pub struct EditSymbolTool {
     #[serde(default)]
     pub target_file: Option<String>,
 
-    /// Preview changes without applying them (default: false)
-    #[serde(default)]
+    /// Preview changes without applying them (default: true).
+    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
+    /// Set false only when you're confident the changes are correct
+    #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }
-
-use anyhow::Result;
-use diff_match_patch_rs::DiffMatchPatch;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use serde::{Deserialize, Serialize};
-use std::fs;
-use tracing::{debug, info};
-
-use crate::handler::JulieServerHandler;
-use crate::tools::editing::EditingTransaction; // Atomic file operations
 
 /// Smart refactoring tool for semantic code transformations
 #[mcp_tool(

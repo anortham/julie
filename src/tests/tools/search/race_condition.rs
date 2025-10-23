@@ -231,11 +231,7 @@ pub fn helper_function() {}
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -272,7 +268,6 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
-                include_body: None,
                 mode: None,
         workspace: None,
             };
@@ -282,7 +277,6 @@ pub fn helper_function() {}
                 max_depth: 2,
                 target: None,
                 limit: None,
-                include_body: None,
                 mode: None,
         workspace: None,
             };
@@ -344,11 +338,7 @@ pub fn embedding_vector_semantic() {}
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -444,11 +434,7 @@ pub fn embedding_vector_semantic() {}
             name: None,
             workspace_id: None,
             force: Some(false),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         println!("🐛 TEST TRACE 5: Calling index_tool.call_tool");
         let index_result = timeout(Duration::from_secs(90), index_tool.call_tool(&handler)).await;
@@ -468,11 +454,7 @@ pub fn embedding_vector_semantic() {}
             name: Some("reference-workspace".to_string()),
             workspace_id: None,
             force: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         println!("🐛 TEST TRACE 7: Calling add_tool.call_tool");
         let add_result = add_tool.call_tool(&handler).await?;
@@ -579,11 +561,7 @@ pub fn embedding_vector_semantic() {}
             name: None,
             workspace_id: None,
             force: Some(false),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
 
@@ -594,11 +572,7 @@ pub fn embedding_vector_semantic() {}
             name: Some("reindex-test".to_string()),
             workspace_id: None,
             force: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         let add_result = add_tool.call_tool(&handler).await?;
 
@@ -625,11 +599,7 @@ pub fn embedding_vector_semantic() {}
             name: None,
             workspace_id: Some(workspace_id.clone()),
             force: Some(false),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
 
         // Use timeout to surface hangs caused by LockBusy deadlocks

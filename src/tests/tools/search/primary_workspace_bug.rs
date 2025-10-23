@@ -48,10 +48,6 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
         path: Some(workspace_path.to_string_lossy().to_string()),
         name: None,
         force: Some(false),
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
-        limit: None,
         detailed: None,
     };
 
@@ -140,10 +136,6 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
         path: Some(workspace_path.to_string_lossy().to_string()),
         name: None,
         force: Some(false),
-        expired_only: None,
-        days: None,
-        max_size_mb: None,
-        limit: None,
         detailed: None,
     };
 

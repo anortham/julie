@@ -14,6 +14,10 @@ use tracing::{debug, info};
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
 
+fn default_dry_run() -> bool {
+    true
+}
+
 #[mcp_tool(
     name = "edit_lines",
     description = concat!(
@@ -41,7 +45,7 @@ use crate::tools::editing::EditingTransaction;
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditLinesTool {
     /// File path to edit (relative to workspace root)
-    /// Example: "src/main.rs", "lib/auth.py"
+    /// Examples: "src/main.rs", "lib/services/auth.py"
     pub file_path: String,
 
     /// Operation: "insert", "replace", "delete"
@@ -58,9 +62,10 @@ pub struct EditLinesTool {
     #[serde(default)]
     pub content: Option<String>,
 
-    /// Preview changes without applying (default: false).
-    /// Set true to see what would change before actually modifying files
-    #[serde(default)]
+    /// Preview changes without applying (default: true).
+    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
+    /// Set false only when you're confident the changes are correct
+    #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }
 

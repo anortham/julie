@@ -94,11 +94,7 @@ fn processPayment() {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -175,11 +171,7 @@ fn processPayment() {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         sleep(Duration::from_millis(500)).await;
@@ -265,11 +257,7 @@ fn processPayment() {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         sleep(Duration::from_millis(500)).await;
@@ -343,11 +331,7 @@ fn processPayment() {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -433,11 +417,7 @@ def python_function():
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         sleep(Duration::from_millis(500)).await;
@@ -533,11 +513,7 @@ def python_function():
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing
@@ -627,11 +603,7 @@ def python_function():
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
         sleep(Duration::from_secs(2)).await; // Increased wait for FTS content indexing

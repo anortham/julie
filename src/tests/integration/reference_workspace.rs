@@ -72,11 +72,7 @@ mod reference_workspace_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(handler).await?;
         mark_index_ready(handler).await;
@@ -108,11 +104,7 @@ mod reference_workspace_tests {
                         force: Some(true), // Force re-index
                         name: None,
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     reindex.call_tool(handler).await?;
                     mark_index_ready(handler).await;
@@ -127,11 +119,7 @@ mod reference_workspace_tests {
                         force: None,
                         name: Some("Reference Test Workspace".to_string()),
                         workspace_id: None,
-                        expired_only: None,
-                        days: None,
-                        max_size_mb: None,
                         detailed: None,
-                        limit: None,
                     };
                     let reference_result = add_reference.call_tool(handler).await?;
                     mark_index_ready(handler).await;
@@ -322,11 +310,7 @@ mod reference_workspace_tests {
             force: Some(false),
             name: None,
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
@@ -338,11 +322,7 @@ mod reference_workspace_tests {
             force: None,
             name: Some("Reference Test Workspace".to_string()),
             workspace_id: None,
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         let reference_result = add_reference.call_tool(&handler).await?;
         mark_index_ready(&handler).await;

@@ -30,11 +30,7 @@ mod tests {
             workspace_id: None,
             name: None,
             force: Some(true),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -44,7 +40,6 @@ mod tests {
             max_depth: 2,
             target: Some("call_tool".to_string()), // Method inside GetSymbolsTool
             limit: None,
-            include_body: None,
             mode: None,
         workspace: None,
         };
@@ -103,11 +98,7 @@ mod tests {
             workspace_id: None,
             name: None,
             force: Some(true),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -117,7 +108,6 @@ mod tests {
             max_depth: 2,
             target: Some("GetSymbolsTool".to_string()),
             limit: None,
-            include_body: None,
             mode: None,
         workspace: None,
         };
@@ -168,11 +158,7 @@ mod tests {
             workspace_id: None,
             name: None,
             force: Some(true),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -182,7 +168,6 @@ mod tests {
             max_depth: 2,
             target: Some("getsymbolstool".to_string()), // lowercase
             limit: None,
-            include_body: None,
             mode: None,
         workspace: None,
         };
@@ -225,11 +210,7 @@ mod tests {
             workspace_id: None,
             name: None,
             force: Some(true),
-            expired_only: None,
-            days: None,
-            max_size_mb: None,
             detailed: None,
-            limit: None,
         };
         index_tool.call_tool(&handler).await?;
 
@@ -239,7 +220,6 @@ mod tests {
             max_depth: 2,
             target: Some("format".to_string()), // Should match "format_symbol"
             limit: None,
-            include_body: None,
             mode: None,
         workspace: None,
         };

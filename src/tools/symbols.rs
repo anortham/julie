@@ -32,6 +32,10 @@ fn default_mode() -> Option<String> {
     Some("structure".to_string())
 }
 
+fn default_workspace() -> Option<String> {
+    Some("primary".to_string())
+}
+
 //**********************//
 //   Get Symbols Tool   //
 //**********************//
@@ -57,7 +61,7 @@ fn default_mode() -> Option<String> {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct GetSymbolsTool {
     /// File path to get symbols from (relative to workspace root)
-    /// Example: "src/user.rs", "lib/services/auth.py"
+    /// Examples: "src/main.rs", "lib/services/auth.py"
     pub file_path: String,
 
     /// Maximum depth for nested symbols (default: 1).
@@ -82,26 +86,19 @@ pub struct GetSymbolsTool {
     #[serde(default = "default_limit")]
     pub limit: Option<u32>,
 
-    /// Extract complete function/class bodies (default: false).
-    /// When false: Strip code_context (current behavior)
-    /// When true: Read source file and populate code_context with actual code
-    /// Note: Ignored if mode="structure"
-    #[serde(default)]
-    pub include_body: Option<bool>,
-
     /// Reading mode (default: "structure").
-    /// - "structure": No bodies, structure only (ignore include_body)
-    /// - "minimal": Bodies for top-level symbols only
-    /// - "full": Bodies for ALL symbols including nested methods
+    /// - "structure": No bodies, structure only - quick overview
+    /// - "minimal": Bodies for top-level symbols only - understand data structures
+    /// - "full": Bodies for ALL symbols including nested methods - deep dive
     /// Recommended: "structure" for initial exploration, "minimal" for targeted body extraction
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
 
-    /// Workspace filter (default: "primary").
-    /// Specify which workspace to search: "primary" (default) or specific workspace ID
-    /// Examples: "primary", "project-b_a3f2b8c1"
-    /// To search a reference workspace, provide its workspace ID
-    #[serde(default)]
+    /// Workspace filter (optional): "primary" (default) or specific workspace ID
+    /// Examples: "primary", "reference-workspace_abc123"
+    /// Default: "primary" - search the primary workspace
+    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
+    #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }
 
@@ -404,7 +401,7 @@ impl GetSymbolsTool {
             (symbols_after_depth_filter, false)
         };
 
-        // Phase 2: Smart Read - conditionally extract code bodies based on mode and include_body
+        // Phase 2: Smart Read - conditionally extract code bodies based on mode parameter
         let symbols_to_return = self.extract_code_bodies(symbols_to_return, &absolute_path)?;
 
         // Note: Symbol metadata (name, kind, signature, location) returned in structured_content
@@ -478,7 +475,7 @@ impl GetSymbolsTool {
         Ok(result)
     }
 
-    /// Extract code bodies for symbols based on mode and include_body parameters
+    /// Extract code bodies for symbols based on mode parameter
     fn extract_code_bodies(
         &self,
         mut symbols: Vec<crate::extractors::base::Symbol>,
@@ -491,18 +488,9 @@ impl GetSymbolsTool {
             .mode
             .as_deref()
             .unwrap_or("structure");
-        let include_body = self.include_body.unwrap_or(false);
 
-        // In "structure" mode, always strip context regardless of include_body
+        // In "structure" mode, strip all code context
         if mode == "structure" {
-            for symbol in symbols.iter_mut() {
-                symbol.code_context = None;
-            }
-            return Ok(symbols);
-        }
-
-        // If not including bodies, strip context
-        if !include_body {
             for symbol in symbols.iter_mut() {
                 symbol.code_context = None;
             }
@@ -863,7 +851,7 @@ impl GetSymbolsTool {
             (symbols_after_depth_filter, false)
         };
 
-        // Phase 2: Smart Read - conditionally extract code bodies based on mode and include_body
+        // Phase 2: Smart Read - conditionally extract code bodies based on mode parameter
         let symbols_to_return = self.extract_code_bodies(symbols_to_return, &absolute_path)?;
 
         debug!(

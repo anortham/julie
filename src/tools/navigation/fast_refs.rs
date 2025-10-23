@@ -32,7 +32,7 @@ fn default_limit() -> u32 {
     50
 }
 
-fn default_workspace_refs() -> Option<String> {
+fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
@@ -56,8 +56,9 @@ fn default_workspace_refs() -> Option<String> {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
-    /// Symbol name to find all references/usages for.
-    /// Examples: "UserService", "handleRequest", "myFunction", "CONSTANT_NAME"
+    /// Symbol name to find all references/usages for. Supports simple and qualified names.
+    /// Examples: "UserService", "MyClass::method", "handleRequest", "React.Component", "CONSTANT_NAME"
+    /// Julie intelligently resolves across languages (Python imports, Rust use statements, TypeScript imports)
     /// Same format as fast_goto - Julie will find every place this symbol is used
     pub symbol: String,
     /// Include the symbol definition in results (default: true).
@@ -74,7 +75,7 @@ pub struct FastRefsTool {
     /// Examples: "primary", "project-b_a3f2b8c1"
     /// Default: "primary" - search the primary workspace
     /// To search a reference workspace, provide its workspace ID
-    #[serde(default = "default_workspace_refs")]
+    #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }
 
