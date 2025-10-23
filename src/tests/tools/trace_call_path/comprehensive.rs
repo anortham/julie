@@ -9,6 +9,7 @@ use crate::tools::trace_call_path::TraceCallPathTool;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
 // Helper function to create TraceCallPathTool with defaults
+#[allow(dead_code)]
 fn create_test_tool() -> TraceCallPathTool {
     TraceCallPathTool {
         symbol: "test".to_string(),

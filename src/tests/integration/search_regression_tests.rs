@@ -6,7 +6,6 @@
 //! Reference: TODO.md - Investigation Results section
 
 use crate::database::SymbolDatabase;
-use crate::extractors::{Symbol, SymbolKind};
 use crate::tools::search::matches_glob_pattern;
 use tempfile::TempDir;
 

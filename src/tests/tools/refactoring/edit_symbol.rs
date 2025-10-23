@@ -127,7 +127,7 @@ async fn test_edit_symbol_insert_after() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let _result = tool.call_tool(&handler).await?;
 
     // Verify insertion
     let content = fs::read_to_string(&test_file)?;
@@ -180,7 +180,7 @@ async fn test_edit_symbol_insert_before() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let _result = tool.call_tool(&handler).await?;
 
     // Verify insertion order
     let content = fs::read_to_string(&test_file)?;
@@ -234,7 +234,7 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
+    let _result = tool.call_tool(&handler).await?;
 
     // Verify extraction
     let source_content = fs::read_to_string(&source_file)?;

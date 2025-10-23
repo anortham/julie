@@ -16,6 +16,9 @@ use tokenizers::Tokenizer;
 use tracing::{debug, info};
 
 #[cfg(target_os = "windows")]
+use tracing::warn;
+
+#[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND,
 };

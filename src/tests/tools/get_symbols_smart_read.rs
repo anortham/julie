@@ -83,7 +83,7 @@ pub const MAX_USERS: usize = 100;
 #[tokio::test]
 async fn test_default_behavior_strips_context() -> Result<()> {
     // Default: include_body=false, mode="structure" -> should strip code_context
-    let (temp_dir, workspace_path) = create_test_rust_file()?;
+    let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
     handler.initialize_workspace(Some(workspace_path.clone())).await?;
@@ -134,7 +134,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
 #[tokio::test]
 async fn test_include_body_false_strips_context() -> Result<()> {
     // Explicit include_body=false -> should strip code_context
-    let (temp_dir, workspace_path) = create_test_rust_file()?;
+    let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
     handler.initialize_workspace(Some(workspace_path.clone())).await?;
@@ -184,7 +184,7 @@ async fn test_include_body_false_strips_context() -> Result<()> {
 #[tokio::test]
 async fn test_mode_structure_always_strips() -> Result<()> {
     // mode="structure" should ALWAYS strip code_context, even if include_body=true
-    let (temp_dir, workspace_path) = create_test_rust_file()?;
+    let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
     handler.initialize_workspace(Some(workspace_path.clone())).await?;

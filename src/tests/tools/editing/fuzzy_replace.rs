@@ -654,7 +654,7 @@ fn test_fuzzy_replace_performance_mod_rs() -> Result<()> {
         elapsed
     );
 
-    let (modified, matches) = result.unwrap();
+    let (_modified, matches) = result.unwrap();
     println!(
         "✅ Processed {} bytes in {:?}, found {} matches",
         content.len(),

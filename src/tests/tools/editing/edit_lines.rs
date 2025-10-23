@@ -333,7 +333,7 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
         use std::os::unix::fs::symlink;
 
-        let temp_dir = TempDir::new()?;
+        let _temp_dir = TempDir::new()?;
         let workspace_dir = TempDir::new()?;
 
         // Create a symlink in workspace pointing outside
