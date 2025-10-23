@@ -15,18 +15,24 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - Search latency: <10ms (text), <100ms (semantic)
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database indexing - text search available immediately)
-- Semantic indexing: 2-5 minutes per 10,000 symbols (background, non-blocking)
-  - **GPU-accelerated** on Windows (DirectML) and Linux (CUDA/TensorRT)
-  - Faster on Apple Silicon (~30-60s per 10,000 symbols, CPU-optimized)
-  - Text search works instantly while semantic search builds
 - Single binary deployment with no external dependencies
+
+**Semantic Indexing Performance** (background, non-blocking):
+- **Windows (GPU via DirectML)**: ~30 seconds per 10,000 symbols
+- **macOS (CPU-optimized)**: ~1-3 minutes per 10,000 symbols
+- **Linux (CPU default)**: ~5-10 minutes per 10,000 symbols
+  - Compile with `--features cuda` for NVIDIA GPU acceleration (~30 seconds per 10,000 symbols)
+
+**Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds regardless of platform.
+
+**First-time setup**: Initial workspace indexing happens once and runs in the background. Text search is available immediately; semantic search becomes available after embeddings complete. Most workflows use incremental updates (fast) rather than full re-indexing (one-time cost).
 
 ### GPU Acceleration
 
 Julie automatically uses GPU acceleration for semantic embeddings when available:
 
-- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs)
-- **Linux**: CUDA/TensorRT (NVIDIA GPUs)
+- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs) - **enabled by default**
+- **Linux**: CPU-optimized by default (compile with `--features cuda` for NVIDIA GPU support)
 - **macOS**: CPU-optimized (faster than CoreML for BERT models)
 
 **Automatic CPU Fallback**: If GPU initialization or inference fails, Julie automatically detects the failure and reinitializes in CPU-only mode. This handles:
