@@ -1,0 +1,62 @@
+# Julie Ignore File
+# ==================
+# Add patterns for files/directories you don't want indexed by Julie
+# Lines starting with # are comments and will be ignored
+#
+# Pattern Types:
+#   - Directory patterns (end with /): matches anywhere in path
+#     Example: wwwroot/lib/
+#
+#   - Extension patterns (start with *.): matches file extensions
+#     Example: *.min.js
+#
+#   - Substring patterns: matches anywhere in the path
+#     Example: font-awesome
+#
+# Note: Julie already excludes common directories by default:
+#   - node_modules/, vendor/, bower_components/, .npm/
+#   - bin/, obj/, build/, dist/, out/, target/
+#   - .git/, .svn/, .vscode/, .idea/
+#   - TestResults/, coverage/, __pycache__/
+#   - And many more (see src/tools/shared.rs for full list)
+
+# ============================================================
+# EXAMPLES - Uncomment and modify as needed for your project
+# ============================================================
+
+# Vendor libraries (if not already covered by defaults)
+# wwwroot/lib/
+# vendor/custom-framework/
+# third-party/
+
+# Generated files
+# *.generated.cs
+# *.designer.cs
+# *.g.i.cs
+# *.min.js
+# *.min.css
+# *.bundle.js
+
+# Large data files
+# data/
+# datasets/
+# *.json (only if you have huge JSON data files - be careful!)
+
+# Test fixtures (if you don't want them indexed)
+# fixtures/large-files/
+# test-data/sample-datasets/
+
+# Documentation that clutters search results
+# docs/vendor/
+# api-docs/generated/
+# .storybook/
+
+# Specific libraries causing noise in search
+# font-awesome/
+# popper.js/
+# bootstrap/
+
+# Project-specific exclusions
+# Add your custom patterns below:
+
+

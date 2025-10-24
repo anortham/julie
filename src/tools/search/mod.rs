@@ -21,7 +21,7 @@ mod line_mode;
 mod query;
 pub mod query_preprocessor; // Public for testing
 mod scoring;
-mod semantic_search;
+pub(crate) mod semantic_search; // Exposed for testing
 mod text_search;
 mod types;
 
@@ -260,8 +260,8 @@ impl FastSearchTool {
         let confidence = scoring::calculate_search_confidence(&self.query, &symbols);
         let mut optimized = OptimizedResponse::new("fast_search", symbols, confidence);
 
-        // Add insights based on patterns found
-        if let Some(insights) = scoring::generate_search_insights(&optimized.results) {
+        // Add insights based on patterns found (includes .julieignore hint for low-quality results)
+        if let Some(insights) = scoring::generate_search_insights(&optimized.results, confidence) {
             optimized = optimized.with_insights(insights);
         }
 

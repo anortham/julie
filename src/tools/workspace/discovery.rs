@@ -14,6 +14,9 @@ impl ManageWorkspaceTool {
         let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
         let max_file_size = 1024 * 1024; // 1MB limit for files
 
+        // Load custom ignore patterns from .julieignore if present
+        let custom_ignores = self.load_julieignore(workspace_path)?;
+
         debug!(
             "🔍 Starting recursive file discovery from: {}",
             workspace_path.display()
@@ -24,6 +27,7 @@ impl ManageWorkspaceTool {
             &blacklisted_dirs,
             &blacklisted_exts,
             max_file_size,
+            &custom_ignores,
             &mut indexable_files,
         )?;
 
@@ -40,6 +44,7 @@ impl ManageWorkspaceTool {
         blacklisted_dirs: &HashSet<&str>,
         blacklisted_exts: &HashSet<&str>,
         max_file_size: u64,
+        custom_ignores: &[String],
         indexable_files: &mut Vec<PathBuf>,
     ) -> Result<()> {
         let entries = fs::read_dir(dir_path)
@@ -56,6 +61,12 @@ impl ManageWorkspaceTool {
                 continue;
             }
 
+            // Check against custom .julieignore patterns
+            if self.is_ignored_by_pattern(&path, custom_ignores) {
+                debug!("⏭️  Skipping custom-ignored path: {}", path.display());
+                continue;
+            }
+
             if path.is_dir() {
                 // Check if directory should be blacklisted
                 if blacklisted_dirs.contains(file_name) {
@@ -69,6 +80,7 @@ impl ManageWorkspaceTool {
                     blacklisted_dirs,
                     blacklisted_exts,
                     max_file_size,
+                    custom_ignores,
                     indexable_files,
                 )?;
             } else if path.is_file() {
@@ -187,5 +199,61 @@ impl ManageWorkspaceTool {
         file_name.contains(".min.")
             || file_name.ends_with(".min.js")
             || file_name.ends_with(".min.css")
+    }
+
+    /// Load custom ignore patterns from .julieignore file in workspace root
+    pub(crate) fn load_julieignore(&self, workspace_path: &Path) -> Result<Vec<String>> {
+        let ignore_file = workspace_path.join(".julieignore");
+
+        if !ignore_file.exists() {
+            return Ok(Vec::new());
+        }
+
+        let content = fs::read_to_string(&ignore_file)
+            .map_err(|e| anyhow::anyhow!("Failed to read .julieignore: {}", e))?;
+
+        let patterns: Vec<String> = content
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| line.to_string())
+            .collect();
+
+        if !patterns.is_empty() {
+            debug!("📋 Loaded {} custom ignore patterns from .julieignore", patterns.len());
+        }
+
+        Ok(patterns)
+    }
+
+    /// Check if a path matches any of the custom ignore patterns
+    pub(crate) fn is_ignored_by_pattern(&self, path: &Path, patterns: &[String]) -> bool {
+        if patterns.is_empty() {
+            return false;
+        }
+
+        let path_str = path.to_str().unwrap_or("");
+
+        for pattern in patterns {
+            // Directory pattern (ends with /)
+            if pattern.ends_with('/') {
+                if path_str.contains(pattern) {
+                    return true;
+                }
+            }
+            // Wildcard extension pattern (e.g., *.min.js)
+            else if pattern.starts_with("*.") {
+                let ext_pattern = &pattern[1..]; // Remove the *
+                if path_str.ends_with(ext_pattern) {
+                    return true;
+                }
+            }
+            // Substring match (matches anywhere in path)
+            else if path_str.contains(pattern) {
+                return true;
+            }
+        }
+
+        false
     }
 }

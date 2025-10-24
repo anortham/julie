@@ -312,38 +312,26 @@ impl ManageWorkspaceTool {
                 );
                 let task_start = std::time::Instant::now();
 
-                // 🔥 CRITICAL: Add 5-minute timeout to prevent infinite loops
-                // Background embedding should complete in <2min for 10k symbols
-                // If it takes >5min, something is seriously wrong
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(300), // 5 minute timeout
-                    generate_embeddings_from_sqlite(
-                        embedding_engine,
-                        embedding_engine_last_used,
-                        workspace_db,
-                        workspace_root,
-                        workspace_id_clone.clone(),
-                        indexing_status_clone,
-                    ),
+                // No timeout - let embeddings complete however long it takes
+                // With rich code context, 16k+ symbols can take 10+ minutes
+                match generate_embeddings_from_sqlite(
+                    embedding_engine,
+                    embedding_engine_last_used,
+                    workspace_db,
+                    workspace_root,
+                    workspace_id_clone.clone(),
+                    indexing_status_clone,
                 )
                 .await
                 {
-                    Ok(Ok(_)) => {
+                    Ok(_) => {
                         info!("✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
                               task_start.elapsed().as_secs_f64(), workspace_id_clone);
                     }
-                    Ok(Err(e)) => {
+                    Err(e) => {
                         error!(
                             "❌ Background embedding generation failed for workspace {}: {}",
                             workspace_id_clone, e
-                        );
-                    }
-                    Err(_) => {
-                        error!(
-                            "⏰ Background embedding generation TIMED OUT after 5min for workspace {}! \
-                             This indicates a serious bug (infinite loop or deadlock). \
-                             Semantic search will not be available. Check logs for details.",
-                            workspace_id_clone
                         );
                     }
                 }

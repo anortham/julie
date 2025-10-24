@@ -49,12 +49,17 @@ pub fn calculate_search_confidence(query: &str, symbols: &[Symbol]) -> f32 {
 }
 
 /// Generate intelligent insights about search patterns
-pub fn generate_search_insights(symbols: &[Symbol]) -> Option<String> {
+pub fn generate_search_insights(symbols: &[Symbol], confidence: f32) -> Option<String> {
     if symbols.is_empty() {
         return None;
     }
 
     let mut insights = Vec::new();
+
+    // Add hint about .julieignore for low-quality results
+    if confidence < 0.5 && !symbols.is_empty() {
+        insights.push("💡 Getting low-quality results? Consider adding unwanted directories to .julieignore in your project root".to_string());
+    }
 
     // Language distribution
     let mut lang_counts = HashMap::new();

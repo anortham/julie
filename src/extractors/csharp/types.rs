@@ -19,10 +19,14 @@ pub fn extract_namespace(
     let name = base.get_node_text(&name_node);
     let signature = format!("namespace {}", name);
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -74,10 +78,14 @@ pub fn extract_using(
         format!("using {}", full_using_path)
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -135,11 +143,15 @@ pub fn extract_class(
         serde_json::Value::String(csharp_visibility),
     );
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         metadata: Some(metadata),
+        doc_comment,
         ..Default::default()
     };
 
@@ -190,10 +202,14 @@ pub fn extract_interface(
         signature += &format!(" {}", where_clauses.join(" "));
     }
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -233,10 +249,14 @@ pub fn extract_struct(
         signature += &format!(" : {}", base_list.join(", "));
     }
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -269,10 +289,14 @@ pub fn extract_enum(
         signature += &format!(" : {}", base_list[0]);
     }
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -307,10 +331,14 @@ pub fn extract_enum_member(
         }
     }
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -359,10 +387,14 @@ pub fn extract_record(
         SymbolKind::Class
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 

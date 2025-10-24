@@ -59,10 +59,14 @@ pub fn extract_method(
         signature += &format!(" {}", where_clauses.join(" "));
     }
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -94,10 +98,14 @@ pub fn extract_constructor(
         format!("{} {}{}", modifiers.join(" "), name, params)
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -124,10 +132,14 @@ pub fn extract_destructor(
         .unwrap_or_else(|| "()".to_string());
     let signature = format!("~{}{}", class_name, params);
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Protected),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -177,10 +189,14 @@ pub fn extract_property(
         )
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -255,10 +271,14 @@ pub fn extract_field(
         )
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -300,10 +320,14 @@ pub fn extract_event(
         format!("{} event {} {}", modifiers.join(" "), event_type, name)
     };
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 
@@ -368,10 +392,14 @@ pub fn extract_delegate(
         modifier_str, return_type, name_with_type_params, params
     );
 
+    // Extract XML doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        doc_comment,
         ..Default::default()
     };
 

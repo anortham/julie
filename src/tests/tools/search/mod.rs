@@ -5,6 +5,7 @@ mod line_mode;
 mod primary_workspace_bug;
 mod quality;
 mod race_condition;
+mod semantic_scoring_tests;
 mod tools;
 
 use crate::tools::search::*;

@@ -236,15 +236,19 @@ impl TraceCallPathTool {
             anyhow!("No workspace initialized. Run 'manage_workspace index' first")
         })?;
 
-        // Determine target workspace and load appropriate database
-        let db = match self.workspace.as_deref() {
+        // Determine target workspace and load appropriate database + vector store
+        let (db, vector_store) = match self.workspace.as_deref() {
             Some("primary") | None => {
-                // Use primary workspace database (default)
-                primary_workspace
+                // Use primary workspace database and vector store (default)
+                let db = primary_workspace
                     .db
                     .as_ref()
                     .ok_or_else(|| anyhow!("No primary database available"))?
-                    .clone()
+                    .clone();
+
+                let vector_store = primary_workspace.vector_store.clone();
+
+                (db, vector_store)
             }
             Some(workspace_id) => {
                 // Load reference workspace database
@@ -273,7 +277,38 @@ impl TraceCallPathTool {
                 .await
                 .map_err(|e| anyhow!("Failed to spawn database task: {}", e))??;
 
-                Arc::new(Mutex::new(ref_db))
+                let db = Arc::new(Mutex::new(ref_db));
+
+                // Load reference workspace vector store
+                let vectors_path = primary_workspace.workspace_vectors_path(workspace_id);
+                let vector_store = if vectors_path.exists() {
+                    debug!("📂 Loading reference workspace vectors: {:?}", vectors_path);
+
+                    // Load HNSW index from disk
+                    let mut store = crate::embeddings::vector_store::VectorStore::new(384)?;
+                    let hnsw_path = vectors_path.join("hnsw_index");
+
+                    if hnsw_path.with_extension("hnsw.graph").exists() {
+                        match store.load_hnsw_index(&hnsw_path) {
+                            Ok(()) => {
+                                debug!("✅ Loaded HNSW index for reference workspace");
+                                Some(Arc::new(tokio::sync::RwLock::new(store)))
+                            }
+                            Err(e) => {
+                                debug!("⚠️  Failed to load HNSW index for reference workspace: {}", e);
+                                None
+                            }
+                        }
+                    } else {
+                        debug!("ℹ️  No HNSW index found for reference workspace (semantic search disabled)");
+                        None
+                    }
+                } else {
+                    debug!("ℹ️  No vectors directory for reference workspace (semantic search disabled)");
+                    None
+                };
+
+                (db, vector_store)
             }
         };
 
@@ -327,20 +362,20 @@ impl TraceCallPathTool {
         for starting_symbol in &starting_symbols {
             let call_tree = match self.direction.as_str() {
                 "upstream" => {
-                    self.trace_upstream(handler, &db, starting_symbol, 0, &mut visited)
+                    self.trace_upstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
                         .await?
                 }
                 "downstream" => {
-                    self.trace_downstream(handler, &db, starting_symbol, 0, &mut visited)
+                    self.trace_downstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
                         .await?
                 }
                 "both" => {
                     // Use single visited set to prevent duplicate processing across both directions
                     let mut upstream = self
-                        .trace_upstream(handler, &db, starting_symbol, 0, &mut visited)
+                        .trace_upstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
                         .await?;
                     let downstream = self
-                        .trace_downstream(handler, &db, starting_symbol, 0, &mut visited)
+                        .trace_downstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
                         .await?;
                     upstream.extend(downstream);
                     upstream
@@ -395,6 +430,7 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
+        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
@@ -473,7 +509,7 @@ impl TraceCallPathTool {
             // Recursively trace callers
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_upstream(handler, db, &caller_symbol, current_depth + 1, visited)
+                    .trace_upstream(handler, db, vector_store, &caller_symbol, current_depth + 1, visited)
                     .await?;
             }
 
@@ -504,7 +540,7 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_upstream(handler, db, &caller_symbol, current_depth + 1, visited)
+                        .trace_upstream(handler, db, vector_store, &caller_symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -512,7 +548,7 @@ impl TraceCallPathTool {
             }
 
             let semantic_callers = self
-                .find_semantic_cross_language_callers(handler, db, symbol)
+                .find_semantic_cross_language_callers(handler, db, vector_store, symbol)
                 .await?;
 
             for semantic in semantic_callers {
@@ -532,7 +568,7 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_upstream(handler, db, &semantic.symbol, current_depth + 1, visited)
+                        .trace_upstream(handler, db, vector_store, &semantic.symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -549,6 +585,7 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
+        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
@@ -627,7 +664,7 @@ impl TraceCallPathTool {
             // Recursively trace callees
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_downstream(handler, db, &callee_symbol, current_depth + 1, visited)
+                    .trace_downstream(handler, db, vector_store, &callee_symbol, current_depth + 1, visited)
                     .await?;
             }
 
@@ -658,7 +695,7 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_downstream(handler, db, &callee_symbol, current_depth + 1, visited)
+                        .trace_downstream(handler, db, vector_store, &callee_symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -666,7 +703,7 @@ impl TraceCallPathTool {
             }
 
             let semantic_callees = self
-                .find_semantic_cross_language_callees(handler, db, symbol)
+                .find_semantic_cross_language_callees(handler, db, vector_store, symbol)
                 .await?;
 
             for semantic in semantic_callees {
@@ -686,7 +723,7 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_downstream(handler, db, &semantic.symbol, current_depth + 1, visited)
+                        .trace_downstream(handler, db, vector_store, &semantic.symbol, current_depth + 1, visited)
                         .await?;
                 }
 
@@ -786,6 +823,8 @@ impl TraceCallPathTool {
     async fn semantic_neighbors(
         &self,
         handler: &JulieServerHandler,
+        db: &Arc<Mutex<SymbolDatabase>>,
+        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
         symbol: &Symbol,
         max_results: usize,
     ) -> Result<Vec<(Symbol, f32)>> {
@@ -793,14 +832,16 @@ impl TraceCallPathTool {
             return Ok(vec![]);
         }
 
-        if let Err(e) = handler.ensure_vector_store().await {
-            debug!(
-                "Semantic tracing disabled - vector store unavailable: {}",
-                e
-            );
-            return Ok(vec![]);
-        }
+        // Check if vector store is available
+        let vector_store = match vector_store {
+            Some(store) => store.clone(),
+            None => {
+                debug!("Semantic tracing disabled - no vector store for this workspace");
+                return Ok(vec![]);
+            }
+        };
 
+        // Ensure embedding engine is available
         if let Err(e) = handler.ensure_embedding_engine().await {
             debug!(
                 "Semantic tracing disabled - embedding engine unavailable: {}",
@@ -809,20 +850,7 @@ impl TraceCallPathTool {
             return Ok(vec![]);
         }
 
-        let workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => return Ok(vec![]),
-        };
-
-        let vector_store = match &workspace.vector_store {
-            Some(store) => store.clone(),
-            None => return Ok(vec![]),
-        };
-
-        let db_arc = match &workspace.db {
-            Some(db) => db.clone(),
-            None => return Ok(vec![]),
-        };
+        let db_arc = db.clone();
 
         // 🔧 REFACTOR: Check if HNSW index is built
         let store_guard = vector_store.read().await;
@@ -888,11 +916,12 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
+        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
         // Use hardcoded semantic limit for good balance between coverage and performance
         let limit = 8;
-        let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
+        let candidates = self.semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);
@@ -941,11 +970,12 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
+        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
         // Use hardcoded semantic limit for good balance between coverage and performance
         let limit = 8;
-        let candidates = self.semantic_neighbors(handler, symbol, limit).await?;
+        let candidates = self.semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);

@@ -111,3 +111,77 @@ fn test_enum_extraction() {
     assert!(symbols.iter().any(|s| s.name == "Active"));
     assert!(symbols.iter().any(|s| s.name == "Inactive"));
 }
+
+#[test]
+fn test_xml_doc_comment_extraction() {
+    let code = r#"
+        /// <summary>
+        /// Simple utility class to preview MJML email templates locally
+        /// Run this to generate HTML files for testing without deployment
+        /// </summary>
+        public static class EmailTemplatePreview {
+            /// <summary>
+            /// Renders an email template to HTML
+            /// </summary>
+            /// <param name="templateName">Name of the template</param>
+            public static void RenderTemplate(string templateName) {
+            }
+        }
+    "#;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let mut extractor = CSharpExtractor::new(
+        "csharp".to_string(),
+        "test.cs".to_string(),
+        code.to_string(),
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    // Find the class symbol
+    let class_symbol = symbols
+        .iter()
+        .find(|s| s.name == "EmailTemplatePreview")
+        .expect("Should find EmailTemplatePreview class");
+
+    // Should have doc comment extracted
+    assert!(
+        class_symbol.doc_comment.is_some(),
+        "Class should have doc_comment populated"
+    );
+
+    let doc = class_symbol.doc_comment.as_ref().unwrap();
+    assert!(
+        doc.contains("Simple utility class"),
+        "Doc comment should contain summary text, got: {}",
+        doc
+    );
+    assert!(
+        doc.contains("preview MJML email templates"),
+        "Doc comment should contain key description text, got: {}",
+        doc
+    );
+
+    // Find the method symbol
+    let method_symbol = symbols
+        .iter()
+        .find(|s| s.name == "RenderTemplate")
+        .expect("Should find RenderTemplate method");
+
+    // Method should also have doc comment
+    assert!(
+        method_symbol.doc_comment.is_some(),
+        "Method should have doc_comment populated"
+    );
+
+    let method_doc = method_symbol.doc_comment.as_ref().unwrap();
+    assert!(
+        method_doc.contains("Renders an email template"),
+        "Method doc comment should contain description, got: {}",
+        method_doc
+    );
+}

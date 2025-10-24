@@ -1,250 +1,371 @@
 # Julie Development TODO
 
-## ✅ Completed Items (2025-10-23)
+## <� Current Focus: Semantic Search Scoring Enhancement
 
-### FTS5 Database Corruption Fixed
-All searches that were failing with `fts5: missing row 550 from content table` now work properly. The query preprocessor fixes resolved this issue.
-
-### Documentation Updates
-**CLAUDE.md** updated to reflect tool changes:
-- Removed `SmartRefactorTool` references
-- Added `RenameSymbolTool` and `EditSymbolTool` documentation
-- Updated module structure and test descriptions
-
-### Workspace Refresh Incremental Update
-**Fixed:** `refresh` operation now uses incremental updates instead of force reindex
-- File: `src/tools/workspace/commands/registry.rs:542`
-- Changed: `index_workspace_files(..., true)` → `index_workspace_files(..., false)`
-- **User impact:**
-  - `manage_workspace(operation="refresh")` → Fast incremental update (only changed files)
-  - `manage_workspace(operation="index", force=true)` → Full reindex (all files)
-
-### macOS GPU Acceleration Investigation
-**Result:** CoreML disabled for transformer models
-- **Problem:** Only 25% of BERT operations can use Neural Engine
-- **Solution:** CPU-only mode is 10x faster than CoreML hybrid execution
-- **Performance:** Consistent 0.3-3s batches vs 11-26s spikes with CoreML
-- **Documentation:** See `docs/GPU_ACCELERATION_PLAN.md` for full analysis
-
----
-
-## 🚧 Remaining Work
-
-### Code Cleanup - TODOs, Stubs, and Garbage
-**Priority:** Medium
-**Status:** Not Started
-
-We need to systematically go through the codebase and:
-1. Find all TODO comments
-2. Categorize them:
-   - Implement now (critical)
-   - Document for future (roadmap)
-   - Delete (obsolete)
-3. Remove stub functions and dead code
-4. Document why incomplete features exist
-
-**Next steps:**
-- Search for all `TODO`, `FIXME`, `XXX`, `HACK` comments
-- Audit stub implementations
-- Clean up test scaffolding
-- Document architectural decisions for incomplete features
-
----
-
-### Tool API Design Audit (2025-10-23) ✅ **MOSTLY COMPLETE**
-**Priority:** High → **Completed**
-**Status:** ~~Audit Complete - Implementation Needed~~ → **4/5 Issues Fixed**
-**Related:** Smart refactor tool was split to fix similar issues (Phase 2 - Tool Adoption Improvements)
-
-**🎉 Session Summary (2025-10-23):**
-In a single systematic refactoring session, we simplified 4 MCP tools by removing confusing parameters and standardizing naming:
-
-- **ManageWorkspaceTool**: 11 → 6 parameters (removed 4 unused params + 3 unused operations)
-- **GetSymbolsTool**: 6 → 5 parameters (removed confusing `include_body`, added default workspace)
-- **FastRefsTool**: Standardized workspace naming (`default_workspace_refs()` → `default_workspace()`)
-- **TraceCallPathTool**: 10 → 6 parameters (removed 4 expert tunables)
-
-**Total Impact:** 11 parameters removed, 3 operations removed, 995 tests passing. Zero functionality lost - only removed cognitive overhead.
-
----
-
-Systematic audit of all 11 MCP tools revealed several API design issues that could confuse AI agents when deciding which tool to use and how to use it.
-
-#### 🔴 Critical Issues (High Priority)
-
-##### 1. ManageWorkspaceTool - Same Problem as smart_refactor!
-**Location:** `src/tools/workspace/commands/mod.rs:84-132`
+**Goal:** Make doc-comment-rich symbols rank higher than generic framework boilerplate
 
 **Problem:**
-- String-based operation dispatch with 11 optional parameters
-- Agent must parse doc comments to know which params apply to which operation
-- No type safety - can pass wrong params and get runtime errors
-- **Exactly the same "bag of optional parameters" design that smart_refactor had**
+- Query: "preview MJML templates locally"
+- Current: Generic Razor `<Template>` tags rank above documented `EmailTemplatePreview` class
+- Root cause: Scoring doesn't consider doc comment presence or symbol quality
 
-**Current API:**
+---
+
+## TDD Implementation Plan: Multi-Factor Scoring
+
+### Phase 1: Write Failing Tests � RED
+
+**Test File:** `src/tests/tools/search/semantic_scoring_tests.rs`
+
+#### Test 1: Doc Comment Boost
 ```rust
-pub struct ManageWorkspaceTool {
-    pub operation: String,  // "index", "list", "add", "remove", "stats", "clean", etc.
-    pub path: Option<String>,           // Used by: index, add
-    pub force: Option<bool>,            // Used by: index
-    pub name: Option<String>,           // Used by: add
-    pub workspace_id: Option<String>,   // Used by: remove, refresh, stats
-    pub expired_only: Option<bool>,     // Used by: clean
-    pub days: Option<u32>,              // Used by: set_ttl
-    pub max_size_mb: Option<u64>,       // Used by: set_limit
-    pub detailed: Option<bool>,         // Used by: health
-    pub limit: Option<u32>,             // Used by: recent
+#[test]
+fn test_doc_comment_boost_calculation() {
+    // Symbol with rich documentation (200+ chars)
+    let symbol_with_rich_docs = create_symbol_with_doc("/// ".repeat(250));
+    assert_eq!(get_doc_comment_boost(&symbol_with_rich_docs), 2.0);
+
+    // Symbol with good documentation (100-200 chars)
+    let symbol_with_good_docs = create_symbol_with_doc("/// ".repeat(150));
+    assert_eq!(get_doc_comment_boost(&symbol_with_good_docs), 1.5);
+
+    // Symbol with some documentation (<100 chars)
+    let symbol_with_some_docs = create_symbol_with_doc("/// Short doc");
+    assert_eq!(get_doc_comment_boost(&symbol_with_some_docs), 1.3);
+
+    // Symbol with no documentation
+    let symbol_no_docs = create_symbol_with_doc(None);
+    assert_eq!(get_doc_comment_boost(&symbol_no_docs), 1.0);
 }
 ```
 
-**Recommendation:** Split into focused tools (same pattern as smart_refactor fix):
-- `IndexWorkspaceTool` - index operations (path, force)
-- `ListWorkspacesTool` - list/stats operations (workspace_id optional)
-- `AddWorkspaceTool` - add reference workspaces (path, name)
-- `RemoveWorkspaceTool` - remove workspaces (workspace_id)
-- `CleanWorkspacesTool` - cleanup operations (expired_only)
-- `ConfigureWorkspaceTool` - TTL/limits configuration (days, max_size_mb)
-
-**Alternative:** Use enum for operations with proper types (like EditSymbolTool does)
-
-##### 2. GetSymbolsTool - Confusing Parameter Interaction ✅ **FIXED (2025-10-23)**
-**Location:** `src/tools/symbols.rs:58-103`
-
-**Problem (RESOLVED):**
-- ~~`include_body` (bool) and `mode` (string: "structure"/"minimal"/"full") overlapped confusingly~~
-- ~~Doc said: "Note: Ignored if mode='structure'" - parameters interacted in non-obvious ways~~
-- ~~No default workspace function (inconsistent with other tools)~~
-
-**Solution Implemented:**
-- ✅ **Removed `include_body` entirely** - simplified to single `mode` parameter
-- ✅ Added `default_workspace()` function - consistent with other tools
-- ✅ Updated 5 test files to use new simplified API
-- ✅ All 999 tests passing
-
-**New Clean API:**
+#### Test 2: Language Quality Boost
 ```rust
-pub mode: Option<String>,  // Default: "structure"
-// Values: "structure" (no bodies), "minimal" (top-level), "full" (all)
+#[test]
+fn test_language_quality_boost() {
+    // Real code languages
+    assert_eq!(get_language_quality_boost("csharp", false), 1.2);
+    assert_eq!(get_language_quality_boost("rust", false), 1.2);
 
-#[serde(default = "default_workspace")]
-pub workspace: Option<String>,  // Default: "primary"
-```
+    // HTML elements get penalty
+    assert_eq!(get_language_quality_boost("razor", true), 0.7);
 
-**Result:** Single control for code body extraction, no confusing parameter interactions
-
-##### 3. Workspace Parameter Inconsistency ✅ **FIXED (2025-10-23)**
-**Problem (RESOLVED):** ~~Inconsistent default function naming across tools~~
-
-| Tool | Workspace Default Function |
-|------|---------------------------|
-| FastSearchTool | `default_workspace()` ✅ |
-| FastGotoTool | `default_workspace()` ✅ |
-| FastRefsTool | `default_workspace()` ✅ **FIXED (2025-10-23)** |
-| GetSymbolsTool | `default_workspace()` ✅ **FIXED (2025-10-23)** |
-| TraceCallPathTool | `default_workspace()` ✅ |
-
-**Solution Implemented:**
-- ✅ Renamed `default_workspace_refs()` → `default_workspace()` in FastRefsTool
-- ✅ All navigation tools now use consistent naming
-- ✅ All 999 tests passing
-
-**Result:** Complete consistency across all tool workspace parameters
-
-#### 🟡 Moderate Issues (Consider)
-
-##### 4. TraceCallPathTool - Parameter Overload? ✅ **FIXED (2025-10-23)**
-**Location:** `src/tools/trace_call_path.rs:116-149`
-
-**Problem (RESOLVED):** ~~10 total parameters including obscure expert-level tunables~~
-
-**Expert Parameters Removed (4 removed):**
-- ❌ `cross_language` → Now always `true` (it's the superpower!)
-- ❌ `similarity_threshold` → Now hardcoded to `0.7` (proven good balance)
-- ❌ `semantic_limit` → Now hardcoded to `8` (internal algorithm detail)
-- ❌ `cross_language_max_depth` → Now uses `max_depth - 1` (handled internally)
-
-**New Clean API (6 params - down from 10):**
-```rust
-pub struct TraceCallPathTool {
-    pub symbol: String,              // Required
-    pub direction: String,           // default: "upstream"
-    pub max_depth: u32,              // default: 3
-    pub context_file: Option<String>,
-    pub workspace: Option<String>,   // default: "primary"
-    pub output_format: String,       // default: "json"
+    // Razor C# code (not HTML) is normal
+    assert_eq!(get_language_quality_boost("razor", false), 1.0);
 }
 ```
 
-**Results:**
-- ✅ Removed all "expert tunables" that exposed internal implementation
-- ✅ Cross-language tracing always enabled (unique capability)
-- ✅ Simpler mental model - no knobs to turn
-- ✅ All 995 tests passing (removed 4 obsolete parameter tests)
-
-**Agent Feedback:** AI agents don't tune thresholds, they solve problems. The expert parameters added cognitive overhead without practical value.
-
-##### 5. FuzzyReplaceTool - Mutually Exclusive Parameters ✅ **NOT NEEDED (2025-10-23)**
-**Location:** `src/tools/fuzzy_replace.rs:84-151`
-
-**Original Concern:** ~~Mutually exclusive parameters not enforced at type level~~
-
-**Analysis (2025-10-23):**
-After reviewing the implementation, this is actually a **false alarm**. The tool has comprehensive runtime validation at lines 138-151:
-
+#### Test 3: Generic Symbol Detection
 ```rust
-match (&self.file_path, &self.file_pattern) {
-    (None, None) => { /* Clear error message */ }
-    (Some(_), Some(_)) => { /* Clear error message */ }
-    _ => {} // Valid - exactly one provided
+#[test]
+fn test_generic_symbol_detection() {
+    // Generic name + no docs = generic
+    let template_no_docs = create_symbol("Template", None);
+    assert!(is_generic_symbol(&template_no_docs));
+
+    // Generic name + HAS docs = NOT generic
+    let template_with_docs = create_symbol("Template", Some("/// Docs"));
+    assert!(!is_generic_symbol(&template_with_docs));
+
+    // Non-generic name + no docs = NOT generic
+    let specific_no_docs = create_symbol("EmailTemplatePreview", None);
+    assert!(!is_generic_symbol(&specific_no_docs));
 }
 ```
 
-**Why runtime validation is correct here:**
-- MCP tools are invoked via JSON over the network (no compile time)
-- Type-level enforcement (enums) would just move validation to deserialization layer
-- Current validation provides **better error messages** than JSON schema errors
-- Fails immediately before any file operations
+#### Test 4: End-to-End Scoring
+```rust
+#[test]
+fn test_documented_class_beats_generic_html() {
+    // EmailTemplatePreview (C# class with docs)
+    let documented_class = Symbol {
+        name: "EmailTemplatePreview",
+        language: "csharp",
+        kind: SymbolKind::Class,
+        doc_comment: Some("/// <summary>\n/// Simple utility class to preview MJML email templates locally\n/// Run this to generate HTML files for testing without deployment\n/// </summary>"),
+        metadata: HashMap::new(),
+        ..Default::default()
+    };
 
-**Action Taken:**
-- ✅ Added validation tests to verify error handling (2025-10-23)
-- ✅ Confirmed validation logic is comprehensive and clear
+    // Razor Template tag (HTML element, no docs)
+    let mut html_metadata = HashMap::new();
+    html_metadata.insert("type", "html-element");
+    let generic_html = Symbol {
+        name: "Template",
+        language: "razor",
+        kind: SymbolKind::Class,
+        doc_comment: None,
+        metadata: html_metadata,
+        ..Default::default()
+    };
 
-**Result:** No changes needed - design is appropriate for network-invoked API
+    // Both start with same base semantic score
+    let base_score = 0.8;
 
-#### ✅ Good Design Examples (No Changes Needed)
+    let class_final = apply_all_boosts(&documented_class, base_score);
+    let html_final = apply_all_boosts(&generic_html, base_score);
 
-These tools have clean, focused APIs:
-- **RenameSymbolTool** (4 params) - Simple, clear
-- **EditSymbolTool** (6 params with enum operation) - Clean design
-- **EditLinesTool** (6 params) - Well-scoped operations
-- **FindLogicTool** (4 params) - Focused purpose
-- **FastGotoTool** (4 params) - Minimal and clear
-- **FastRefsTool** (4 params) - Straightforward ✅ **Now fully consistent (2025-10-23)**
-- **FastSearchTool** (8 params) - Many options, but justified with smart defaults
-- **TraceCallPathTool** (6 params) - Clean and focused ✅ **Now simplified (2025-10-23)**
-- **GetSymbolsTool** (5 params) - Clear purpose ✅ **Now simplified (2025-10-23)**
-- **ManageWorkspaceTool** (6 params) - Simplified ✅ **Core operations only (2025-10-23)**
+    // Documented class should score significantly higher (4x+)
+    assert!(class_final > html_final * 4.0);
+}
+```
 
-#### Implementation Plan - ✅ **MOSTLY COMPLETE (2025-10-23)**
+**Expected:** All tests FAIL (functions don't exist yet)
 
-**Phase 1: Critical Fixes ✅ ALL COMPLETE**
-1. ✅ ManageWorkspaceTool simplified → Removed 4 unused params + 3 unused operations
-2. ✅ GetSymbolsTool simplified → Removed `include_body` parameter confusion
-3. ✅ FastRefsTool standardized → Renamed `default_workspace_refs()` to `default_workspace()`
+---
 
-**Phase 2: Polish ✅ MOSTLY COMPLETE**
-4. ✅ TraceCallPathTool simplified → Removed 4 expert parameters (10 → 6 params)
-5. 🟡 FuzzyReplaceTool validation → Remaining (low priority - validation works, just not type-enforced)
+### Phase 2: Implement Helper Functions  GREEN
 
-**Results Achieved:**
-- ✅ **11 parameters removed** across 4 tools (ManageWorkspace: 4, GetSymbols: 1, TraceCallPath: 4, FastRefs: 0 but renamed)
-- ✅ **3 operations removed** from ManageWorkspaceTool (set_ttl, set_limit, recent)
-- ✅ **Consistent naming** across all navigation tools (all use `default_workspace()`)
-- ✅ **995 tests passing** (down from 999 due to removing 4 obsolete parameter tests)
-- ✅ **Zero functionality lost** - only removed confusing configuration overhead
+**File:** `src/tools/search/semantic_search.rs`
 
-**Success Criteria Met:**
-- ✅ String-based operation dispatch reduced (ManageWorkspaceTool still has it but simplified)
-- ✅ Clear parameter purposes (no more "used by X operations" comments needed)
-- ✅ Consistent patterns across similar tools (workspace defaults standardized)
-- ✅ AI agents can easily understand which tool to use (cognitive load reduced by 40%)
+#### Step 2.1: Add `get_doc_comment_boost()`
+```rust
+/// Boost symbols with documentation
+fn get_doc_comment_boost(symbol: &Symbol) -> f32 {
+    match &symbol.doc_comment {
+        None => 1.0,
+        Some(doc) if doc.is_empty() => 1.0,
+        Some(doc) => {
+            let doc_len = doc.len();
+            if doc_len > 200 {
+                2.0  // Rich documentation
+            } else if doc_len > 100 {
+                1.5  // Good documentation
+            } else {
+                1.3  // Some documentation
+            }
+        }
+    }
+}
+```
+
+**Test:** `cargo test test_doc_comment_boost_calculation` � should PASS
+
+#### Step 2.2: Add `is_html_element()` helper
+```rust
+/// Check if symbol is an HTML element (not real code)
+fn is_html_element(symbol: &Symbol) -> bool {
+    symbol.kind == SymbolKind::Class
+        && symbol.metadata
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "html-element")
+            .unwrap_or(false)
+}
+```
+
+#### Step 2.3: Add `get_language_quality_boost()`
+```rust
+/// Boost real code over markup/templates
+fn get_language_quality_boost(symbol: &Symbol) -> f32 {
+    match symbol.language.as_str() {
+        // Real code languages - high signal
+        "csharp" | "rust" | "typescript" | "java" | "kotlin" => 1.2,
+
+        // Scripting languages - good signal
+        "javascript" | "python" | "ruby" | "php" => 1.1,
+
+        // Markup/templating - context dependent
+        "razor" | "vue" | "html" => {
+            if is_html_element(symbol) {
+                0.7  // HTML tag penalty
+            } else {
+                1.0  // Razor C# code is normal
+            }
+        }
+
+        _ => 1.0
+    }
+}
+```
+
+**Test:** `cargo test test_language_quality_boost` � should PASS
+
+#### Step 2.4: Add `is_generic_symbol()` and `get_generic_penalty()`
+```rust
+/// Check if symbol is generic framework boilerplate
+fn is_generic_symbol(symbol: &Symbol) -> bool {
+    const GENERIC_NAMES: &[&str] = &[
+        "Template", "Container", "Wrapper", "Item",
+        "Data", "Value", "Component", "Element"
+    ];
+
+    // Only penalize if BOTH generic name AND no documentation
+    symbol.doc_comment.is_none()
+        && GENERIC_NAMES.contains(&symbol.name.as_str())
+}
+
+/// Penalize generic undocumented symbols
+fn get_generic_penalty(symbol: &Symbol) -> f32 {
+    if is_generic_symbol(symbol) {
+        0.5  // 50% penalty
+    } else {
+        1.0
+    }
+}
+```
+
+**Test:** `cargo test test_generic_symbol_detection` � should PASS
+
+---
+
+### Phase 3: Integrate into Scoring  GREEN
+
+**File:** `src/tools/search/semantic_search.rs` (lines 328-352)
+
+#### Current Code:
+```rust
+// Apply quality scoring to rerank results
+let mut scored_symbols: Vec<(Symbol, f32)> = symbols
+    .into_iter()
+    .zip(semantic_results.iter())
+    .map(|(symbol, result)| {
+        let mut score = result.similarity_score;
+
+        // Apply symbol kind boosting
+        score *= get_symbol_kind_boost(&symbol);
+
+        // Heavily downrank vendor symbols (95% penalty)
+        if is_vendor_symbol(&symbol.file_path) {
+            score *= 0.05;
+        }
+
+        (symbol, score)
+    })
+    .collect();
+```
+
+#### Updated Code:
+```rust
+// Apply multi-factor quality scoring to rerank results
+let mut scored_symbols: Vec<(Symbol, f32)> = symbols
+    .into_iter()
+    .zip(semantic_results.iter())
+    .map(|(symbol, result)| {
+        let mut score = result.similarity_score;
+
+        // Factor 1: Symbol kind boosting (existing)
+        score *= get_symbol_kind_boost(&symbol);
+
+        // Factor 2: Doc comment boost (NEW)
+        score *= get_doc_comment_boost(&symbol);
+
+        // Factor 3: Language quality boost (NEW)
+        score *= get_language_quality_boost(&symbol);
+
+        // Factor 4: Generic symbol penalty (NEW)
+        score *= get_generic_penalty(&symbol);
+
+        // Factor 5: Vendor penalty (existing)
+        if is_vendor_symbol(&symbol.file_path) {
+            score *= 0.05;
+        }
+
+        (symbol, score)
+    })
+    .collect();
+
+// Re-sort by adjusted scores
+scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+```
+
+**Test:** `cargo test test_documented_class_beats_generic_html` � should PASS
+
+---
+
+### Phase 4: Integration Testing >�
+
+#### Test with Real Workspace
+```bash
+# Build release
+cargo build --release
+
+# Restart Claude Code
+
+# Re-index coa-intranet workspace
+
+# Test queries:
+# 1. "email templates" � EmailTemplatePreview should be #1
+# 2. "preview MJML templates" � EmailTemplatePreview should be #1
+# 3. "user authentication" � Documented auth classes should be top
+```
+
+**Expected Results:**
+-  Documented C# classes rank above generic HTML tags
+-  Confidence scores improve (0.5 � 0.6-0.7+)
+-  No false negatives (legitimate HTML still findable)
+
+---
+
+### Phase 5: Refactor & Document ='
+
+**After all tests pass:**
+
+1. **Extract scoring helpers** to separate module
+   - `src/tools/search/scoring/multi_factor.rs`
+   - Clean separation of concerns
+
+2. **Add configuration** for tuning
+   ```rust
+   pub struct ScoringConfig {
+       pub rich_doc_boost: f32,      // Default: 2.0
+       pub good_doc_boost: f32,      // Default: 1.5
+       pub some_doc_boost: f32,      // Default: 1.3
+       pub html_element_penalty: f32, // Default: 0.7
+       pub generic_penalty: f32,      // Default: 0.5
+   }
+   ```
+
+3. **Document pattern** for other languages
+   - Comment each factor with rationale
+   - Explain how to replicate for TypeScript, Python, etc.
+
+---
+
+## Progress Checklist
+
+- [ ] Write failing tests (Phase 1)
+- [ ] Implement `get_doc_comment_boost()` + test
+- [ ] Implement `get_language_quality_boost()` + test
+- [ ] Implement `is_generic_symbol()` + test
+- [ ] Integrate all factors into scoring
+- [ ] Run end-to-end test
+- [ ] Integration test with real workspace
+- [ ] Verify EmailTemplatePreview ranks #1
+- [ ] Refactor & document
+- [ ] Create pattern template for other languages
+
+---
+
+## Next Languages to Apply Pattern
+
+After C# scoring is perfected:
+1. **TypeScript/JavaScript** (JSDoc comments `/** ... */`)
+2. **Python** (docstrings `"""..."""`)
+3. **Rust** (doc comments `///...`)
+4. **Java** (JavaDoc `/** ... */`)
+5. Remaining 21 languages...
+
+---
+
+## Success Metrics
+
+**Before:**
+- Query: "email templates" � Generic Razor tags rank #1, #2
+- EmailTemplatePreview (documented) ranks #3
+- Confidence: 0.5
+
+**After:**
+- Query: "email templates" � EmailTemplatePreview ranks #1
+- Generic HTML tags rank below documented classes
+- Confidence: 0.6-0.7+
+- 4x+ score difference between documented vs generic symbols
+
+---
+
+## Notes
+
+- **TDD discipline:** RED � GREEN � REFACTOR cycle
+- **No false negatives:** HTML elements still findable, just deprioritized
+- **Replicable pattern:** Same formula works for all 25 languages
+- **Evidence-based:** Doc comments signal developer intent and domain value

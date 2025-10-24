@@ -3,6 +3,7 @@
 
 mod comprehensive; // Parameter validation and API tests
 mod new_features; // TDD tests for new features (output_format, configurable parameters)
+mod workspace_isolation; // TDD tests for workspace isolation bug fix
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};

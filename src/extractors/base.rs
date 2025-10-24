@@ -458,31 +458,37 @@ impl BaseExtractor {
 
     /// Find documentation comment for a node - exact port of Miller's findDocComment
     pub fn find_doc_comment(&self, node: &Node) -> Option<String> {
-        // Look for comment nodes preceding the current node
-        if let Some(prev_sibling) = node.prev_named_sibling() {
-            if prev_sibling.kind().contains("comment") {
-                return Some(self.get_node_text(&prev_sibling));
-            }
-        }
+        let mut comments = Vec::new();
 
-        // Look for JSDoc-style comments above the node
-        if let Some(parent) = node.parent() {
-            let node_row = node.start_position().row;
-
-            for i in 0..parent.child_count() {
-                if let Some(child) = parent.child(i) {
-                    if child.start_position().row < node_row && child.kind().contains("comment") {
-                        let comment_text = self.get_node_text(&child);
-                        // Check if it's a documentation comment (starts with /** or ///)
-                        if comment_text.starts_with("/**") || comment_text.starts_with("///") {
-                            return Some(comment_text);
-                        }
-                    }
+        // Walk backwards through previous siblings to collect consecutive doc comments
+        let mut current = node.prev_named_sibling();
+        while let Some(sibling) = current {
+            if sibling.kind().contains("comment") {
+                let comment_text = self.get_node_text(&sibling);
+                // Check if it's a documentation comment
+                if comment_text.starts_with("/**")
+                    || comment_text.starts_with("///")
+                    || comment_text.starts_with("##") // Python docstrings
+                {
+                    comments.push(comment_text);
+                    current = sibling.prev_named_sibling();
+                } else {
+                    // Stop at non-doc comment
+                    break;
                 }
+            } else {
+                // Stop at non-comment node
+                break;
             }
         }
 
-        None
+        if comments.is_empty() {
+            None
+        } else {
+            // Reverse to get original order (top to bottom)
+            comments.reverse();
+            Some(comments.join("\n"))
+        }
     }
 
     /// Generate ID for a symbol - exact port of Miller's generateId (MD5 hash)

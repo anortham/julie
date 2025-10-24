@@ -11,6 +11,138 @@ use crate::handler::JulieServerHandler;
 
 use super::query::matches_glob_pattern;
 
+/// Check if a symbol is from a vendor/third-party library
+fn is_vendor_symbol(file_path: &str) -> bool {
+    file_path.contains("/node_modules/")
+        || file_path.contains("/wwwroot/lib/")
+        || file_path.contains("/vendor/")
+        || file_path.contains("/bower_components/")
+        || file_path.contains("font-awesome")
+        || file_path.contains("popper.js")
+        || file_path.contains("/packages/")
+        || file_path.contains("/.npm/")
+        || file_path.contains("/third-party/")
+        || file_path.contains("/external/")
+}
+
+/// Get boost factor based on symbol kind (prioritize meaningful symbols)
+fn get_symbol_kind_boost(symbol: &Symbol) -> f32 {
+    use crate::extractors::base::SymbolKind;
+    match symbol.kind {
+        SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct => 2.5,
+        SymbolKind::Function | SymbolKind::Method => 2.0,
+        SymbolKind::Enum | SymbolKind::Module | SymbolKind::Namespace => 1.8,
+        SymbolKind::Property | SymbolKind::Field => 1.2,
+        SymbolKind::Variable | SymbolKind::Constant => 0.8,
+        _ => 0.3, // Anonymous functions, etc. get heavy penalty
+    }
+}
+
+/// Boost symbols with documentation (rich docs = higher quality)
+pub(crate) fn get_doc_comment_boost(symbol: &Symbol) -> f32 {
+    match &symbol.doc_comment {
+        None => 1.0,
+        Some(doc) if doc.is_empty() => 1.0,
+        Some(doc) => {
+            let doc_len = doc.len();
+            if doc_len > 200 {
+                2.0 // Rich documentation
+            } else if doc_len > 100 {
+                1.5 // Good documentation
+            } else {
+                1.3 // Some documentation
+            }
+        }
+    }
+}
+
+/// Check if symbol is an HTML element (not real code)
+fn is_html_element(symbol: &Symbol) -> bool {
+    use crate::extractors::base::SymbolKind;
+    if symbol.kind != SymbolKind::Class {
+        return false;
+    }
+
+    symbol.metadata
+        .as_ref()
+        .and_then(|m| m.get("type"))
+        .and_then(|v| v.as_str())
+        .map(|s| s == "html-element")
+        .unwrap_or(false)
+}
+
+/// Boost real code over markup/templates
+pub(crate) fn get_language_quality_boost(symbol: &Symbol) -> f32 {
+    match symbol.language.as_str() {
+        // Real code languages - high signal
+        "csharp" | "rust" | "typescript" | "java" | "kotlin" => 1.2,
+
+        // Scripting languages - good signal
+        "javascript" | "python" | "ruby" | "php" => 1.1,
+
+        // Markup/templating - context dependent
+        "razor" | "vue" | "html" => {
+            if is_html_element(symbol) {
+                0.7 // HTML tag penalty
+            } else {
+                1.0 // Razor C# code is normal
+            }
+        }
+
+        _ => 1.0,
+    }
+}
+
+/// Check if symbol is generic framework boilerplate
+pub(crate) fn is_generic_symbol(symbol: &Symbol) -> bool {
+    const GENERIC_NAMES: &[&str] = &[
+        "Template",
+        "Container",
+        "Wrapper",
+        "Item",
+        "Data",
+        "Value",
+        "Component",
+        "Element",
+    ];
+
+    // Only penalize if BOTH generic name AND no documentation
+    symbol.doc_comment.is_none() && GENERIC_NAMES.contains(&symbol.name.as_str())
+}
+
+/// Penalize generic undocumented symbols
+pub(crate) fn get_generic_penalty(symbol: &Symbol) -> f32 {
+    if is_generic_symbol(symbol) {
+        0.5 // 50% penalty
+    } else {
+        1.0
+    }
+}
+
+/// Apply all quality boost factors to a base score
+pub(crate) fn apply_all_boosts(symbol: &Symbol, base_score: f32) -> f32 {
+    let mut score = base_score;
+
+    // Factor 1: Symbol kind boosting (existing)
+    score *= get_symbol_kind_boost(symbol);
+
+    // Factor 2: Doc comment boost (NEW)
+    score *= get_doc_comment_boost(symbol);
+
+    // Factor 3: Language quality boost (NEW)
+    score *= get_language_quality_boost(symbol);
+
+    // Factor 4: Generic symbol penalty (NEW)
+    score *= get_generic_penalty(symbol);
+
+    // Factor 5: Vendor penalty (existing)
+    if is_vendor_symbol(&symbol.file_path) {
+        score *= 0.05;
+    }
+
+    score
+}
+
 /// Perform semantic search using HNSW embeddings
 ///
 /// Returns semantically similar symbols based on the query embedding.
@@ -297,6 +429,28 @@ pub async fn semantic_search_impl(
         let db_lock = db.lock().unwrap();
         db_lock.get_symbols_by_ids(&symbol_ids)
     })?;
+
+    // Apply multi-factor quality scoring to rerank results
+    // Factors: symbol kind, doc comments, language quality, generic names, vendor status
+    // Documented symbols rank higher than generic boilerplate (e.g., C# class > HTML tag)
+    let mut scored_symbols: Vec<(Symbol, f32)> = symbols
+        .into_iter()
+        .zip(semantic_results.iter())
+        .map(|(symbol, result)| {
+            let score = result.similarity_score;
+
+            // Apply all boost factors (symbol kind, docs, language, generic penalty, vendor)
+            let final_score = apply_all_boosts(&symbol, score);
+
+            (symbol, final_score)
+        })
+        .collect();
+
+    // Re-sort by adjusted scores (higher is better)
+    scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    // Extract symbols after re-ranking
+    let symbols: Vec<Symbol> = scored_symbols.into_iter().map(|(symbol, _)| symbol).collect();
 
     // Apply filters (language, file_pattern)
     let filtered_symbols: Vec<Symbol> = symbols

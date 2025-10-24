@@ -421,31 +421,19 @@ impl EmbeddingEngine {
         db_guard.get_embedding_for_symbol(symbol_id, &self.model_name)
     }
 
-    pub fn build_embedding_text(&self, symbol: &Symbol, context: &CodeContext) -> String {
-        // Combine multiple sources of information for richer embeddings
+    pub fn build_embedding_text(&self, symbol: &Symbol, _context: &CodeContext) -> String {
+        // Minimal embeddings for clean semantic matching in 384-dimensional space
+        // Philosophy: Less noise = stronger signal in BGE-small's limited dimensions
         let mut parts = vec![symbol.name.clone(), symbol.kind.to_string()];
 
-        // Add signature if available
+        // Add signature if available (type information aids semantic understanding)
         if let Some(sig) = &symbol.signature {
             parts.push(sig.clone());
         }
 
-        // Add parent context
-        if let Some(parent) = &context.parent_symbol {
-            parts.push(format!("in {}", parent.name));
-        }
-
-        // Type information would be included in signature if available
-        // (removed type_info field since it doesn't exist in Symbol struct)
-
-        // Add surrounding code context (first few lines)
-        if let Some(surrounding) = &context.surrounding_code {
-            parts.push(surrounding.clone());
-        }
-
-        // Add filename context (helps with architectural understanding)
-        if let Some(filename) = std::path::Path::new(&symbol.file_path).file_name() {
-            parts.push(filename.to_string_lossy().to_string());
+        // Add documentation comment if available (enables natural language queries)
+        if let Some(doc) = &symbol.doc_comment {
+            parts.push(doc.clone());
         }
 
         parts.join(" ")
