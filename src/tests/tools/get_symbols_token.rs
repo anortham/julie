@@ -25,11 +25,7 @@ mod get_symbols_token_tests {
 
         // Short bodies should NOT be truncated (< 50 lines)
         // In actual GetSymbolsTool, this would return the full body
-        assert_eq!(
-            short_body.len(),
-            30,
-            "Short body should remain at 30 lines"
-        );
+        assert_eq!(short_body.len(), 30, "Short body should remain at 30 lines");
         assert!(
             original_tokens < 1000,
             "Short body should be well under token limits"
@@ -94,10 +90,7 @@ mod get_symbols_token_tests {
         );
 
         // ContextTruncator preserves first and last lines, plus closing braces
-        assert!(
-            truncated.contains("}"),
-            "Should preserve closing brace"
-        );
+        assert!(truncated.contains("}"), "Should preserve closing brace");
 
         // Should include truncation indicator
         assert!(
@@ -161,7 +154,10 @@ mod get_symbols_token_tests {
 
         // Verify roughly linear scaling (within 20% variance)
         // Small body is baseline
-        assert!(small_tokens < medium_tokens, "Medium should have more tokens");
+        assert!(
+            small_tokens < medium_tokens,
+            "Medium should have more tokens"
+        );
         assert!(
             medium_tokens < large_tokens,
             "Large should have more tokens"
@@ -273,16 +269,14 @@ mod get_symbols_token_tests {
         // Verify structure preservation
         // ContextTruncator identifies "struct" as essential keyword
         assert!(
-            truncated.contains("pub struct DataProcessor") || truncated.contains("struct DataProcessor"),
+            truncated.contains("pub struct DataProcessor")
+                || truncated.contains("struct DataProcessor"),
             "Should preserve struct definition"
         );
 
         // "impl" keyword should be identified as essential (though currently not in identify_essential_lines)
         // At minimum, should preserve closing braces
-        assert!(
-            truncated.contains("}"),
-            "Should preserve closing braces"
-        );
+        assert!(truncated.contains("}"), "Should preserve closing braces");
 
         // Should indicate truncation occurred
         assert!(
@@ -312,10 +306,7 @@ mod get_symbols_token_tests {
         for method_num in 1..=5 {
             full_file_content.push(format!("    async method{}(param) {{", method_num));
             for line_num in 1..=18 {
-                full_file_content.push(format!(
-                    "        // Implementation detail {}",
-                    line_num
-                ));
+                full_file_content.push(format!("        // Implementation detail {}", line_num));
                 full_file_content.push(format!("        await this.process({});", line_num));
             }
             full_file_content.push("        return result;".to_string());

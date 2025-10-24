@@ -57,10 +57,14 @@ pub(super) fn extract_class(
         ));
     }
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 
@@ -106,10 +110,14 @@ pub(super) fn extract_interface(
         );
     }
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 
@@ -147,10 +155,14 @@ pub(super) fn extract_enum(
         signature.push_str(&format!(" implements {}", interfaces.join(", ")));
     }
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 
@@ -182,10 +194,14 @@ pub(super) fn extract_enum_constant(
         signature.push_str(&extractor.base().get_node_text(&args));
     }
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Public), // Enum constants are always public in Java
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 
@@ -245,12 +261,15 @@ pub(super) fn extract_record(
         serde_json::Value::String("record".to_string()),
     );
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         metadata: Some(metadata),
-        ..Default::default()
+        doc_comment,
     };
 
     Some(

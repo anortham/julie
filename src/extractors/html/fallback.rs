@@ -30,6 +30,9 @@ impl FallbackExtractor {
                 serde_json::Value::String(doctype_match.clone()),
             );
 
+            // Extract HTML comment (if any)
+            let doc_comment = base.find_doc_comment(&tree.root_node());
+
             let symbol = base.create_symbol(
                 &tree.root_node(),
                 "DOCTYPE".to_string(),
@@ -39,7 +42,7 @@ impl FallbackExtractor {
                     visibility: Some(Visibility::Public),
                     parent_id: None,
                     metadata: Some(metadata),
-                    doc_comment: None,
+                    doc_comment,
                 },
             );
             symbols.push(symbol);
@@ -123,6 +126,9 @@ impl FallbackExtractor {
                     }
                 }
 
+                // Extract HTML comment (if any)
+                let doc_comment = base.find_doc_comment(root_node);
+
                 let symbol = base.create_symbol(
                     root_node,
                     tag_name,
@@ -132,7 +138,7 @@ impl FallbackExtractor {
                         visibility: Some(Visibility::Public),
                         parent_id: None,
                         metadata: Some(metadata),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
                 symbols.push(symbol);

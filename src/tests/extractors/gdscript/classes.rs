@@ -277,4 +277,60 @@ var experience: float:
             .find(|s| s.name == "level" && s.signature.as_ref().unwrap().contains("set(value)"));
         assert!(level_property.is_some());
     }
+
+    #[test]
+    fn test_extract_gdscript_doc_from_class() {
+        let code = r#"
+## PlayerController manages player input and movement
+## Handles WASD movement and jumping
+class_name PlayerController
+extends Node2D
+
+## Enemy AI controller for basic combat
+class_name Enemy
+extends CharacterBody2D
+"#;
+
+        let symbols = extract_symbols(code);
+
+        let player_controller = symbols.iter().find(|s| s.name == "PlayerController");
+        assert!(player_controller.is_some());
+        let player_controller = player_controller.unwrap();
+        assert!(player_controller.doc_comment.is_some());
+        let doc = player_controller.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("PlayerController manages player input and movement"));
+        assert!(doc.contains("Handles WASD movement and jumping"));
+
+        let enemy = symbols.iter().find(|s| s.name == "Enemy");
+        assert!(enemy.is_some());
+        let enemy = enemy.unwrap();
+        assert!(enemy.doc_comment.is_some());
+        let doc = enemy.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("Enemy AI controller for basic combat"));
+    }
+
+    #[test]
+    fn test_extract_gdscript_doc_from_inner_class() {
+        let code = r#"
+## HealthComponent handles all health-related logic
+## Supports damage, healing, and status effects
+class HealthComponent:
+	var max_health: int = 100
+	var current_health: int
+
+	func _init(health: int = 100):
+		max_health = health
+		current_health = health
+"#;
+
+        let symbols = extract_symbols(code);
+
+        let health_component = symbols.iter().find(|s| s.name == "HealthComponent");
+        assert!(health_component.is_some());
+        let health_component = health_component.unwrap();
+        assert!(health_component.doc_comment.is_some());
+        let doc = health_component.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("HealthComponent handles all health-related logic"));
+        assert!(doc.contains("Supports damage, healing, and status effects"));
+    }
 }

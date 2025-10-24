@@ -18,6 +18,9 @@ impl super::RazorExtractor {
             signature = format!("<{} {}>", tag_name, attributes.join(" "));
         }
 
+        // Extract HTML/Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             tag_name.clone(),
@@ -39,7 +42,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -192,6 +195,9 @@ impl super::RazorExtractor {
             signature = format!("<{} {} />", component_name, parameters.join(" "));
         }
 
+        // Extract HTML/Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             component_name.clone(),
@@ -216,7 +222,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

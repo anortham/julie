@@ -3,6 +3,7 @@
 // Submodule declarations
 pub mod classes;
 pub mod core;
+pub mod doc_comments;
 pub mod extractor;
 pub mod functions;
 pub mod helpers;

@@ -51,7 +51,10 @@ impl ManageWorkspaceTool {
         // workspace path is provided (fixes fixture test isolation bug)
         let julie_dir = start_path.join(".julie");
         if julie_dir.exists() && julie_dir.is_dir() {
-            debug!("Found .julie directory at provided path: {}", start_path.display());
+            debug!(
+                "Found .julie directory at provided path: {}",
+                start_path.display()
+            );
             info!(
                 "🎯 Found .julie directory at provided path: {}",
                 start_path.display()

@@ -651,8 +651,7 @@ async fn test_complete_symbol_field_persistence() {
     };
 
     // Store the symbol
-    db.store_symbols_transactional(&[symbol.clone()])
-        .unwrap();
+    db.store_symbols_transactional(&[symbol.clone()]).unwrap();
 
     // Retrieve and verify ALL fields are preserved
     let retrieved = db
@@ -1030,7 +1029,8 @@ fn test_fts5_corruption_with_insert_or_replace() {
         1000,
         "pub fn test_function() {}",
         "test_workspace",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Step 2: Verify FTS5 search works initially
     let result = db.conn.query_row(
@@ -1103,11 +1103,14 @@ fn test_fts5_rebuild_after_replace() {
     db.store_file_info(&file1).unwrap();
 
     // Get rowid before replace
-    let rowid_before: i64 = db.conn.query_row(
-        "SELECT rowid FROM files WHERE path = 'test.rs'",
-        [],
-        |row| row.get(0),
-    ).unwrap();
+    let rowid_before: i64 = db
+        .conn
+        .query_row(
+            "SELECT rowid FROM files WHERE path = 'test.rs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
 
     // Replace with bulk insert
     let file2 = FileInfo {
@@ -1123,25 +1126,34 @@ fn test_fts5_rebuild_after_replace() {
     db.bulk_store_files(&[file2]).unwrap();
 
     // Get rowid after replace
-    let rowid_after: i64 = db.conn.query_row(
-        "SELECT rowid FROM files WHERE path = 'test.rs'",
-        [],
-        |row| row.get(0),
-    ).unwrap();
+    let rowid_after: i64 = db
+        .conn
+        .query_row(
+            "SELECT rowid FROM files WHERE path = 'test.rs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
 
     println!("Rowid before: {}, after: {}", rowid_before, rowid_after);
 
     // If rowids changed, FTS5 must be rebuilt to use new rowids
     if rowid_before != rowid_after {
-        println!("⚠️  Rowid changed from {} to {} - FTS5 rebuild required", rowid_before, rowid_after);
+        println!(
+            "⚠️  Rowid changed from {} to {} - FTS5 rebuild required",
+            rowid_before, rowid_after
+        );
     }
 
     // Verify FTS5 still works
-    let result = db.conn.query_row(
-        "SELECT path FROM files_fts WHERE files_fts MATCH 'content'",
-        [],
-        |row| row.get::<_, String>(0),
-    ).unwrap();
+    let result = db
+        .conn
+        .query_row(
+            "SELECT path FROM files_fts WHERE files_fts MATCH 'content'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap();
 
     assert_eq!(result, "test.rs");
 }

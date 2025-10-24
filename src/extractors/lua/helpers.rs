@@ -11,6 +11,7 @@ use tree_sitter::Node;
 ///
 /// Searches immediate children for a node of the specified type.
 /// Uses manual loop instead of iterator for borrow checker compatibility.
+#[allow(clippy::manual_find)]
 pub(crate) fn find_child_by_type<'a>(node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

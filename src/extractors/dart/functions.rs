@@ -74,7 +74,7 @@ pub(super) fn extract_function(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -146,7 +146,7 @@ pub(super) fn extract_method(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -233,7 +233,7 @@ pub(super) fn extract_constructor(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -288,7 +288,7 @@ pub(super) fn extract_variable(
                         }),
                         parent_id: parent_id.map(|id| id.to_string()),
                         metadata: Some(HashMap::new()),
-                        doc_comment: None,
+                        ..Default::default()
                     },
                 );
 

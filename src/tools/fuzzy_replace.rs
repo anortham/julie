@@ -29,9 +29,9 @@ use crate::tools::editing::EditingTransaction;
 #[derive(Debug, Clone, Serialize)]
 pub struct FuzzyReplaceResult {
     pub tool: String,
-    pub file_path: Option<String>,  // Single-file mode
-    pub file_pattern: Option<String>,  // Multi-file mode
-    pub files_changed: usize,  // For multi-file mode
+    pub file_path: Option<String>,    // Single-file mode
+    pub file_pattern: Option<String>, // Multi-file mode
+    pub files_changed: usize,         // For multi-file mode
     pub pattern: String,
     pub replacement: String,
     pub matches_found: usize,
@@ -169,7 +169,8 @@ impl FuzzyReplaceTool {
             self.call_tool_single_file(file_path, &workspace_root).await
         } else if let Some(ref file_pattern) = self.file_pattern {
             // MULTI-FILE MODE
-            self.call_tool_multi_file(file_pattern, &workspace_root).await
+            self.call_tool_multi_file(file_pattern, &workspace_root)
+                .await
         } else {
             unreachable!("Validation ensures exactly one parameter is provided")
         }
@@ -188,7 +189,9 @@ impl FuzzyReplaceTool {
 
         info!(
             "🔍 Fuzzy replace in: {} (threshold: {}, distance: {})",
-            resolved_path.display(), self.threshold, self.distance
+            resolved_path.display(),
+            self.threshold,
+            self.distance
         );
 
         // Validate parameters
@@ -380,7 +383,9 @@ impl FuzzyReplaceTool {
         {
             if entry.file_type().is_file() {
                 // Get path relative to workspace root for glob matching
-                let relative_path = entry.path().strip_prefix(workspace_root)
+                let relative_path = entry
+                    .path()
+                    .strip_prefix(workspace_root)
                     .unwrap_or(entry.path());
 
                 // Normalize to Unix-style paths for glob matching (Windows compatibility)
@@ -399,7 +404,11 @@ impl FuzzyReplaceTool {
             )]));
         }
 
-        info!("Found {} files matching pattern '{}'", matching_files.len(), file_pattern);
+        info!(
+            "Found {} files matching pattern '{}'",
+            matching_files.len(),
+            file_pattern
+        );
 
         // Process each file
         let mut total_matches = 0;
@@ -423,15 +432,28 @@ impl FuzzyReplaceTool {
             }
 
             // Perform fuzzy search and replace
-            info!("  🔍 Running fuzzy search on {} ({} bytes)", file_path.display(), original_content.len());
-            let (modified_content, matches_found) = match self.fuzzy_search_replace(&original_content) {
-                Ok(result) => result,
-                Err(e) => {
-                    errors.push(format!("Failed to process '{}': {}", file_path.display(), e));
-                    continue;
-                }
-            };
-            info!("  ✅ Found {} matches in {}", matches_found, file_path.display());
+            info!(
+                "  🔍 Running fuzzy search on {} ({} bytes)",
+                file_path.display(),
+                original_content.len()
+            );
+            let (modified_content, matches_found) =
+                match self.fuzzy_search_replace(&original_content) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        errors.push(format!(
+                            "Failed to process '{}': {}",
+                            file_path.display(),
+                            e
+                        ));
+                        continue;
+                    }
+                };
+            info!(
+                "  ✅ Found {} matches in {}",
+                matches_found,
+                file_path.display()
+            );
 
             if matches_found == 0 {
                 continue; // Skip files with no matches
@@ -458,11 +480,23 @@ impl FuzzyReplaceTool {
 
             // Apply changes (if not dry run)
             if !self.dry_run {
-                let transaction = EditingTransaction::begin(&file_path.to_string_lossy().to_string())
-                    .map_err(|e| anyhow!("Failed to begin transaction for '{}': {}", file_path.display(), e))?;
-                transaction
-                    .commit(&modified_content)
-                    .map_err(|e| anyhow!("Failed to commit changes to '{}': {}", file_path.display(), e))?;
+                let transaction = EditingTransaction::begin(
+                    file_path.to_string_lossy().as_ref(),
+                )
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to begin transaction for '{}': {}",
+                        file_path.display(),
+                        e
+                    )
+                })?;
+                transaction.commit(&modified_content).map_err(|e| {
+                    anyhow!(
+                        "Failed to commit changes to '{}': {}",
+                        file_path.display(),
+                        e
+                    )
+                })?;
             }
 
             total_matches += matches_found;
@@ -483,12 +517,18 @@ impl FuzzyReplaceTool {
             validation_passed: errors.is_empty(),
             next_actions: if self.dry_run {
                 vec![
-                    format!("Review: {} matches across {} files", total_matches, files_changed),
+                    format!(
+                        "Review: {} matches across {} files",
+                        total_matches, files_changed
+                    ),
                     "Set dry_run=false to apply changes".to_string(),
                 ]
             } else {
                 vec![
-                    format!("Replaced {} matches across {} files", total_matches, files_changed),
+                    format!(
+                        "Replaced {} matches across {} files",
+                        total_matches, files_changed
+                    ),
                     "Run tests to verify changes".to_string(),
                 ]
             },
@@ -616,17 +656,20 @@ impl FuzzyReplaceTool {
                             // Continue searching after this match to avoid overlaps
                             // Update BOTH byte and char positions
                             let matched_byte_len = matched_text.len();
-                            search_from_byte = search_from_byte + valid_byte_offset + matched_byte_len;
+                            search_from_byte =
+                                search_from_byte + valid_byte_offset + matched_byte_len;
                             search_from_char = absolute_char_pos + pattern_char_len;
                         } else {
                             // DMP found something, but it's not good enough - advance by 1 char and keep looking
                             // Need to find next char boundary for UTF-8 safety
-                            let next_char_byte_len = content[search_from_byte + valid_byte_offset..]
+                            let next_char_byte_len = content
+                                [search_from_byte + valid_byte_offset..]
                                 .chars()
                                 .next()
                                 .map(|c| c.len_utf8())
                                 .unwrap_or(1);
-                            search_from_byte = search_from_byte + valid_byte_offset + next_char_byte_len;
+                            search_from_byte =
+                                search_from_byte + valid_byte_offset + next_char_byte_len;
                             search_from_char = absolute_char_pos + 1;
                         }
                     } else {

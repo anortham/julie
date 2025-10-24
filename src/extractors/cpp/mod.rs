@@ -202,6 +202,8 @@ impl CppExtractor {
                 let name = self.base.get_node_text(&next);
                 let signature = format!("class {}", name);
 
+                let doc_comment = self.base.find_doc_comment(&node);
+
                 return Some(self.base.create_symbol(
                     &node,
                     name,
@@ -211,12 +213,14 @@ impl CppExtractor {
                         visibility: Some(Visibility::Public),
                         parent_id: parent_id.map(String::from),
                         metadata: None,
-                        doc_comment: None,
+                        doc_comment,
                     },
                 ));
             } else if current.kind() == "struct" && next.kind() == "type_identifier" {
                 let name = self.base.get_node_text(&next);
                 let signature = format!("struct {}", name);
+
+                let doc_comment = self.base.find_doc_comment(&node);
 
                 return Some(self.base.create_symbol(
                     &node,
@@ -227,7 +231,7 @@ impl CppExtractor {
                         visibility: Some(Visibility::Public),
                         parent_id: parent_id.map(String::from),
                         metadata: None,
-                        doc_comment: None,
+                        doc_comment,
                     },
                 ));
             }

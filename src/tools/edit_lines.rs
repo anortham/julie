@@ -335,12 +335,7 @@ impl EditLinesTool {
         } else {
             format!(
                 "Edit complete: {} operation on {} ({})\nModified {} lines: {} -> {} lines",
-                self.operation,
-                display_path,
-                line_description,
-                modified,
-                original_lines,
-                new_lines
+                self.operation, display_path, line_description, modified, original_lines, new_lines
             )
         };
 

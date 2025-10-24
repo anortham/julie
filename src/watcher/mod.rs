@@ -360,7 +360,16 @@ impl IncrementalIndexer {
                 Self::handle_file_deleted_static(event.path, db, vector_store).await?;
             }
             FileChangeType::Renamed { from, to } => {
-                Self::handle_file_renamed_static(from, to, db, embeddings, extractor_manager, vector_store, workspace_root).await?;
+                Self::handle_file_renamed_static(
+                    from,
+                    to,
+                    db,
+                    embeddings,
+                    extractor_manager,
+                    vector_store,
+                    workspace_root,
+                )
+                .await?;
             }
         }
 
@@ -744,7 +753,9 @@ impl IncrementalIndexer {
         info!("Processing file: {}", path.display());
 
         // 1. Read file content and calculate hash
-        let content = tokio::fs::read(&path).await.context("Failed to read file content")?;
+        let content = tokio::fs::read(&path)
+            .await
+            .context("Failed to read file content")?;
         let new_hash = blake3::hash(&content);
 
         // 2. Check if file actually changed using Blake3
@@ -754,7 +765,10 @@ impl IncrementalIndexer {
             if let Some(old_hash_str) = db_lock.get_file_hash(&path_str)? {
                 let new_hash_str = hex::encode(new_hash.as_bytes());
                 if new_hash_str == old_hash_str {
-                    debug!("File {} unchanged (Blake3 hash match), skipping", path.display());
+                    debug!(
+                        "File {} unchanged (Blake3 hash match), skipping",
+                        path.display()
+                    );
                     return Ok(());
                 }
             }
@@ -772,7 +786,12 @@ impl IncrementalIndexer {
             }
         };
 
-        info!("Extracted {} symbols from {} ({})", symbols.len(), path.display(), language);
+        info!(
+            "Extracted {} symbols from {} ({})",
+            symbols.len(),
+            path.display(),
+            language
+        );
 
         // 4. Update SQLite database
         {
@@ -781,7 +800,11 @@ impl IncrementalIndexer {
 
             // Safeguard against data loss
             if symbols.is_empty() && !existing_symbols.is_empty() {
-                warn!("⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {}", existing_symbols.len(), path_str);
+                warn!(
+                    "⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {}",
+                    existing_symbols.len(),
+                    path_str
+                );
                 return Ok(());
             }
 
@@ -816,38 +839,66 @@ impl IncrementalIndexer {
         let path_for_log = path.clone();
 
         tokio::spawn(async move {
-            info!("🧠 Generating embeddings for {} symbols in {}", symbols_for_embedding.len(), path_for_log.display());
+            info!(
+                "🧠 Generating embeddings for {} symbols in {}",
+                symbols_for_embedding.len(),
+                path_for_log.display()
+            );
 
             // Step 1: Generate embeddings with GPU
             let mut embedding_guard = embeddings_clone.write().await;
             let embeddings_result = if let Some(ref mut engine) = embedding_guard.as_mut() {
                 match engine.embed_symbols_batch(&symbols_for_embedding) {
                     Ok(embeddings_vec) => {
-                        info!("✅ Generated {} embeddings for {}", embeddings_vec.len(), path_for_log.display());
+                        info!(
+                            "✅ Generated {} embeddings for {}",
+                            embeddings_vec.len(),
+                            path_for_log.display()
+                        );
                         Some(embeddings_vec)
                     }
                     Err(e) => {
-                        warn!("⚠️ Failed to generate embeddings for {}: {}", path_for_log.display(), e);
+                        warn!(
+                            "⚠️ Failed to generate embeddings for {}: {}",
+                            path_for_log.display(),
+                            e
+                        );
                         None
                     }
                 }
             } else {
-                warn!("⏭️ Embedding engine not initialized, skipping embeddings for {}", path_for_log.display());
+                warn!(
+                    "⏭️ Embedding engine not initialized, skipping embeddings for {}",
+                    path_for_log.display()
+                );
                 None
             };
             drop(embedding_guard); // Release embedding engine lock
 
             // Step 2: Update HNSW index incrementally (if embeddings generated successfully)
-            if let (Some(embeddings_vec), Some(vector_store_arc)) = (embeddings_result, vector_store_clone) {
-                info!("📊 Updating HNSW index with {} new vectors", embeddings_vec.len());
+            if let (Some(embeddings_vec), Some(vector_store_arc)) =
+                (embeddings_result, vector_store_clone)
+            {
+                info!(
+                    "📊 Updating HNSW index with {} new vectors",
+                    embeddings_vec.len()
+                );
 
                 let mut vs_guard = vector_store_arc.write().await;
                 match vs_guard.insert_batch(&embeddings_vec) {
                     Ok(_) => {
-                        info!("✅ HNSW index updated with {} vectors for {}", embeddings_vec.len(), path_for_log.display());
+                        info!(
+                            "✅ HNSW index updated with {} vectors for {}",
+                            embeddings_vec.len(),
+                            path_for_log.display()
+                        );
                     }
                     Err(e) => {
-                        warn!("⚠️ Failed to update HNSW index for {}: {}", path_for_log.display(), e);
+                        warn!(
+                            "⚠️ Failed to update HNSW index for {}: {}",
+                            path_for_log.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -872,7 +923,7 @@ impl IncrementalIndexer {
         // Editors often delete-then-recreate files, causing DELETE events before the file
         // was ever indexed. "no such table" errors are harmless in this case.
         match db_lock.delete_symbols_for_file(&path_str) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 let err_msg = e.to_string();
                 if err_msg.contains("no such table") {
@@ -887,12 +938,15 @@ impl IncrementalIndexer {
         }
 
         match db_lock.delete_file_record(&path_str) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 let err_msg = e.to_string();
                 if err_msg.contains("no such table") {
                     // Transient state - file record never existed
-                    info!("Skipping file record deletion for {} (not yet indexed)", path.display());
+                    info!(
+                        "Skipping file record deletion for {} (not yet indexed)",
+                        path.display()
+                    );
                     return Ok(());
                 } else {
                     // Real error - propagate it
@@ -915,11 +969,23 @@ impl IncrementalIndexer {
         vector_store: Option<&Arc<RwLock<VectorIndex>>>,
         workspace_root: &Path,
     ) -> Result<()> {
-        info!("Handling file rename: {} -> {}", from.display(), to.display());
+        info!(
+            "Handling file rename: {} -> {}",
+            from.display(),
+            to.display()
+        );
 
         // Delete + create
         Self::handle_file_deleted_static(from, db, vector_store).await?;
-        Self::handle_file_created_or_modified_static(to, db, embeddings, extractor_manager, vector_store, workspace_root).await?;
+        Self::handle_file_created_or_modified_static(
+            to,
+            db,
+            embeddings,
+            extractor_manager,
+            vector_store,
+            workspace_root,
+        )
+        .await?;
 
         Ok(())
     }

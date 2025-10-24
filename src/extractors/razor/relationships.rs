@@ -461,7 +461,7 @@ impl super::RazorExtractor {
     }
 }
 
-fn symbol_type<'a>(symbol: &'a Symbol) -> Option<&'a str> {
+fn symbol_type(symbol: &Symbol) -> Option<&str> {
     symbol
         .metadata
         .as_ref()

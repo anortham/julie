@@ -46,11 +46,12 @@ impl ModelManager {
     /// - `bge-small` → BAAI/bge-small-en-v1.5
     pub async fn ensure_model_downloaded(&self, model_name: &str) -> Result<ModelPaths> {
         match model_name {
-            "bge-small" | "bge-small-en-v1.5" => {
-                self.download_bge_small().await
-            }
+            "bge-small" | "bge-small-en-v1.5" => self.download_bge_small().await,
             _ => {
-                anyhow::bail!("Unsupported model: {}. Currently only 'bge-small' is supported.", model_name)
+                anyhow::bail!(
+                    "Unsupported model: {}. Currently only 'bge-small' is supported.",
+                    model_name
+                )
             }
         }
     }
@@ -86,7 +87,10 @@ impl ModelManager {
             anyhow::bail!("Model file not found after download: {:?}", model_path);
         }
         if !tokenizer_path.exists() {
-            anyhow::bail!("Tokenizer file not found after download: {:?}", tokenizer_path);
+            anyhow::bail!(
+                "Tokenizer file not found after download: {:?}",
+                tokenizer_path
+            );
         }
 
         info!("✅ BGE-Small model ready");
@@ -114,7 +118,10 @@ impl ModelManager {
         if cache_exists {
             info!("📂 Cache directory exists: {:?}", self.cache_dir);
         } else {
-            warn!("📂 Cache directory does not exist yet: {:?}", self.cache_dir);
+            warn!(
+                "📂 Cache directory does not exist yet: {:?}",
+                self.cache_dir
+            );
         }
 
         cache_exists
@@ -142,12 +149,14 @@ mod tests {
         let manager = ModelManager::new(temp_dir.path().to_path_buf()).unwrap();
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let result = runtime.block_on(async {
-            manager.ensure_model_downloaded("unsupported-model").await
-        });
+        let result =
+            runtime.block_on(async { manager.ensure_model_downloaded("unsupported-model").await });
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unsupported model"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported model"));
     }
 
     // Note: Actual download test would require network access and is slow

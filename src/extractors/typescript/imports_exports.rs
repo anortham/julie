@@ -25,9 +25,18 @@ pub(super) fn extract_import(extractor: &mut TypeScriptExtractor, node: Node) ->
             .unwrap_or_else(|| "import".to_string())
     };
 
-    extractor
-        .base_mut()
-        .create_symbol(&node, name, SymbolKind::Import, SymbolOptions::default())
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
+    extractor.base_mut().create_symbol(
+        &node,
+        name,
+        SymbolKind::Import,
+        SymbolOptions {
+            doc_comment,
+            ..Default::default()
+        },
+    )
 }
 
 /// Extract an export statement
@@ -56,7 +65,16 @@ pub(super) fn extract_export(extractor: &mut TypeScriptExtractor, node: Node) ->
             .unwrap_or_else(|| "export".to_string())
     };
 
-    extractor
-        .base_mut()
-        .create_symbol(&node, name, SymbolKind::Export, SymbolOptions::default())
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
+    extractor.base_mut().create_symbol(
+        &node,
+        name,
+        SymbolKind::Export,
+        SymbolOptions {
+            doc_comment,
+            ..Default::default()
+        },
+    )
 }

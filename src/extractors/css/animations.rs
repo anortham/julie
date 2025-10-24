@@ -28,6 +28,9 @@ impl AnimationExtractor {
             serde_json::Value::String(keyframes_name),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             symbol_name,
@@ -37,7 +40,7 @@ impl AnimationExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -58,6 +61,9 @@ impl AnimationExtractor {
             serde_json::Value::String("animation".to_string()),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             animation_name,
@@ -67,7 +73,7 @@ impl AnimationExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -110,6 +116,9 @@ impl AnimationExtractor {
                         serde_json::Value::String(selector_text.clone()),
                     );
 
+                    // Extract CSS comment
+                    let doc_comment = base.find_doc_comment(&child);
+
                     let symbol = base.create_symbol(
                         &child,
                         selector_text,
@@ -119,7 +128,7 @@ impl AnimationExtractor {
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(metadata),
-                            doc_comment: None,
+                            doc_comment,
                         },
                     );
 

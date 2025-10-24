@@ -76,7 +76,7 @@ impl DartExtractor {
                 symbol =
                     functions::extract_class(&mut self.base, &node, current_parent_id.as_deref());
             }
-            "function_declaration" => {
+            "function_declaration" | "lambda_expression" => {
                 symbol = functions::extract_function(
                     &mut self.base,
                     &node,

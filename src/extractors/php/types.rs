@@ -93,6 +93,9 @@ pub(super) fn extract_class(
         );
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name,
@@ -102,7 +105,7 @@ pub(super) fn extract_class(
             visibility: Some(determine_visibility(&modifiers)),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -141,6 +144,9 @@ pub(super) fn extract_interface(
         );
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name,
@@ -150,7 +156,7 @@ pub(super) fn extract_interface(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -170,6 +176,9 @@ pub(super) fn extract_trait(
         serde_json::Value::String("trait".to_string()),
     );
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name.clone(),
@@ -179,7 +188,7 @@ pub(super) fn extract_trait(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -225,6 +234,9 @@ pub(super) fn extract_enum(
         );
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name,
@@ -234,7 +246,7 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -282,6 +294,9 @@ pub(super) fn extract_enum_case(
         metadata.insert("value".to_string(), serde_json::Value::String(val));
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     Some(extractor.get_base_mut().create_symbol(
         &node,
         case_name,
@@ -291,7 +306,7 @@ pub(super) fn extract_enum_case(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

@@ -1,5 +1,8 @@
 //! Documentation and annotation generation for PowerShell symbols
-//! Handles variable classifications, command documentation, and variable annotations
+//! Handles variable classifications, command documentation, variable annotations, and doc comment extraction
+
+use crate::extractors::base::BaseExtractor;
+use tree_sitter::Node;
 
 /// Classify and document environment variables
 pub(super) fn is_environment_variable(name: &str) -> bool {
@@ -111,4 +114,64 @@ pub(super) fn get_command_documentation(command_name: &str) -> String {
     }
 
     "[PowerShell Command]".to_string()
+}
+
+/// Extract PowerShell doc comments (comment-based help)
+/// Handles both block comments <# #> and single-line # comments
+pub(super) fn extract_powershell_doc_comment(base: &BaseExtractor, node: &Node) -> Option<String> {
+    let mut comments = Vec::new();
+
+    // First try to find comments as direct siblings of this node
+    let mut current = node.prev_named_sibling();
+    while let Some(sibling) = current {
+        if sibling.kind() == "comment" {
+            let comment_text = base.get_node_text(&sibling);
+            // PowerShell comments start with # or <#
+            if comment_text.trim_start().starts_with("#") || comment_text.trim_start().starts_with("<#") {
+                comments.push(comment_text);
+                current = sibling.prev_named_sibling();
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // If no comments found as direct siblings, try looking at ancestor siblings
+    if comments.is_empty() {
+        let mut current_node = *node;
+        for _ in 0..3 {
+            if let Some(parent) = current_node.parent() {
+                current = parent.prev_named_sibling();
+                while let Some(sibling) = current {
+                    if sibling.kind() == "comment" {
+                        let comment_text = base.get_node_text(&sibling);
+                        if comment_text.trim_start().starts_with("#") || comment_text.trim_start().starts_with("<#") {
+                            comments.push(comment_text);
+                            current = sibling.prev_named_sibling();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                if !comments.is_empty() {
+                    break;
+                }
+                current_node = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    if comments.is_empty() {
+        None
+    } else {
+        // Reverse to get original order (top to bottom)
+        comments.reverse();
+        Some(comments.join("\n"))
+    }
 }

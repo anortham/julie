@@ -91,7 +91,16 @@ pub async fn text_search_impl(
         _ => {
             // "content" or any other value: Search full file content (files_fts index)
             debug!("🔍 Content search (full file text)");
-            sqlite_fts_search(fts5_query, language, file_pattern, limit, workspace_ids, context_lines, handler).await
+            sqlite_fts_search(
+                fts5_query,
+                language,
+                file_pattern,
+                limit,
+                workspace_ids,
+                context_lines,
+                handler,
+            )
+            .await
         }
     }
 }
@@ -217,19 +226,35 @@ fn is_useful_line(line: &str) -> bool {
     }
 
     // Lines that are ONLY punctuation are not useful
-    if trimmed == "}" || trimmed == "{" || trimmed == ");" || trimmed == "(" ||
-       trimmed == "//" || trimmed == "/*" || trimmed == "*/" || trimmed == "*" ||
-       trimmed == "---" || trimmed == "```" || trimmed == "///" {
+    if trimmed == "}"
+        || trimmed == "{"
+        || trimmed == ");"
+        || trimmed == "("
+        || trimmed == "//"
+        || trimmed == "/*"
+        || trimmed == "*/"
+        || trimmed == "*"
+        || trimmed == "---"
+        || trimmed == "```"
+        || trimmed == "///"
+    {
         return false;
     }
 
     // Lines with useful patterns are good
-    if trimmed.starts_with("pub ") || trimmed.starts_with("fn ") ||
-       trimmed.starts_with("class ") || trimmed.starts_with("impl ") ||
-       trimmed.starts_with("struct ") || trimmed.starts_with("enum ") ||
-       trimmed.starts_with("interface ") || trimmed.starts_with("function ") ||
-       trimmed.starts_with("async ") || trimmed.starts_with("export ") ||
-       trimmed.starts_with("///") || trimmed.starts_with("/**") {
+    if trimmed.starts_with("pub ")
+        || trimmed.starts_with("fn ")
+        || trimmed.starts_with("class ")
+        || trimmed.starts_with("impl ")
+        || trimmed.starts_with("struct ")
+        || trimmed.starts_with("enum ")
+        || trimmed.starts_with("interface ")
+        || trimmed.starts_with("function ")
+        || trimmed.starts_with("async ")
+        || trimmed.starts_with("export ")
+        || trimmed.starts_with("///")
+        || trimmed.starts_with("/**")
+    {
         return true;
     }
 
@@ -239,11 +264,7 @@ fn is_useful_line(line: &str) -> bool {
 }
 
 /// Extract context lines around a match with line numbers (grep-style)
-fn extract_context_lines(
-    content: &str,
-    match_line_num: usize,
-    context_lines: u32,
-) -> String {
+fn extract_context_lines(content: &str, match_line_num: usize, context_lines: u32) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let num_context = context_lines as usize;
 
@@ -253,7 +274,12 @@ fn extract_context_lines(
 
     // Extract lines with line numbers
     let mut result = Vec::new();
-    for (idx, line) in lines.iter().enumerate().skip(start_idx).take(end_idx - start_idx) {
+    for (idx, line) in lines
+        .iter()
+        .enumerate()
+        .skip(start_idx)
+        .take(end_idx - start_idx)
+    {
         let line_num = idx + 1; // 1-indexed line numbers
         if line_num == match_line_num {
             // Mark the matched line with an arrow
@@ -281,11 +307,17 @@ fn find_intelligent_context(
         if is_useful_line(line) {
             let trimmed = line.trim();
             // Prioritize symbol definitions
-            if trimmed.starts_with("pub ") || trimmed.starts_with("fn ") ||
-               trimmed.starts_with("class ") || trimmed.starts_with("impl ") ||
-               trimmed.starts_with("struct ") || trimmed.starts_with("enum ") ||
-               trimmed.starts_with("interface ") || trimmed.starts_with("function ") ||
-               trimmed.starts_with("export class ") || trimmed.starts_with("export function ") {
+            if trimmed.starts_with("pub ")
+                || trimmed.starts_with("fn ")
+                || trimmed.starts_with("class ")
+                || trimmed.starts_with("impl ")
+                || trimmed.starts_with("struct ")
+                || trimmed.starts_with("enum ")
+                || trimmed.starts_with("interface ")
+                || trimmed.starts_with("function ")
+                || trimmed.starts_with("export class ")
+                || trimmed.starts_with("export function ")
+            {
                 return Some((idx + 1, line.to_string())); // Return 1-indexed line number
             }
         }
@@ -437,7 +469,9 @@ async fn sqlite_fts_search(
             for (line_idx, line) in content_lines.iter().enumerate() {
                 // Check for non-empty trimmed lines before matching
                 let trimmed = line.trim();
-                if !trimmed.is_empty() && (line.contains(&clean_snippet) || clean_snippet.contains(trimmed)) {
+                if !trimmed.is_empty()
+                    && (line.contains(&clean_snippet) || clean_snippet.contains(trimmed))
+                {
                     let initial_line_num = line_idx + 1; // 1-indexed
                     let initial_line_content = line.to_string();
 
@@ -475,7 +509,8 @@ async fn sqlite_fts_search(
                 let num_context_lines = context_lines.unwrap_or(1);
                 let code_context_text = if num_context_lines == 0 {
                     // Single line only - use the line content directly
-                    content_lines.get(line_num - 1)
+                    content_lines
+                        .get(line_num - 1)
                         .map(|l| l.to_string())
                         .unwrap_or_default()
                 } else {

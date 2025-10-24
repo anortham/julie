@@ -85,6 +85,9 @@ impl SwiftExtractor {
             serde_json::Value::String("enum-case".to_string()),
         )]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -94,7 +97,7 @@ impl SwiftExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

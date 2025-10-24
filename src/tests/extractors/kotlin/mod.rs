@@ -1189,6 +1189,202 @@ sealed class State {
 }
 
 // ========================================================================
+// KDoc Comment Extraction Tests (TDD)
+// ========================================================================
+//
+// These tests validate KDoc comment extraction from Kotlin symbols.
+//
+
+#[cfg(test)]
+mod kdoc_extraction_tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_kdoc_from_class() {
+        let source = r#"/**
+ * User management service
+ * Handles authentication and authorization
+ */
+class UserService {
+    fun authenticate() {}
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let class_symbol = symbols
+            .iter()
+            .find(|s| s.name == "UserService" && s.kind == SymbolKind::Class)
+            .expect("UserService class not found");
+
+        assert!(
+            class_symbol.doc_comment.is_some(),
+            "UserService should have a doc_comment"
+        );
+        let doc = class_symbol.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("User management service"),
+            "Doc should contain comment text"
+        );
+    }
+
+    #[test]
+    fn test_extract_kdoc_from_function() {
+        let source = r#"/**
+ * Validates user credentials
+ */
+fun validateCredentials(username: String): Boolean {
+    return true
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let func = symbols
+            .iter()
+            .find(|s| s.name == "validateCredentials")
+            .expect("Function not found");
+
+        assert!(
+            func.doc_comment.is_some(),
+            "Function should have a doc_comment"
+        );
+        let doc = func.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("Validates user credentials"));
+    }
+
+    #[test]
+    fn test_extract_kdoc_from_property() {
+        let source = r#"class UserService {
+    /**
+     * The current user state
+     */
+    private val userState: String = ""
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let property = symbols
+            .iter()
+            .find(|s| s.name == "userState")
+            .expect("Property not found");
+
+        assert!(
+            property.doc_comment.is_some(),
+            "Property should have a doc_comment"
+        );
+        let doc = property.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("current user state"));
+    }
+
+    #[test]
+    fn test_kdoc_with_interface() {
+        let source = r#"/**
+ * Authentication service interface
+ */
+interface AuthService {
+    /**
+     * Authenticates a user
+     */
+    fun authenticate(username: String): Boolean
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let interface = symbols
+            .iter()
+            .find(|s| s.name == "AuthService" && s.kind == SymbolKind::Interface)
+            .expect("Interface not found");
+
+        assert!(interface.doc_comment.is_some());
+        assert!(interface
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Authentication"));
+    }
+
+    #[test]
+    fn test_kdoc_with_object() {
+        let source = r#"/**
+ * Singleton configuration holder
+ */
+object Configuration {
+    /**
+     * The API base URL
+     */
+    const val API_URL = "https://api.example.com"
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let obj = symbols
+            .iter()
+            .find(|s| s.name == "Configuration")
+            .expect("Object not found");
+
+        assert!(obj.doc_comment.is_some());
+        assert!(obj.doc_comment.as_ref().unwrap().contains("Singleton"));
+    }
+
+    #[test]
+    fn test_no_kdoc_when_absent() {
+        let source = r#"class SimpleClass {
+    fun noDocMethod() {}
+}"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(source, None).expect("Parse failed");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            source.to_string(),
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let method = symbols
+            .iter()
+            .find(|s| s.name == "noDocMethod")
+            .expect("Method not found");
+
+        assert!(method.doc_comment.is_none(), "Should not have doc comment");
+    }
+}
+
+// ========================================================================
 // Identifier Extraction Tests (TDD RED phase)
 // ========================================================================
 //

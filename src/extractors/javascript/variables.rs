@@ -19,6 +19,14 @@ impl super::JavaScriptExtractor {
         let value_node = node.child_by_field_name("value");
         let signature = self.build_variable_signature(&node, &name);
 
+        // For variable_declarators, check the parent variable_declaration for JSDoc
+        // Variable declarators receive comments on their parent declaration node
+        let doc_node = if node.kind() == "variable_declarator" {
+            node.parent().unwrap_or(node)
+        } else {
+            node
+        };
+
         // Check if this is a CommonJS require statement (Miller's logic)
         if let Some(value) = &value_node {
             if self.is_require_call(value) {
@@ -29,6 +37,9 @@ impl super::JavaScriptExtractor {
                 );
                 metadata.insert("isCommonJS".to_string(), json!(true));
 
+                // Extract JSDoc comment
+                let doc_comment = self.base.find_doc_comment(&doc_node);
+
                 return self.base.create_symbol(
                     &node,
                     name,
@@ -38,7 +49,7 @@ impl super::JavaScriptExtractor {
                         visibility: Some(self.extract_visibility(&node)),
                         parent_id,
                         metadata: Some(metadata),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
             }
@@ -61,6 +72,9 @@ impl super::JavaScriptExtractor {
                     json!(self.extract_parameters(value)),
                 );
 
+                // Extract JSDoc comment
+                let doc_comment = self.base.find_doc_comment(&doc_node);
+
                 return self.base.create_symbol(
                     &node,
                     name,
@@ -70,7 +84,7 @@ impl super::JavaScriptExtractor {
                         visibility: Some(self.extract_visibility(&node)),
                         parent_id,
                         metadata: Some(metadata),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
             }
@@ -91,6 +105,9 @@ impl super::JavaScriptExtractor {
         );
         metadata.insert("isLet".to_string(), json!(self.is_let_declaration(&node)));
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&doc_node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -100,7 +117,7 @@ impl super::JavaScriptExtractor {
                 visibility: Some(self.extract_visibility(&node)),
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -141,6 +158,9 @@ impl super::JavaScriptExtractor {
                                 metadata.insert("isDestructured".to_string(), json!(true));
                                 metadata.insert("destructuringType".to_string(), json!("object"));
 
+                                // Extract JSDoc comment
+                                let doc_comment = self.base.find_doc_comment(&node);
+
                                 symbols.push(self.base.create_symbol(
                                     &node,
                                     var_name,
@@ -150,7 +170,7 @@ impl super::JavaScriptExtractor {
                                         visibility: Some(self.extract_visibility(&node)),
                                         parent_id: parent_id.clone(),
                                         metadata: Some(metadata),
-                                        doc_comment: None,
+                                        doc_comment,
                                     },
                                 ));
                             }
@@ -176,6 +196,9 @@ impl super::JavaScriptExtractor {
                                         .insert("destructuringType".to_string(), json!("object"));
                                     metadata.insert("isRestParameter".to_string(), json!(true));
 
+                                    // Extract JSDoc comment
+                                    let doc_comment = self.base.find_doc_comment(&node);
+
                                     symbols.push(self.base.create_symbol(
                                         &node,
                                         var_name,
@@ -185,7 +208,7 @@ impl super::JavaScriptExtractor {
                                             visibility: Some(self.extract_visibility(&node)),
                                             parent_id: parent_id.clone(),
                                             metadata: Some(metadata),
-                                            doc_comment: None,
+                                            doc_comment,
                                         },
                                     ));
                                 }
@@ -209,6 +232,9 @@ impl super::JavaScriptExtractor {
                             metadata.insert("destructuringType".to_string(), json!("array"));
                             metadata.insert("destructuringIndex".to_string(), json!(index));
 
+                            // Extract JSDoc comment
+                            let doc_comment = self.base.find_doc_comment(&node);
+
                             symbols.push(self.base.create_symbol(
                                 &node,
                                 var_name,
@@ -218,7 +244,7 @@ impl super::JavaScriptExtractor {
                                     visibility: Some(self.extract_visibility(&node)),
                                     parent_id: parent_id.clone(),
                                     metadata: Some(metadata),
-                                    doc_comment: None,
+                                    doc_comment,
                                 },
                             ));
                             index += 1;

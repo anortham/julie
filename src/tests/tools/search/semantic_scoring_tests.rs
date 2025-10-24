@@ -63,7 +63,10 @@ fn create_symbol(name: &str, doc_comment: Option<&str>) -> Symbol {
 
 fn create_html_element_symbol(name: &str) -> Symbol {
     let mut metadata = HashMap::new();
-    metadata.insert("type".to_string(), serde_json::Value::String("html-element".to_string()));
+    metadata.insert(
+        "type".to_string(),
+        serde_json::Value::String("html-element".to_string()),
+    );
 
     Symbol {
         id: format!("test_id_{}", name),
@@ -191,7 +194,7 @@ fn test_language_quality_boost() {
 
 #[test]
 fn test_generic_symbol_detection() {
-    use crate::tools::search::semantic_search::{is_generic_symbol, get_generic_penalty};
+    use crate::tools::search::semantic_search::{get_generic_penalty, is_generic_symbol};
 
     // Generic name + no docs = generic
     let template_no_docs = create_symbol("Template", None);
@@ -206,7 +209,10 @@ fn test_generic_symbol_detection() {
     );
 
     // Generic name + HAS docs = NOT generic
-    let template_with_docs = create_symbol("Template", Some("/// Custom template class for email processing"));
+    let template_with_docs = create_symbol(
+        "Template",
+        Some("/// Custom template class for email processing"),
+    );
     assert!(
         !is_generic_symbol(&template_with_docs),
         "Template WITH docs should NOT be generic"
@@ -230,7 +236,15 @@ fn test_generic_symbol_detection() {
     );
 
     // Test all generic names
-    let generic_names = vec!["Container", "Wrapper", "Item", "Data", "Value", "Component", "Element"];
+    let generic_names = vec![
+        "Container",
+        "Wrapper",
+        "Item",
+        "Data",
+        "Value",
+        "Component",
+        "Element",
+    ];
     for name in generic_names {
         let symbol = create_symbol(name, None);
         assert!(

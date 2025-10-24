@@ -99,7 +99,7 @@ pub mod file_utils {
             match component {
                 Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
                 Component::RootDir => normalized.push("/"),
-                Component::CurDir => {}, // Skip "."
+                Component::CurDir => {} // Skip "."
                 Component::ParentDir => {
                     // Pop parent, but track if we go above workspace root
                     if !normalized.pop() {
@@ -114,13 +114,15 @@ pub mod file_utils {
 
         // If file exists, canonicalize it to handle symlinks
         let final_path = if normalized.exists() {
-            normalized.canonicalize()
+            normalized
+                .canonicalize()
                 .map_err(|e| anyhow::anyhow!("Failed to canonicalize existing path: {}", e))?
         } else {
             // For non-existent files, ensure parent directory is within workspace
             if let Some(parent) = normalized.parent() {
                 if parent.exists() {
-                    let canonical_parent = parent.canonicalize()
+                    let canonical_parent = parent
+                        .canonicalize()
                         .map_err(|e| anyhow::anyhow!("Parent directory does not exist: {}", e))?;
                     if !canonical_parent.starts_with(&canonical_workspace_root) {
                         return Err(anyhow::anyhow!(

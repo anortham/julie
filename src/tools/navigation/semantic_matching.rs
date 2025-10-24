@@ -152,7 +152,7 @@ pub async fn find_semantic_references(
                                 let db_lock = db_arc.lock().unwrap();
                                 let model_name = "bge-small";
                                 store_guard.search_similar_hnsw(
-                                    &*db_lock,
+                                    &db_lock,
                                     &embedding,
                                     max_semantic_matches,
                                     similarity_threshold,
@@ -294,7 +294,7 @@ pub async fn find_semantic_definitions(
                                 let db_lock = db_arc.lock().unwrap();
                                 let model_name = "bge-small";
                                 store_guard.search_similar_hnsw(
-                                    &*db_lock,
+                                    &db_lock,
                                     &query_embedding,
                                     10,
                                     0.7,

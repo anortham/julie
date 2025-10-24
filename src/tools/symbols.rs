@@ -115,7 +115,9 @@ impl GetSymbolsTool {
         // If reference workspace is specified, handle it separately
         if let Some(ref_workspace_id) = workspace_filter {
             debug!("🎯 Querying reference workspace: {}", ref_workspace_id);
-            return self.get_symbols_from_reference(handler, ref_workspace_id).await;
+            return self
+                .get_symbols_from_reference(handler, ref_workspace_id)
+                .await;
         }
 
         // Primary workspace logic continues below
@@ -484,10 +486,7 @@ impl GetSymbolsTool {
         use tracing::warn;
 
         // Determine the reading mode
-        let mode = self
-            .mode
-            .as_deref()
-            .unwrap_or("structure");
+        let mode = self.mode.as_deref().unwrap_or("structure");
 
         // In "structure" mode, strip all code context
         if mode == "structure" {
@@ -571,7 +570,9 @@ impl GetSymbolsTool {
         let ref_workspace_entry = registry_service
             .get_workspace(&ref_workspace_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", ref_workspace_id))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Reference workspace not found: {}", ref_workspace_id)
+            })?;
 
         // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
         // Opening SQLite database involves blocking filesystem operations

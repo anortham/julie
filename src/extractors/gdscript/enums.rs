@@ -27,6 +27,9 @@ pub(super) fn extract_enum_definition(
 
     let signature = base.get_node_text(&node);
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let enum_symbol = base.create_symbol(
         &node,
         name,
@@ -36,7 +39,7 @@ pub(super) fn extract_enum_definition(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     );
 
@@ -61,6 +64,9 @@ pub(super) fn extract_enum_member(
         return None;
     }
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -70,7 +76,7 @@ pub(super) fn extract_enum_member(
             visibility: Some(Visibility::Public),
             parent_id: Some(enum_parent.id.clone()),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

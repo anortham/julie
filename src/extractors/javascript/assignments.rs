@@ -41,6 +41,9 @@ impl super::JavaScriptExtractor {
                                 .unwrap_or(false)),
                         );
 
+                        // Extract JSDoc comment
+                        let doc_comment = self.base.find_doc_comment(&node);
+
                         return Some(self.base.create_symbol(
                             &node,
                             property_name,
@@ -50,7 +53,7 @@ impl super::JavaScriptExtractor {
                                 visibility: Some(Visibility::Public),
                                 parent_id,
                                 metadata: Some(metadata),
-                                doc_comment: None,
+                                doc_comment,
                             },
                         ));
                     }
@@ -63,6 +66,9 @@ impl super::JavaScriptExtractor {
                             metadata.insert("isFunction".to_string(), json!(true));
                             metadata.insert("className".to_string(), json!(object_text));
 
+                            // Extract JSDoc comment
+                            let doc_comment = self.base.find_doc_comment(&node);
+
                             return Some(self.base.create_symbol(
                                 &node,
                                 property_name,
@@ -72,7 +78,7 @@ impl super::JavaScriptExtractor {
                                     visibility: Some(Visibility::Public),
                                     parent_id,
                                     metadata: Some(metadata),
-                                    doc_comment: None,
+                                    doc_comment,
                                 },
                             ));
                         }

@@ -92,12 +92,15 @@ pub(super) fn extract_local_variable_declaration(
             let mut metadata = HashMap::new();
             metadata.insert("dataType".to_string(), data_type.clone().into());
 
+            // Extract LuaDoc comment
+            let doc_comment = base.find_doc_comment(&node);
+
             let options = SymbolOptions {
                 signature: Some(signature.clone()),
                 parent_id: parent_id.map(|s| s.to_string()),
                 visibility: Some(Visibility::Private),
                 metadata: Some(metadata),
-                ..Default::default()
+                doc_comment,
             };
 
             let mut symbol = base.create_symbol(&name_node, name, kind, options);
@@ -234,12 +237,15 @@ pub(super) fn extract_assignment_statement(
             let mut metadata = HashMap::new();
             metadata.insert("dataType".to_string(), data_type.clone().into());
 
+            // Extract LuaDoc comment
+            let doc_comment = base.find_doc_comment(&node);
+
             let options = SymbolOptions {
                 signature: Some(signature),
                 parent_id: parent_symbol_id,
                 visibility: Some(Visibility::Public),
                 metadata: Some(metadata),
-                ..Default::default()
+                doc_comment,
             };
 
             let symbol = base.create_symbol(&name_node, actual_name, kind, options);
@@ -276,12 +282,15 @@ pub(super) fn extract_assignment_statement(
                 let mut metadata = HashMap::new();
                 metadata.insert("dataType".to_string(), data_type.clone().into());
 
+                // Extract LuaDoc comment
+                let doc_comment = base.find_doc_comment(&node);
+
                 let options = SymbolOptions {
                     signature: Some(signature),
                     parent_id: property_parent_id,
                     visibility: Some(Visibility::Public),
                     metadata: Some(metadata),
-                    ..Default::default()
+                    doc_comment,
                 };
 
                 let symbol = base.create_symbol(&left, property_name.to_string(), kind, options);
@@ -305,12 +314,15 @@ pub(super) fn extract_assignment_statement(
             let mut metadata = HashMap::new();
             metadata.insert("dataType".to_string(), data_type.clone().into());
 
+            // Extract LuaDoc comment
+            let doc_comment = base.find_doc_comment(&node);
+
             let options = SymbolOptions {
                 signature: Some(signature),
                 parent_id: parent_id.map(|s| s.to_string()),
                 visibility: Some(Visibility::Public), // Global assignments are public
                 metadata: Some(metadata),
-                ..Default::default()
+                doc_comment,
             };
 
             let symbol = base.create_symbol(&name_node, name, kind, options);

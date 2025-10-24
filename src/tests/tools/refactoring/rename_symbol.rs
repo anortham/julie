@@ -2,9 +2,9 @@
 //!
 //! Tests verify workspace-wide symbol renaming with flat parameters
 
+use crate::handler::JulieServerHandler;
 use crate::tools::refactoring::RenameSymbolTool;
 use crate::tools::workspace::ManageWorkspaceTool;
-use crate::handler::JulieServerHandler;
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
@@ -44,8 +44,14 @@ async fn test_rename_symbol_basic() -> Result<()> {
 
     // Verify rename occurred
     let content = fs::read_to_string(&test_file)?;
-    assert!(content.contains("fetchUserData"), "Symbol should be renamed");
-    assert!(!content.contains("getUserData"), "Old symbol should be gone");
+    assert!(
+        content.contains("fetchUserData"),
+        "Symbol should be renamed"
+    );
+    assert!(
+        !content.contains("getUserData"),
+        "Old symbol should be gone"
+    );
 
     // Verify result indicates success
     let result_text = format!("{:?}", result);
@@ -65,7 +71,7 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
     // ERROR CASE: old_name == new_name
     let tool = RenameSymbolTool {
         old_name: "getUserData".to_string(),
-        new_name: "getUserData".to_string(),  // Same name!
+        new_name: "getUserData".to_string(), // Same name!
         scope: None,
         dry_run: false,
     };
@@ -75,8 +81,11 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
     // Should return Ok with error message
     assert!(result.is_ok(), "Should return Ok with error message");
     let result_text = format!("{:?}", result);
-    assert!(result_text.contains("same") || result_text.contains("identical"),
-            "Should reject same old/new names: {}", result_text);
+    assert!(
+        result_text.contains("same") || result_text.contains("identical"),
+        "Should reject same old/new names: {}",
+        result_text
+    );
 
     Ok(())
 }
@@ -91,7 +100,7 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
 
     // ERROR CASE: Empty old_name
     let tool = RenameSymbolTool {
-        old_name: "".to_string(),  // Empty!
+        old_name: "".to_string(), // Empty!
         new_name: "fetchUserData".to_string(),
         scope: None,
         dry_run: false,
@@ -100,8 +109,11 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
     let result = tool.call_tool(&handler).await;
     assert!(result.is_ok(), "Should return Ok with error message");
     let result_text = format!("{:?}", result);
-    assert!(result_text.contains("empty") || result_text.contains("required"),
-            "Should reject empty old_name: {}", result_text);
+    assert!(
+        result_text.contains("empty") || result_text.contains("required"),
+        "Should reject empty old_name: {}",
+        result_text
+    );
 
     Ok(())
 }
@@ -133,7 +145,7 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
         old_name: "getUserData".to_string(),
         new_name: "fetchUserData".to_string(),
         scope: None,
-        dry_run: true,  // DRY RUN
+        dry_run: true, // DRY RUN
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -141,13 +153,24 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
 
     // Should show preview
     let result_text_lower = result_text.to_lowercase();
-    assert!(result_text_lower.contains("preview") || result_text_lower.contains("would") || result_text_lower.contains("dry"),
-            "Expected preview indicator in result: {}", result_text);
+    assert!(
+        result_text_lower.contains("preview")
+            || result_text_lower.contains("would")
+            || result_text_lower.contains("dry"),
+        "Expected preview indicator in result: {}",
+        result_text
+    );
 
     // File should NOT be modified
     let content = fs::read_to_string(&test_file)?;
-    assert!(content.contains("getUserData"), "Dry run should not modify file");
-    assert!(!content.contains("fetchUserData"), "Dry run should not modify file");
+    assert!(
+        content.contains("getUserData"),
+        "Dry run should not modify file"
+    );
+    assert!(
+        !content.contains("fetchUserData"),
+        "Dry run should not modify file"
+    );
 
     Ok(())
 }
@@ -160,7 +183,10 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
     let file2 = temp_dir.path().join("lib.rs");
 
     fs::write(&file1, "fn getUserData() { /* main */ }")?;
-    fs::write(&file2, "use crate::getUserData; fn test() { getUserData(); }")?;
+    fs::write(
+        &file2,
+        "use crate::getUserData; fn test() { getUserData(); }",
+    )?;
 
     let handler = JulieServerHandler::new().await?;
     handler
@@ -191,13 +217,22 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
     let content1 = fs::read_to_string(&file1)?;
     let content2 = fs::read_to_string(&file2)?;
 
-    assert!(content1.contains("fetchUserData"), "File 1 should be renamed");
-    assert!(content2.contains("fetchUserData"), "File 2 should be renamed");
+    assert!(
+        content1.contains("fetchUserData"),
+        "File 1 should be renamed"
+    );
+    assert!(
+        content2.contains("fetchUserData"),
+        "File 2 should be renamed"
+    );
 
     // Verify result reports multiple files
     let result_text = format!("{:?}", result);
-    assert!(result_text.contains("2") || result_text.contains("files"),
-            "Should report multiple files changed: {}", result_text);
+    assert!(
+        result_text.contains("2") || result_text.contains("files"),
+        "Should report multiple files changed: {}",
+        result_text
+    );
 
     Ok(())
 }

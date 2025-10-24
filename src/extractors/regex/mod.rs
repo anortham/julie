@@ -84,7 +84,7 @@ impl RegexExtractor {
                 patterns::extract_literal(&mut self.base, node, parent_id.clone())
             }
             _ => {
-                if helpers::is_regex_pattern(&node.kind()) {
+                if helpers::is_regex_pattern(node.kind()) {
                     patterns::extract_generic_pattern(&mut self.base, node, parent_id.clone())
                 } else {
                     None

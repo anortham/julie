@@ -2,9 +2,9 @@
 //!
 //! Tests verify file-specific semantic editing with flat parameters
 
-use crate::tools::refactoring::{EditSymbolTool, EditOperation};
-use crate::tools::workspace::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::tools::refactoring::{EditOperation, EditSymbolTool};
+use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
@@ -40,8 +40,8 @@ async fn test_edit_symbol_replace_body_basic() -> Result<()> {
         symbol_name: "calculate".to_string(),
         operation: EditOperation::ReplaceBody,
         content: "return 2 + 2;".to_string(),
-        position: None,  // Not used for ReplaceBody
-        target_file: None,  // Not used for ReplaceBody
+        position: None,    // Not used for ReplaceBody
+        target_file: None, // Not used for ReplaceBody
         dry_run: false,
     };
 
@@ -79,8 +79,10 @@ async fn test_edit_symbol_replace_body_validation_no_file() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await;
-    assert!(result.is_err() || format!("{:?}", result).contains("not exist"),
-            "Should reject non-existent file");
+    assert!(
+        result.is_err() || format!("{:?}", result).contains("not exist"),
+        "Should reject non-existent file"
+    );
 
     Ok(())
 }
@@ -123,7 +125,10 @@ async fn test_edit_symbol_insert_after() -> Result<()> {
 
     // Verify insertion
     let content = fs::read_to_string(&test_file)?;
-    assert!(content.contains("inserted"), "New function should be inserted");
+    assert!(
+        content.contains("inserted"),
+        "New function should be inserted"
+    );
 
     // Verify order: first, then inserted, then second
     let first_pos = content.find("first").unwrap();
@@ -131,7 +136,10 @@ async fn test_edit_symbol_insert_after() -> Result<()> {
     let second_pos = content.find("second").unwrap();
 
     assert!(first_pos < inserted_pos, "Inserted should come after first");
-    assert!(inserted_pos < second_pos, "Inserted should come before second");
+    assert!(
+        inserted_pos < second_pos,
+        "Inserted should come before second"
+    );
 
     Ok(())
 }
@@ -177,7 +185,10 @@ async fn test_edit_symbol_insert_before() -> Result<()> {
     let second_pos = content.find("second").unwrap();
 
     assert!(first_pos < inserted_pos, "Inserted should come after first");
-    assert!(inserted_pos < second_pos, "Inserted should come before second");
+    assert!(
+        inserted_pos < second_pos,
+        "Inserted should come before second"
+    );
 
     Ok(())
 }
@@ -190,7 +201,10 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
     let source_file = temp_dir.path().join("main.rs");
     let target_file = temp_dir.path().join("helper.rs");
 
-    fs::write(&source_file, "fn helper() { return 42; }\nfn main() { helper(); }")?;
+    fs::write(
+        &source_file,
+        "fn helper() { return 42; }\nfn main() { helper(); }",
+    )?;
 
     let handler = JulieServerHandler::new().await?;
     handler
@@ -212,7 +226,7 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
         file_path: source_file.to_string_lossy().to_string(),
         symbol_name: "helper".to_string(),
         operation: EditOperation::ExtractToFile,
-        content: String::new(),  // Not used for extraction
+        content: String::new(), // Not used for extraction
         position: None,
         target_file: Some(target_file.to_string_lossy().to_string()),
         dry_run: false,
@@ -224,9 +238,18 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
     let source_content = fs::read_to_string(&source_file)?;
     let target_content = fs::read_to_string(&target_file)?;
 
-    assert!(!source_content.contains("fn helper"), "Helper should be removed from source");
-    assert!(target_content.contains("fn helper"), "Helper should be in target");
-    assert!(target_content.contains("return 42"), "Helper body should be in target");
+    assert!(
+        !source_content.contains("fn helper"),
+        "Helper should be removed from source"
+    );
+    assert!(
+        target_content.contains("fn helper"),
+        "Helper should be in target"
+    );
+    assert!(
+        target_content.contains("return 42"),
+        "Helper body should be in target"
+    );
 
     Ok(())
 }
@@ -249,15 +272,18 @@ async fn test_edit_symbol_extract_validation_no_target() -> Result<()> {
         operation: EditOperation::ExtractToFile,
         content: String::new(),
         position: None,
-        target_file: None,  // Missing target_file!
+        target_file: None, // Missing target_file!
         dry_run: false,
     };
 
     let result = tool.call_tool(&handler).await;
     assert!(result.is_ok(), "Should return Ok with error message");
     let result_text = format!("{:?}", result);
-    assert!(result_text.contains("target_file") || result_text.contains("required"),
-            "Should reject missing target_file: {}", result_text);
+    assert!(
+        result_text.contains("target_file") || result_text.contains("required"),
+        "Should reject missing target_file: {}",
+        result_text
+    );
 
     Ok(())
 }
@@ -293,7 +319,7 @@ async fn test_edit_symbol_dry_run() -> Result<()> {
         content: "2 + 2".to_string(),
         position: None,
         target_file: None,
-        dry_run: true,  // DRY RUN
+        dry_run: true, // DRY RUN
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -301,8 +327,13 @@ async fn test_edit_symbol_dry_run() -> Result<()> {
 
     // Should show preview
     let result_text_lower = result_text.to_lowercase();
-    assert!(result_text_lower.contains("preview") || result_text_lower.contains("would") || result_text_lower.contains("dry"),
-            "Expected preview indicator: {}", result_text);
+    assert!(
+        result_text_lower.contains("preview")
+            || result_text_lower.contains("would")
+            || result_text_lower.contains("dry"),
+        "Expected preview indicator: {}",
+        result_text
+    );
 
     // File should NOT be modified
     let content = fs::read_to_string(&test_file)?;

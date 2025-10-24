@@ -1635,7 +1635,7 @@ var (
 
     #[cfg(test)]
     mod identifier_extraction {
-        use crate::extractors::base::IdentifierKind;
+        use crate::extractors::base::{IdentifierKind, SymbolKind};
         use crate::extractors::go::GoExtractor;
         use crate::tests::test_utils::init_parser;
 
@@ -1861,6 +1861,264 @@ func Process() {
                 process_calls[0].start_line, process_calls[1].start_line,
                 "Duplicate calls should have different line numbers"
             );
+        }
+
+        #[test]
+        fn test_extract_function_with_go_doc_comment() {
+            let code = r#"
+package main
+
+// NewServer creates a HTTP server
+func NewServer() {
+}
+
+// AnotherFunction does something
+func AnotherFunction(name string) string {
+    return name
+}
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let new_server = symbols.iter().find(|s| s.name == "NewServer");
+            assert!(new_server.is_some(), "Should extract NewServer function");
+            let new_server = new_server.unwrap();
+            assert_eq!(new_server.kind, SymbolKind::Function);
+            assert_eq!(
+                new_server.doc_comment.as_ref().unwrap(),
+                "// NewServer creates a HTTP server",
+                "Should extract Go doc comment for NewServer"
+            );
+
+            let another_func = symbols.iter().find(|s| s.name == "AnotherFunction");
+            assert!(another_func.is_some());
+            let another_func = another_func.unwrap();
+            assert_eq!(
+                another_func.doc_comment.as_ref().unwrap(),
+                "// AnotherFunction does something",
+                "Should extract Go doc comment for AnotherFunction"
+            );
+        }
+
+        #[test]
+        fn test_extract_method_with_go_doc_comment() {
+            let code = r#"
+package main
+
+type Server struct {
+}
+
+// Start begins the server
+func (s *Server) Start() {
+}
+
+// Stop shuts down the server
+func (s *Server) Stop() {
+}
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let start_method = symbols.iter().find(|s| s.name == "Start");
+            assert!(start_method.is_some(), "Should extract Start method");
+            let start_method = start_method.unwrap();
+            assert_eq!(start_method.kind, SymbolKind::Method);
+            assert_eq!(
+                start_method.doc_comment.as_ref().unwrap(),
+                "// Start begins the server",
+                "Should extract Go doc comment for Start method"
+            );
+
+            let stop_method = symbols.iter().find(|s| s.name == "Stop");
+            assert!(stop_method.is_some());
+            let stop_method = stop_method.unwrap();
+            assert_eq!(
+                stop_method.doc_comment.as_ref().unwrap(),
+                "// Stop shuts down the server",
+                "Should extract Go doc comment for Stop method"
+            );
+        }
+
+        #[test]
+        fn test_extract_type_with_go_doc_comment() {
+            let code = r#"
+package main
+
+// User represents a user in the system
+type User struct {
+    Name string
+}
+
+// Admin is a user with admin privileges
+type Admin struct {
+    User
+    Permissions []string
+}
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let user = symbols.iter().find(|s| s.name == "User");
+            assert!(user.is_some(), "Should extract User type");
+            let user = user.unwrap();
+            assert_eq!(user.kind, SymbolKind::Class);
+            assert_eq!(
+                user.doc_comment.as_ref().unwrap(),
+                "// User represents a user in the system",
+                "Should extract Go doc comment for User struct"
+            );
+
+            let admin = symbols.iter().find(|s| s.name == "Admin");
+            assert!(admin.is_some(), "Should extract Admin type");
+            let admin = admin.unwrap();
+            assert_eq!(admin.kind, SymbolKind::Class);
+            assert_eq!(
+                admin.doc_comment.as_ref().unwrap(),
+                "// Admin is a user with admin privileges",
+                "Should extract Go doc comment for Admin struct"
+            );
+        }
+
+        #[test]
+        fn test_extract_const_with_go_doc_comment() {
+            let code = r#"
+package main
+
+const (
+    // MaxRetries is the maximum number of retries
+    MaxRetries = 3
+    // DefaultTimeout is the default timeout in seconds
+    DefaultTimeout = 30
+)
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let max_retries = symbols.iter().find(|s| s.name == "MaxRetries");
+            assert!(max_retries.is_some(), "Should extract MaxRetries constant");
+            let max_retries = max_retries.unwrap();
+            assert_eq!(max_retries.kind, SymbolKind::Constant);
+            assert_eq!(
+                max_retries.doc_comment.as_ref().unwrap(),
+                "// MaxRetries is the maximum number of retries",
+                "Should extract Go doc comment for MaxRetries"
+            );
+
+            let default_timeout = symbols.iter().find(|s| s.name == "DefaultTimeout");
+            assert!(default_timeout.is_some());
+            let default_timeout = default_timeout.unwrap();
+            assert_eq!(
+                default_timeout.doc_comment.as_ref().unwrap(),
+                "// DefaultTimeout is the default timeout in seconds",
+                "Should extract Go doc comment for DefaultTimeout"
+            );
+        }
+
+        #[test]
+        fn test_extract_import_with_go_doc_comment() {
+            let code = r#"
+package main
+
+import (
+    // fmt for formatting
+    "fmt"
+    // json for encoding
+    "encoding/json"
+)
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let fmt_import = symbols.iter().find(|s| s.name == "fmt");
+            assert!(fmt_import.is_some(), "Should extract fmt import");
+            let fmt_import = fmt_import.unwrap();
+            assert_eq!(fmt_import.kind, SymbolKind::Import);
+            assert_eq!(
+                fmt_import.doc_comment.as_ref().unwrap(),
+                "// fmt for formatting",
+                "Should extract Go doc comment for fmt import"
+            );
+
+            let json_import = symbols.iter().find(|s| s.name == "json");
+            assert!(json_import.is_some());
+            let json_import = json_import.unwrap();
+            assert_eq!(
+                json_import.doc_comment.as_ref().unwrap(),
+                "// json for encoding",
+                "Should extract Go doc comment for json import"
+            );
+        }
+
+        #[test]
+        fn test_no_doc_comment_when_missing() {
+            let code = r#"
+package main
+
+func NoDocFunction() {
+}
+
+type NoDocType struct {
+}
+
+const NoDocConst = 5
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let no_doc_func = symbols.iter().find(|s| s.name == "NoDocFunction");
+            assert!(no_doc_func.is_some());
+            let no_doc_func = no_doc_func.unwrap();
+            assert!(
+                no_doc_func.doc_comment.is_none(),
+                "Should have no doc_comment when comment is missing"
+            );
+
+            let no_doc_type = symbols.iter().find(|s| s.name == "NoDocType");
+            assert!(no_doc_type.is_some());
+            let no_doc_type = no_doc_type.unwrap();
+            assert!(no_doc_type.doc_comment.is_none());
+
+            let no_doc_const = symbols.iter().find(|s| s.name == "NoDocConst");
+            assert!(no_doc_const.is_some());
+            let no_doc_const = no_doc_const.unwrap();
+            assert!(no_doc_const.doc_comment.is_none());
+        }
+
+        #[test]
+        fn test_multi_line_go_doc_comments() {
+            let code = r#"
+package main
+
+// Start begins the server
+// It initializes all components
+// and starts listening for requests
+func Start() {
+}
+"#;
+            let tree = init_parser(code, "go");
+            let mut extractor =
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            let symbols = extractor.extract_symbols(&tree);
+
+            let start = symbols.iter().find(|s| s.name == "Start");
+            assert!(start.is_some());
+            let start = start.unwrap();
+            let doc_comment = start.doc_comment.as_ref().unwrap();
+            assert!(doc_comment.contains("Start begins the server"));
+            assert!(doc_comment.contains("It initializes all components"));
+            assert!(doc_comment.contains("and starts listening for requests"));
         }
     }
 }

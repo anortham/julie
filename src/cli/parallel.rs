@@ -189,14 +189,14 @@ impl ParallelExtractor {
             eprintln!("✅ Bulk insert complete");
 
             // Return symbols from DB
-            return Ok(db_lock.get_all_symbols()?);
+            return db_lock.get_all_symbols();
         }
 
         // Return collected symbols
-        Ok(Arc::try_unwrap(all_symbols)
+        Arc::try_unwrap(all_symbols)
             .map_err(|_| anyhow!("Failed to unwrap symbols Arc"))?
             .into_inner()
-            .map_err(|e| anyhow!("Lock error: {:?}", e))?)
+            .map_err(|e| anyhow!("Lock error: {:?}", e))
     }
 
     /// Extract single file (for incremental updates)

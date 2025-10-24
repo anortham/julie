@@ -49,7 +49,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -79,7 +80,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -115,7 +117,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -145,7 +148,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -185,7 +189,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -201,11 +206,7 @@ mod glob_pattern_regression {
     fn test_glob_pattern_path_separator_handling() {
         let test_cases = vec![
             // Windows UNC path with backslashes
-            (
-                "\\\\?\\C:\\source\\project\\src\\main.rs",
-                "**/*.rs",
-                true,
-            ),
+            ("\\\\?\\C:\\source\\project\\src\\main.rs", "**/*.rs", true),
             // Same path with forward slashes
             ("//C:/source/project/src/main.rs", "**/*.rs", true),
             // Pattern with forward slash, path with backslash
@@ -225,7 +226,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -259,7 +261,8 @@ mod glob_pattern_regression {
         for (path, pattern, expected) in test_cases {
             let result = matches_glob_pattern(path, pattern);
             assert_eq!(
-                result, expected,
+                result,
+                expected,
                 "Pattern '{}' should {} path '{}' but got {}",
                 pattern,
                 if expected { "match" } else { "NOT match" },
@@ -297,7 +300,7 @@ mod fts5_syntax_regression {
 
         // These queries contain `.` which FTS5 interprets as an operator
         let queries_with_dots = vec![
-            "InputFile.*spreadsheet",    // Regex-like pattern (user expectation)
+            "InputFile.*spreadsheet",     // Regex-like pattern (user expectation)
             "System.Collections.Generic", // .NET namespace
             "std::vector",                // C++ namespace (though :: not .)
             "React.Component",            // JavaScript qualified name
@@ -333,9 +336,9 @@ mod fts5_syntax_regression {
         let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
 
         let queries_with_asterisk = vec![
-            "get*",          // FTS5 prefix wildcard (should work)
-            "InputFile.*",   // Regex-like (user might expect regex)
-            ".*",            // Regex "any character, any number of times"
+            "get*",        // FTS5 prefix wildcard (should work)
+            "InputFile.*", // Regex-like (user might expect regex)
+            ".*",          // Regex "any character, any number of times"
         ];
 
         for query in queries_with_asterisk {
@@ -360,14 +363,14 @@ mod fts5_syntax_regression {
         let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
 
         let regex_patterns = vec![
-            r"test\d+",     // \d for digits
-            r"user[0-9]+",  // Character class
-            r"^start",      // Start anchor
-            r"end$",        // End anchor
-            r"foo|bar",     // Alternation
-            r"test(ing)?",  // Optional group
-            r"file\.txt",   // Escaped dot
-            r"path/to/.*",  // Wildcard
+            r"test\d+",    // \d for digits
+            r"user[0-9]+", // Character class
+            r"^start",     // Start anchor
+            r"end$",       // End anchor
+            r"foo|bar",    // Alternation
+            r"test(ing)?", // Optional group
+            r"file\.txt",  // Escaped dot
+            r"path/to/.*", // Wildcard
         ];
 
         for query in regex_patterns {

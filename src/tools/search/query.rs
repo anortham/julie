@@ -88,7 +88,7 @@ pub fn matches_glob_pattern(file_path: &str, pattern: &str) -> bool {
         if is_simple_filename {
             // Extract basename from path (handle both / and \ separators, including UNC paths)
             let basename = file_path
-                .rsplit(|c| c == '/' || c == '\\')
+                .rsplit(['/', '\\'])
                 .next()
                 .unwrap_or(file_path);
 

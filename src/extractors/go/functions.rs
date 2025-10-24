@@ -49,6 +49,8 @@ impl super::GoExtractor {
             return_type.as_deref(),
         );
 
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -58,7 +60,7 @@ impl super::GoExtractor {
                 visibility,
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -133,6 +135,8 @@ impl super::GoExtractor {
             )
         };
 
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -142,7 +146,7 @@ impl super::GoExtractor {
                 visibility,
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -232,6 +236,8 @@ impl super::GoExtractor {
             // This looks like a function signature trapped in an ERROR node
             let signature = format!("func {}{}", name, params);
 
+            let doc_comment = self.base.find_doc_comment(&node);
+
             return Some(self.base.create_symbol(
                 &node,
                 name.clone(),
@@ -245,7 +251,7 @@ impl super::GoExtractor {
                     },
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment,
                 },
             ));
         }

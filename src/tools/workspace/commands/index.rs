@@ -42,7 +42,8 @@ impl ManageWorkspaceTool {
         // to the primary workspace and return the wrong path!
         let is_reference_check = if let Ok(Some(primary_ws)) = handler.get_workspace().await {
             let registry_service = WorkspaceRegistryService::new(primary_ws.root.clone());
-            registry_service.get_workspace_by_path(&original_path.to_string_lossy().to_string())
+            registry_service
+                .get_workspace_by_path(original_path.to_string_lossy().as_ref())
                 .await
                 .ok()
                 .flatten()
@@ -93,10 +94,16 @@ impl ManageWorkspaceTool {
         // Check if this path is a reference workspace (check ORIGINAL path, not resolved path!)
         let is_reference_workspace = if let Ok(Some(primary_ws)) = handler.get_workspace().await {
             let registry_service = WorkspaceRegistryService::new(primary_ws.root.clone());
-            match registry_service.get_workspace_by_path(&original_path.to_string_lossy().to_string()).await {
+            match registry_service
+                .get_workspace_by_path(original_path.to_string_lossy().as_ref())
+                .await
+            {
                 Ok(Some(entry)) => {
                     let is_ref = entry.workspace_type == WorkspaceType::Reference;
-                    debug!("Found in registry - workspace_type: {:?}, is_reference: {}", entry.workspace_type, is_ref);
+                    debug!(
+                        "Found in registry - workspace_type: {:?}, is_reference: {}",
+                        entry.workspace_type, is_ref
+                    );
                     is_ref
                 }
                 Ok(None) => {
@@ -141,9 +148,7 @@ impl ManageWorkspaceTool {
                             Ok(Some(_workspace_id)) => {
                                 let db_lock = db.lock().unwrap();
                                 // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
-                                db_lock
-                                    .count_symbols_for_workspace()
-                                    .unwrap_or(0)
+                                db_lock.count_symbols_for_workspace().unwrap_or(0)
                             }
                             _ => {
                                 // Fallback: if no workspace ID, count all symbols

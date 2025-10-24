@@ -82,6 +82,9 @@ impl super::RazorExtractor {
     pub(super) fn extract_using(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let namespace_name = self.extract_namespace_name(node);
 
+        // Extract C# XML doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             namespace_name.clone(),
@@ -102,7 +105,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -121,6 +124,9 @@ impl super::RazorExtractor {
             "UnknownNamespace".to_string()
         };
 
+        // Extract C# XML doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             name.clone(),
@@ -137,7 +143,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -155,6 +161,9 @@ impl super::RazorExtractor {
         if !modifiers.is_empty() {
             signature = format!("{} {}", modifiers.join(" "), signature);
         }
+
+        // Extract C# XML doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
 
         Some(self.base.create_symbol(
             &node,
@@ -176,7 +185,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -238,6 +247,9 @@ impl super::RazorExtractor {
             parameters.clone().unwrap_or_else(|| "()".to_string())
         ));
 
+        // Extract C# XML doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             name,
@@ -274,7 +286,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -368,6 +380,9 @@ impl super::RazorExtractor {
             }
         }
 
+        // Extract C# XML doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             name,
@@ -398,7 +413,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

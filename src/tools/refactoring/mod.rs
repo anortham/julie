@@ -256,7 +256,9 @@ impl EditSymbolTool {
                     .to_string(),
                     dry_run: self.dry_run,
                 };
-                smart_refactor.handle_insert_relative_to_symbol(handler).await
+                smart_refactor
+                    .handle_insert_relative_to_symbol(handler)
+                    .await
             }
             EditOperation::ExtractToFile => {
                 // Validate target_file is provided
@@ -421,7 +423,7 @@ impl SmartRefactorTool {
         let content_lines = content.lines().count();
         let updated_lines = updated_content.lines().count();
         let changes = if content_lines != updated_lines {
-            (content_lines.abs_diff(updated_lines)) as usize + 1
+            (content_lines.abs_diff(updated_lines)) + 1
         } else {
             1
         };
@@ -465,7 +467,7 @@ impl SmartRefactorTool {
 
         // Last resort: simple replacement
         debug!("⚠️ Falling back to simple text replacement");
-        Ok(self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?)
+        self.smart_text_replace(content, old_name, new_name, file_path, update_comments)
     }
 
     /// Find symbol positions using SQLite database (for indexed files)

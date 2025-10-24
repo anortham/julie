@@ -76,10 +76,14 @@ pub(super) fn extract_field(
     };
     let signature = format!("{}{} {}{}", modifier_str, field_type, name, initializer);
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 

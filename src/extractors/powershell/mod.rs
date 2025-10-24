@@ -29,7 +29,7 @@ use tree_sitter::Tree;
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps
 pub struct PowerShellExtractor {
-    base: BaseExtractor,
+    pub base: BaseExtractor,
 }
 
 impl PowerShellExtractor {

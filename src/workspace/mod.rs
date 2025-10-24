@@ -122,7 +122,10 @@ impl JulieWorkspace {
     /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
     pub async fn initialize(root: PathBuf) -> Result<Self> {
         info!("Initializing Julie workspace at: {}", root.display());
-        debug!("🔍 DEBUG: JulieWorkspace::initialize called with root: {}", root.display());
+        debug!(
+            "🔍 DEBUG: JulieWorkspace::initialize called with root: {}",
+            root.display()
+        );
 
         let julie_dir = root.join(".julie");
         debug!("🔍 DEBUG: Julie directory will be: {}", julie_dir.display());
@@ -156,12 +159,18 @@ impl JulieWorkspace {
     /// Searches up the directory tree from the given path to find a .julie folder
     /// 🔥 CRITICAL FIX: Now async to handle ONNX model loading without blocking runtime
     pub async fn detect_and_load(start_path: PathBuf) -> Result<Option<Self>> {
-        debug!("🔍 DEBUG: detect_and_load called with start_path: {}", start_path.display());
+        debug!(
+            "🔍 DEBUG: detect_and_load called with start_path: {}",
+            start_path.display()
+        );
         let julie_dir = Self::find_workspace_root(&start_path)?;
 
         match julie_dir {
             Some(julie_path) => {
-                debug!("🔍 DEBUG: find_workspace_root returned: {}", julie_path.display());
+                debug!(
+                    "🔍 DEBUG: find_workspace_root returned: {}",
+                    julie_path.display()
+                );
                 let root = julie_path
                     .parent()
                     .ok_or_else(|| anyhow!("Invalid workspace structure"))?
@@ -462,9 +471,10 @@ impl JulieWorkspace {
 
         // ✅ EmbeddingEngine::new() is now async (downloads model from HuggingFace)
         // No need for spawn_blocking - async download is non-blocking
-        let embedding_engine = crate::embeddings::EmbeddingEngine::new("bge-small", models_path, db)
-            .await
-            .context("Embedding engine initialization failed")?;
+        let embedding_engine =
+            crate::embeddings::EmbeddingEngine::new("bge-small", models_path, db)
+                .await
+                .context("Embedding engine initialization failed")?;
 
         self.embeddings = Some(Arc::new(RwLock::new(Some(embedding_engine))));
 

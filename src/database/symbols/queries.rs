@@ -174,7 +174,9 @@ impl SymbolDatabase {
         // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
         // = causes "syntax error near =" when used in queries
         // | causes "syntax error near |" (regex alternation, not FTS5)
-        const SPECIAL_CHARS: &[char] = &['#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '=', '|'];
+        const SPECIAL_CHARS: &[char] = &[
+            '#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '=', '|',
+        ];
 
         // Check if query contains any special characters
         let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
@@ -204,10 +206,7 @@ impl SymbolDatabase {
     /// Replaces slow LIKE queries with fast FTS5 MATCH queries
     /// Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
     /// Note: workspace_ids kept for API, DB file is already workspace-specific
-    pub fn find_symbols_by_pattern(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<Symbol>> {
+    pub fn find_symbols_by_pattern(&self, pattern: &str) -> Result<Vec<Symbol>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
         let sanitized_pattern = Self::sanitize_fts5_query(pattern);
         debug!(

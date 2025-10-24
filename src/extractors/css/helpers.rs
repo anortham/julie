@@ -146,6 +146,7 @@ impl PropertyHelper {
     }
 
     /// Find declaration block in rule
+    #[allow(clippy::manual_find)]
     pub(super) fn find_declaration_block<'a>(node: &Node<'a>) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

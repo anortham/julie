@@ -130,7 +130,10 @@ fn test_windows_path_with_spaces() {
     assert_eq!(parts.len(), 2);
 
     // Verify workspace name is filesystem-safe (no spaces)
-    assert!(!parts[0].contains(' '), "Workspace name should not contain spaces");
+    assert!(
+        !parts[0].contains(' '),
+        "Workspace name should not contain spaces"
+    );
 }
 
 #[test]
@@ -149,7 +152,11 @@ fn test_windows_short_path_names() {
     // Workspace ID format: name_hash8, but name may contain underscores from sanitization
     // Just verify the hash at the end is 8 hex characters
     let parts: Vec<&str> = id.rsplitn(2, '_').collect();
-    assert_eq!(parts.len(), 2, "Workspace ID should have format: name_hash8");
+    assert_eq!(
+        parts.len(),
+        2,
+        "Workspace ID should have format: name_hash8"
+    );
     assert_eq!(parts[0].len(), 8, "Hash should be 8 characters");
     assert!(
         parts[0].chars().all(|c| c.is_ascii_hexdigit()),
@@ -158,8 +165,14 @@ fn test_windows_short_path_names() {
 
     // Workspace name should be sanitized (no ~ or . at start)
     let workspace_name = parts[1];
-    assert!(!workspace_name.starts_with('.'), "Workspace name should not start with .");
-    assert!(!workspace_name.contains('~'), "Workspace name should not contain ~");
+    assert!(
+        !workspace_name.starts_with('.'),
+        "Workspace name should not start with ."
+    );
+    assert!(
+        !workspace_name.contains('~'),
+        "Workspace name should not contain ~"
+    );
 }
 
 #[test]

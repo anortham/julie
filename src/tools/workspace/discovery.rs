@@ -220,7 +220,10 @@ impl ManageWorkspaceTool {
             .collect();
 
         if !patterns.is_empty() {
-            debug!("📋 Loaded {} custom ignore patterns from .julieignore", patterns.len());
+            debug!(
+                "📋 Loaded {} custom ignore patterns from .julieignore",
+                patterns.len()
+            );
         }
 
         Ok(patterns)

@@ -139,20 +139,103 @@ pub(super) fn extract_extern_modifier(base: &BaseExtractor, node: Node) -> Strin
 
 /// Find doc comment preceding a node (/// or #[doc = "..."])
 pub(super) fn find_doc_comment(base: &BaseExtractor, node: Node) -> Option<String> {
-    // Look for preceding doc comments (///)
+    // Look for doc comments in the parent's children by scanning backwards
+    // This handles cases where attributes appear between the comment and the node
     if let Some(parent) = node.parent() {
         let siblings: Vec<_> = parent.children(&mut parent.walk()).collect();
+
+        // Find the index of the current node
         if let Some(node_index) = siblings.iter().position(|&n| n.id() == node.id()) {
-            if node_index > 0 {
-                let prev_sibling = siblings[node_index - 1];
-                if prev_sibling.kind() == "line_comment" {
-                    let comment_text = base.get_node_text(&prev_sibling);
-                    // Rust doc comments start with ///
-                    if let Some(doc_text) = comment_text.strip_prefix("///") {
-                        return Some(doc_text.trim().to_string());
+            // Collect all consecutive doc comments starting from just before the node
+            let mut doc_comments = Vec::new();
+            let mut check_index = node_index;
+
+            while check_index > 0 {
+                check_index -= 1;
+                let prev = siblings[check_index];
+
+                // Skip attributes and outer attributes (but keep looking for comments)
+                if prev.kind() == "attribute" || prev.kind() == "attribute_item" {
+                    // Don't break - keep looking backwards for comments
+                    continue;
+                }
+
+                // Check for doc comments
+                if prev.kind() == "line_comment" {
+                    let comment_text = base.get_node_text(&prev);
+
+                    // Try to strip doc comment markers
+                    if let Some(stripped) = comment_text.strip_prefix("///") {
+                        let doc_text = stripped.trim().to_string();
+                        if !doc_text.is_empty() {
+                            doc_comments.push(doc_text);
+                        }
+                        // Keep looking for more doc comments above
+                        continue;
+                    } else if let Some(stripped) = comment_text.strip_prefix("//!") {
+                        let doc_text = stripped.trim().to_string();
+                        if !doc_text.is_empty() {
+                            doc_comments.push(doc_text);
+                        }
+                        // Keep looking for more doc comments above
+                        continue;
+                    } else {
+                        // Found a non-doc comment, stop searching
+                        break;
                     }
+                } else if prev.kind() == "block_comment" {
+                    let comment_text = base.get_node_text(&prev);
+
+                    if let Some(stripped) = comment_text.strip_prefix("/**") {
+                        // For multi-line /* */ comments
+                        let trimmed = stripped.strip_suffix("*/").unwrap_or(stripped);
+                        let doc_text = trimmed
+                            .lines()
+                            .map(|line| line.trim_start_matches('*').trim())
+                            .filter(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        if !doc_text.is_empty() {
+                            return Some(doc_text);
+                        }
+                    }
+                    // Found a block comment, stop searching
+                    break;
+                } else if prev.kind() != "ERROR" && !prev.kind().contains("whitespace") {
+                    // Stop at any non-comment, non-attribute, non-whitespace node
+                    break;
                 }
             }
+
+            // Reverse to get comments in original order (top to bottom)
+            if !doc_comments.is_empty() {
+                doc_comments.reverse();
+                return Some(doc_comments.join("\n"));
+            }
+        }
+    }
+
+    // Also try the base extractor's implementation as a fallback
+    if let Some(doc) = base.find_doc_comment(&node) {
+        // Strip the /// or //! prefix and trim whitespace
+        let doc_text = if let Some(stripped) = doc.strip_prefix("///") {
+            stripped.trim().to_string()
+        } else if let Some(stripped) = doc.strip_prefix("//!") {
+            stripped.trim().to_string()
+        } else if let Some(stripped) = doc.strip_prefix("/**") {
+            // For multi-line /* */ comments
+            let trimmed = stripped.strip_suffix("*/").unwrap_or(stripped);
+            trimmed
+                .lines()
+                .map(|line| line.trim_start_matches('*').trim())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            doc
+        };
+
+        if !doc_text.is_empty() {
+            return Some(doc_text);
         }
     }
 

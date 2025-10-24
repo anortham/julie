@@ -29,6 +29,9 @@ pub(super) fn extract_module(
 
     let signature = signatures::build_module_signature(&node, &name, |n| base.get_node_text(n));
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         name,
@@ -38,7 +41,7 @@ pub(super) fn extract_module(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -67,6 +70,9 @@ pub(super) fn extract_class(
 
     let signature = signatures::build_class_signature(&node, &name, |n| base.get_node_text(n));
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         name,
@@ -76,7 +82,7 @@ pub(super) fn extract_class(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -96,6 +102,9 @@ pub(super) fn extract_singleton_class(
         .unwrap_or_else(|| "self".to_string());
     let signature = format!("class << {}", target);
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         format!("<<{}", target),
@@ -105,7 +114,7 @@ pub(super) fn extract_singleton_class(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -142,6 +151,9 @@ pub(super) fn extract_method(
         SymbolKind::Method
     };
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         name,
@@ -151,7 +163,7 @@ pub(super) fn extract_method(
             visibility: Some(current_visibility),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -167,6 +179,9 @@ pub(super) fn extract_singleton_method(
     let signature =
         signatures::build_singleton_method_signature(&node, &name, |n| base.get_node_text(n));
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         name,
@@ -176,7 +191,7 @@ pub(super) fn extract_singleton_method(
             visibility: Some(current_visibility),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -185,6 +200,9 @@ pub(super) fn extract_singleton_method(
 pub(super) fn extract_variable(base: &mut BaseExtractor, node: Node) -> Symbol {
     let name = base.get_node_text(&node);
     let signature = name.clone();
+
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
 
     base.create_symbol(
         &node,
@@ -195,7 +213,7 @@ pub(super) fn extract_variable(base: &mut BaseExtractor, node: Node) -> Symbol {
             visibility: Some(Visibility::Public),
             parent_id: None,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -209,6 +227,9 @@ pub(super) fn extract_constant(
     let name = base.get_node_text(&node);
     let signature = name.clone();
 
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
+
     base.create_symbol(
         &node,
         name,
@@ -218,7 +239,7 @@ pub(super) fn extract_constant(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -227,6 +248,9 @@ pub(super) fn extract_constant(
 pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Symbol {
     let signature = base.get_node_text(&node);
     let alias_name = extract_alias_name(node, |n| base.get_node_text(n));
+
+    // Extract RDoc/YARD comment
+    let doc_comment = base.find_doc_comment(&node);
 
     base.create_symbol(
         &node,
@@ -237,7 +261,7 @@ pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Symbol {
             visibility: Some(Visibility::Public),
             parent_id: None,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }

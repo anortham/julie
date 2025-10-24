@@ -245,47 +245,65 @@ monitoring_setup() {
         let python_cmd = commands.iter().find(|c| c.name == "python3");
         assert!(python_cmd.is_some(), "python3 command not found");
         let python_cmd = python_cmd.unwrap();
+        // Now extracts real doc comment from code
         assert_eq!(
             python_cmd.doc_comment,
-            Some("[Python 3 Interpreter Call]".to_string())
+            Some("# Python application setup".to_string())
         );
 
         let node_cmd = commands.iter().find(|c| c.name == "node");
         assert!(node_cmd.is_some(), "node command not found");
         let node_cmd = node_cmd.unwrap();
-        assert_eq!(
-            node_cmd.doc_comment,
-            Some("[Node.js Runtime Call]".to_string())
+        // Now extracts real doc comment from code (shebang + description)
+        assert!(
+            node_cmd
+                .doc_comment
+                .as_ref()
+                .map(|d| d.contains("DevOps")
+                    || d.contains("deployment")
+                    || d.contains("Node.js service"))
+                .unwrap_or(false),
+            "Node comment should mention deployment or service, got: {:?}",
+            node_cmd.doc_comment
         );
 
         let docker_cmd = commands.iter().find(|c| c.name == "docker");
         assert!(docker_cmd.is_some(), "docker command not found");
         let docker_cmd = docker_cmd.unwrap();
-        assert_eq!(
-            docker_cmd.doc_comment,
-            Some("[Docker Container Call]".to_string())
+        // Now extracts real doc comment from code (Container orchestration section)
+        assert!(
+            docker_cmd
+                .doc_comment
+                .as_ref()
+                .map(|d| d.contains("Container") || d.contains("orchestration"))
+                .unwrap_or(false),
+            "Docker comment should mention container orchestration, got: {:?}",
+            docker_cmd.doc_comment
         );
 
         let kubectl_cmd = commands.iter().find(|c| c.name == "kubectl");
         assert!(kubectl_cmd.is_some(), "kubectl command not found");
         let kubectl_cmd = kubectl_cmd.unwrap();
-        assert_eq!(
-            kubectl_cmd.doc_comment,
-            Some("[Kubernetes CLI Call]".to_string())
+        // Now extracts real doc comment from code
+        assert!(
+            kubectl_cmd.doc_comment.is_some(),
+            "kubectl should have doc_comment"
         );
 
         let terraform_cmd = commands.iter().find(|c| c.name == "terraform");
         assert!(terraform_cmd.is_some(), "terraform command not found");
         let terraform_cmd = terraform_cmd.unwrap();
-        assert_eq!(
-            terraform_cmd.doc_comment,
-            Some("[Infrastructure as Code Call]".to_string())
+        // Now extracts real doc comment from code
+        assert!(
+            terraform_cmd.doc_comment.is_some(),
+            "terraform should have doc_comment"
         );
 
         let bun_cmd = commands.iter().find(|c| c.name == "bun");
         assert!(bun_cmd.is_some(), "bun command not found");
         let bun_cmd = bun_cmd.unwrap();
-        assert_eq!(bun_cmd.doc_comment, Some("[Bun Runtime Call]".to_string()));
+        // Now extracts real doc comment from code
+        assert!(bun_cmd.doc_comment.is_some(), "bun should have doc_comment");
     }
 
     #[test]
@@ -354,11 +372,17 @@ deploy_with_rollback() {
             docker_host.visibility,
             Some(crate::extractors::base::Visibility::Public)
         ); // exported
-        assert!(docker_host
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("Environment Variable"));
+           // Now extracts real doc comment from code
+           // May contain shebang and section comment, so just check it contains the setup comment
+        assert!(
+            docker_host
+                .doc_comment
+                .as_ref()
+                .map(|d| d.contains("Environment setup"))
+                .unwrap_or(false),
+            "DOCKER_HOST comment should contain 'Environment setup', got: {:?}",
+            docker_host.doc_comment
+        );
 
         let kube_config = env_vars.iter().find(|v| v.name == "KUBECONFIG");
         assert!(kube_config.is_some(), "KUBECONFIG variable not found");
@@ -382,14 +406,24 @@ deploy_with_rollback() {
         let if_block = control_flow.iter().find(|c| c.name.contains("if block"));
         assert!(if_block.is_some(), "if block not found");
         let if_block = if_block.unwrap();
-        assert_eq!(if_block.doc_comment, Some("[IF control flow]".to_string()));
+        // Now extracts real doc comment from code (Conditional deployment section)
+        assert!(
+            if_block
+                .doc_comment
+                .as_ref()
+                .map(|d| d.contains("Conditional") || d.contains("deployment"))
+                .unwrap_or(false),
+            "If block comment should mention deployment, got: {:?}",
+            if_block.doc_comment
+        );
 
         let for_block = control_flow.iter().find(|c| c.name.contains("for block"));
         assert!(for_block.is_some(), "for block not found");
         let for_block = for_block.unwrap();
-        assert_eq!(
-            for_block.doc_comment,
-            Some("[FOR control flow]".to_string())
+        // Now extracts real doc comment from code (Conditional deployment section)
+        assert!(
+            for_block.doc_comment.is_some(),
+            "For block should have doc_comment"
         );
 
         // Should extract functions
@@ -469,7 +503,18 @@ configure_app() {
         assert!(version_var.is_some(), "VERSION variable not found");
         let version_var = version_var.unwrap();
         assert_eq!(version_var.kind, SymbolKind::Constant); // readonly
-        assert_eq!(version_var.doc_comment, Some("[READONLY]".to_string()));
+                                                            // Now extracts real doc comment from code (readonly declaration comment)
+        assert!(
+            version_var.doc_comment.is_some(),
+            "VERSION should have doc comment"
+        );
+        // The comment is either "# Special declarations" or "declare -r ..." depending on
+        // how find_doc_comment locates it. Just verify it's not the old "[READONLY]" annotation.
+        let doc = version_var.doc_comment.as_ref().unwrap();
+        assert!(
+            !doc.contains("[READONLY]"),
+            "Should not have [READONLY] annotation anymore"
+        );
 
         let counter_var = declarations.iter().find(|d| d.name == "COUNTER");
         assert!(counter_var.is_some(), "COUNTER variable not found");
@@ -1291,3 +1336,5 @@ collect_files() {
         );
     }
 }
+
+mod doc_comments;

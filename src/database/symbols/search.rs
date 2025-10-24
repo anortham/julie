@@ -86,10 +86,7 @@ impl SymbolDatabase {
 
     /// Get symbols by exact name match
     /// PERFORMANCE: Uses indexed WHERE name = ?1 instead of LIKE for O(log n) lookup
-    pub fn get_symbols_by_name_and_workspace(
-        &self,
-        name: &str,
-    ) -> Result<Vec<Symbol>> {
+    pub fn get_symbols_by_name_and_workspace(&self, name: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature,
                     start_line, start_col, end_line, end_col, start_byte, end_byte,
@@ -305,10 +302,7 @@ impl SymbolDatabase {
 
     /// Query symbols by kind
     /// Uses idx_symbols_kind for fast lookup
-    pub fn query_symbols_by_kind(
-        &self,
-        kind: &SymbolKind,
-    ) -> Result<Vec<Symbol>> {
+    pub fn query_symbols_by_kind(&self, kind: &SymbolKind) -> Result<Vec<Symbol>> {
         let kind_str = match kind {
             SymbolKind::Function => "function",
             SymbolKind::Method => "method",
@@ -356,10 +350,7 @@ impl SymbolDatabase {
 
     /// Query symbols by language
     /// Uses idx_symbols_language for fast lookup
-    pub fn query_symbols_by_language(
-        &self,
-        language: &str,
-    ) -> Result<Vec<Symbol>> {
+    pub fn query_symbols_by_language(&self, language: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
@@ -419,9 +410,7 @@ impl SymbolDatabase {
         Ok((by_kind, by_language))
     }
     /// Get file-level symbol counts (GROUP BY file_path)
-    pub fn get_file_statistics(
-        &self,
-    ) -> Result<std::collections::HashMap<String, usize>> {
+    pub fn get_file_statistics(&self) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
         let mut by_file = HashMap::new();
@@ -451,10 +440,7 @@ impl SymbolDatabase {
     }
 
     /// Get most referenced symbols (GROUP BY aggregation on relationships)
-    pub fn get_most_referenced_symbols(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<(String, usize)>> {
+    pub fn get_most_referenced_symbols(&self, limit: usize) -> Result<Vec<(String, usize)>> {
         let mut results = Vec::new();
 
         // SQL GROUP BY aggregation - counts incoming references per symbol

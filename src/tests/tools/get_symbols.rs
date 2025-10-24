@@ -245,10 +245,10 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
         let tool = GetSymbolsTool {
             file_path: path_variant.to_string(),
             max_depth: 1,
-                target: None,
-                limit: None,
-                mode: None,
-        workspace: None,
+            target: None,
+            limit: None,
+            mode: None,
+            workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;

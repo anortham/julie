@@ -1673,4 +1673,276 @@ class UserService {
             assert_eq!(user_service.unwrap().kind, SymbolKind::Class);
         }
     }
+
+    mod doc_comments {
+        use super::*;
+
+        #[test]
+        fn test_extract_class_with_single_line_dartdoc() {
+            let code = r#"
+/// UserService manages user authentication and login
+class UserService {
+    void authenticate() {}
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let user_service = symbols
+                .iter()
+                .find(|s| s.name == "UserService" && s.kind == SymbolKind::Class);
+            assert!(user_service.is_some(), "Should extract UserService class");
+            let user_service = user_service.unwrap();
+            assert!(
+                user_service.doc_comment.is_some(),
+                "Should have dartdoc comment"
+            );
+            assert!(
+                user_service
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("manages user authentication"),
+                "Doc comment should contain the documentation text"
+            );
+        }
+
+        #[test]
+        fn test_extract_function_with_block_dartdoc() {
+            let code = r#"
+/// Validates user credentials
+///
+/// Parameters:
+/// - [username] is the username to validate
+/// - [password] is the password to check
+/// Returns `true` if credentials are valid
+bool validateCredentials(String username, String password) {
+    return true;
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let validate_func = symbols
+                .iter()
+                .find(|s| s.name == "validateCredentials" && s.kind == SymbolKind::Function);
+            assert!(
+                validate_func.is_some(),
+                "Should extract validateCredentials function"
+            );
+            let validate_func = validate_func.unwrap();
+            assert!(
+                validate_func.doc_comment.is_some(),
+                "Should have dartdoc comment"
+            );
+            let doc = validate_func.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Validates user credentials"),
+                "Doc should contain main description"
+            );
+            assert!(
+                doc.contains("[username]"),
+                "Doc should contain parameter documentation with [param] syntax"
+            );
+            assert!(
+                doc.contains("[password]"),
+                "Doc should contain second parameter documentation"
+            );
+        }
+
+        #[test]
+        fn test_extract_method_with_dartdoc() {
+            let code = r#"
+class Calculator {
+    /// Adds two numbers together
+    ///
+    /// Returns the sum of [a] and [b]
+    int add(int a, int b) {
+        return a + b;
+    }
+
+    /// Multiplies two numbers
+    ///
+    /// Returns the product of [x] and [y]
+    int multiply(int x, int y) => x * y;
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let add_method = symbols
+                .iter()
+                .find(|s| s.name == "add" && s.kind == SymbolKind::Method);
+            assert!(add_method.is_some(), "Should extract add method");
+            let add_method = add_method.unwrap();
+            assert!(
+                add_method.doc_comment.is_some(),
+                "Should have dartdoc comment"
+            );
+            let doc = add_method.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Adds two numbers"),
+                "Doc should contain main description"
+            );
+            assert!(
+                doc.contains("[a]") && doc.contains("[b]"),
+                "Doc should contain parameter references"
+            );
+
+            let multiply_method = symbols
+                .iter()
+                .find(|s| s.name == "multiply" && s.kind == SymbolKind::Method);
+            assert!(multiply_method.is_some(), "Should extract multiply method");
+            let multiply_method = multiply_method.unwrap();
+            assert!(
+                multiply_method.doc_comment.is_some(),
+                "Should have dartdoc for multiply"
+            );
+        }
+
+        #[test]
+        fn test_extract_property_with_dartdoc() {
+            let code = r#"
+class Server {
+    /// The server hostname
+    String _hostname = 'localhost';
+
+    /// Get the hostname for this server
+    String get hostname => _hostname;
+
+    /// Set a new hostname for this server
+    set hostname(String value) {
+        _hostname = value;
+    }
+
+    /// Whether the server is running
+    bool isRunning = false;
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let hostname_getter = symbols
+                .iter()
+                .find(|s| s.name == "hostname" && s.kind == SymbolKind::Property);
+            assert!(
+                hostname_getter.is_some(),
+                "Should extract hostname getter property"
+            );
+            let hostname_getter = hostname_getter.unwrap();
+            assert!(
+                hostname_getter.doc_comment.is_some(),
+                "Should have dartdoc comment"
+            );
+            assert!(
+                hostname_getter
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("hostname"),
+                "Doc should contain getter description"
+            );
+        }
+
+        #[test]
+        fn test_extract_constructor_with_dartdoc() {
+            let code = r#"
+class Person {
+    String name;
+    int age;
+
+    /// Creates a new Person instance
+    ///
+    /// The [name] parameter is required
+    /// The [age] parameter must be non-negative
+    Person(this.name, this.age);
+
+    /// Creates a Person from JSON data
+    ///
+    /// Parses [json] map and creates a new instance
+    Person.fromJson(Map<String, dynamic> json)
+        : name = json['name'],
+          age = json['age'];
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Check default constructor has doc comment
+            let person_constructor = symbols
+                .iter()
+                .find(|s| s.name == "Person" && s.kind == SymbolKind::Constructor);
+            assert!(
+                person_constructor.is_some(),
+                "Should extract default constructor"
+            );
+            let person_constructor = person_constructor.unwrap();
+            assert!(
+                person_constructor.doc_comment.is_some(),
+                "Should have dartdoc comment for constructor"
+            );
+            assert!(
+                person_constructor
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("Creates a new Person"),
+                "Doc should contain constructor description"
+            );
+
+            // Check named constructor has doc comment
+            let from_json_constructor = symbols
+                .iter()
+                .find(|s| s.name.contains("fromJson") && s.kind == SymbolKind::Constructor);
+            assert!(
+                from_json_constructor.is_some(),
+                "Should extract fromJson constructor"
+            );
+            let from_json_constructor = from_json_constructor.unwrap();
+            assert!(
+                from_json_constructor.doc_comment.is_some(),
+                "Should have dartdoc for named constructor"
+            );
+        }
+    }
 }

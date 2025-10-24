@@ -460,16 +460,33 @@ impl BaseExtractor {
     pub fn find_doc_comment(&self, node: &Node) -> Option<String> {
         let mut comments = Vec::new();
 
-        // Walk backwards through previous siblings to collect consecutive doc comments
+        // Helper function to check if text is a doc comment
+        let is_doc_comment = |text: &str| {
+            let trimmed = text.trim_start();
+            let lang_lower = self.language.to_lowercase();
+            let is_sql = lang_lower.contains("sql");
+            let is_lua = lang_lower.contains("lua");
+            let is_razor = lang_lower.contains("razor");
+
+            trimmed.starts_with("/**")
+                || trimmed.starts_with("/*") // CSS/HTML/SQL block comments
+                || trimmed.starts_with("<!--") // HTML comments
+                || trimmed.starts_with("///")
+                || trimmed.starts_with("##") // Python docstrings
+                || trimmed.starts_with("//") // Go style comments
+                || trimmed.starts_with("---") // Lua LuaDoc
+                || trimmed.starts_with("--[[") // Lua block comment
+                || ((is_sql || is_lua) && trimmed.starts_with("--")) // SQL/Lua dash comments
+                || trimmed.starts_with("#") // Ruby RDoc/YARD comments
+                || (is_razor && trimmed.starts_with("@*")) // Razor doc comments
+        };
+
+        // First try to find comments as siblings of this node
         let mut current = node.prev_named_sibling();
         while let Some(sibling) = current {
-            if sibling.kind().contains("comment") {
+            if sibling.kind().contains("comment") || sibling.kind() == "marginalia" {
                 let comment_text = self.get_node_text(&sibling);
-                // Check if it's a documentation comment
-                if comment_text.starts_with("/**")
-                    || comment_text.starts_with("///")
-                    || comment_text.starts_with("##") // Python docstrings
-                {
+                if is_doc_comment(&comment_text) {
                     comments.push(comment_text);
                     current = sibling.prev_named_sibling();
                 } else {
@@ -479,6 +496,54 @@ impl BaseExtractor {
             } else {
                 // Stop at non-comment node
                 break;
+            }
+        }
+
+        // If no comments found as direct siblings, try looking at ancestor siblings
+        // (useful for SQL where comment is sibling of statement, not create_table inside,
+        // or Dart where comment is sibling of class_member_definition, not getter_signature)
+        if comments.is_empty() {
+            let mut current_node = *node;
+            for _ in 0..3 {
+                // Try up to 3 ancestor levels
+                if let Some(parent) = current_node.parent() {
+                    current = parent.prev_named_sibling();
+                    while let Some(sibling) = current {
+                        if sibling.kind().contains("comment") || sibling.kind() == "marginalia" {
+                            let comment_text = self.get_node_text(&sibling);
+                            if is_doc_comment(&comment_text) {
+                                comments.push(comment_text);
+                                current = sibling.prev_named_sibling();
+                            } else {
+                                // Stop at non-doc comment
+                                break;
+                            }
+                        } else {
+                            // Stop at non-comment node
+                            break;
+                        }
+                    }
+                    if !comments.is_empty() {
+                        break;
+                    }
+                    current_node = parent;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // For certain nodes (like cte), also check for comments as children (e.g., inside parentheses)
+        if comments.is_empty() && (node.kind() == "cte") {
+            // Look for first comments among direct children
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind().contains("comment") || child.kind() == "marginalia" {
+                    let comment_text = self.get_node_text(&child);
+                    if is_doc_comment(&comment_text) {
+                        comments.push(comment_text);
+                    }
+                }
             }
         }
 

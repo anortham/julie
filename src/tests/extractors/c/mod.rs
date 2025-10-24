@@ -28,6 +28,7 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
 
 pub mod advanced;
 pub mod basics;
+pub mod doxygen_comments;
 pub mod identifier_extraction;
 pub mod pointers;
 pub mod preprocessor;

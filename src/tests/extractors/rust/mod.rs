@@ -1294,4 +1294,293 @@ fn run() {
             );
         }
     }
+
+    // ========================================================================
+    // Doc Comment Extraction Tests (TDD - matches C# reference pattern)
+    // ========================================================================
+    //
+    // These tests validate doc comment extraction from Rust code:
+    // - Single-line doc comments (///)
+    // - Multi-line doc comments (/** */)
+    // - Crate-level doc comments (//!)
+    // - Module-level doc comments (//!)
+    // - Doc comments on functions, structs, enums, traits, etc.
+    //
+    // Following the proven pattern from C#, Python, etc.
+
+    mod doc_comment_extraction {
+        use super::*;
+
+        #[test]
+        fn test_function_with_single_line_doc_comment() {
+            let rust_code = r#"
+/// Creates a new database connection with the specified configuration
+pub fn create_connection(config: &str) -> Result<Connection, Error> {
+    Ok(Connection::new(config))
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the create_connection function
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "create_connection")
+                .expect("Should extract create_connection function");
+
+            // Verify doc comment is captured
+            assert!(
+                func.doc_comment.is_some(),
+                "Function should have doc_comment extracted"
+            );
+            assert!(func
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Creates a new database connection"));
+        }
+
+        #[test]
+        fn test_struct_with_multi_line_doc_comment() {
+            let rust_code = r#"
+/**
+ * A user configuration structure
+ * Stores all user-related settings and preferences
+ */
+pub struct UserConfig {
+    pub name: String,
+    pub email: String,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the UserConfig struct
+            let user_config = symbols
+                .iter()
+                .find(|s| s.name == "UserConfig")
+                .expect("Should extract UserConfig struct");
+
+            // Verify multi-line doc comment is captured
+            assert!(
+                user_config.doc_comment.is_some(),
+                "Struct should have doc_comment extracted"
+            );
+            let doc = user_config.doc_comment.as_ref().unwrap();
+            assert!(doc.contains("user configuration"));
+            assert!(doc.contains("user-related settings"));
+        }
+
+        #[test]
+        fn test_enum_with_doc_comment() {
+            let rust_code = r#"
+/// Represents the status of an operation
+#[derive(Debug, Clone, Copy)]
+pub enum Status {
+    /// Operation is in progress
+    Running,
+    /// Operation completed successfully
+    Success,
+    /// Operation failed
+    Failed,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the Status enum
+            let status_enum = symbols
+                .iter()
+                .find(|s| s.name == "Status")
+                .expect("Should extract Status enum");
+
+            // Verify enum doc comment is captured
+            assert!(
+                status_enum.doc_comment.is_some(),
+                "Enum should have doc_comment extracted"
+            );
+            assert!(status_enum
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("status of an operation"));
+        }
+
+        #[test]
+        fn test_trait_with_doc_comment() {
+            let rust_code = r#"
+/// A trait for serializing objects
+/// Implementations should handle all types of serialization
+pub trait Serializer {
+    /// Serialize the object to a string
+    fn serialize(&self) -> String;
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the Serializer trait
+            let trait_symbol = symbols
+                .iter()
+                .find(|s| s.name == "Serializer")
+                .expect("Should extract Serializer trait");
+
+            // Verify trait doc comment is captured
+            assert!(
+                trait_symbol.doc_comment.is_some(),
+                "Trait should have doc_comment extracted"
+            );
+            let doc = trait_symbol.doc_comment.as_ref().unwrap();
+            // The trait has multi-line doc comments, check both lines are present
+            assert!(
+                doc.contains("A trait for") && doc.contains("Implementations should"),
+                "Trait doc should contain both lines, got: {}",
+                doc
+            );
+        }
+
+        #[test]
+        fn test_const_with_doc_comment() {
+            let rust_code = r#"
+/// The maximum number of concurrent connections
+pub const MAX_CONNECTIONS: usize = 1024;
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the MAX_CONNECTIONS const
+            let const_symbol = symbols
+                .iter()
+                .find(|s| s.name == "MAX_CONNECTIONS")
+                .expect("Should extract MAX_CONNECTIONS const");
+
+            // Verify const doc comment is captured
+            assert!(
+                const_symbol.doc_comment.is_some(),
+                "Const should have doc_comment extracted"
+            );
+            assert!(const_symbol
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("maximum number of concurrent connections"));
+        }
+
+        #[test]
+        fn test_symbol_without_doc_comment() {
+            let rust_code = r#"
+pub fn no_doc_function() {
+    println!("This function has no documentation");
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the no_doc_function
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "no_doc_function")
+                .expect("Should extract no_doc_function");
+
+            // Verify no doc comment is None
+            assert!(
+                func.doc_comment.is_none(),
+                "Function without doc comment should have None"
+            );
+        }
+
+        #[test]
+        fn test_associated_type_with_doc_comment() {
+            let rust_code = r#"
+pub trait Container {
+    /// The type of items stored in the container
+    type Item;
+
+    fn get(&self) -> Self::Item;
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the Item associated type
+            let item_type = symbols
+                .iter()
+                .find(|s| s.name == "Item")
+                .expect("Should extract Item associated type");
+
+            // Verify associated type doc comment is captured
+            assert!(
+                item_type.doc_comment.is_some(),
+                "Associated type should have doc_comment extracted"
+            );
+            assert!(item_type
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("type of items stored"));
+        }
+    }
 }

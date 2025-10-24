@@ -43,10 +43,10 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 
             matrix[i + 1][j + 1] = std::cmp::min(
                 std::cmp::min(
-                    matrix[i][j + 1] + 1,     // deletion
-                    matrix[i + 1][j] + 1,     // insertion
+                    matrix[i][j + 1] + 1, // deletion
+                    matrix[i + 1][j] + 1, // insertion
                 ),
-                matrix[i][j] + cost,          // substitution
+                matrix[i][j] + cost, // substitution
             );
         }
     }
@@ -67,10 +67,7 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// let (best, distance) = find_closest_match("aplication", &candidates).unwrap();
 /// assert_eq!(best, "application");
 /// ```
-pub fn find_closest_match<'a>(
-    query: &str,
-    candidates: &'a [&'a str],
-) -> Option<(&'a str, usize)> {
+pub fn find_closest_match<'a>(query: &str, candidates: &'a [&'a str]) -> Option<(&'a str, usize)> {
     if candidates.is_empty() {
         return None;
     }
@@ -123,11 +120,13 @@ mod tests {
         // Test: completely wrong workspace name - algorithm finds closest match
         // "coa-mcp-framework_c77f81e4" is closer to "coa-intranet_cdcd7a9d"
         // in terms of edit distance (both start with "coa-" and similar length)
-        let (best, _distance) = find_closest_match("coa-mcp-framework_c77f81e4", &candidates).unwrap();
+        let (best, _distance) =
+            find_closest_match("coa-mcp-framework_c77f81e4", &candidates).unwrap();
         assert_eq!(best, "coa-intranet_cdcd7a9d");
 
         // Test: wrong hash with correct prefix - should match exact prefix
-        let (best, distance) = find_closest_match("coa-codesearch-mcp_wronghash", &candidates).unwrap();
+        let (best, distance) =
+            find_closest_match("coa-codesearch-mcp_wronghash", &candidates).unwrap();
         assert_eq!(best, "coa-codesearch-mcp_9037416c");
         // This should have a reasonable distance since only the hash is wrong
         assert!(distance < "coa-codesearch-mcp_wronghash".len() / 2);

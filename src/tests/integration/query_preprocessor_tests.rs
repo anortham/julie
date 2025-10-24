@@ -12,9 +12,10 @@
 //
 // TDD Approach: All tests written FIRST, then implementation follows.
 
-use crate::tools::search::{detect_query_type, preprocess_query, validate_query,
-                           sanitize_query, sanitize_for_fts5, process_query,
-                           QueryType};
+use crate::tools::search::{
+    detect_query_type, preprocess_query, process_query, sanitize_for_fts5, sanitize_query,
+    validate_query, QueryType,
+};
 
 // ============================================================================
 // Query Type Detection Tests
@@ -484,7 +485,10 @@ mod integration_tests {
         let query = "string?";
         let result = preprocess_query(query);
 
-        assert!(result.is_ok(), "C# nullable query should preprocess successfully");
+        assert!(
+            result.is_ok(),
+            "C# nullable query should preprocess successfully"
+        );
         let preprocessed = result.unwrap();
 
         // Query type can be Standard or Pattern - doesn't matter for sanitization

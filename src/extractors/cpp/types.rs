@@ -54,6 +54,8 @@ pub(super) fn extract_class(
         }
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -63,7 +65,7 @@ pub(super) fn extract_class(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -108,6 +110,8 @@ pub(super) fn extract_struct(
         signature = format!("{} {}", alignas_text, signature);
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -117,7 +121,7 @@ pub(super) fn extract_struct(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -146,6 +150,8 @@ pub(super) fn extract_union(
         "union".to_string()
     };
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -155,7 +161,7 @@ pub(super) fn extract_union(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -193,6 +199,8 @@ pub(super) fn extract_enum(
         }
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -202,7 +210,7 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -255,6 +263,8 @@ pub(super) fn extract_enum_member(
         SymbolKind::EnumMember
     };
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -264,7 +274,7 @@ pub(super) fn extract_enum_member(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

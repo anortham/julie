@@ -60,7 +60,7 @@ impl SymbolDatabase {
         let current_journal: String = self
             .conn
             .query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
-        if current_journal.to_ascii_lowercase() != "wal" {
+        if !current_journal.eq_ignore_ascii_case("wal") {
             warn!(
                 "Journal mode '{}' detected before bulk file insert; forcing WAL",
                 current_journal

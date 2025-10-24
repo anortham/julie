@@ -66,6 +66,9 @@ pub(super) fn extract_variable_statement(
     metadata.insert("isExported".to_string(), Value::Bool(is_exported));
     metadata.insert("isOnReady".to_string(), Value::Bool(is_onready));
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -75,7 +78,7 @@ pub(super) fn extract_variable_statement(
             visibility: Some(visibility),
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -118,6 +121,9 @@ pub(super) fn extract_constant_statement(
     let mut metadata = HashMap::new();
     metadata.insert("dataType".to_string(), Value::String(data_type));
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -127,7 +133,7 @@ pub(super) fn extract_constant_statement(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

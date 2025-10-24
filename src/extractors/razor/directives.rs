@@ -41,6 +41,9 @@ impl super::RazorExtractor {
             _ => format!("@{}", directive_name),
         };
 
+        // Extract Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             symbol_name,
@@ -67,7 +70,7 @@ impl super::RazorExtractor {
                     }
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -181,6 +184,9 @@ impl super::RazorExtractor {
 
         let symbol_kind = self.get_directive_symbol_kind(&directive_type);
 
+        // Extract Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             directive_name,
@@ -207,7 +213,7 @@ impl super::RazorExtractor {
                     }
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -221,6 +227,9 @@ impl super::RazorExtractor {
         let identifier_node = self.find_child_by_type(node, "identifier")?;
         let section_name = self.base.get_node_text(&identifier_node);
         let signature = format!("@section {}", section_name);
+
+        // Extract Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
 
         Some(self.base.create_symbol(
             &node,
@@ -238,7 +247,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -258,6 +267,9 @@ impl super::RazorExtractor {
         };
 
         let signature = format!("@{{ {} }}", truncated_content);
+
+        // Extract Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
 
         Some(self.base.create_symbol(
             &node,
@@ -283,7 +295,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -313,6 +325,9 @@ impl super::RazorExtractor {
             .extract_variable_from_expression(&expression)
             .unwrap_or_else(|| "expression".to_string());
 
+        // Extract Razor doc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         Some(self.base.create_symbol(
             &node,
             variable_name,
@@ -333,7 +348,7 @@ impl super::RazorExtractor {
                     );
                     metadata
                 }),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

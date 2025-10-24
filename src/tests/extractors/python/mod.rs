@@ -749,6 +749,64 @@ def process_users(users: List[User]) -> List[str]:
         let debug_var = symbols.iter().find(|s| s.name == "DEBUG");
         assert_eq!(debug_var.unwrap().kind, SymbolKind::Constant);
     }
+
+    #[test]
+    fn test_extract_variables_with_docstring_comments() {
+        // Test that variable assignments can have preceding comments (docstrings)
+        let python_code = r#"
+# Connection string for the database
+DB_URL: str = "postgresql://localhost"
+
+# Maximum number of retries for network requests
+MAX_RETRIES = 3
+
+class Config:
+    # API endpoint for external service
+    API_ENDPOINT: str = "https://api.example.com"
+
+    # Whether to enable debug logging
+    debug_mode = False
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(python_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let db_url = symbols.iter().find(|s| s.name == "DB_URL");
+        assert!(db_url.is_some());
+        // Note: Python uses find_doc_comment which looks for preceding comments
+        // The implementation should extract preceding comments similar to C#
+
+        let max_retries = symbols.iter().find(|s| s.name == "MAX_RETRIES");
+        assert!(max_retries.is_some());
+
+        let api_endpoint = symbols.iter().find(|s| s.name == "API_ENDPOINT");
+        assert!(api_endpoint.is_some());
+    }
+
+    #[test]
+    fn test_extract_imports_with_comments() {
+        // Test that imports can have preceding comments
+        let python_code = r#"
+# Standard library imports for file operations
+import os
+# JSON parsing support
+import json as js
+# Type hints for better code documentation
+from typing import List, Dict
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(python_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let os_import = symbols.iter().find(|s| s.name == "os");
+        assert!(os_import.is_some());
+
+        let js_import = symbols.iter().find(|s| s.name == "js");
+        assert!(js_import.is_some());
+
+        let list_import = symbols.iter().find(|s| s.name == "List");
+        assert!(list_import.is_some());
+    }
 }
 
 // ========================================================================

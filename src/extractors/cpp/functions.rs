@@ -121,6 +121,8 @@ pub(super) fn extract_function(
     // Extract visibility based on access specifiers (private:/protected:/public:)
     let visibility = declarations::extract_cpp_visibility(base, node);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -130,7 +132,7 @@ pub(super) fn extract_function(
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -185,6 +187,8 @@ fn extract_method(
     // Extract visibility based on access specifiers (private:/protected:/public:)
     let visibility = declarations::extract_cpp_visibility(base, node);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name.to_string(),
@@ -194,7 +198,7 @@ fn extract_method(
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

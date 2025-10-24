@@ -56,7 +56,9 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
-        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -87,7 +89,9 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
-        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -123,7 +127,9 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
-        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -231,7 +237,9 @@ mod edit_lines_tests {
         use crate::tools::edit_lines::EditLinesTool;
 
         let handler = JulieServerHandler::new().await?;
-        handler.initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string())).await?;
+        handler
+            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .await?;
 
         let edit_tool = EditLinesTool {
             file_path: test_file.to_string_lossy().to_string(),
@@ -280,7 +288,10 @@ mod edit_lines_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should fail with security error
-        assert!(result.is_err(), "Absolute path outside workspace should be blocked");
+        assert!(
+            result.is_err(),
+            "Absolute path outside workspace should be blocked"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("Security") || error_msg.contains("traversal"),
@@ -318,7 +329,9 @@ mod edit_lines_tests {
         assert!(result.is_err(), "Relative path traversal should be blocked");
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
-            error_msg.contains("Security") || error_msg.contains("traversal") || error_msg.contains("does not exist"),
+            error_msg.contains("Security")
+                || error_msg.contains("traversal")
+                || error_msg.contains("does not exist"),
             "Error should indicate security block or non-existent path: {}",
             error_msg
         );
@@ -358,7 +371,10 @@ mod edit_lines_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should fail with security error
-        assert!(result.is_err(), "Symlink outside workspace should be blocked");
+        assert!(
+            result.is_err(),
+            "Symlink outside workspace should be blocked"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("Security") || error_msg.contains("traversal"),
@@ -396,11 +412,18 @@ mod edit_lines_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should succeed
-        assert!(result.is_ok(), "Valid relative path should work: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Valid relative path should work: {:?}",
+            result
+        );
 
         // Verify the file was actually modified
         let content = fs::read_to_string(&test_file)?;
-        assert!(content.contains("# comment"), "File should contain inserted comment");
+        assert!(
+            content.contains("# comment"),
+            "File should contain inserted comment"
+        );
 
         Ok(())
     }

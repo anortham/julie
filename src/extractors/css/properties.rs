@@ -36,6 +36,9 @@ impl PropertyExtractor {
         );
         metadata.insert("value".to_string(), serde_json::Value::String(value));
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             property_name,
@@ -45,7 +48,7 @@ impl PropertyExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }
@@ -70,6 +73,9 @@ impl PropertyExtractor {
             serde_json::Value::String(condition.clone()),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             condition,
@@ -79,7 +85,7 @@ impl PropertyExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

@@ -9,9 +9,10 @@
 
 // Public API re-exports
 pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
-pub use self::query_preprocessor::{detect_query_type, preprocess_query, validate_query,
-                                    sanitize_query, sanitize_for_fts5, process_query,
-                                    QueryType, PreprocessedQuery};
+pub use self::query_preprocessor::{
+    detect_query_type, preprocess_query, process_query, sanitize_for_fts5, sanitize_query,
+    validate_query, PreprocessedQuery, QueryType,
+};
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
@@ -122,7 +123,7 @@ pub struct FastSearchTool {
 }
 
 fn default_limit() -> u32 {
-    10  // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
+    10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
 fn default_search_method() -> String {
     "text".to_string()
@@ -148,7 +149,10 @@ impl FastSearchTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🔍 Fast search: {} (method: {})", self.query, self.search_method);
+        debug!(
+            "🔍 Fast search: {} (method: {})",
+            self.query, self.search_method
+        );
 
         // Determine target workspace for health check
         // If workspace parameter specified, check that workspace; otherwise check primary
@@ -357,16 +361,15 @@ impl FastSearchTool {
                         None => {
                             // Invalid workspace ID - provide fuzzy match suggestion
                             let all_workspaces = registry_service.get_all_workspaces().await?;
-                            let workspace_ids: Vec<&str> = all_workspaces
-                                .iter()
-                                .map(|w| w.id.as_str())
-                                .collect();
+                            let workspace_ids: Vec<&str> =
+                                all_workspaces.iter().map(|w| w.id.as_str()).collect();
 
                             if let Some((best_match, distance)) =
                                 crate::utils::string_similarity::find_closest_match(
                                     workspace_id,
-                                    &workspace_ids
-                                ) {
+                                    &workspace_ids,
+                                )
+                            {
                                 // Only suggest if the distance is reasonable (< 50% of query length)
                                 if distance < workspace_id.len() / 2 {
                                     return Err(anyhow::anyhow!(

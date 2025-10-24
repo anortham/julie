@@ -70,6 +70,7 @@ impl super::BashExtractor {
     }
 
     /// Build documentation for a variable (annotations about readonly, exported, etc.)
+    #[allow(dead_code)]
     pub(super) fn extract_variable_documentation(
         &self,
         _node: Node,
@@ -97,6 +98,7 @@ impl super::BashExtractor {
     }
 
     /// Build documentation for a command (identifies what external tool it is)
+    #[allow(dead_code)]
     pub(super) fn get_command_documentation(&self, command_name: &str) -> String {
         let command_docs = [
             ("python", "[Python Interpreter Call]"),

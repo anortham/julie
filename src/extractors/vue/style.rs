@@ -4,7 +4,7 @@
 
 use super::helpers::CSS_CLASS_RE;
 use super::parsing::VueSection;
-use super::script::create_symbol_manual;
+use super::script::{create_symbol_manual, find_doc_comment_before};
 use crate::extractors::base::BaseExtractor;
 use crate::extractors::base::SymbolKind;
 
@@ -20,6 +20,9 @@ pub(super) fn extract_style_symbols(
     for (i, line) in lines.iter().enumerate() {
         let actual_line = section.start_line + i;
 
+        // Extract doc comment for this line (look backward from current line)
+        let doc_comment = find_doc_comment_before(&lines, i);
+
         // Extract CSS class names - following Miller's pattern
         for captures in CSS_CLASS_RE.captures_iter(line) {
             if let Some(class_name) = captures.get(1) {
@@ -34,7 +37,7 @@ pub(super) fn extract_style_symbols(
                     actual_line,
                     start_col + name.len(),
                     Some(format!(".{}", name)),
-                    Some("CSS class".to_string()),
+                    doc_comment.clone(),
                     None,
                 ));
             }

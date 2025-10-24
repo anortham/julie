@@ -88,10 +88,14 @@ pub(super) fn extract_function_definition_statement(
         Visibility::Public
     };
 
+    // Extract LuaDoc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         parent_id: method_parent_id.or_else(|| parent_id.map(|s| s.to_string())),
         visibility: Some(visibility),
+        doc_comment,
         ..Default::default()
     };
 
@@ -112,11 +116,15 @@ pub(super) fn extract_local_function_definition_statement(
     let name = base.get_node_text(&name_node);
     let signature = base.get_node_text(&node);
 
+    // Extract LuaDoc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     // Local functions are always private (regardless of underscore prefix)
     let options = SymbolOptions {
         signature: Some(signature),
         parent_id: parent_id.map(|s| s.to_string()),
         visibility: Some(Visibility::Private),
+        doc_comment,
         ..Default::default()
     };
 

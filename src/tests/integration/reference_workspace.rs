@@ -59,9 +59,7 @@ mod reference_workspace_tests {
 
     /// Setup test workspaces using fixtures
     /// Returns (primary_workspace_id, reference_workspace_id)
-    async fn setup_test_workspaces(
-        handler: &JulieServerHandler,
-    ) -> Result<(String, String)> {
+    async fn setup_test_workspaces(handler: &JulieServerHandler) -> Result<(String, String)> {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
@@ -81,7 +79,9 @@ mod reference_workspace_tests {
         let primary_id = if let Ok(Some(workspace)) = handler.get_workspace().await {
             use crate::workspace::registry_service::WorkspaceRegistryService;
             let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-            registry_service.get_primary_workspace_id().await?
+            registry_service
+                .get_primary_workspace_id()
+                .await?
                 .ok_or_else(|| anyhow::anyhow!("Primary workspace not registered"))?
         } else {
             return Err(anyhow::anyhow!("Failed to get workspace from handler"));
@@ -93,7 +93,10 @@ mod reference_workspace_tests {
             let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
 
             // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service.get_workspace_by_path(&reference_path.to_string_lossy().to_string()).await? {
+            match registry_service
+                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
+                .await?
+            {
                 Some(ws) => {
                     println!("✅ Reference workspace already registered: {}", ws.id);
 
@@ -124,8 +127,9 @@ mod reference_workspace_tests {
                     let reference_result = add_reference.call_tool(handler).await?;
                     mark_index_ready(handler).await;
 
-                    extract_workspace_id(&reference_result)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to extract reference workspace ID"))?
+                    extract_workspace_id(&reference_result).ok_or_else(|| {
+                        anyhow::anyhow!("Failed to extract reference workspace ID")
+                    })?
                 }
             }
         } else {
@@ -328,12 +332,14 @@ mod reference_workspace_tests {
         mark_index_ready(&handler).await;
 
         // Try to extract workspace ID from the result, or look it up in the registry if that fails
-        let reference_id = extract_workspace_id(&reference_result).or_else(|| {
-            // If extraction failed, the workspace might already be registered
-            // Look it up by path in the registry
-            std::thread::sleep(std::time::Duration::from_millis(100)); // Give registry time to update
-            None
-        }).ok_or_else(|| anyhow::anyhow!("Failed to get reference workspace ID"))?;
+        let reference_id = extract_workspace_id(&reference_result)
+            .or_else(|| {
+                // If extraction failed, the workspace might already be registered
+                // Look it up by path in the registry
+                std::thread::sleep(std::time::Duration::from_millis(100)); // Give registry time to update
+                None
+            })
+            .ok_or_else(|| anyhow::anyhow!("Failed to get reference workspace ID"))?;
 
         // Search reference workspace for reference-specific symbol
         let search_reference = FastSearchTool {

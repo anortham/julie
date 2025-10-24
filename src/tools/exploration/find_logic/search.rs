@@ -282,7 +282,7 @@ impl FindLogicTool {
             let db_lock = db.lock().unwrap();
             let model_name = "bge-small";
             store_guard.search_similar_hnsw(
-                &*db_lock,
+                &db_lock,
                 &query_embedding,
                 search_limit,
                 similarity_threshold,

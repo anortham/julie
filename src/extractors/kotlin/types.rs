@@ -87,6 +87,9 @@ pub(super) fn extract_class(
 
     let visibility = helpers::determine_visibility(&final_modifiers);
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -102,7 +105,7 @@ pub(super) fn extract_class(
                     Value::String(final_modifiers.join(",")),
                 ),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -140,6 +143,9 @@ pub(super) fn extract_interface(
 
     let visibility = helpers::determine_visibility(&modifiers);
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -152,7 +158,7 @@ pub(super) fn extract_interface(
                 ("type".to_string(), Value::String("interface".to_string())),
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -185,6 +191,9 @@ pub(super) fn extract_object(
 
     let visibility = helpers::determine_visibility(&modifiers);
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -197,7 +206,7 @@ pub(super) fn extract_object(
                 ("type".to_string(), Value::String("object".to_string())),
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -222,6 +231,9 @@ pub(super) fn extract_companion_object(
         signature.push_str(&format!(" {}", custom_name));
     }
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -234,7 +246,7 @@ pub(super) fn extract_companion_object(
                 "type".to_string(),
                 Value::String("companion-object".to_string()),
             )])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -330,6 +342,9 @@ pub(super) fn extract_function(
         metadata.insert("returnType".to_string(), Value::String(return_type));
     }
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -339,7 +354,7 @@ pub(super) fn extract_function(
             visibility: Some(visibility),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -358,6 +373,9 @@ pub(super) fn extract_package(
         .map(|n| base.get_node_text(&n))
         .unwrap_or_else(|| "UnknownPackage".to_string());
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name.clone(),
@@ -370,7 +388,7 @@ pub(super) fn extract_package(
                 "type".to_string(),
                 Value::String("package".to_string()),
             )])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -389,6 +407,9 @@ pub(super) fn extract_import(
         .map(|n| base.get_node_text(&n))
         .unwrap_or_else(|| "UnknownImport".to_string());
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name.clone(),
@@ -401,7 +422,7 @@ pub(super) fn extract_import(
                 "type".to_string(),
                 Value::String("import".to_string()),
             )])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -453,6 +474,9 @@ pub(super) fn extract_type_alias(
 
     let visibility = helpers::determine_visibility(&modifiers);
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -466,7 +490,7 @@ pub(super) fn extract_type_alias(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
                 ("aliasedType".to_string(), Value::String(aliased_type)),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -496,6 +520,9 @@ pub(super) fn extract_enum_members(
                     signature.push_str(&args);
                 }
 
+                // Extract KDoc comment
+                let doc_comment = base.find_doc_comment(&child);
+
                 let symbol = base.create_symbol(
                     &child,
                     name,
@@ -508,7 +535,7 @@ pub(super) fn extract_enum_members(
                             "type".to_string(),
                             Value::String("enum-member".to_string()),
                         )])),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
                 symbols.push(symbol);

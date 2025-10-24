@@ -179,36 +179,21 @@ pub(super) fn extract_dot_sourcing(
 
 /// Extract module name from Import-Module command
 fn extract_import_module_name(node_text: &str) -> Option<String> {
-    if let Some(captures) =
-        Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
+    Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
             .unwrap()
-            .captures(node_text)
-    {
-        Some(
-            captures
+            .captures(node_text).map(|captures| captures
                 .get(1)
                 .or_else(|| captures.get(2))
-                .map_or("unknown".to_string(), |m| m.as_str().to_string()),
-        )
-    } else {
-        None
-    }
+                .map_or("unknown".to_string(), |m| m.as_str().to_string()))
 }
 
 /// Extract module/namespace name from using statement
 fn extract_using_name(node_text: &str) -> Option<String> {
-    if let Some(captures) = Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
+    Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
         .unwrap()
-        .captures(node_text)
-    {
-        Some(
-            captures
+        .captures(node_text).map(|captures| captures
                 .get(1)
-                .map_or("unknown".to_string(), |m| m.as_str().to_string()),
-        )
-    } else {
-        None
-    }
+                .map_or("unknown".to_string(), |m| m.as_str().to_string()))
 }
 
 /// Extract filename from dot source command

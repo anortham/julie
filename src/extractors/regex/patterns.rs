@@ -32,6 +32,8 @@ pub(super) fn extract_pattern(
         ),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         pattern_text,
@@ -41,7 +43,7 @@ pub(super) fn extract_pattern(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -64,6 +66,8 @@ pub(super) fn extract_character_class(
         ),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         class_text,
@@ -73,7 +77,7 @@ pub(super) fn extract_character_class(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -100,6 +104,8 @@ pub(super) fn extract_group(
         metadata.insert("named".to_string(), Value::String(name));
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         group_text,
@@ -109,7 +115,7 @@ pub(super) fn extract_group(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -130,6 +136,8 @@ pub(super) fn extract_quantifier(
         ("possessive", &quantifier_text.contains('+').to_string()),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         quantifier_text,
@@ -139,7 +147,7 @@ pub(super) fn extract_quantifier(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -160,6 +168,8 @@ pub(super) fn extract_anchor(
         ("position", &anchor_type),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         anchor_text,
@@ -169,7 +179,7 @@ pub(super) fn extract_anchor(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -199,6 +209,8 @@ pub(super) fn extract_lookaround(
         ),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         lookaround_text,
@@ -208,7 +220,7 @@ pub(super) fn extract_lookaround(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -231,6 +243,8 @@ pub(super) fn extract_alternation(
         ),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         alternation_text,
@@ -240,7 +254,7 @@ pub(super) fn extract_alternation(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -261,6 +275,8 @@ pub(super) fn extract_predefined_class(
         ("category", &category),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         class_text,
@@ -270,7 +286,7 @@ pub(super) fn extract_predefined_class(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -291,6 +307,8 @@ pub(super) fn extract_unicode_property(
         ("property", &property),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         property_text,
@@ -300,7 +318,7 @@ pub(super) fn extract_unicode_property(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -330,6 +348,8 @@ pub(super) fn extract_backreference(
         metadata.insert("groupName".to_string(), Value::String(name));
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         backref_text,
@@ -339,7 +359,7 @@ pub(super) fn extract_backreference(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -360,6 +380,8 @@ pub(super) fn extract_conditional(
         ("condition", &condition),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         conditional_text,
@@ -369,7 +391,7 @@ pub(super) fn extract_conditional(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -389,6 +411,8 @@ pub(super) fn extract_atomic_group(
         ("possessive", "true"),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         atomic_text,
@@ -398,7 +422,7 @@ pub(super) fn extract_atomic_group(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -421,6 +445,8 @@ pub(super) fn extract_comment(
 
     let metadata = create_metadata(&[("type", "comment"), ("content", &clean_comment)]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         comment_text.clone(),
@@ -430,7 +456,7 @@ pub(super) fn extract_comment(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -453,6 +479,8 @@ pub(super) fn extract_literal(
         ),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         literal_text,
@@ -462,7 +490,7 @@ pub(super) fn extract_literal(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -483,6 +511,8 @@ pub(super) fn extract_generic_pattern(
         ("nodeType", node.kind()),
     ]);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         pattern_text,
@@ -492,7 +522,7 @@ pub(super) fn extract_generic_pattern(
             visibility: Some(Visibility::Public),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

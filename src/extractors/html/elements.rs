@@ -60,6 +60,9 @@ impl ElementExtractor {
             );
         }
 
+        // Extract HTML comment
+        let doc_comment = base.find_doc_comment(&node);
+
         base.create_symbol(
             &node,
             tag_name,
@@ -69,7 +72,7 @@ impl ElementExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -92,6 +95,9 @@ impl ElementExtractor {
             serde_json::Value::String(doctype_text.clone()),
         );
 
+        // Extract HTML comment
+        let doc_comment = base.find_doc_comment(&node);
+
         base.create_symbol(
             &node,
             "DOCTYPE".to_string(),
@@ -101,7 +107,7 @@ impl ElementExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -134,6 +140,9 @@ impl ElementExtractor {
             serde_json::Value::String(clean_comment.clone()),
         );
 
+        // Extract HTML comment (comments typically don't have preceding comments themselves)
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             "comment".to_string(),
@@ -143,7 +152,7 @@ impl ElementExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

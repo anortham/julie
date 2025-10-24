@@ -115,6 +115,9 @@ pub(super) fn extract_lambda(extractor: &mut PythonExtractor, node: Node) -> Sym
     let start_pos = node.start_position();
     let name = format!("<lambda:{}>", start_pos.row);
 
+    // Extract doc comment (preceding comments)
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     extractor.base_mut().create_symbol(
         &node,
         name,
@@ -124,7 +127,7 @@ pub(super) fn extract_lambda(extractor: &mut PythonExtractor, node: Node) -> Sym
             visibility: Some(Visibility::Public),
             parent_id: None, // TODO: Handle parent_id if needed
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }

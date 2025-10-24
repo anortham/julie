@@ -42,7 +42,7 @@ pub(super) fn extract_table_definition(
         signature: Some(signature),
         visibility: Some(crate::extractors::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: None,
+        doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
     };
 
@@ -102,7 +102,7 @@ pub(super) fn extract_view(
                 signature: Some(format!("CREATE VIEW {}", name)),
                 visibility: Some(crate::extractors::base::Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: None,
+                doc_comment: base.find_doc_comment(&node),
                 metadata: Some(metadata),
             };
 
@@ -182,7 +182,7 @@ pub(super) fn extract_index(
         signature: Some(signature),
         visibility: Some(crate::extractors::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: None,
+        doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
     };
 
@@ -243,7 +243,7 @@ pub(super) fn extract_schema(
                 signature: Some(format!("CREATE SCHEMA {}", name)),
                 visibility: Some(crate::extractors::base::Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: None,
+                doc_comment: base.find_doc_comment(&node),
                 metadata: Some(metadata),
             };
 
@@ -302,7 +302,7 @@ pub(super) fn extract_domain(
         signature: Some(signature),
         visibility: Some(crate::extractors::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: None,
+        doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
     };
 
@@ -347,7 +347,7 @@ pub(super) fn extract_type(
             signature: Some(signature),
             visibility: Some(crate::extractors::base::Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: None,
+            doc_comment: base.find_doc_comment(&node),
             metadata: Some(metadata),
         };
 
@@ -364,7 +364,7 @@ pub(super) fn extract_type(
         signature: Some(signature),
         visibility: Some(crate::extractors::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: None,
+        doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
     };
 
@@ -484,7 +484,7 @@ pub(super) fn extract_sequence(
         signature: Some(signature),
         visibility: Some(crate::extractors::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: None,
+        doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
     };
 

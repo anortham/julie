@@ -81,6 +81,9 @@ impl SwiftExtractor {
             ),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -90,7 +93,7 @@ impl SwiftExtractor {
                 visibility: Some(self.determine_visibility(&modifiers)),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -133,6 +136,9 @@ impl SwiftExtractor {
             ),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -142,7 +148,7 @@ impl SwiftExtractor {
                 visibility: Some(self.determine_visibility(&modifiers)),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -180,6 +186,9 @@ impl SwiftExtractor {
             ),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -189,7 +198,7 @@ impl SwiftExtractor {
                 visibility: Some(self.determine_visibility(&modifiers)),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -232,6 +241,9 @@ impl SwiftExtractor {
             ),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -241,7 +253,7 @@ impl SwiftExtractor {
                 visibility: Some(self.determine_visibility(&modifiers)),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

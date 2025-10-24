@@ -26,6 +26,9 @@ pub(super) fn extract_constructor_definition(
 ) -> Option<Symbol> {
     let signature = base.get_node_text(&node);
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         "_init".to_string(),
@@ -35,7 +38,7 @@ pub(super) fn extract_constructor_definition(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -95,6 +98,9 @@ pub(super) fn extract_function_definition(
     // Determine symbol kind based on context and name
     let kind = determine_function_kind(base, &name, parent_id, symbols);
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -104,7 +110,7 @@ pub(super) fn extract_function_definition(
             visibility: Some(visibility),
             parent_id: parent_id.cloned(),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

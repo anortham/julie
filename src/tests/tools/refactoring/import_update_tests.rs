@@ -7,11 +7,7 @@ use anyhow::Result;
 
 /// Direct test of update_imports_in_file logic
 /// This bypasses the full rename flow and tests import regex patterns directly
-async fn test_import_update_logic(
-    source: &str,
-    old_name: &str,
-    new_name: &str,
-) -> Result<String> {
+async fn test_import_update_logic(source: &str, old_name: &str, new_name: &str) -> Result<String> {
     use regex::Regex;
 
     let mut modified_content = source.to_string();
@@ -19,9 +15,15 @@ async fn test_import_update_logic(
     // This is the EXACT logic from update_imports_in_file (lines 298-329 in rename.rs)
     let patterns = vec![
         // JavaScript/TypeScript: import { getUserData } from 'module'
-        Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*\}}", regex::escape(old_name)))?,
+        Regex::new(&format!(
+            r"\bimport\s+\{{\s*{}\s*\}}",
+            regex::escape(old_name)
+        ))?,
         // JavaScript/TypeScript: import { getUserData, other } (leading position)
-        Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*,", regex::escape(old_name)))?,
+        Regex::new(&format!(
+            r"\bimport\s+\{{\s*{}\s*,",
+            regex::escape(old_name)
+        ))?,
         // JavaScript/TypeScript: import { other, getUserData } (trailing position)
         Regex::new(&format!(r",\s*{}\s*\}}", regex::escape(old_name)))?,
         // Python: from module import getUserData (word boundary)

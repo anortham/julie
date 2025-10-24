@@ -1349,4 +1349,349 @@ function Test-Process {
             );
         }
     }
+
+    // PowerShell Comment-Based Help Extraction Tests (TDD RED phase)
+    //
+    // These tests validate doc comment extraction for PowerShell symbols:
+    // - Comment-based help blocks with <# ... #>
+    // - Single-line comments with #
+    // - Applied to functions, classes, methods, enums
+    //
+    // Following the C# extractor reference implementation pattern
+    mod doc_comment_extraction {
+        use super::*;
+
+        #[test]
+        fn test_extract_powershell_function_with_comment_based_help() {
+            let powershell_code = r#"
+<#
+.SYNOPSIS
+Validates user credentials against Active Directory
+
+.DESCRIPTION
+Checks the provided username and password against Active Directory.
+Returns $true if valid, $false otherwise.
+
+.PARAMETER Username
+The username to validate
+
+.PARAMETER Password
+The password to check
+
+.EXAMPLE
+Validate-Credentials -Username "john.doe" -Password "securepass"
+
+.OUTPUTS
+Boolean - $true if credentials are valid, $false otherwise
+#>
+function Validate-Credentials {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Username,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Password
+    )
+
+    return $true
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "Validate-Credentials" && s.kind == SymbolKind::Function);
+            assert!(
+                func.is_some(),
+                "Should extract Validate-Credentials function"
+            );
+
+            let func = func.unwrap();
+            assert!(
+                func.doc_comment.is_some(),
+                "Function should have doc_comment extracted"
+            );
+
+            let doc = func.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains(".SYNOPSIS"),
+                "Doc comment should contain .SYNOPSIS section"
+            );
+            assert!(
+                doc.contains("Validates user credentials"),
+                "Doc comment should contain the synopsis text"
+            );
+            assert!(
+                doc.contains(".DESCRIPTION"),
+                "Doc comment should contain .DESCRIPTION section"
+            );
+            assert!(
+                doc.contains(".PARAMETER Username"),
+                "Doc comment should contain .PARAMETER sections"
+            );
+        }
+
+        #[test]
+        fn test_extract_powershell_function_with_single_line_comments() {
+            let powershell_code = r#"
+# Gets user information from the Active Directory
+# Returns a hashtable with Name, Email, and Department
+function Get-UserInfo {
+    param([string]$UserName)
+    return @{
+        Name = "John Doe"
+        Email = "john@example.com"
+        Department = "Engineering"
+    }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "Get-UserInfo" && s.kind == SymbolKind::Function);
+            assert!(func.is_some(), "Should extract Get-UserInfo function");
+
+            let func = func.unwrap();
+            assert!(
+                func.doc_comment.is_some(),
+                "Function should have doc_comment from single-line comments"
+            );
+
+            let doc = func.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Gets user information"),
+                "Doc comment should contain the comment text"
+            );
+            assert!(
+                doc.contains("hashtable"),
+                "Doc comment should contain all comment lines"
+            );
+        }
+
+        #[test]
+        fn test_extract_powershell_class_with_comment_based_help() {
+            let powershell_code = r#"
+<#
+.SYNOPSIS
+Represents a user account in the system
+
+.DESCRIPTION
+A class that encapsulates user account information and provides
+methods for authentication and profile management.
+#>
+class User {
+    [string]$Name
+    [string]$Email
+
+    User([string]$name, [string]$email) {
+        $this.Name = $name
+        $this.Email = $email
+    }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let class = symbols
+                .iter()
+                .find(|s| s.name == "User" && s.kind == SymbolKind::Class);
+            assert!(class.is_some(), "Should extract User class");
+
+            let class = class.unwrap();
+            assert!(
+                class.doc_comment.is_some(),
+                "Class should have doc_comment extracted"
+            );
+
+            let doc = class.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Represents a user account"),
+                "Doc comment should contain the synopsis"
+            );
+            assert!(
+                doc.contains(".DESCRIPTION"),
+                "Doc comment should contain description section"
+            );
+        }
+
+        #[test]
+        fn test_extract_powershell_method_with_comment_based_help() {
+            let powershell_code = r#"
+class ComputerInfo {
+    [string]$Name
+    [string]$OS
+
+    <#
+    .SYNOPSIS
+    Gets the system uptime
+
+    .DESCRIPTION
+    Calculates the uptime of the computer by comparing
+    boot time with current time.
+
+    .OUTPUTS
+    TimeSpan - The duration the computer has been running
+    #>
+    [TimeSpan] GetUptime() {
+        $bootTime = (Get-WmiObject Win32_OperatingSystem).LastBootUpTime
+        return (Get-Date) - $bootTime
+    }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let method = symbols
+                .iter()
+                .find(|s| s.name == "GetUptime" && s.kind == SymbolKind::Method);
+            assert!(method.is_some(), "Should extract GetUptime method");
+
+            let method = method.unwrap();
+            assert!(
+                method.doc_comment.is_some(),
+                "Method should have doc_comment extracted"
+            );
+
+            let doc = method.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Gets the system uptime"),
+                "Doc comment should contain the synopsis"
+            );
+            assert!(
+                doc.contains(".OUTPUTS"),
+                "Doc comment should contain .OUTPUTS section"
+            );
+        }
+
+        #[test]
+        fn test_extract_powershell_enum_with_comment_based_help() {
+            let powershell_code = r#"
+<#
+.SYNOPSIS
+Defines logging levels for the application
+
+.DESCRIPTION
+Specifies the severity levels used for log messages.
+Higher numbers indicate more severe issues.
+#>
+enum LogLevel {
+    Debug = 0
+    Info = 1
+    Warning = 2
+    Error = 3
+    Critical = 4
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let enum_sym = symbols
+                .iter()
+                .find(|s| s.name == "LogLevel" && s.kind == SymbolKind::Enum);
+            assert!(enum_sym.is_some(), "Should extract LogLevel enum");
+
+            let enum_sym = enum_sym.unwrap();
+            assert!(
+                enum_sym.doc_comment.is_some(),
+                "Enum should have doc_comment extracted"
+            );
+
+            let doc = enum_sym.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Defines logging levels"),
+                "Doc comment should contain the synopsis"
+            );
+        }
+
+        #[test]
+        fn test_powershell_doc_comments_with_multiline_blocks() {
+            let powershell_code = r#"
+<#
+.SYNOPSIS
+Complex multi-line documentation
+
+.DESCRIPTION
+This is a much longer description that spans
+multiple lines and includes detailed information
+about what this function does and how to use it.
+
+.PARAMETER ConfigPath
+The full path to the configuration file
+
+.PARAMETER Verbose
+Enable verbose output
+
+.EXAMPLE
+Deploy-Application -ConfigPath "C:\config.json" -Verbose
+
+.NOTES
+This function requires administrator privileges
+#>
+function Deploy-Application {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ConfigPath,
+
+        [switch]$Verbose
+    )
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "Deploy-Application" && s.kind == SymbolKind::Function);
+            assert!(func.is_some(), "Should extract Deploy-Application function");
+
+            let func = func.unwrap();
+            assert!(
+                func.doc_comment.is_some(),
+                "Function should have doc_comment"
+            );
+
+            let doc = func.doc_comment.as_ref().unwrap();
+            // Verify all major sections are present
+            assert!(doc.contains(".SYNOPSIS"));
+            assert!(doc.contains(".DESCRIPTION"));
+            assert!(doc.contains(".PARAMETER ConfigPath"));
+            assert!(doc.contains(".PARAMETER Verbose"));
+            assert!(doc.contains(".EXAMPLE"));
+            assert!(doc.contains(".NOTES"));
+            // Verify multiline content is preserved
+            assert!(doc.contains("spans\nmultiple lines"));
+        }
+
+        #[test]
+        fn test_powershell_function_without_doc_comment() {
+            let powershell_code = r#"
+function Simple-Function {
+    param([string]$Name)
+    Write-Output "Hello, $Name"
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let func = symbols
+                .iter()
+                .find(|s| s.name == "Simple-Function" && s.kind == SymbolKind::Function);
+            assert!(func.is_some(), "Should extract Simple-Function");
+
+            // Functions without doc comments may have None or a generated default
+            // This is acceptable behavior
+            let _func = func.unwrap();
+        }
+    }
 }

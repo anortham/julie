@@ -19,9 +19,7 @@ use tracing::{debug, info};
 use tracing::warn;
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND,
-};
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
 
 /// ONNX Runtime embedding model with GPU acceleration
 pub struct OrtEmbeddingModel {
@@ -51,29 +49,38 @@ impl OrtEmbeddingModel {
         info!("🚀 Initializing OrtEmbeddingModel for {}", model_name);
 
         // 1. Load tokenizer
-        let mut tokenizer = Tokenizer::from_file(tokenizer_path.as_ref())
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer from {:?}: {}", tokenizer_path.as_ref(), e))?;
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path.as_ref()).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load tokenizer from {:?}: {}",
+                tokenizer_path.as_ref(),
+                e
+            )
+        })?;
 
         // 2. Configure padding to ensure all sequences have the same length
-        use tokenizers::{PaddingDirection, PaddingParams, PaddingStrategy, TruncationParams, TruncationStrategy};
+        use tokenizers::{
+            PaddingDirection, PaddingParams, PaddingStrategy, TruncationParams, TruncationStrategy,
+        };
 
         // Configure padding
         tokenizer.with_padding(Some(PaddingParams {
-            strategy: PaddingStrategy::BatchLongest,  // Pad to longest in batch
-            direction: PaddingDirection::Right,        // Pad on the right (standard)
-            pad_id: 0,                                 // PAD token ID
-            pad_type_id: 0,                           // Segment ID for padding tokens
-            pad_token: "[PAD]".to_string(),           // PAD token string
-            pad_to_multiple_of: None,                 // No special multiple padding needed
+            strategy: PaddingStrategy::BatchLongest, // Pad to longest in batch
+            direction: PaddingDirection::Right,      // Pad on the right (standard)
+            pad_id: 0,                               // PAD token ID
+            pad_type_id: 0,                          // Segment ID for padding tokens
+            pad_token: "[PAD]".to_string(),          // PAD token string
+            pad_to_multiple_of: None,                // No special multiple padding needed
         }));
 
         // Configure truncation to prevent sequences exceeding model's max length
-        tokenizer.with_truncation(Some(TruncationParams {
-            max_length: 512,                           // BERT max sequence length
-            strategy: TruncationStrategy::LongestFirst, // Truncate longest sequences first
-            stride: 0,                                 // No stride for embeddings
-            direction: tokenizers::TruncationDirection::Right, // Truncate from right (end)
-        })).map_err(|e| anyhow::anyhow!("Failed to configure tokenizer truncation: {}", e))?;
+        tokenizer
+            .with_truncation(Some(TruncationParams {
+                max_length: 512,                                   // BERT max sequence length
+                strategy: TruncationStrategy::LongestFirst, // Truncate longest sequences first
+                stride: 0,                                  // No stride for embeddings
+                direction: tokenizers::TruncationDirection::Right, // Truncate from right (end)
+            }))
+            .map_err(|e| anyhow::anyhow!("Failed to configure tokenizer truncation: {}", e))?;
 
         info!("✅ Tokenizer loaded successfully with padding and truncation configured");
 
@@ -123,7 +130,8 @@ impl OrtEmbeddingModel {
                                 match adapter.GetDesc1() {
                                     Ok(desc) => {
                                         let vram = desc.DedicatedVideoMemory;
-                                        let device_name = String::from_utf16_lossy(&desc.Description);
+                                        let device_name =
+                                            String::from_utf16_lossy(&desc.Description);
 
                                         info!(
                                             "   GPU {}: {} ({:.2} GB VRAM)",
@@ -167,7 +175,10 @@ impl OrtEmbeddingModel {
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to create DXGI factory: {}, using default adapter (ID 0)", e);
+                    warn!(
+                        "Failed to create DXGI factory: {}, using default adapter (ID 0)",
+                        e
+                    );
                     Ok(0)
                 }
             }
@@ -180,7 +191,10 @@ impl OrtEmbeddingModel {
     ///
     /// Set JULIE_FORCE_CPU=1 environment variable to skip GPU and use CPU only.
     #[allow(unused_variables)] // cache_dir used on Windows/Linux but not macOS
-    fn create_session_with_gpu(model_path: &Path, cache_dir: Option<impl AsRef<Path>>) -> Result<Session> {
+    fn create_session_with_gpu(
+        model_path: &Path,
+        cache_dir: Option<impl AsRef<Path>>,
+    ) -> Result<Session> {
         // Check if user wants to force CPU mode (optional override)
         let force_cpu = std::env::var("JULIE_FORCE_CPU")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -210,13 +224,18 @@ impl OrtEmbeddingModel {
                 // Select the most powerful GPU available
                 let device_id = Self::select_best_directml_device()?;
 
-                info!("🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...", device_id);
-                builder = builder.with_execution_providers([
-                    DirectMLExecutionProvider::default()
+                info!(
+                    "🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...",
+                    device_id
+                );
+                builder =
+                    builder.with_execution_providers([DirectMLExecutionProvider::default()
                         .with_device_id(device_id)
-                        .build()
-                ])?;
-                info!("✅ DirectML execution provider registered on device {}", device_id);
+                        .build()])?;
+                info!(
+                    "✅ DirectML execution provider registered on device {}",
+                    device_id
+                );
             }
         }
 
@@ -283,7 +302,10 @@ impl OrtEmbeddingModel {
         let batch_size = encodings.len();
         let seq_length = encodings[0].len(); // All sequences now same length due to padding
 
-        debug!("📦 Batch processing: {} texts, sequence length: {}", batch_size, seq_length);
+        debug!(
+            "📦 Batch processing: {} texts, sequence length: {}",
+            batch_size, seq_length
+        );
 
         // Convert to arrays for ONNX Runtime
         let mut input_ids_vec = Vec::with_capacity(batch_size * seq_length);
@@ -315,12 +337,12 @@ impl OrtEmbeddingModel {
         debug!("🚀 Running ONNX inference...");
 
         // Create tensors from arrays
-        let input_ids_tensor = Tensor::from_array(input_ids)
-            .context("Failed to create input_ids tensor")?;
-        let attention_mask_tensor = Tensor::from_array(attention_mask)
-            .context("Failed to create attention_mask tensor")?;
-        let token_type_ids_tensor = Tensor::from_array(token_type_ids)
-            .context("Failed to create token_type_ids tensor")?;
+        let input_ids_tensor =
+            Tensor::from_array(input_ids).context("Failed to create input_ids tensor")?;
+        let attention_mask_tensor =
+            Tensor::from_array(attention_mask).context("Failed to create attention_mask tensor")?;
+        let token_type_ids_tensor =
+            Tensor::from_array(token_type_ids).context("Failed to create token_type_ids tensor")?;
 
         let outputs = self
             .session
@@ -331,10 +353,7 @@ impl OrtEmbeddingModel {
             ])
             .map_err(|e| {
                 // Log detailed error information to help diagnose DirectML/GPU issues
-                tracing::error!(
-                    "🚨 ONNX inference failed - Error: {:?}",
-                    e
-                );
+                tracing::error!("🚨 ONNX inference failed - Error: {:?}", e);
                 tracing::error!(
                     "   Batch size: {}, Sequence length: {}",
                     batch_size,
@@ -358,7 +377,8 @@ impl OrtEmbeddingModel {
                 .index_axis(Axis(0), i)
                 .index_axis(Axis(0), 0)
                 .to_owned()
-                .into_raw_vec_and_offset().0;
+                .into_raw_vec_and_offset()
+                .0;
 
             // L2 normalize the embedding (required for BGE models)
             let magnitude: f32 = cls_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -436,7 +456,12 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_model_initialization() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>);
+            let model = OrtEmbeddingModel::new(
+                model_path,
+                tokenizer_path,
+                "bge-small-test",
+                None::<PathBuf>,
+            );
             assert!(model.is_ok(), "Model initialization should succeed");
 
             let model = model.unwrap();
@@ -451,8 +476,13 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_single_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>)
-                .expect("Model initialization failed");
+            let mut model = OrtEmbeddingModel::new(
+                model_path,
+                tokenizer_path,
+                "bge-small-test",
+                None::<PathBuf>,
+            )
+            .expect("Model initialization failed");
 
             let embedding = model.encode_single("Hello, world!".to_string());
             assert!(embedding.is_ok(), "Embedding generation should succeed");
@@ -472,8 +502,13 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_batch_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(model_path, tokenizer_path, "bge-small-test", None::<PathBuf>)
-                .expect("Model initialization failed");
+            let mut model = OrtEmbeddingModel::new(
+                model_path,
+                tokenizer_path,
+                "bge-small-test",
+                None::<PathBuf>,
+            )
+            .expect("Model initialization failed");
 
             let texts = vec![
                 "function getUserData()".to_string(),
@@ -488,9 +523,18 @@ mod tests {
             assert_eq!(embeddings.len(), 3, "Should have 3 embeddings");
 
             for (i, embedding) in embeddings.iter().enumerate() {
-                assert_eq!(embedding.len(), 384, "Embedding {} should have 384 dimensions", i);
+                assert_eq!(
+                    embedding.len(),
+                    384,
+                    "Embedding {} should have 384 dimensions",
+                    i
+                );
                 let sum: f32 = embedding.iter().sum();
-                assert!(sum.abs() > 0.01, "Embedding {} should have non-zero values", i);
+                assert!(
+                    sum.abs() > 0.01,
+                    "Embedding {} should have non-zero values",
+                    i
+                );
             }
         } else {
             println!("Skipping test - model not downloaded");

@@ -5,6 +5,7 @@
 use tree_sitter::Node;
 
 /// Find a child node by its type/kind
+#[allow(clippy::manual_find)]
 pub(super) fn find_child_by_type<'a>(node: &Node<'a>, node_type: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -20,7 +21,7 @@ pub(super) fn find_child_by_type<'a>(node: &Node<'a>, node_type: &str) -> Option
 use std::cell::RefCell;
 
 thread_local! {
-    static DART_CONTENT_CACHE: RefCell<Vec<u8>> = RefCell::new(Vec::new());
+    static DART_CONTENT_CACHE: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(super) fn set_dart_content_cache(content: &str) {

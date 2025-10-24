@@ -72,7 +72,10 @@ impl ManageWorkspaceTool {
                             {
                                 Ok(Ok(size)) => size,
                                 Ok(Err(e)) => {
-                                    warn!("Failed to calculate index directory size for {}: {}", entry.id, e);
+                                    warn!(
+                                        "Failed to calculate index directory size for {}: {}",
+                                        entry.id, e
+                                    );
                                     0
                                 }
                                 Err(e) => {
@@ -413,8 +416,7 @@ impl ManageWorkspaceTool {
                 let mut message_parts = Vec::new();
 
                 if ttl_count > 0 {
-                    message_parts
-                        .push(format!("TTL Cleanup: {} expired workspaces", ttl_count));
+                    message_parts.push(format!("TTL Cleanup: {} expired workspaces", ttl_count));
                 }
 
                 if size_count > 0 {
@@ -497,7 +499,7 @@ impl ManageWorkspaceTool {
                 );
 
                 match self
-                    .index_workspace_files(handler, &workspace_path, false)  // Incremental update, not force reindex
+                    .index_workspace_files(handler, &workspace_path, false) // Incremental update, not force reindex
                     .await
                 {
                     Ok((symbol_count, file_count, relationship_count)) => {
@@ -516,7 +518,10 @@ impl ManageWorkspaceTool {
                                 {
                                     Ok(Ok(size)) => size,
                                     Ok(Err(e)) => {
-                                        warn!("Failed to calculate index directory size for {}: {}", workspace_id, e);
+                                        warn!(
+                                            "Failed to calculate index directory size for {}: {}",
+                                            workspace_id, e
+                                        );
                                         0
                                     }
                                     Err(e) => {
@@ -892,7 +897,10 @@ impl ManageWorkspaceTool {
                                 0.0
                             }
                             Err(e) => {
-                                warn!("spawn_blocking task failed for embedding size calculation: {}", e);
+                                warn!(
+                                    "spawn_blocking task failed for embedding size calculation: {}",
+                                    e
+                                );
                                 0.0
                             }
                         };

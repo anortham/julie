@@ -22,6 +22,9 @@ pub(super) fn extract_namespace(
         serde_json::Value::String("namespace".to_string()),
     );
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name.clone(),
@@ -31,7 +34,7 @@ pub(super) fn extract_namespace(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -84,6 +87,9 @@ pub(super) fn extract_use(
         metadata.insert("alias".to_string(), serde_json::Value::String(alias_text));
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name,
@@ -93,7 +99,7 @@ pub(super) fn extract_use(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -137,6 +143,9 @@ pub(super) fn extract_variable_assignment(
     );
     metadata.insert("value".to_string(), serde_json::Value::String(value_text));
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     Some(extractor.get_base_mut().create_symbol(
         &node,
         var_name,
@@ -146,7 +155,7 @@ pub(super) fn extract_variable_assignment(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

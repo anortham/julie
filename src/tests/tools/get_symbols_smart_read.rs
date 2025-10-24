@@ -86,7 +86,9 @@ async fn test_default_behavior_strips_context() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -132,7 +134,9 @@ async fn test_structure_mode_strips_context() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -177,7 +181,9 @@ async fn test_mode_structure_always_strips() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -222,7 +228,9 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -283,7 +291,9 @@ async fn test_mode_full_all_symbols() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -334,7 +344,9 @@ async fn test_target_with_minimal_mode() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -367,7 +379,10 @@ async fn test_target_with_minimal_mode() -> Result<()> {
             .unwrap_or(false)
     });
 
-    assert!(has_user_struct, "Should find User struct when filtering by target");
+    assert!(
+        has_user_struct,
+        "Should find User struct when filtering by target"
+    );
 
     // Top-level User should have code_context
     for symbol in &symbols {
@@ -446,7 +461,9 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace(Some(workspace_path.clone())).await?;
+    handler
+        .initialize_workspace(Some(workspace_path.clone()))
+        .await?;
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
@@ -474,6 +491,9 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
     let symbols = extract_symbols_from_result(&result);
 
     // Should succeed and have symbols
-    assert!(!symbols.is_empty(), "Should successfully extract symbols even with UTF-8 handling");
+    assert!(
+        !symbols.is_empty(),
+        "Should successfully extract symbols even with UTF-8 handling"
+    );
     Ok(())
 }

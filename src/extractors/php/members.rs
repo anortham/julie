@@ -60,6 +60,9 @@ pub(super) fn extract_property(
         );
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     Some(
         extractor.get_base_mut().create_symbol(
             &node,
@@ -75,7 +78,7 @@ pub(super) fn extract_property(
                         .map(|(k, v)| (k, serde_json::Value::String(v)))
                         .collect(),
                 ),
-                doc_comment: None,
+                doc_comment,
             },
         ),
     )
@@ -139,6 +142,9 @@ pub(super) fn extract_constant(
         metadata.insert("value".to_string(), val);
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     Some(
         extractor.get_base_mut().create_symbol(
             &node,
@@ -154,7 +160,7 @@ pub(super) fn extract_constant(
                         .map(|(k, v)| (k, serde_json::Value::String(v)))
                         .collect(),
                 ),
-                doc_comment: None,
+                doc_comment,
             },
         ),
     )

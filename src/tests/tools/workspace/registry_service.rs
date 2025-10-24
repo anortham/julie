@@ -169,10 +169,7 @@ async fn test_unregister_workspace() {
     assert_eq!(service.get_all_workspaces().await.unwrap().len(), 2);
 
     // Unregister reference workspace
-    let removed = service
-        .unregister_workspace(&reference.id)
-        .await
-        .unwrap();
+    let removed = service.unregister_workspace(&reference.id).await.unwrap();
     assert!(removed, "Should successfully unregister workspace");
 
     // Verify only primary remains
@@ -181,11 +178,11 @@ async fn test_unregister_workspace() {
     assert_eq!(remaining[0].id, primary.id);
 
     // Unregistering again should return false
-    let removed_again = service
-        .unregister_workspace(&reference.id)
-        .await
-        .unwrap();
-    assert!(!removed_again, "Should return false for non-existent workspace");
+    let removed_again = service.unregister_workspace(&reference.id).await.unwrap();
+    assert!(
+        !removed_again,
+        "Should return false for non-existent workspace"
+    );
 }
 
 #[tokio::test]
@@ -203,10 +200,7 @@ async fn test_get_workspace_by_id() {
         .unwrap();
 
     // Get by ID - should succeed
-    let found = service
-        .get_workspace(&registered.id)
-        .await
-        .unwrap();
+    let found = service.get_workspace(&registered.id).await.unwrap();
     assert!(found.is_some());
     assert_eq!(found.unwrap().id, registered.id);
 
@@ -228,7 +222,10 @@ async fn test_get_workspace_by_path() {
         .unwrap();
 
     // Get by path - should succeed
-    let found = service.get_workspace_by_path(&workspace_path).await.unwrap();
+    let found = service
+        .get_workspace_by_path(&workspace_path)
+        .await
+        .unwrap();
     assert!(found.is_some());
     assert_eq!(found.unwrap().original_path, workspace_path);
 
@@ -299,11 +296,7 @@ async fn test_update_workspace_statistics() {
         .unwrap();
 
     // Verify statistics were updated
-    let updated = service
-        .get_workspace(&workspace.id)
-        .await
-        .unwrap()
-        .unwrap();
+    let updated = service.get_workspace(&workspace.id).await.unwrap().unwrap();
     assert_eq!(updated.symbol_count, 100);
     assert_eq!(updated.file_count, 50);
     assert_eq!(updated.index_size_bytes, 1024 * 1024);
@@ -329,17 +322,10 @@ async fn test_update_last_accessed() {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // Update last accessed
-    service
-        .update_last_accessed(&workspace.id)
-        .await
-        .unwrap();
+    service.update_last_accessed(&workspace.id).await.unwrap();
 
     // Verify timestamp was updated
-    let updated = service
-        .get_workspace(&workspace.id)
-        .await
-        .unwrap()
-        .unwrap();
+    let updated = service.get_workspace(&workspace.id).await.unwrap().unwrap();
     assert!(
         updated.last_accessed > original_accessed,
         "Last accessed should be updated: {} > {}",
@@ -365,11 +351,7 @@ async fn test_update_embedding_status() {
         .unwrap();
 
     // Initially should be NotStarted or Generating
-    let initial = service
-        .get_workspace(&workspace.id)
-        .await
-        .unwrap()
-        .unwrap();
+    let initial = service.get_workspace(&workspace.id).await.unwrap().unwrap();
     assert!(
         initial.embedding_status == EmbeddingStatus::NotStarted
             || initial.embedding_status == EmbeddingStatus::Generating
@@ -382,11 +364,7 @@ async fn test_update_embedding_status() {
         .unwrap();
 
     // Verify status was updated
-    let updated = service
-        .get_workspace(&workspace.id)
-        .await
-        .unwrap()
-        .unwrap();
+    let updated = service.get_workspace(&workspace.id).await.unwrap().unwrap();
     assert_eq!(updated.embedding_status, EmbeddingStatus::Ready);
 }
 

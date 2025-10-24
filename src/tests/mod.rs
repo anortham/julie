@@ -19,7 +19,7 @@ pub mod cli {
     pub mod parallel; // CLI parallel execution tests
     pub mod progress;
     pub mod semantic; // CLI integration tests for julie-semantic (embed with HNSW)
-    // CLI progress indicator tests
+                      // CLI progress indicator tests
 }
 
 // ============================================================================
@@ -41,9 +41,9 @@ pub mod tools {
     pub mod ast_symbol_finder; // AST symbol finder tests
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_reference_workspace; // GetSymbolsTool reference workspace bug test
+    pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
-    pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
     pub mod smart_read; // Smart Read token optimization tests
     pub mod syntax_validation; // Syntax validation tests
 
@@ -99,8 +99,8 @@ pub mod integration {
     pub mod stale_index_detection; // Stale index detection tests
     pub mod watcher; // File watcher tests
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
-                     // pub mod tracing;                 // Tracing integration tests - DISABLED
-                     // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
+                                       // pub mod tracing;                 // Tracing integration tests - DISABLED
+                                       // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }
 
 #[cfg(test)]

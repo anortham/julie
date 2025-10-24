@@ -50,7 +50,6 @@ fn test_semantic_limit_parameter() {
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
     };
-
 }
 
 #[test]
@@ -64,7 +63,6 @@ fn test_semantic_limit_default() {
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
     };
-
 }
 
 #[test]
@@ -78,7 +76,6 @@ fn test_cross_language_max_depth_parameter() {
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
     };
-
 }
 
 #[test]
@@ -92,7 +89,6 @@ fn test_cross_language_max_depth_default() {
         workspace: Some("primary".to_string()),
         output_format: "json".to_string(),
     };
-
 }
 
 #[test]

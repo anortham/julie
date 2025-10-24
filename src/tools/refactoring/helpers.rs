@@ -36,7 +36,7 @@ where
     for (idx, _) in text.match_indices(old) {
         let mut valid = true;
 
-        if let Some(prev_char) = text[..idx].chars().rev().next() {
+        if let Some(prev_char) = text[..idx].chars().next_back() {
             if is_identifier_char(prev_char) {
                 valid = false;
             }

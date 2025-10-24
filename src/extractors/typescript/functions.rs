@@ -52,6 +52,9 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         serde_json::json!(type_parameters),
     );
 
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     // CRITICAL FIX: Symbol must span entire function body for containment logic,
     // but ID should be generated from function name position (not body start).
     let mut symbol = extractor.base_mut().create_symbol(
@@ -63,7 +66,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
             visibility,
             parent_id: None,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     );
 
@@ -152,6 +155,9 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
     // Find parent class
     let parent_id = find_parent_class_id(extractor, &node);
 
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     // CRITICAL FIX: Keep full body span for containment
     let mut symbol = extractor.base_mut().create_symbol(
         &node,
@@ -162,7 +168,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
             visibility,
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     );
 
@@ -203,9 +209,18 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
         }
     }
 
-    extractor
-        .base_mut()
-        .create_symbol(&node, name, SymbolKind::Variable, SymbolOptions::default())
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
+    extractor.base_mut().create_symbol(
+        &node,
+        name,
+        SymbolKind::Variable,
+        SymbolOptions {
+            doc_comment,
+            ..Default::default()
+        },
+    )
 }
 
 /// Build a function signature string (e.g., "foo(x, y): string")

@@ -41,6 +41,9 @@ impl AtRuleExtractor {
             serde_json::Value::String(at_rule_type.to_string()),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             rule_name,
@@ -50,7 +53,7 @@ impl AtRuleExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

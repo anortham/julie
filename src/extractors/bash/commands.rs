@@ -54,7 +54,7 @@ impl super::BashExtractor {
                 signature: Some(self.extract_command_signature(node)),
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: Some(self.get_command_documentation(&command_name)),
+                doc_comment: self.base.find_doc_comment(&node),
                 ..Default::default()
             };
 
@@ -81,7 +81,7 @@ impl super::BashExtractor {
             signature: Some(self.extract_control_flow_signature(node)),
             visibility: Some(Visibility::Private),
             parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: Some(format!("[{} control flow]", control_type.to_uppercase())),
+            doc_comment: self.base.find_doc_comment(&node),
             ..Default::default()
         };
 

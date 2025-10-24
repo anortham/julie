@@ -223,7 +223,10 @@ impl JulieServerHandler {
         workspace_path: Option<String>,
         force: bool,
     ) -> Result<()> {
-        debug!("🔍 DEBUG: initialize_workspace_with_force called with workspace_path: {:?}, force: {}", workspace_path, force);
+        debug!(
+            "🔍 DEBUG: initialize_workspace_with_force called with workspace_path: {:?}, force: {}",
+            workspace_path, force
+        );
         let target_path = match workspace_path {
             Some(path) => {
                 let expanded_path = shellexpand::tilde(&path).to_string();
@@ -233,7 +236,10 @@ impl JulieServerHandler {
         };
 
         info!("Initializing workspace at: {}", target_path.display());
-        debug!("🔍 DEBUG: target_path resolved to: {}", target_path.display());
+        debug!(
+            "🔍 DEBUG: target_path resolved to: {}",
+            target_path.display()
+        );
 
         // Handle force reinitialization vs normal initialization
         let mut workspace = if force {

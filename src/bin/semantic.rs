@@ -234,8 +234,9 @@ async fn generate_embeddings(
     // 3. Process in batches and collect embeddings into HashMap (NEW ARCHITECTURE)
     let start_time = Instant::now();
     let mut total_embedded = 0;
-    let batch_count = (symbols.len() + batch_size - 1) / batch_size;
-    let mut all_embeddings: std::collections::HashMap<String, Vec<f32>> = std::collections::HashMap::new();
+    let batch_count = symbols.len().div_ceil(batch_size);
+    let mut all_embeddings: std::collections::HashMap<String, Vec<f32>> =
+        std::collections::HashMap::new();
 
     for (i, batch) in symbols.chunks(batch_size).enumerate() {
         let batch_start = Instant::now();

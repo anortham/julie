@@ -14,9 +14,9 @@ use self::model_manager::ModelManager;
 use self::ort_model::OrtEmbeddingModel;
 
 pub mod cross_language;
-pub mod vector_store;
-pub mod model_manager;  // Model downloading from HuggingFace
-pub mod ort_model;       // ONNX Runtime embeddings with GPU acceleration
+pub mod model_manager; // Model downloading from HuggingFace
+pub mod ort_model;
+pub mod vector_store; // ONNX Runtime embeddings with GPU acceleration
 
 /// Context information for generating richer embeddings
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ impl CodeContext {
 
 /// The embedding engine that powers semantic code understanding with GPU acceleration
 pub struct EmbeddingEngine {
-    model: OrtEmbeddingModel,  // GPU-accelerated ONNX Runtime model
+    model: OrtEmbeddingModel, // GPU-accelerated ONNX Runtime model
     model_name: String,
     dimensions: usize,
     /// Required database connection for persistence (no in-memory fallback)
@@ -83,14 +83,15 @@ impl EmbeddingEngine {
             model_paths.model,
             model_paths.tokenizer,
             model_name,
-            Some(model_manager.cache_dir()),  // Pass cache dir for CoreML caching
+            Some(model_manager.cache_dir()), // Pass cache dir for CoreML caching
         )?;
 
         let dimensions = model.dimensions();
 
         tracing::info!(
             "🧠 EmbeddingEngine initialized with model {} (GPU-accelerated, {} dimensions)",
-            model_name, dimensions
+            model_name,
+            dimensions
         );
 
         Ok(Self {
@@ -121,7 +122,9 @@ impl EmbeddingEngine {
 
         // Recreate the model manager and get model paths
         let model_manager = ModelManager::new(self.cache_dir.clone())?;
-        let model_paths = model_manager.ensure_model_downloaded(&self.model_name).await?;
+        let model_paths = model_manager
+            .ensure_model_downloaded(&self.model_name)
+            .await?;
 
         // Recreate the ONNX model in CPU-only mode
         let new_model = OrtEmbeddingModel::new(
@@ -129,7 +132,8 @@ impl EmbeddingEngine {
             model_paths.tokenizer,
             &self.model_name,
             Some(model_manager.cache_dir()),
-        ).context("Failed to reinitialize embedding model in CPU mode")?;
+        )
+        .context("Failed to reinitialize embedding model in CPU mode")?;
 
         // Replace the crashed GPU model with CPU model
         self.model = new_model;
@@ -208,23 +212,33 @@ impl EmbeddingEngine {
 
                     // Attempt to reinitialize with CPU fallback
                     match tokio::task::block_in_place(|| {
-                        tokio::runtime::Handle::current().block_on(self.reinitialize_with_cpu_fallback())
+                        tokio::runtime::Handle::current()
+                            .block_on(self.reinitialize_with_cpu_fallback())
                     }) {
                         Ok(_) => {
-                            tracing::info!("✅ Successfully reinitialized with CPU - retrying batch");
+                            tracing::info!(
+                                "✅ Successfully reinitialized with CPU - retrying batch"
+                            );
                             // Retry the batch with CPU mode now active
                             match self.model.encode_batch(batch_texts) {
                                 Ok(batch_embeddings) => {
-                                    let results = symbol_ids.into_iter().zip(batch_embeddings).collect();
+                                    let results =
+                                        symbol_ids.into_iter().zip(batch_embeddings).collect();
                                     return Ok(results);
                                 }
                                 Err(retry_err) => {
-                                    tracing::error!("CPU batch embedding also failed: {}", retry_err);
+                                    tracing::error!(
+                                        "CPU batch embedding also failed: {}",
+                                        retry_err
+                                    );
                                 }
                             }
                         }
                         Err(fallback_err) => {
-                            tracing::error!("Failed to reinitialize with CPU fallback: {}", fallback_err);
+                            tracing::error!(
+                                "Failed to reinitialize with CPU fallback: {}",
+                                fallback_err
+                            );
                         }
                     }
                 }
@@ -254,9 +268,12 @@ impl EmbeddingEngine {
                                 || error_msg.contains("GPU device instance has been suspended");
 
                             if is_gpu_crash && !self.cpu_fallback_triggered {
-                                tracing::error!("🚨 GPU crash on individual embedding - triggering fallback");
+                                tracing::error!(
+                                    "🚨 GPU crash on individual embedding - triggering fallback"
+                                );
                                 if let Err(fallback_err) = tokio::task::block_in_place(|| {
-                                    tokio::runtime::Handle::current().block_on(self.reinitialize_with_cpu_fallback())
+                                    tokio::runtime::Handle::current()
+                                        .block_on(self.reinitialize_with_cpu_fallback())
                                 }) {
                                     tracing::error!("CPU fallback failed: {}", fallback_err);
                                 }
@@ -277,7 +294,10 @@ impl EmbeddingEngine {
                                 embedding_text.len(),
                                 e
                             );
-                            tracing::debug!("Failed embedding text preview: {:?}",  &embedding_text.chars().take(200).collect::<String>());
+                            tracing::debug!(
+                                "Failed embedding text preview: {:?}",
+                                &embedding_text.chars().take(200).collect::<String>()
+                            );
                         }
                     }
                 }

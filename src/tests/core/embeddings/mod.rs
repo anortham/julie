@@ -26,7 +26,9 @@ async fn test_embedding_engine_creation() {
     let db = create_test_db();
 
     // Test creating with different models
-    let engine = EmbeddingEngine::new("bge-small", cache_dir, db).await.unwrap();
+    let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
     assert_eq!(engine.dimensions(), 384);
     assert_eq!(engine.model_name(), "bge-small");
 }
@@ -41,7 +43,9 @@ async fn test_symbol_embedding_generation() {
     let cache_dir = temp_dir.path().to_path_buf();
     let db = create_test_db();
 
-    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).await.unwrap();
+    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
 
     // Create a test symbol
     let symbol = Symbol {
@@ -87,7 +91,9 @@ async fn test_text_embedding_generation() {
     let cache_dir = temp_dir.path().to_path_buf();
     let db = create_test_db();
 
-    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).await.unwrap();
+    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
 
     let embedding1 = engine.embed_text("function getUserData").unwrap();
     let embedding2 = engine.embed_text("function getUserData").unwrap();
@@ -113,7 +119,9 @@ async fn test_cross_language_similarity() {
     let cache_dir = temp_dir.path().to_path_buf();
     let db = create_test_db();
 
-    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db).await.unwrap();
+    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
 
     // Test similar concepts in different languages
     let ts_embedding = engine
@@ -204,7 +212,9 @@ async fn test_build_embedding_text() {
     let cache_dir = temp_dir.path().to_path_buf();
     let db = create_test_db();
 
-    let engine = EmbeddingEngine::new("bge-small", cache_dir, db).await.unwrap();
+    let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
 
     let symbol = Symbol {
         id: "test".to_string(),

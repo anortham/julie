@@ -87,6 +87,9 @@ pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) ->
         serde_json::json!(!type_annotation.is_empty()),
     );
 
+    // Extract doc comment (preceding comments)
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     vec![extractor.base_mut().create_symbol(
         &node,
         name,
@@ -96,7 +99,7 @@ pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) ->
             visibility: Some(visibility),
             parent_id,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )]
 }
@@ -136,6 +139,9 @@ fn extract_multiple_assignment_targets(
             // Infer visibility from name
             let visibility = signatures::infer_visibility(&name);
 
+            // Extract doc comment (preceding comments)
+            let doc_comment = extractor.base().find_doc_comment(&child);
+
             // Create symbol for this variable
             let symbol = extractor.base_mut().create_symbol(
                 &child,
@@ -146,7 +152,7 @@ fn extract_multiple_assignment_targets(
                     visibility: Some(visibility),
                     parent_id: None,
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment,
                 },
             );
 

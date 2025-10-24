@@ -77,7 +77,7 @@ pub(super) fn extract_field(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -128,7 +128,7 @@ pub(super) fn extract_getter(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -162,7 +162,7 @@ pub(super) fn extract_setter(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 

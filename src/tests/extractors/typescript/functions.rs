@@ -49,3 +49,59 @@ fn test_extract_async_function() {
         Some(true)
     );
 }
+
+#[test]
+fn test_extract_function_with_jsdoc_comment() {
+    let code = "/**\n * Validates user input\n * @param email - The email to validate\n * @returns True if valid\n */\nfunction validateEmail(email: string): boolean { return true; }";
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    let func_symbol = symbols.iter().find(|s| s.name == "validateEmail").unwrap();
+    assert!(
+        func_symbol.doc_comment.is_some(),
+        "JSDoc comment should be extracted"
+    );
+    assert!(func_symbol
+        .doc_comment
+        .as_ref()
+        .unwrap()
+        .contains("Validates user input"));
+    assert!(func_symbol
+        .doc_comment
+        .as_ref()
+        .unwrap()
+        .contains("@param email"));
+}
+
+#[test]
+fn test_extract_function_without_jsdoc_comment() {
+    let code = "function add(x: number, y: number): number { return x + y; }";
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    let func_symbol = symbols.iter().find(|s| s.name == "add").unwrap();
+    assert!(
+        func_symbol.doc_comment.is_none(),
+        "Function without JSDoc should have None"
+    );
+}

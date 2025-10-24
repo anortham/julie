@@ -110,6 +110,9 @@ pub(super) fn extract_property(
         metadata.insert("propertyType".to_string(), Value::String(property_type));
     }
 
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
     base.create_symbol(
         node,
         name,
@@ -119,7 +122,7 @@ pub(super) fn extract_property(
             visibility: Some(visibility),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -240,6 +243,9 @@ pub(super) fn extract_constructor_parameters(
                     Visibility::Public
                 };
 
+                // Extract KDoc comment
+                let doc_comment = base.find_doc_comment(&child);
+
                 let property_symbol = base.create_symbol(
                     &child,
                     name,
@@ -257,7 +263,7 @@ pub(super) fn extract_constructor_parameters(
                                 Value::String((!default_val.is_empty()).to_string()),
                             ),
                         ])),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
 

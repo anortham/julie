@@ -54,6 +54,9 @@ pub(super) fn extract_class_name_statement(
         );
     }
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -67,7 +70,7 @@ pub(super) fn extract_class_name_statement(
             } else {
                 Some(metadata)
             },
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -109,6 +112,13 @@ pub(super) fn extract_class_definition(
     let name = base.get_node_text(&name_node);
     let signature = format!("class {}:", name);
 
+    // Extract doc comment - try from the class node first, then from parent
+    let mut doc_comment = base.find_doc_comment(&node);
+    if doc_comment.is_none() && parent_node.kind() != "source" {
+        // If not found on the class keyword, try the parent node (which contains the class block)
+        doc_comment = base.find_doc_comment(&parent_node);
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -118,7 +128,7 @@ pub(super) fn extract_class_definition(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

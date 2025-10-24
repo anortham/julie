@@ -68,6 +68,9 @@ impl RuleExtractor {
             ),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             selector_text,
@@ -77,7 +80,7 @@ impl RuleExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

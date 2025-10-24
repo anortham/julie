@@ -8,8 +8,8 @@
 // a reference workspace.
 
 use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::{Symbol, SymbolKind};
 use crate::extractors::base::Visibility;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::tools::trace_call_path::TraceCallPathTool;
 use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
@@ -87,10 +87,10 @@ async fn test_naming_variants_respect_workspace_database() {
     let reference_db_path = temp_reference.path().join("reference.db");
 
     let primary_db = Arc::new(Mutex::new(
-        SymbolDatabase::new(&primary_db_path).expect("primary db")
+        SymbolDatabase::new(&primary_db_path).expect("primary db"),
     ));
     let reference_db = Arc::new(Mutex::new(
-        SymbolDatabase::new(&reference_db_path).expect("reference db")
+        SymbolDatabase::new(&reference_db_path).expect("reference db"),
     ));
 
     // Primary workspace has: process_payment (Python) and ProcessPayment (C#)
@@ -98,14 +98,14 @@ async fn test_naming_variants_respect_workspace_database() {
         "primary_1",
         "process_payment",
         "python",
-        "/primary/workspace/payment.py"
+        "/primary/workspace/payment.py",
     );
 
     let primary_variant = make_symbol(
         "primary_2",
         "ProcessPayment",
         "csharp",
-        "/primary/workspace/Payment.cs"
+        "/primary/workspace/Payment.cs",
     );
 
     // Reference workspace has: process_payment (TypeScript) and ProcessPayment (Java)
@@ -113,14 +113,14 @@ async fn test_naming_variants_respect_workspace_database() {
         "ref_1",
         "process_payment",
         "typescript",
-        "/reference/workspace/payment.ts"
+        "/reference/workspace/payment.ts",
     );
 
     let reference_variant = make_symbol(
         "ref_2",
         "ProcessPayment",
         "java",
-        "/reference/workspace/Payment.java"
+        "/reference/workspace/Payment.java",
     );
 
     // Store symbols in respective databases
@@ -181,8 +181,12 @@ async fn test_naming_variants_respect_workspace_database() {
             content: Some("".to_string()),
         };
 
-        reference_guard.store_file_info(&file3).expect("store file3");
-        reference_guard.store_file_info(&file4).expect("store file4");
+        reference_guard
+            .store_file_info(&file3)
+            .expect("store file3");
+        reference_guard
+            .store_file_info(&file4)
+            .expect("store file4");
         reference_guard
             .store_symbols_transactional(&[reference_symbol.clone(), reference_variant.clone()])
             .expect("store reference symbols");
@@ -214,13 +218,20 @@ async fn test_naming_variants_respect_workspace_database() {
     }
 
     // Should find ProcessPayment (Java) from reference workspace
-    assert_eq!(callers.len(), 1, "Expected 1 cross-language caller in reference workspace");
+    assert_eq!(
+        callers.len(),
+        1,
+        "Expected 1 cross-language caller in reference workspace"
+    );
     assert_eq!(callers[0].name, "ProcessPayment");
     assert_eq!(callers[0].language, "java");
     assert!(callers[0].file_path.contains("/reference/"));
 
     // Verify it's NOT the C# variant from primary workspace
-    assert_ne!(callers[0].language, "csharp", "Should not find primary workspace symbols");
+    assert_ne!(
+        callers[0].language, "csharp",
+        "Should not find primary workspace symbols"
+    );
 }
 
 /// Documentation of the architectural bug

@@ -63,7 +63,8 @@ fn is_html_element(symbol: &Symbol) -> bool {
         return false;
     }
 
-    symbol.metadata
+    symbol
+        .metadata
         .as_ref()
         .and_then(|m| m.get("type"))
         .and_then(|v| v.as_str())
@@ -275,7 +276,7 @@ pub async fn semantic_search_impl(
                 limit,
                 workspace_ids,
                 "symbols", // Semantic fallback searches symbols
-                None, // context_lines: use default
+                None,      // context_lines: use default
                 handler,
             )
             .await;
@@ -299,7 +300,7 @@ pub async fn semantic_search_impl(
                     limit,
                     workspace_ids,
                     "symbols", // Semantic fallback searches symbols
-                None, // context_lines: use default
+                    None,      // context_lines: use default
                     handler,
                 )
                 .await;
@@ -355,7 +356,7 @@ pub async fn semantic_search_impl(
             limit,
             workspace_ids,
             "symbols", // Semantic fallback searches symbols
-                None, // context_lines: use default
+            None,      // context_lines: use default
             handler,
         )
         .await;
@@ -367,7 +368,7 @@ pub async fn semantic_search_impl(
         let db_lock = db.lock().unwrap();
         let model_name = "bge-small"; // Match the embedding model
         store_guard.search_similar_hnsw(
-            &*db_lock,
+            &db_lock,
             &query_embedding,
             search_limit,
             similarity_threshold,
@@ -387,7 +388,7 @@ pub async fn semantic_search_impl(
                 limit,
                 workspace_ids,
                 "symbols", // Semantic fallback searches symbols
-                None, // context_lines: use default
+                None,      // context_lines: use default
                 handler,
             )
             .await;
@@ -450,7 +451,10 @@ pub async fn semantic_search_impl(
     scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     // Extract symbols after re-ranking
-    let symbols: Vec<Symbol> = scored_symbols.into_iter().map(|(symbol, _)| symbol).collect();
+    let symbols: Vec<Symbol> = scored_symbols
+        .into_iter()
+        .map(|(symbol, _)| symbol)
+        .collect();
 
     // Apply filters (language, file_pattern)
     let filtered_symbols: Vec<Symbol> = symbols

@@ -53,6 +53,9 @@ impl super::JavaScriptExtractor {
             json!(node.kind() == "function_expression"),
         );
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -62,7 +65,7 @@ impl super::JavaScriptExtractor {
                 visibility: Some(self.extract_visibility(&node)),
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -108,6 +111,9 @@ impl super::JavaScriptExtractor {
             json!(self.extract_parameters(&node)),
         );
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -117,7 +123,7 @@ impl super::JavaScriptExtractor {
                 visibility: Some(self.extract_visibility(&node)),
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

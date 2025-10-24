@@ -35,12 +35,15 @@ impl SwiftExtractor {
             ("extendedType".to_string(), name.clone()),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         let options = self.create_symbol_options(
             Some(signature),
             Some(Visibility::Public),
             parent_id.map(|s| s.to_string()),
             metadata,
-            None,
+            doc_comment,
         );
 
         self.base
@@ -58,12 +61,15 @@ impl SwiftExtractor {
 
         let metadata = HashMap::from([("type".to_string(), "import".to_string())]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         let options = self.create_symbol_options(
             Some(format!("import {}", name)),
             Some(Visibility::Public),
             parent_id.map(|s| s.to_string()),
             metadata,
-            None,
+            doc_comment,
         );
 
         self.base
@@ -116,12 +122,15 @@ impl SwiftExtractor {
             ("modifiers".to_string(), modifiers.join(", ")),
         ]);
 
+        // Extract Swift documentation comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         let options = self.create_symbol_options(
             Some(signature),
             Some(self.determine_visibility(&modifiers)),
             parent_id.map(|s| s.to_string()),
             metadata,
-            None,
+            doc_comment,
         );
 
         self.base

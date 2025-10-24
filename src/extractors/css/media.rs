@@ -27,6 +27,9 @@ impl MediaExtractor {
             serde_json::Value::String(media_query.clone()),
         );
 
+        // Extract CSS comment
+        let doc_comment = base.find_doc_comment(&node);
+
         Some(base.create_symbol(
             &node,
             media_query,
@@ -36,7 +39,7 @@ impl MediaExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         ))
     }

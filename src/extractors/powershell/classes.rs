@@ -9,6 +9,7 @@ use super::helpers::{
     find_class_name_node, find_enum_member_name_node, find_enum_name_node, find_method_name_node,
     find_property_name_node, has_modifier,
 };
+use super::documentation;
 
 /// Extract class symbols
 pub(super) fn extract_class(
@@ -21,6 +22,9 @@ pub(super) fn extract_class(
 
     let signature = extract_class_signature(base, node);
 
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -30,7 +34,7 @@ pub(super) fn extract_class(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -43,7 +47,7 @@ pub(super) fn extract_method(
 ) -> Option<Symbol> {
     let name_node = find_method_name_node(node)?;
     let name = base.get_node_text(&name_node);
-    let is_static = has_modifier(base, node, "static");
+    let _is_static = has_modifier(base, node, "static");
     let is_hidden = has_modifier(base, node, "hidden");
 
     let signature = extract_method_signature(base, node);
@@ -52,11 +56,9 @@ pub(super) fn extract_method(
     } else {
         Visibility::Public
     };
-    let doc_comment = if is_static {
-        Some("Static method".to_string())
-    } else {
-        None
-    };
+
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
 
     Some(base.create_symbol(
         &node,
@@ -90,6 +92,9 @@ pub(super) fn extract_property(
         Visibility::Public
     };
 
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -99,7 +104,7 @@ pub(super) fn extract_property(
             visibility: Some(visibility),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -115,6 +120,9 @@ pub(super) fn extract_enum(
 
     let signature = format!("enum {}", name);
 
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -124,7 +132,7 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

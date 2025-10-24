@@ -98,7 +98,6 @@ impl FindLogicTool {
         next_actions: Vec<String>,
         markdown: String,
     ) -> Result<CallToolResult> {
-
         let result = FindLogicResult {
             tool: "find_logic".to_string(),
             domain: self.domain.clone(),
@@ -273,8 +272,9 @@ impl FindLogicTool {
             "🔬 Intelligence Layers: {}\n\n",
             search_insights.join(" | ")
         ));
-        message
-            .push_str(&self.format_optimized_results(&business_logic_symbols, &business_relationships));
+        message.push_str(
+            &self.format_optimized_results(&business_logic_symbols, &business_relationships),
+        );
 
         self.create_result(
             business_logic_symbols,
@@ -363,15 +363,22 @@ impl FindLogicTool {
 
             for layer_name in layer_names {
                 let layer_symbols = &layers[layer_name];
-                result.push_str(&format!("## {} ({} components)\n", layer_name, layer_symbols.len()));
+                result.push_str(&format!(
+                    "## {} ({} components)\n",
+                    layer_name,
+                    layer_symbols.len()
+                ));
 
                 // Sort symbols by confidence score (highest first)
                 let mut sorted_symbols = layer_symbols.clone();
                 sorted_symbols.sort_by(|a, b| {
-                    b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+                    b.confidence
+                        .partial_cmp(&a.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                for symbol in sorted_symbols.iter().take(10) { // Show top 10 per layer
+                for symbol in sorted_symbols.iter().take(10) {
+                    // Show top 10 per layer
                     result.push_str(&format!(
                         "- **{}** ({}) - {} - {}:{}\n",
                         symbol.name,
@@ -398,7 +405,9 @@ impl FindLogicTool {
             // Flat list sorted by relevance score
             let mut sorted_symbols = symbols.to_vec();
             sorted_symbols.sort_by(|a, b| {
-                b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             let mut result = format!(
@@ -407,7 +416,8 @@ impl FindLogicTool {
                 self.domain
             );
 
-            for symbol in sorted_symbols.iter().take(20) { // Show top 20 in flat view
+            for symbol in sorted_symbols.iter().take(20) {
+                // Show top 20 in flat view
                 result.push_str(&format!(
                     "- **{}** ({}) - {} - {}:{} (score: {:.2})\n",
                     symbol.name,

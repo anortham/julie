@@ -45,8 +45,7 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
-    /// Begin a database transaction
-
+    /// Get all relationships for a symbol
     pub fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "
@@ -69,7 +68,6 @@ impl SymbolDatabase {
     /// Get relationships TO a symbol (where symbol is the target/referenced)
     /// Uses indexed query on to_symbol_id for O(log n) performance
     /// Complements get_relationships_for_symbol() which finds relationships FROM a symbol
-
     pub fn get_relationships_to_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "
@@ -91,7 +89,6 @@ impl SymbolDatabase {
 
     /// Get relationships TO multiple symbols in a single batch query
     /// PERFORMANCE FIX: Replaces N+1 query pattern with single batch query using SQL IN clause
-
     pub fn get_relationships_to_symbols(&self, symbol_ids: &[String]) -> Result<Vec<Relationship>> {
         if symbol_ids.is_empty() {
             return Ok(Vec::new());

@@ -31,6 +31,8 @@ pub(super) fn extract_include(
         ),
     ]));
 
+    let doc_comment = extractor.base.find_doc_comment(&node);
+
     extractor.base.create_symbol(
         &node,
         include_path.clone(),
@@ -40,7 +42,7 @@ pub(super) fn extract_include(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -64,6 +66,8 @@ pub(super) fn extract_macro(
         ("definition".to_string(), signature.clone()),
     ]));
 
+    let doc_comment = extractor.base.find_doc_comment(&node);
+
     extractor.base.create_symbol(
         &node,
         macro_name.clone(),
@@ -73,7 +77,7 @@ pub(super) fn extract_macro(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -137,6 +141,8 @@ pub(super) fn extract_function_definition(
         "public"
     };
 
+    let doc_comment = extractor.base.find_doc_comment(&node);
+
     extractor.base.create_symbol(
         &node,
         function_name.clone(),
@@ -171,7 +177,7 @@ pub(super) fn extract_function_definition(
                     Value::String(helpers::is_static_function(&extractor.base, node).to_string()),
                 ),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -189,6 +195,8 @@ pub(super) fn extract_function_declaration(
     } else {
         "public"
     };
+
+    let doc_comment = extractor.base.find_doc_comment(&node);
 
     Some(
         extractor.base.create_symbol(
@@ -231,7 +239,7 @@ pub(super) fn extract_function_declaration(
                         ),
                     ),
                 ])),
-                doc_comment: None,
+                doc_comment,
             },
         ),
     )
@@ -298,7 +306,7 @@ pub(super) fn extract_variable_declaration(
                     ),
                 ),
             ])),
-            doc_comment: None,
+            doc_comment: extractor.base.find_doc_comment(&node),
         },
     ))
 }
@@ -311,6 +319,8 @@ pub(super) fn extract_struct(
 ) -> Symbol {
     let struct_name = helpers::extract_struct_name(&extractor.base, node);
     let signature = signatures::build_struct_signature(&extractor.base, node);
+
+    let doc_comment = extractor.base.find_doc_comment(&node);
 
     extractor.base.create_symbol(
         &node,
@@ -331,7 +341,7 @@ pub(super) fn extract_struct(
                     )),
                 ),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -344,6 +354,8 @@ pub(super) fn extract_enum(
 ) -> Symbol {
     let enum_name = helpers::extract_enum_name(&extractor.base, node);
     let signature = signatures::build_enum_signature(&extractor.base, node);
+
+    let doc_comment = extractor.base.find_doc_comment(&node);
 
     extractor.base.create_symbol(
         &node,
@@ -364,7 +376,7 @@ pub(super) fn extract_enum(
                     )),
                 ),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -394,6 +406,8 @@ pub(super) fn extract_enum_value_symbols(
                             signature = format!("{} = {}", signature, val);
                         }
 
+                        let doc_comment = extractor.base.find_doc_comment(&enum_child);
+
                         let enum_value_symbol = extractor.base.create_symbol(
                             &enum_child,
                             name.clone(),
@@ -414,7 +428,7 @@ pub(super) fn extract_enum_value_symbols(
                                         Value::String(parent_enum_id.to_string()),
                                     ),
                                 ])),
-                                doc_comment: None,
+                                doc_comment,
                             },
                         );
 
@@ -452,6 +466,8 @@ pub(super) fn extract_type_definition(
     };
     let is_struct = symbol_kind == SymbolKind::Class;
 
+    let doc_comment = extractor.base.find_doc_comment(&node);
+
     extractor.base.create_symbol(
         &node,
         typedef_name.clone(),
@@ -466,7 +482,7 @@ pub(super) fn extract_type_definition(
                 ("underlyingType".to_string(), Value::String(underlying_type)),
                 ("isStruct".to_string(), Value::String(is_struct.to_string())),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }
@@ -483,6 +499,7 @@ pub(super) fn extract_linkage_specification(
             let linkage_text = extractor.base.get_node_text(&child);
             if linkage_text.contains("\"C\"") {
                 let signature = format!("extern {}", linkage_text);
+                let doc_comment = extractor.base.find_doc_comment(&node);
                 return Some(extractor.base.create_symbol(
                     &node,
                     "extern_c_block".to_string(),
@@ -498,7 +515,7 @@ pub(super) fn extract_linkage_specification(
                             ),
                             ("linkage".to_string(), Value::String("C".to_string())),
                         ])),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 ));
             }
@@ -522,6 +539,7 @@ pub(super) fn extract_from_expression_statement(
             if helpers::looks_like_typedef_name(&extractor.base, &node, &identifier_name) {
                 let signature =
                     signatures::build_typedef_signature(&extractor.base, &node, &identifier_name);
+                let doc_comment = extractor.base.find_doc_comment(&node);
                 return Some(extractor.base.create_symbol(
                     &node,
                     identifier_name.clone(),
@@ -538,7 +556,7 @@ pub(super) fn extract_from_expression_statement(
                                 Value::String("true".to_string()),
                             ),
                         ])),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 ));
             }
@@ -603,6 +621,8 @@ pub(super) fn extract_typedef_from_declaration(
     let signature = extractor.base.get_node_text(&node);
     let underlying_type = types::extract_underlying_type_from_declaration(&extractor.base, node);
 
+    let doc_comment = extractor.base.find_doc_comment(&node);
+
     Some(extractor.base.create_symbol(
         &node,
         typedef_name.clone(),
@@ -616,7 +636,7 @@ pub(super) fn extract_typedef_from_declaration(
                 ("name".to_string(), Value::String(typedef_name)),
                 ("underlyingType".to_string(), Value::String(underlying_type)),
             ])),
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

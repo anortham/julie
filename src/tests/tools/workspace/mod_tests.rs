@@ -205,7 +205,12 @@ fn goodbye_world() {
     // Find the reference workspace we just added
     let reference_ws = workspaces
         .iter()
-        .find(|ws| matches!(ws.workspace_type, crate::workspace::registry::WorkspaceType::Reference))
+        .find(|ws| {
+            matches!(
+                ws.workspace_type,
+                crate::workspace::registry::WorkspaceType::Reference
+            )
+        })
         .expect("Reference workspace not found in registry");
 
     // BUG #1: These were 0 before the fix

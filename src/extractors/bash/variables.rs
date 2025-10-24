@@ -28,12 +28,7 @@ impl super::BashExtractor {
                 Some(Visibility::Private)
             },
             parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: Some(self.extract_variable_documentation(
-                node,
-                is_environment,
-                is_exported,
-                false,
-            )),
+            doc_comment: self.base.find_doc_comment(&node),
             ..Default::default()
         };
 
@@ -68,7 +63,7 @@ impl super::BashExtractor {
                 || (declaration_type == "declare" && declaration_text.contains(" -r "));
 
             // Check if it's an environment variable (but not if it's readonly)
-            let is_environment = !is_readonly && self.is_environment_variable(assignment, &name);
+            let _is_environment = !is_readonly && self.is_environment_variable(assignment, &name);
             let is_exported = declaration_type == "export";
 
             let options = SymbolOptions {
@@ -79,12 +74,7 @@ impl super::BashExtractor {
                     Some(Visibility::Private)
                 },
                 parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: Some(self.extract_variable_documentation(
-                    assignment,
-                    is_environment,
-                    is_exported,
-                    is_readonly,
-                )),
+                doc_comment: self.base.find_doc_comment(&node),
                 ..Default::default()
             };
 

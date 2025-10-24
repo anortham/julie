@@ -19,6 +19,9 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
     for (i, line) in lines.iter().enumerate() {
         let actual_line = section.start_line + i;
 
+        // Extract doc comment for this line (look backward from current line)
+        let doc_comment = find_doc_comment_before(&lines, i);
+
         // Extract Vue component options - following Miller's patterns
         if DATA_FUNCTION_RE.is_match(line) {
             symbols.push(create_symbol_manual(
@@ -30,7 +33,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 actual_line,
                 5,
                 Some("data()".to_string()),
-                Some("Vue component data".to_string()),
+                doc_comment.clone(),
                 None,
             ));
         }
@@ -45,7 +48,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 actual_line,
                 8,
                 Some("methods: {}".to_string()),
-                Some("Vue component methods".to_string()),
+                doc_comment.clone(),
                 None,
             ));
         }
@@ -60,7 +63,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 actual_line,
                 9,
                 Some("computed: {}".to_string()),
-                Some("Vue computed properties".to_string()),
+                doc_comment.clone(),
                 None,
             ));
         }
@@ -75,7 +78,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 actual_line,
                 6,
                 Some("props: {}".to_string()),
-                Some("Vue component props".to_string()),
+                doc_comment.clone(),
                 None,
             ));
         }
@@ -94,7 +97,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                     actual_line,
                     start_col + name.len(),
                     Some(format!("{}()", name)),
-                    Some("Vue component method".to_string()),
+                    doc_comment.clone(),
                     None,
                 ));
             }
@@ -102,6 +105,57 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
     }
 
     symbols
+}
+
+/// Find doc comment before a given line index
+/// Looks backward through the lines and collects consecutive comment lines
+/// This is used for JSDoc-style comments in script sections
+pub(super) fn find_doc_comment_before(lines: &[&str], current_idx: usize) -> Option<String> {
+    if current_idx == 0 {
+        return None;
+    }
+
+    let mut comments = Vec::new();
+    let mut idx = current_idx - 1;
+
+    // Look backward for comment lines
+    loop {
+        let line = lines[idx].trim();
+
+        if is_doc_comment_line(line) {
+            comments.push(lines[idx]);
+            if idx == 0 {
+                break;
+            }
+            idx -= 1;
+        } else if line.is_empty() {
+            // Skip empty lines
+            if idx == 0 {
+                break;
+            }
+            idx -= 1;
+        } else {
+            // Stop at non-comment, non-empty line
+            break;
+        }
+    }
+
+    if comments.is_empty() {
+        None
+    } else {
+        // Reverse to get original order (top to bottom)
+        comments.reverse();
+        Some(comments.join("\n"))
+    }
+}
+
+/// Check if a line is a doc comment line (JSDoc style)
+fn is_doc_comment_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("/**")
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("*")
 }
 
 /// Helper to create symbols manually (without Parser.SyntaxNode)

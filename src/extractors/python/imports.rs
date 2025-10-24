@@ -124,6 +124,9 @@ fn create_import_symbol(
     name: String,
     signature: String,
 ) -> Symbol {
+    // Extract doc comment (preceding comments)
+    let doc_comment = extractor.base().find_doc_comment(node);
+
     extractor.base_mut().create_symbol(
         node,
         name,
@@ -133,7 +136,7 @@ fn create_import_symbol(
             visibility: Some(Visibility::Public),
             parent_id: None,
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     )
 }

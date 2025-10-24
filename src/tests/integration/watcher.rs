@@ -81,7 +81,11 @@ async fn test_real_time_file_watcher_indexing() {
 
     let cache_dir = workspace_root.join(".julie/cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
-    let embeddings = Arc::new(tokio::sync::RwLock::new(Some(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).await.unwrap())));
+    let embeddings = Arc::new(tokio::sync::RwLock::new(Some(
+        EmbeddingEngine::new("bge-small", cache_dir, db.clone())
+            .await
+            .unwrap(),
+    )));
     let extractor_manager = Arc::new(ExtractorManager::new());
 
     // Create initial file to ensure workspace isn't empty
@@ -139,9 +143,9 @@ async fn test_real_time_file_watcher_indexing() {
     );
 
     // Verify it's specifically from our new file
-    let found = symbols.iter().any(|s| {
-        s.file_path.contains("new_file.rs") && s.name == "test_function"
-    });
+    let found = symbols
+        .iter()
+        .any(|s| s.file_path.contains("new_file.rs") && s.name == "test_function");
     assert!(
         found,
         "Should find test_function from new_file.rs. Symbols found: {:?}",

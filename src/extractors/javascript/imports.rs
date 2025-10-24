@@ -36,6 +36,9 @@ impl super::JavaScriptExtractor {
             json!(self.has_namespace_import(&node)),
         );
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             specifier.to_string(),
@@ -45,7 +48,7 @@ impl super::JavaScriptExtractor {
                 visibility: None,
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

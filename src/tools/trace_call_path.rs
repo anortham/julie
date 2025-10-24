@@ -295,7 +295,10 @@ impl TraceCallPathTool {
                                 Some(Arc::new(tokio::sync::RwLock::new(store)))
                             }
                             Err(e) => {
-                                debug!("⚠️  Failed to load HNSW index for reference workspace: {}", e);
+                                debug!(
+                                    "⚠️  Failed to load HNSW index for reference workspace: {}",
+                                    e
+                                );
                                 None
                             }
                         }
@@ -362,20 +365,48 @@ impl TraceCallPathTool {
         for starting_symbol in &starting_symbols {
             let call_tree = match self.direction.as_str() {
                 "upstream" => {
-                    self.trace_upstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
-                        .await?
+                    self.trace_upstream(
+                        handler,
+                        &db,
+                        &vector_store,
+                        starting_symbol,
+                        0,
+                        &mut visited,
+                    )
+                    .await?
                 }
                 "downstream" => {
-                    self.trace_downstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
-                        .await?
+                    self.trace_downstream(
+                        handler,
+                        &db,
+                        &vector_store,
+                        starting_symbol,
+                        0,
+                        &mut visited,
+                    )
+                    .await?
                 }
                 "both" => {
                     // Use single visited set to prevent duplicate processing across both directions
                     let mut upstream = self
-                        .trace_upstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
+                        .trace_upstream(
+                            handler,
+                            &db,
+                            &vector_store,
+                            starting_symbol,
+                            0,
+                            &mut visited,
+                        )
                         .await?;
                     let downstream = self
-                        .trace_downstream(handler, &db, &vector_store, starting_symbol, 0, &mut visited)
+                        .trace_downstream(
+                            handler,
+                            &db,
+                            &vector_store,
+                            starting_symbol,
+                            0,
+                            &mut visited,
+                        )
                         .await?;
                     upstream.extend(downstream);
                     upstream
@@ -430,7 +461,9 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
-        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
+        vector_store: &Option<
+            Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>,
+        >,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
@@ -509,7 +542,14 @@ impl TraceCallPathTool {
             // Recursively trace callers
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_upstream(handler, db, vector_store, &caller_symbol, current_depth + 1, visited)
+                    .trace_upstream(
+                        handler,
+                        db,
+                        vector_store,
+                        &caller_symbol,
+                        current_depth + 1,
+                        visited,
+                    )
                     .await?;
             }
 
@@ -540,7 +580,14 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_upstream(handler, db, vector_store, &caller_symbol, current_depth + 1, visited)
+                        .trace_upstream(
+                            handler,
+                            db,
+                            vector_store,
+                            &caller_symbol,
+                            current_depth + 1,
+                            visited,
+                        )
                         .await?;
                 }
 
@@ -568,7 +615,14 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_upstream(handler, db, vector_store, &semantic.symbol, current_depth + 1, visited)
+                        .trace_upstream(
+                            handler,
+                            db,
+                            vector_store,
+                            &semantic.symbol,
+                            current_depth + 1,
+                            visited,
+                        )
                         .await?;
                 }
 
@@ -585,7 +639,9 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
-        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
+        vector_store: &Option<
+            Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>,
+        >,
         symbol: &Symbol,
         current_depth: u32,
         visited: &mut HashSet<String>,
@@ -664,7 +720,14 @@ impl TraceCallPathTool {
             // Recursively trace callees
             if current_depth + 1 < self.max_depth {
                 node.children = self
-                    .trace_downstream(handler, db, vector_store, &callee_symbol, current_depth + 1, visited)
+                    .trace_downstream(
+                        handler,
+                        db,
+                        vector_store,
+                        &callee_symbol,
+                        current_depth + 1,
+                        visited,
+                    )
                     .await?;
             }
 
@@ -695,7 +758,14 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_downstream(handler, db, vector_store, &callee_symbol, current_depth + 1, visited)
+                        .trace_downstream(
+                            handler,
+                            db,
+                            vector_store,
+                            &callee_symbol,
+                            current_depth + 1,
+                            visited,
+                        )
                         .await?;
                 }
 
@@ -723,7 +793,14 @@ impl TraceCallPathTool {
                 let cross_lang_limit = self.get_cross_language_depth_limit();
                 if current_depth + 1 < cross_lang_limit {
                     node.children = self
-                        .trace_downstream(handler, db, vector_store, &semantic.symbol, current_depth + 1, visited)
+                        .trace_downstream(
+                            handler,
+                            db,
+                            vector_store,
+                            &semantic.symbol,
+                            current_depth + 1,
+                            visited,
+                        )
                         .await?;
                 }
 
@@ -824,7 +901,9 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
-        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
+        vector_store: &Option<
+            Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>,
+        >,
         symbol: &Symbol,
         max_results: usize,
     ) -> Result<Vec<(Symbol, f32)>> {
@@ -878,7 +957,7 @@ impl TraceCallPathTool {
             let db_lock = db_arc.lock().unwrap();
             let model_name = "bge-small";
             store_guard.search_similar_hnsw(
-                &*db_lock,
+                &db_lock,
                 &embedding,
                 max_results,
                 0.7, // Hardcoded good balance threshold
@@ -916,12 +995,16 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
-        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
+        vector_store: &Option<
+            Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>,
+        >,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
         // Use hardcoded semantic limit for good balance between coverage and performance
         let limit = 8;
-        let candidates = self.semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
+        let candidates = self
+            .semantic_neighbors(handler, db, vector_store, symbol, limit)
+            .await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);
@@ -970,12 +1053,16 @@ impl TraceCallPathTool {
         &self,
         handler: &JulieServerHandler,
         db: &Arc<Mutex<SymbolDatabase>>,
-        vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
+        vector_store: &Option<
+            Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>,
+        >,
         symbol: &Symbol,
     ) -> Result<Vec<SemanticMatch>> {
         // Use hardcoded semantic limit for good balance between coverage and performance
         let limit = 8;
-        let candidates = self.semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
+        let candidates = self
+            .semantic_neighbors(handler, db, vector_store, symbol, limit)
+            .await?;
 
         if candidates.is_empty() {
             return Ok(vec![]);

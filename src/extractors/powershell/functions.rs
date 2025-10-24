@@ -10,6 +10,7 @@ use super::helpers::{
     extract_function_name_from_param_block, extract_parameter_attributes, find_function_name_node,
     find_nodes_by_type, find_parameter_name_node, has_attribute, has_parameter_attribute,
 };
+use super::documentation;
 
 static FUNCTION_NAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"function\s+([A-Za-z][A-Za-z0-9-_]*)").unwrap());
@@ -24,14 +25,12 @@ pub(super) fn extract_function(
     let name = base.get_node_text(&name_node);
 
     // Check if it's an advanced function with [CmdletBinding()]
-    let is_advanced = has_attribute(base, node, "CmdletBinding");
+    let _is_advanced = has_attribute(base, node, "CmdletBinding");
 
     let signature = extract_function_signature(base, node);
-    let doc_comment = if is_advanced {
-        Some("Advanced PowerShell function with [CmdletBinding()]".to_string())
-    } else {
-        None
-    };
+
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
 
     Some(base.create_symbol(
         &node,
@@ -61,6 +60,9 @@ pub(super) fn extract_advanced_function(
 
     let signature = extract_advanced_function_signature(base, node, &function_name);
 
+    // Extract doc comment (PowerShell comment-based help)
+    let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+
     Some(base.create_symbol(
         &node,
         function_name,
@@ -70,7 +72,7 @@ pub(super) fn extract_advanced_function(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
-            doc_comment: Some("Advanced PowerShell function with [CmdletBinding()]".to_string()),
+            doc_comment,
         },
     ))
 }

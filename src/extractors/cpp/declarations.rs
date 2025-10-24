@@ -21,6 +21,8 @@ pub(super) fn extract_namespace(
     let name = base.get_node_text(&name_node);
     let signature = format!("namespace {}", name);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -30,7 +32,7 @@ pub(super) fn extract_namespace(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -86,6 +88,8 @@ pub(super) fn extract_using(
         return None;
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -95,7 +99,7 @@ pub(super) fn extract_using(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -195,6 +199,8 @@ pub(super) fn extract_declaration(
         let signature = build_direct_variable_signature(base, node, &name);
         let visibility = extract_visibility_from_node(base, node);
 
+        let doc_comment = base.find_doc_comment(&node);
+
         return Some(base.create_symbol(
             &node,
             name,
@@ -204,7 +210,7 @@ pub(super) fn extract_declaration(
                 visibility: Some(visibility),
                 parent_id: parent_id.map(String::from),
                 metadata: None,
-                doc_comment: None,
+                doc_comment,
             },
         ));
     }
@@ -229,6 +235,8 @@ pub(super) fn extract_declaration(
     let signature = build_variable_signature(base, node, &name);
     let visibility = extract_visibility_from_node(base, node);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -238,7 +246,7 @@ pub(super) fn extract_declaration(
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -299,6 +307,7 @@ pub(super) fn extract_field(
 
         // Create a symbol for EACH field_identifier (handles: size_t rows, cols;)
         let mut symbols = Vec::new();
+        let doc_comment = base.find_doc_comment(&node);
         for field_node in field_identifiers {
             let name = base.get_node_text(&field_node);
 
@@ -321,7 +330,7 @@ pub(super) fn extract_field(
                     visibility: Some(visibility),
                     parent_id: parent_id.map(String::from),
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment: doc_comment.clone(),
                 },
             ));
         }
@@ -337,6 +346,7 @@ pub(super) fn extract_field(
 
     // Handle ALL declarators (size_t rows, cols; extracts both rows and cols)
     let mut symbols = Vec::new();
+    let doc_comment = base.find_doc_comment(&node);
     for declarator in declarators {
         // Extract field name from declarator (handles pointer_declarator, field_declarator, etc.)
         let name_node = match extract_field_name_from_declarator(declarator) {
@@ -365,7 +375,7 @@ pub(super) fn extract_field(
                 visibility: Some(visibility),
                 parent_id: parent_id.map(String::from),
                 metadata: None,
-                doc_comment: None,
+                doc_comment: doc_comment.clone(),
             },
         ));
     }
@@ -437,6 +447,9 @@ pub(super) fn extract_friend_declaration(
         .trim()
         .to_string();
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     // Create the symbol
     let symbol = base.create_symbol(
         &node,
@@ -447,7 +460,7 @@ pub(super) fn extract_friend_declaration(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     );
 
@@ -484,6 +497,8 @@ fn extract_conversion_operator(
 
     let signature = base.get_node_text(&node);
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         operator_name,
@@ -493,7 +508,7 @@ fn extract_conversion_operator(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -509,6 +524,8 @@ fn extract_destructor_from_declaration(
     let name_end = signature[name_start..].find('(').map(|i| name_start + i)?;
     let name = signature[name_start..name_end].to_string();
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -518,7 +535,7 @@ fn extract_destructor_from_declaration(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }
@@ -566,6 +583,8 @@ fn extract_constructor_from_declaration(
         }
     }
 
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -575,7 +594,7 @@ fn extract_constructor_from_declaration(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(String::from),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

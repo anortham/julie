@@ -86,7 +86,10 @@ mod workspace_isolation_smoke_tests {
             let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
 
             // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service.get_workspace_by_path(&reference_path.to_string_lossy().to_string()).await? {
+            match registry_service
+                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
+                .await?
+            {
                 Some(ws) => {
                     println!("✅ Reference workspace already registered: {}", ws.id);
 
@@ -117,8 +120,9 @@ mod workspace_isolation_smoke_tests {
                     let reference_result = add_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
 
-                    extract_workspace_id(&reference_result)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to extract reference workspace ID"))?
+                    extract_workspace_id(&reference_result).ok_or_else(|| {
+                        anyhow::anyhow!("Failed to extract reference workspace ID")
+                    })?
                 }
             }
         } else {
@@ -210,7 +214,10 @@ mod workspace_isolation_smoke_tests {
             let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
 
             // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service.get_workspace_by_path(&reference_path.to_string_lossy().to_string()).await? {
+            match registry_service
+                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
+                .await?
+            {
                 Some(ws) => {
                     println!("✅ Reference workspace already registered: {}", ws.id);
 
@@ -241,8 +248,9 @@ mod workspace_isolation_smoke_tests {
                     let reference_result = add_reference.call_tool(&handler).await?;
                     mark_index_ready(&handler).await;
 
-                    extract_workspace_id(&reference_result)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to extract reference workspace ID"))?
+                    extract_workspace_id(&reference_result).ok_or_else(|| {
+                        anyhow::anyhow!("Failed to extract reference workspace ID")
+                    })?
                 }
             }
         } else {

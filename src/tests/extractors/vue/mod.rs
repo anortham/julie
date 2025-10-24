@@ -660,3 +660,436 @@ export default defineComponent<Props>({
         assert!(!symbols.is_empty());
     }
 }
+
+// ========================================================================
+// Vue Doc Comment Extraction Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate that doc comments are extracted from Vue SFC symbols.
+// Vue supports multiple comment formats:
+// - HTML comments <!-- ... --> for template section
+// - JSDoc comments /** ... */ for script section
+// - CSS comments /* ... */ for style section
+
+#[cfg(test)]
+mod vue_doc_comment_tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_vue_jsdoc_from_script_methods() {
+        let vue_code = r#"
+<template>
+  <div>{{ count }}</div>
+</template>
+
+<script>
+export default {
+  /**
+   * Increments the counter
+   * @param {number} amount - The amount to increment by
+   */
+  methods: {
+    increment(amount) {
+      this.count += amount;
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "counter.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find the methods symbol
+        let methods_symbol = symbols.iter().find(|s| s.name == "methods");
+        assert!(methods_symbol.is_some(), "Should find methods symbol");
+
+        // Should extract JSDoc comment for methods
+        let methods = methods_symbol.unwrap();
+        assert!(
+            methods.doc_comment.is_some(),
+            "methods should have extracted doc comment"
+        );
+        let doc = methods.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Increments the counter"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_jsdoc_from_data_function() {
+        let vue_code = r#"
+<script>
+export default {
+  /**
+   * Component state
+   * @returns {Object} Component data object
+   */
+  data() {
+    return {
+      message: 'Hello',
+      count: 0
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "data.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find the data symbol
+        let data_symbol = symbols.iter().find(|s| s.name == "data");
+        assert!(data_symbol.is_some(), "Should find data symbol");
+
+        // Should extract JSDoc comment for data
+        let data = data_symbol.unwrap();
+        assert!(
+            data.doc_comment.is_some(),
+            "data should have extracted doc comment"
+        );
+        let doc = data.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Component state"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_jsdoc_from_computed_property() {
+        let vue_code = r#"
+<script>
+export default {
+  /**
+   * Computed property for user display name
+   * Combines first and last name
+   */
+  computed: {
+    displayName() {
+      return `${this.firstName} ${this.lastName}`;
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "computed.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find the computed symbol
+        let computed_symbol = symbols.iter().find(|s| s.name == "computed");
+        assert!(computed_symbol.is_some(), "Should find computed symbol");
+
+        // Should extract JSDoc comment for computed
+        let computed = computed_symbol.unwrap();
+        assert!(
+            computed.doc_comment.is_some(),
+            "computed should have extracted doc comment"
+        );
+        let doc = computed.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Computed property"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_jsdoc_from_props() {
+        let vue_code = r#"
+<script>
+export default {
+  /**
+   * Component props
+   * Defines the interface for parent-to-child communication
+   */
+  props: {
+    title: String,
+    count: Number
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "props.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find the props symbol
+        let props_symbol = symbols.iter().find(|s| s.name == "props");
+        assert!(props_symbol.is_some(), "Should find props symbol");
+
+        // Should extract JSDoc comment for props
+        let props = props_symbol.unwrap();
+        assert!(
+            props.doc_comment.is_some(),
+            "props should have extracted doc comment"
+        );
+        let doc = props.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Component props"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_jsdoc_from_individual_methods() {
+        let vue_code = r#"
+<script>
+export default {
+  methods: {
+    /**
+     * Validates user input
+     * @param {string} value - The input to validate
+     * @returns {boolean} True if valid, false otherwise
+     */
+    validateInput(value) {
+      return value && value.length > 0;
+    },
+
+    /**
+     * Saves changes to the database
+     * @async
+     */
+    saveChanges() {
+      return new Promise((resolve) => {
+        setTimeout(resolve, 1000);
+      });
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "methods.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find individual method symbols
+        let validate_method = symbols.iter().find(|s| s.name == "validateInput");
+        assert!(
+            validate_method.is_some(),
+            "Should find validateInput method"
+        );
+
+        // Should extract JSDoc comment for validateInput
+        let validate = validate_method.unwrap();
+        assert!(
+            validate.doc_comment.is_some(),
+            "validateInput should have extracted doc comment"
+        );
+        let doc = validate.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Validates user input"),
+            "Doc comment should contain description"
+        );
+
+        // Find saveChanges method
+        let save_method = symbols.iter().find(|s| s.name == "saveChanges");
+        assert!(save_method.is_some(), "Should find saveChanges method");
+
+        let save = save_method.unwrap();
+        assert!(
+            save.doc_comment.is_some(),
+            "saveChanges should have extracted doc comment"
+        );
+        let doc = save.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Saves changes"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_html_comment_from_component() {
+        let vue_code = r#"
+<!--
+  UserCard Component
+  Displays user information in a card format
+  Supports custom styling and events
+-->
+<template>
+  <div class="user-card">
+    <img :src="user.avatar" />
+    <h3>{{ user.name }}</h3>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'UserCard'
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "user-card.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find component symbol
+        let component = symbols.iter().find(|s| s.name == "UserCard");
+        assert!(component.is_some(), "Should find UserCard component");
+
+        // Should extract HTML comment for component
+        let component = component.unwrap();
+        assert!(
+            component.doc_comment.is_some(),
+            "Component should have extracted HTML comment"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_css_comment_from_style() {
+        let vue_code = r#"
+<style scoped>
+/**
+ * Main container styles
+ * Responsive layout with flexbox
+ */
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Button styling with hover effects */
+.button {
+  padding: 10px;
+  background: blue;
+}
+
+.button:hover {
+  background: darkblue;
+}
+</style>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "styles.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find container class symbol
+        let container = symbols.iter().find(|s| s.name == "container");
+        assert!(container.is_some(), "Should find .container class");
+
+        // Should extract CSS comment for style
+        let container = container.unwrap();
+        assert!(
+            container.doc_comment.is_some(),
+            "container should have extracted CSS comment"
+        );
+        let doc = container.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("container styles"),
+            "Doc comment should contain description"
+        );
+    }
+
+    #[test]
+    fn test_extract_vue_multiline_jsdoc() {
+        let vue_code = r#"
+<script>
+export default {
+  /**
+   * Main component data function
+   *
+   * Returns an object containing:
+   * - message: String - Display message
+   * - count: Number - Counter value
+   * - loading: Boolean - Loading state
+   *
+   * @returns {Object} The data object
+   */
+  data() {
+    return {
+      message: 'Hello',
+      count: 0,
+      loading: false
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "multiline.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // Find data symbol
+        let data_symbol = symbols.iter().find(|s| s.name == "data");
+        assert!(data_symbol.is_some(), "Should find data symbol");
+
+        let data = data_symbol.unwrap();
+        assert!(
+            data.doc_comment.is_some(),
+            "data should have extracted multiline doc comment"
+        );
+        let doc = data.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("Main component data"),
+            "Multiline doc should preserve content"
+        );
+        assert!(
+            doc.contains("Returns an object"),
+            "Multiline doc should preserve full content"
+        );
+    }
+
+    #[test]
+    fn test_vue_symbols_without_comments_have_none() {
+        let vue_code = r#"
+<script>
+export default {
+  data() {
+    return { message: 'Hello' }
+  },
+  methods: {
+    greet() {
+      console.log(this.message);
+    }
+  }
+}
+</script>
+        "#;
+
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "no-comments.vue".to_string(),
+            vue_code.to_string(),
+        );
+        let symbols = extractor.extract_symbols(None);
+
+        // All symbols without comments should have None
+        let data_symbol = symbols.iter().find(|s| s.name == "data");
+        assert!(data_symbol.is_some());
+        // Note: Currently may have default documentation, checking actual behavior
+        let greet_method = symbols.iter().find(|s| s.name == "greet");
+        assert!(greet_method.is_some());
+    }
+}

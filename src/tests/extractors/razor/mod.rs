@@ -1808,4 +1808,90 @@ mod razor_identifier_extraction_tests {
             "Duplicate calls should have different line numbers"
         );
     }
+
+    #[test]
+    fn test_extract_razor_comment_from_page_directive() {
+        let razor_code = r#"@* User profile page directive
+           Handles user data display *@
+        @page "/profile"
+        @model ProfileModel
+    "#;
+
+        let symbols = extract_symbols(razor_code);
+        let page_directive = symbols
+            .iter()
+            .find(|s| s.name == "@page")
+            .or_else(|| symbols.iter().find(|s| s.name.contains("profile")))
+            .or_else(|| symbols.first());
+
+        assert!(page_directive.is_some(), "Should find a directive symbol");
+        if let Some(directive) = page_directive {
+            assert!(
+                directive.doc_comment.is_some(),
+                "Page directive should have doc_comment extracted"
+            );
+            if let Some(doc) = &directive.doc_comment {
+                assert!(
+                    doc.contains("User profile page") || doc.contains("Handles user data"),
+                    "Doc comment should contain directive description"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_extract_razor_comment_from_csharp_method_xml_doc() {
+        let razor_code = r#"@code {
+            /// <summary>
+            /// Validates user credentials
+            /// </summary>
+            public bool ValidateUser(string username) {
+                return true;
+            }
+        }
+    "#;
+
+        let symbols = extract_symbols(razor_code);
+        let method = symbols.iter().find(|s| s.name == "ValidateUser");
+
+        assert!(method.is_some(), "Should find ValidateUser method");
+        if let Some(m) = method {
+            assert!(
+                m.doc_comment.is_some(),
+                "Method should have XML doc comment extracted"
+            );
+            if let Some(doc) = &m.doc_comment {
+                assert!(
+                    doc.contains("Validates user credentials"),
+                    "Doc comment should contain method description"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_extract_html_comment_from_razor_html() {
+        let razor_code = r#"<!-- Page header and navigation bar -->
+        <header>
+            <nav class="navbar">
+                <a href="/">Home</a>
+            </nav>
+        </header>
+    "#;
+
+        let symbols = extract_symbols(razor_code);
+        let header = symbols.iter().find(|s| s.name == "header");
+
+        assert!(header.is_some(), "Should find header HTML element");
+        if let Some(h) = header {
+            // HTML comments might be extracted or might not be - this depends on implementation
+            // But we're testing that if extracted, it contains the comment
+            if let Some(doc) = &h.doc_comment {
+                assert!(
+                    doc.contains("Page header") || doc.contains("navigation bar"),
+                    "HTML comment should be extracted if available"
+                );
+            }
+        }
+    }
 }

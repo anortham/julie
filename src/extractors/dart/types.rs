@@ -25,7 +25,7 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -62,7 +62,7 @@ pub(super) fn extract_enum_constant(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -100,7 +100,7 @@ pub(super) fn extract_mixin(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -150,7 +150,7 @@ pub(super) fn extract_extension(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 
@@ -220,7 +220,7 @@ pub(super) fn extract_typedef(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            ..Default::default()
         },
     );
 

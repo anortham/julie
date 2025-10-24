@@ -86,6 +86,9 @@ pub(super) fn extract_function(
         );
     }
 
+    // Extract PHPDoc comment
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
     extractor.get_base_mut().create_symbol(
         &node,
         name,
@@ -100,7 +103,7 @@ pub(super) fn extract_function(
                     .map(|(k, v)| (k, serde_json::Value::String(v)))
                     .collect(),
             ),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }

@@ -40,6 +40,9 @@ impl super::JavaScriptExtractor {
             json!(self.has_private_fields(&node)),
         );
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -49,7 +52,7 @@ impl super::JavaScriptExtractor {
                 visibility: Some(self.extract_visibility(&node)),
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -83,6 +86,9 @@ impl super::JavaScriptExtractor {
                     json!(self.extract_parameters(value)),
                 );
 
+                // Extract JSDoc comment
+                let doc_comment = self.base.find_doc_comment(&node);
+
                 return self.base.create_symbol(
                     &node,
                     name,
@@ -92,7 +98,7 @@ impl super::JavaScriptExtractor {
                         visibility: Some(self.extract_visibility(&node)),
                         parent_id,
                         metadata: Some(metadata),
-                        doc_comment: None,
+                        doc_comment,
                     },
                 );
             }
@@ -117,6 +123,9 @@ impl super::JavaScriptExtractor {
         );
         metadata.insert("isPrivate".to_string(), json!(name.starts_with('#')));
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             name,
@@ -126,7 +135,7 @@ impl super::JavaScriptExtractor {
                 visibility: Some(self.extract_visibility(&node)),
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -144,6 +153,9 @@ impl super::JavaScriptExtractor {
         );
         metadata.insert("isNamed".to_string(), json!(self.is_named_export(&node)));
 
+        // Extract JSDoc comment
+        let doc_comment = self.base.find_doc_comment(&node);
+
         self.base.create_symbol(
             &node,
             exported_name.clone(),
@@ -153,7 +165,7 @@ impl super::JavaScriptExtractor {
                 visibility: None,
                 parent_id,
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

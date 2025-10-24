@@ -65,6 +65,9 @@ impl ScriptStyleExtractor {
             );
         }
 
+        // Extract HTML comment
+        let doc_comment = base.find_doc_comment(&node);
+
         base.create_symbol(
             &node,
             "script".to_string(),
@@ -74,7 +77,7 @@ impl ScriptStyleExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }
@@ -116,6 +119,9 @@ impl ScriptStyleExtractor {
             );
         }
 
+        // Extract HTML comment
+        let doc_comment = base.find_doc_comment(&node);
+
         base.create_symbol(
             &node,
             "style".to_string(),
@@ -125,7 +131,7 @@ impl ScriptStyleExtractor {
                 visibility: Some(Visibility::Public),
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
-                doc_comment: None,
+                doc_comment,
             },
         )
     }

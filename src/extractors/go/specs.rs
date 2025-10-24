@@ -142,6 +142,8 @@ impl super::GoExtractor {
                 format!("import {}", import_path)
             };
 
+            let doc_comment = self.base.find_doc_comment(&node);
+
             Some(self.base.create_symbol(
                 &node,
                 package_name,
@@ -151,7 +153,7 @@ impl super::GoExtractor {
                     visibility: Some(Visibility::Public),
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment,
                 },
             ))
         } else {
@@ -209,6 +211,8 @@ impl super::GoExtractor {
                 format!("var {}", name)
             };
 
+            let doc_comment = self.base.find_doc_comment(&node);
+
             Some(self.base.create_symbol(
                 &node,
                 name,
@@ -218,7 +222,7 @@ impl super::GoExtractor {
                     visibility,
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment,
                 },
             ))
         } else {
@@ -278,6 +282,8 @@ impl super::GoExtractor {
                 format!("const {}", name)
             };
 
+            let doc_comment = self.base.find_doc_comment(&node);
+
             Some(self.base.create_symbol(
                 &node,
                 name,
@@ -287,7 +293,7 @@ impl super::GoExtractor {
                     visibility,
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
-                    doc_comment: None,
+                    doc_comment,
                 },
             ))
         } else {

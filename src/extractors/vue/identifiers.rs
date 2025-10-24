@@ -192,7 +192,7 @@ fn create_identifier_with_offset(
 ) {
     // Temporarily swap the base content with script content
     // This allows create_identifier to extract text correctly using script-relative byte positions
-    let original_content = std::mem::replace(&mut base.content, String::new());
+    let original_content = std::mem::take(&mut base.content);
 
     // Get script content from the original content
     if let Ok(sections) = parse_vue_sfc(&original_content) {

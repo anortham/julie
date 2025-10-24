@@ -132,8 +132,10 @@ fn contains_code_pattern(query: &str) -> bool {
     }
 
     // Two-character operators
-    let operators = ["=>", "??", "?.", "::", "->", "+=", "-=", "*=", "/=",
-                     "==", "!=", ">=", "<=", "&&", "||", "<<", ">>"];
+    let operators = [
+        "=>", "??", "?.", "::", "->", "+=", "-=", "*=", "/=", "==", "!=", ">=", "<=", "&&", "||",
+        "<<", ">>",
+    ];
 
     for op in operators {
         if query.contains(op) {
@@ -142,9 +144,26 @@ fn contains_code_pattern(query: &str) -> bool {
     }
 
     // Language keywords that indicate code patterns
-    let keywords = ["async", "await", "class", "interface", "struct", "enum",
-                    "impl", "trait", "fn", "function", "def", "func",
-                    "method", "var", "let", "const", "public", "private"];
+    let keywords = [
+        "async",
+        "await",
+        "class",
+        "interface",
+        "struct",
+        "enum",
+        "impl",
+        "trait",
+        "fn",
+        "function",
+        "def",
+        "func",
+        "method",
+        "var",
+        "let",
+        "const",
+        "public",
+        "private",
+    ];
 
     for keyword in keywords {
         // Check for keyword as whole word (with word boundaries)
@@ -199,7 +218,7 @@ pub fn validate_query(query: &str) -> Result<()> {
 /// Checks if query is a pure wildcard with no search terms
 fn is_pure_wildcard(query: &str) -> bool {
     // Remove all wildcards and check if anything remains
-    let without_wildcards = query.replace('*', "").replace('?', "");
+    let without_wildcards = query.replace(['*', '?'], "");
     without_wildcards.trim().is_empty()
 }
 
@@ -273,7 +292,7 @@ fn sanitize_pattern_for_fts5(query: &str) -> String {
         || result.contains('{') || result.contains('}')  // Braces
         || result.contains("=>")  // Arrow functions
         || result.contains("::")  // Scope resolution
-        || result.contains("?.");  // Optional chaining
+        || result.contains("?."); // Optional chaining
 
     if should_quote {
         // Quote to preserve operators as literal search
@@ -312,7 +331,7 @@ fn sanitize_glob_for_fts5(query: &str) -> String {
         .replace("**", "")
         .replace("*", "")
         .replace("?", "")
-        .replace(".", "")  // FTS5 treats . as an operator
+        .replace(".", "") // FTS5 treats . as an operator
         .trim()
         .to_string()
 }
@@ -351,7 +370,16 @@ fn process_symbol_query(query: &str) -> String {
     let mut result = query.to_string();
 
     // Remove noise words (language keywords)
-    let noise_words = ["class", "interface", "struct", "enum", "function", "fn", "def", "method"];
+    let noise_words = [
+        "class",
+        "interface",
+        "struct",
+        "enum",
+        "function",
+        "fn",
+        "def",
+        "method",
+    ];
 
     for word in noise_words {
         // Remove keyword with space after it
@@ -397,10 +425,10 @@ pub fn preprocess_query(query: &str) -> Result<PreprocessedQuery> {
 
     // Step 6: Determine search field
     let search_field = match query_type {
-        QueryType::Symbol => "name".to_string(),     // Search symbol names
+        QueryType::Symbol => "name".to_string(), // Search symbol names
         QueryType::Pattern => "content".to_string(), // Search file content
-        QueryType::Standard => "content".to_string(),// Search file content
-        QueryType::Glob => "file_path".to_string(),  // Search file paths
+        QueryType::Standard => "content".to_string(), // Search file content
+        QueryType::Glob => "file_path".to_string(), // Search file paths
     };
 
     Ok(PreprocessedQuery {

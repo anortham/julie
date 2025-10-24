@@ -70,10 +70,14 @@ pub(super) fn extract_method(
         modifier_str, type_param_str, return_type, name, params, throws_str
     );
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 
@@ -114,10 +118,14 @@ pub(super) fn extract_constructor(
     };
     let signature = format!("{}{}{}", modifier_str, name, params);
 
+    // Extract JavaDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
         ..Default::default()
     };
 

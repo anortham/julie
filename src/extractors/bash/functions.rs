@@ -60,6 +60,7 @@ impl super::BashExtractor {
                             signature: Some(format!("{} (positional parameter)", param_name)),
                             visibility: Some(Visibility::Public),
                             parent_id: Some(parent_id.to_string()),
+                            doc_comment: self.base.find_doc_comment(&node),
                             ..Default::default()
                         };
 

@@ -14,6 +14,9 @@ pub(super) fn extract_signal_statement(
     let name = base.get_node_text(&name_node);
     let signature = base.get_node_text(&node);
 
+    // Extract doc comment
+    let doc_comment = base.find_doc_comment(&node);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -23,7 +26,7 @@ pub(super) fn extract_signal_statement(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: None,
-            doc_comment: None,
+            doc_comment,
         },
     ))
 }

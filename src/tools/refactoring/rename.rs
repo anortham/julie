@@ -200,7 +200,10 @@ impl SmartRefactorTool {
                 format!(
                     "❌ Rename failed: '{}' -> '{}'\n\
                     All {} files failed:\n{}",
-                    old_name, new_name, errors.len(), error_summary
+                    old_name,
+                    new_name,
+                    errors.len(),
+                    error_summary
                 )
             };
 
@@ -312,13 +315,22 @@ impl SmartRefactorTool {
         // \b ensures we match whole identifiers, not substrings like getUserData in getUserDataFromCache
         let patterns = vec![
             // JavaScript/TypeScript: import { getUserData } from 'module'
-            Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*\}}", regex::escape(old_name)))?,
+            Regex::new(&format!(
+                r"\bimport\s+\{{\s*{}\s*\}}",
+                regex::escape(old_name)
+            ))?,
             // JavaScript/TypeScript: import { getUserData, other } (leading position)
-            Regex::new(&format!(r"\bimport\s+\{{\s*{}\s*,", regex::escape(old_name)))?,
+            Regex::new(&format!(
+                r"\bimport\s+\{{\s*{}\s*,",
+                regex::escape(old_name)
+            ))?,
             // JavaScript/TypeScript: import { other, getUserData } (trailing position)
             Regex::new(&format!(r",\s*{}\s*\}}", regex::escape(old_name)))?,
             // Python: from module import getUserData (word boundary)
-            Regex::new(&format!(r"\bfrom\s+\S+\s+import\s+{}\b", regex::escape(old_name)))?,
+            Regex::new(&format!(
+                r"\bfrom\s+\S+\s+import\s+{}\b",
+                regex::escape(old_name)
+            ))?,
             // Rust: use module::getUserData (word boundary)
             Regex::new(&format!(r"\buse\s+.*::{}\b", regex::escape(old_name)))?,
         ];
@@ -331,9 +343,11 @@ impl SmartRefactorTool {
 
                 // Use regex replace_all with callback to replace old_name with new_name
                 // This preserves the rest of the matched pattern (imports, from, use keywords, etc.)
-                modified_content = regex.replace_all(&modified_content, |caps: &regex::Captures| {
-                    caps[0].replace(old_name, new_name)
-                }).to_string();
+                modified_content = regex
+                    .replace_all(&modified_content, |caps: &regex::Captures| {
+                        caps[0].replace(old_name, new_name)
+                    })
+                    .to_string();
 
                 if modified_content != before {
                     changes += 1;

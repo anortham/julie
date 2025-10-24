@@ -34,6 +34,7 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 pub mod ddl;
 pub mod dml;
+pub mod doc_comments;
 pub mod identifier_extraction;
 pub mod indexes;
 pub mod procedures;

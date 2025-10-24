@@ -262,4 +262,39 @@ func outer_function(data: Array):
         assert!(inner_processor.is_some());
         assert_eq!(inner_processor.unwrap().kind, SymbolKind::Function);
     }
+
+    #[test]
+    fn test_extract_gdscript_doc_from_function() {
+        let code = r#"
+## Applies damage to the player
+## @param damage: Amount of damage to apply
+## @return: True if player is still alive
+func validate_health(damage: int) -> bool:
+    return health > damage
+
+## Handles movement input
+## @param input_vector: Normalized input direction
+func apply_movement(input_vector: Vector2):
+    velocity = input_vector * speed
+"#;
+
+        let symbols = extract_symbols(code);
+
+        let validate_health = symbols.iter().find(|s| s.name == "validate_health");
+        assert!(validate_health.is_some());
+        let validate_health = validate_health.unwrap();
+        assert!(validate_health.doc_comment.is_some());
+        let doc = validate_health.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("Applies damage to the player"));
+        assert!(doc.contains("@param damage: Amount of damage to apply"));
+        assert!(doc.contains("@return: True if player is still alive"));
+
+        let apply_movement = symbols.iter().find(|s| s.name == "apply_movement");
+        assert!(apply_movement.is_some());
+        let apply_movement = apply_movement.unwrap();
+        assert!(apply_movement.doc_comment.is_some());
+        let doc = apply_movement.doc_comment.as_ref().unwrap();
+        assert!(doc.contains("Handles movement input"));
+        assert!(doc.contains("@param input_vector: Normalized input direction"));
+    }
 }

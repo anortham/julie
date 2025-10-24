@@ -50,7 +50,7 @@ impl VueExtractor {
             Ok(sections) => {
                 // Extract symbols from each section
                 for section in &sections {
-                    let section_symbols = self.extract_section_symbols(&section);
+                    let section_symbols = self.extract_section_symbols(section);
                     symbols.extend(section_symbols);
                 }
 
@@ -58,6 +58,9 @@ impl VueExtractor {
                 if let Some(component_name) =
                     component::extract_component_name(&self.base.file_path, &sections)
                 {
+                    // Try to extract HTML comment from the beginning of the file
+                    let doc_comment = extract_component_doc_comment(&self.base.content);
+
                     let component_symbol = create_symbol_manual(
                         &self.base,
                         &component_name,
@@ -67,7 +70,9 @@ impl VueExtractor {
                         self.base.content.lines().count(),
                         1,
                         Some(format!("<{} />", component_name)),
-                        Some(format!("Vue Single File Component: {}", component_name)),
+                        doc_comment.or_else(|| {
+                            Some(format!("Vue Single File Component: {}", component_name))
+                        }),
                         Some({
                             let mut metadata = HashMap::new();
                             metadata
@@ -140,5 +145,42 @@ impl VueExtractor {
     /// Vue-specific: Parses <script> section with JavaScript tree-sitter
     pub fn extract_identifiers(&mut self, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, symbols)
+    }
+}
+
+/// Extract HTML comment from the beginning of a Vue file (component-level doc)
+/// Looks for HTML comments at the very start of the file before any tags
+fn extract_component_doc_comment(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut comments = Vec::new();
+
+    for line in lines.iter() {
+        let trimmed = line.trim();
+
+        // Stop if we hit a non-comment, non-empty line (like <template>)
+        if !trimmed.is_empty()
+            && !trimmed.starts_with("<!--")
+            && !trimmed.starts_with("-->")
+            && !trimmed.starts_with("*")
+        {
+            break;
+        }
+
+        // Collect comment lines
+        if trimmed.starts_with("<!--")
+            || trimmed.starts_with("-->")
+            || (trimmed.starts_with("*") && !comments.is_empty())
+        {
+            comments.push(*line);
+        } else if trimmed.is_empty() && !comments.is_empty() {
+            // Include empty lines within comment blocks
+            comments.push(*line);
+        }
+    }
+
+    if comments.is_empty() {
+        None
+    } else {
+        Some(comments.join("\n"))
     }
 }

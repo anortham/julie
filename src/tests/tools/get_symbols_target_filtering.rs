@@ -41,7 +41,7 @@ mod tests {
             target: Some("call_tool".to_string()), // Method inside GetSymbolsTool
             limit: None,
             mode: None,
-        workspace: None,
+            workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -109,7 +109,7 @@ mod tests {
             target: Some("GetSymbolsTool".to_string()),
             limit: None,
             mode: None,
-        workspace: None,
+            workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -169,7 +169,7 @@ mod tests {
             target: Some("getsymbolstool".to_string()), // lowercase
             limit: None,
             mode: None,
-        workspace: None,
+            workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;
@@ -221,7 +221,7 @@ mod tests {
             target: Some("format".to_string()), // Should match "format_symbol"
             limit: None,
             mode: None,
-        workspace: None,
+            workspace: None,
         };
 
         let result = tool.call_tool(&handler).await?;

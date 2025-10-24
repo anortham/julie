@@ -31,6 +31,9 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
     let is_abstract = helpers::has_modifier(node, "abstract");
     metadata.insert("isAbstract".to_string(), serde_json::json!(is_abstract));
 
+    // Extract JSDoc comment
+    let doc_comment = extractor.base().find_doc_comment(&node);
+
     extractor.base_mut().create_symbol(
         &node,
         name,
@@ -40,7 +43,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
             visibility,
             parent_id: None,
             metadata: Some(metadata),
-            doc_comment: None,
+            doc_comment,
         },
     )
 }

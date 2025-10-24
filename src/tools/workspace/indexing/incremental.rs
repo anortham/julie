@@ -54,7 +54,7 @@ impl ManageWorkspaceTool {
         let existing_file_hashes = if let Some(primary_workspace) = handler.get_workspace().await? {
             // Check if this is the primary workspace by comparing workspace IDs
             let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
-                &primary_workspace.root.to_string_lossy().to_string()
+                primary_workspace.root.to_string_lossy().as_ref(),
             ) {
                 Ok(id) => id,
                 Err(_) => {
@@ -76,7 +76,9 @@ impl ManageWorkspaceTool {
                 if ref_db_path.exists() {
                     match tokio::task::spawn_blocking(move || {
                         crate::database::SymbolDatabase::new(ref_db_path)
-                    }).await {
+                    })
+                    .await
+                    {
                         Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
                         Ok(Err(e)) => {
                             debug!("Reference workspace DB doesn't exist yet: {} - treating all files as new", e);
@@ -257,7 +259,7 @@ impl ManageWorkspaceTool {
 
         // Check if this is the primary workspace by comparing workspace IDs
         let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
-            &primary_workspace.root.to_string_lossy().to_string()
+            primary_workspace.root.to_string_lossy().as_ref(),
         ) {
             Ok(id) => id,
             Err(_) => {

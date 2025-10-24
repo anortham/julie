@@ -55,6 +55,19 @@ impl super::GoExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
+        // Try to find doc comment - look for it on the node first, then on the parent
+        let doc_comment_from_spec = self.base.find_doc_comment(&node);
+        let doc_comment = if doc_comment_from_spec.is_none() {
+            // If not found on spec, try to find it on the parent type_declaration
+            if let Some(parent) = node.parent() {
+                self.base.find_doc_comment(&parent)
+            } else {
+                None
+            }
+        } else {
+            doc_comment_from_spec
+        };
+
         let mut cursor = node.walk();
         let mut type_identifier = None;
         let mut type_parameters = None;
@@ -113,7 +126,7 @@ impl super::GoExtractor {
                             visibility,
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: None,
-                            doc_comment: None,
+                            doc_comment: doc_comment.clone(),
                         },
                     ))
                 }
@@ -135,7 +148,7 @@ impl super::GoExtractor {
                             visibility,
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: None,
-                            doc_comment: None,
+                            doc_comment: doc_comment.clone(),
                         },
                     ))
                 }
@@ -152,7 +165,7 @@ impl super::GoExtractor {
                             visibility,
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: None,
-                            doc_comment: None,
+                            doc_comment: doc_comment.clone(),
                         },
                     ))
                 }
@@ -169,7 +182,7 @@ impl super::GoExtractor {
                             visibility,
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: None,
-                            doc_comment: None,
+                            doc_comment: doc_comment.clone(),
                         },
                     ))
                 }
@@ -185,6 +198,19 @@ impl super::GoExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
+        // Try to find doc comment - look for it on the node first, then on the parent
+        let doc_comment_from_alias = self.base.find_doc_comment(&node);
+        let doc_comment = if doc_comment_from_alias.is_none() {
+            // If not found on alias, try to find it on the parent type_declaration
+            if let Some(parent) = node.parent() {
+                self.base.find_doc_comment(&parent)
+            } else {
+                None
+            }
+        } else {
+            doc_comment_from_alias
+        };
+
         // Parse type_alias node: "TypeAlias = string"
         let mut cursor = node.walk();
         let mut alias_name = None;
@@ -224,7 +250,7 @@ impl super::GoExtractor {
                     visibility: Some(Visibility::Public),
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: Some(metadata),
-                    doc_comment: None,
+                    doc_comment,
                 },
             ));
         }

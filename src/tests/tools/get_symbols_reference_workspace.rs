@@ -260,7 +260,7 @@ pub struct Another {
     // This should return all top-level symbols (Outer, outer_function, Another)
     let get_all = GetSymbolsTool {
         file_path: nested_file_str.clone(),
-        max_depth: 999,  // Very deep
+        max_depth: 999, // Very deep
         target: None,
         limit: None,
         mode: None,
@@ -361,7 +361,9 @@ pub struct Another {
             if let Some(arr) = symbols.as_array() {
                 let top_level_count = arr
                     .iter()
-                    .filter(|s| s.get("parent_id").is_none() || s.get("parent_id").unwrap().is_null())
+                    .filter(|s| {
+                        s.get("parent_id").is_none() || s.get("parent_id").unwrap().is_null()
+                    })
                     .count();
 
                 assert!(

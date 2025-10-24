@@ -157,11 +157,16 @@ mod fts5_minimal_tests {
             detailed: None,
         };
         let add_result = add_reference.call_tool(&handler).await?;
-        println!("Add reference result: {}", extract_text_from_result(&add_result));
+        println!(
+            "Add reference result: {}",
+            extract_text_from_result(&add_result)
+        );
         mark_index_ready(&handler).await;
 
         // Step 5: Search primary workspace AFTER adding reference (does it still work?)
-        println!("STEP 5: Search primary AFTER adding reference - THIS IS WHERE CORRUPTION MIGHT HAPPEN");
+        println!(
+            "STEP 5: Search primary AFTER adding reference - THIS IS WHERE CORRUPTION MIGHT HAPPEN"
+        );
         let result2 = search.call_tool(&handler).await?;
         let response2 = extract_text_from_result(&result2);
         println!("Search result AFTER reference: {}", response2);

@@ -272,7 +272,9 @@ async fn initialize_embedding_engine(
 
         // ✅ EmbeddingEngine::new() is now async (downloads model from HuggingFace)
         // No need for spawn_blocking - async download is non-blocking
-        match crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir.clone(), db.clone()).await {
+        match crate::embeddings::EmbeddingEngine::new("bge-small", cache_dir.clone(), db.clone())
+            .await
+        {
             Ok(engine) => {
                 *write_guard = Some(engine);
                 info!("✅ Embedding engine initialized for background task");

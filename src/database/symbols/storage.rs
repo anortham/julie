@@ -119,7 +119,10 @@ impl SymbolDatabase {
         }
 
         tx.commit()?;
-        debug!("Successfully stored {} symbols (transaction committed)", symbols.len());
+        debug!(
+            "Successfully stored {} symbols (transaction committed)",
+            symbols.len()
+        );
         Ok(())
     }
 

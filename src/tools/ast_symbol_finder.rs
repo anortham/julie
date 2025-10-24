@@ -175,7 +175,7 @@ impl ASTSymbolFinder {
         let kind = node.kind();
         let mut in_range = true;
         if let Some((start, end)) = byte_range {
-            in_range = node.start_byte() as usize >= start && node.end_byte() as usize <= end;
+            in_range = node.start_byte() >= start && node.end_byte() <= end;
         }
 
         if in_range
@@ -186,8 +186,8 @@ impl ASTSymbolFinder {
                 .unwrap_or(false)
         {
             occurrences.push(SymbolOccurrence {
-                start_byte: node.start_byte() as usize,
-                end_byte: node.end_byte() as usize,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
                 node_kind: kind.to_string(),
                 context: SymbolContext::Comment,
                 line: node.start_position().row + 1,

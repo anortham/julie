@@ -1180,4 +1180,210 @@ class Tesla: Car, Electric {
             assert!(tesla_electric.is_some());
         }
     }
+
+    mod doc_comment_extraction {
+        use super::*;
+
+        #[test]
+        fn test_extract_class_with_single_line_doc_comment() {
+            let swift_code = r#"
+/// UserService manages user authentication and login
+class UserService {
+    func authenticate() {}
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let user_service = symbols.iter().find(|s| s.name == "UserService");
+            assert!(user_service.is_some(), "Should extract UserService class");
+            let user_service = user_service.unwrap();
+            assert_eq!(user_service.kind, SymbolKind::Class);
+            assert!(
+                user_service.doc_comment.is_some(),
+                "Should have doc comment"
+            );
+            assert!(
+                user_service
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("manages user authentication"),
+                "Doc comment should contain the documentation text"
+            );
+        }
+
+        #[test]
+        fn test_extract_function_with_block_doc_comment() {
+            let swift_code = r#"
+/**
+ * Validates user credentials
+ * - Parameter username: The username to validate
+ * - Returns: True if credentials are valid
+ */
+func validateCredentials(username: String) -> Bool {
+    return true
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let validate_func = symbols.iter().find(|s| s.name == "validateCredentials");
+            assert!(
+                validate_func.is_some(),
+                "Should extract validateCredentials function"
+            );
+            let validate_func = validate_func.unwrap();
+            assert_eq!(validate_func.kind, SymbolKind::Function);
+            assert!(
+                validate_func.doc_comment.is_some(),
+                "Should have doc comment"
+            );
+            let doc = validate_func.doc_comment.as_ref().unwrap();
+            assert!(
+                doc.contains("Validates user credentials"),
+                "Doc should contain main description"
+            );
+            assert!(
+                doc.contains("Parameter username"),
+                "Doc should contain parameter documentation"
+            );
+        }
+
+        #[test]
+        fn test_extract_method_with_doc_comment() {
+            let swift_code = r#"
+class Server {
+    /// Starts the server and begins listening for connections
+    func start() {
+        print("Server started")
+    }
+
+    /**
+     * Stops the server gracefully
+     * - Throws: ServerError if shutdown fails
+     */
+    func stop() throws {
+        print("Server stopped")
+    }
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let start_method = symbols.iter().find(|s| s.name == "start");
+            assert!(start_method.is_some(), "Should extract start method");
+            let start_method = start_method.unwrap();
+            assert_eq!(start_method.kind, SymbolKind::Method);
+            assert!(
+                start_method.doc_comment.is_some(),
+                "Should have doc comment"
+            );
+            assert!(
+                start_method
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("Starts the server"),
+                "Doc comment should be present"
+            );
+
+            let stop_method = symbols.iter().find(|s| s.name == "stop");
+            assert!(stop_method.is_some(), "Should extract stop method");
+            let stop_method = stop_method.unwrap();
+            assert!(stop_method.doc_comment.is_some(), "Should have doc comment");
+            assert!(
+                stop_method
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("Stops the server"),
+                "Doc comment should be present"
+            );
+        }
+
+        #[test]
+        fn test_extract_struct_with_doc_comment() {
+            let swift_code = r#"
+/// A point in 2D space
+struct Point {
+    let x: Double
+    let y: Double
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let point = symbols.iter().find(|s| s.name == "Point");
+            assert!(point.is_some(), "Should extract Point struct");
+            let point = point.unwrap();
+            assert_eq!(point.kind, SymbolKind::Struct);
+            assert!(point.doc_comment.is_some(), "Should have doc comment");
+            assert!(
+                point
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("A point in 2D space"),
+                "Doc comment should match"
+            );
+        }
+
+        #[test]
+        fn test_extract_protocol_with_doc_comment() {
+            let swift_code = r#"
+/// Protocol for database operations
+protocol DatabaseProvider {
+    /// Fetch records from database
+    func fetch() -> [Record]
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let protocol = symbols.iter().find(|s| s.name == "DatabaseProvider");
+            assert!(
+                protocol.is_some(),
+                "Should extract DatabaseProvider protocol"
+            );
+            let protocol = protocol.unwrap();
+            assert_eq!(protocol.kind, SymbolKind::Interface);
+            assert!(protocol.doc_comment.is_some(), "Should have doc comment");
+            assert!(
+                protocol
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("Protocol for database operations"),
+                "Doc comment should be present"
+            );
+        }
+
+        #[test]
+        fn test_extract_enum_with_doc_comment() {
+            let swift_code = r#"
+/// HTTP status codes
+enum HTTPStatus {
+    case ok
+    case notFound
+}
+"#;
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let http_status = symbols.iter().find(|s| s.name == "HTTPStatus");
+            assert!(http_status.is_some(), "Should extract HTTPStatus enum");
+            let http_status = http_status.unwrap();
+            assert_eq!(http_status.kind, SymbolKind::Enum);
+            assert!(http_status.doc_comment.is_some(), "Should have doc comment");
+            assert!(
+                http_status
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("HTTP status codes"),
+                "Doc comment should be present"
+            );
+        }
+    }
 }

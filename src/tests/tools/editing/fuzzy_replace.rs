@@ -284,8 +284,8 @@ mod multi_file_tests {
 
         // NEW API: file_pattern for multi-file mode
         let tool = FuzzyReplaceTool {
-            file_path: None,  // ← This will fail: file_path is currently String, not Option<String>
-            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist yet
+            file_path: None, // ← This will fail: file_path is currently String, not Option<String>
+            file_pattern: Some("**/*.rs".to_string()), // ← This will fail: field doesn't exist yet
             pattern: "getUserData".to_string(),
             replacement: "fetchUserData".to_string(),
             threshold: 1.0,
@@ -322,8 +322,8 @@ mod multi_file_tests {
 
         // OLD API: file_path for single-file mode
         let tool = FuzzyReplaceTool {
-            file_path: Some(test_file.to_string_lossy().to_string()),  // ← This will fail: file_path is String, not Option<String>
-            file_pattern: None,  // ← This will fail: field doesn't exist yet
+            file_path: Some(test_file.to_string_lossy().to_string()), // ← This will fail: file_path is String, not Option<String>
+            file_pattern: None, // ← This will fail: field doesn't exist yet
             pattern: "getUserData".to_string(),
             replacement: "fetchUserData".to_string(),
             threshold: 1.0,
@@ -352,8 +352,8 @@ mod multi_file_tests {
 
         // ERROR CASE 1: Both provided
         let tool_both = FuzzyReplaceTool {
-            file_path: Some("test.rs".to_string()),  // ← This will fail: field type wrong
-            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            file_path: Some("test.rs".to_string()), // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()), // ← This will fail: field doesn't exist
             pattern: "old".to_string(),
             replacement: "new".to_string(),
             threshold: 1.0,
@@ -365,13 +365,16 @@ mod multi_file_tests {
         let result = tool_both.call_tool(&handler).await;
         assert!(result.is_ok(), "Should return Ok with error message");
         let result_text = format!("{:?}", result);
-        assert!(result_text.contains("exactly one") || result_text.contains("Cannot provide both"),
-                "Should reject when both file_path and file_pattern provided: {}", result_text);
+        assert!(
+            result_text.contains("exactly one") || result_text.contains("Cannot provide both"),
+            "Should reject when both file_path and file_pattern provided: {}",
+            result_text
+        );
 
         // ERROR CASE 2: Neither provided
         let tool_neither = FuzzyReplaceTool {
-            file_path: None,  // ← This will fail: field type wrong
-            file_pattern: None,  // ← This will fail: field doesn't exist
+            file_path: None,    // ← This will fail: field type wrong
+            file_pattern: None, // ← This will fail: field doesn't exist
             pattern: "old".to_string(),
             replacement: "new".to_string(),
             threshold: 1.0,
@@ -383,8 +386,11 @@ mod multi_file_tests {
         let result = tool_neither.call_tool(&handler).await;
         assert!(result.is_ok(), "Should return Ok with error message");
         let result_text = format!("{:?}", result);
-        assert!(result_text.contains("exactly one") || result_text.contains("Must provide"),
-                "Should reject when neither file_path nor file_pattern provided: {}", result_text);
+        assert!(
+            result_text.contains("exactly one") || result_text.contains("Must provide"),
+            "Should reject when neither file_path nor file_pattern provided: {}",
+            result_text
+        );
 
         Ok(())
     }
@@ -406,8 +412,8 @@ mod multi_file_tests {
             .await?;
 
         let tool = FuzzyReplaceTool {
-            file_path: None,  // ← This will fail: field type wrong
-            file_pattern: Some("*.rs".to_string()),  // ← This will fail: field doesn't exist
+            file_path: None,                        // ← This will fail: field type wrong
+            file_pattern: Some("*.rs".to_string()), // ← This will fail: field doesn't exist
             pattern: "test".to_string(),
             replacement: "TEST".to_string(),
             threshold: 1.0,
@@ -420,8 +426,14 @@ mod multi_file_tests {
         let result_text = format!("{:?}", result);
 
         // Should report: 2 files changed, 3 total replacements
-        assert!(result_text.contains("2") && result_text.contains("files"), "Should mention 2 files");
-        assert!(result_text.contains("3") && result_text.contains("replacement"), "Should mention 3 replacements");
+        assert!(
+            result_text.contains("2") && result_text.contains("files"),
+            "Should mention 2 files"
+        );
+        assert!(
+            result_text.contains("3") && result_text.contains("replacement"),
+            "Should mention 3 replacements"
+        );
 
         Ok(())
     }
@@ -439,13 +451,13 @@ mod multi_file_tests {
             .await?;
 
         let tool = FuzzyReplaceTool {
-            file_path: None,  // ← This will fail: field type wrong
-            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            file_path: None,                           // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()), // ← This will fail: field doesn't exist
             pattern: "getUserData".to_string(),
             replacement: "fetchUserData".to_string(),
             threshold: 1.0,
             distance: 1000,
-            dry_run: true,  // DRY RUN
+            dry_run: true, // DRY RUN
             validate: true,
         };
 
@@ -454,12 +466,22 @@ mod multi_file_tests {
 
         // Should show preview (case-insensitive)
         let result_text_lower = result_text.to_lowercase();
-        assert!(result_text_lower.contains("preview") || result_text_lower.contains("would"), "Expected 'preview' or 'would' in result: {}", result_text);
+        assert!(
+            result_text_lower.contains("preview") || result_text_lower.contains("would"),
+            "Expected 'preview' or 'would' in result: {}",
+            result_text
+        );
 
         // File should NOT be modified
         let content = fs::read_to_string(&file1)?;
-        assert!(content.contains("getUserData"), "Dry run should not modify file");
-        assert!(!content.contains("fetchUserData"), "Dry run should not modify file");
+        assert!(
+            content.contains("getUserData"),
+            "Dry run should not modify file"
+        );
+        assert!(
+            !content.contains("fetchUserData"),
+            "Dry run should not modify file"
+        );
 
         Ok(())
     }
@@ -477,8 +499,8 @@ mod multi_file_tests {
             .await?;
 
         let tool = FuzzyReplaceTool {
-            file_path: None,  // ← This will fail: field type wrong
-            file_pattern: Some("**/*.rs".to_string()),  // ← This will fail: field doesn't exist
+            file_path: None,                           // ← This will fail: field type wrong
+            file_pattern: Some("**/*.rs".to_string()), // ← This will fail: field doesn't exist
             pattern: "nonExistentFunction".to_string(),
             replacement: "newFunction".to_string(),
             threshold: 1.0,
@@ -529,7 +551,10 @@ mod security_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should fail with security error
-        assert!(result.is_err(), "Absolute path outside workspace should be blocked");
+        assert!(
+            result.is_err(),
+            "Absolute path outside workspace should be blocked"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("Security") || error_msg.contains("traversal"),
@@ -566,7 +591,9 @@ mod security_tests {
         assert!(result.is_err(), "Relative path traversal should be blocked");
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
-            error_msg.contains("Security") || error_msg.contains("traversal") || error_msg.contains("does not exist"),
+            error_msg.contains("Security")
+                || error_msg.contains("traversal")
+                || error_msg.contains("does not exist"),
             "Error should indicate security block or non-existent path: {}",
             error_msg
         );
@@ -600,11 +627,18 @@ mod security_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should succeed
-        assert!(result.is_ok(), "Valid relative path should work: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Valid relative path should work: {:?}",
+            result
+        );
 
         // Verify the file was actually modified
         let content = fs::read_to_string(&test_file)?;
-        assert!(content.contains("universe"), "File should contain replacement text");
+        assert!(
+            content.contains("universe"),
+            "File should contain replacement text"
+        );
 
         Ok(())
     }
@@ -619,8 +653,7 @@ fn test_fuzzy_replace_performance_mod_rs() -> Result<()> {
 
     // Load the actual mod.rs that caused the hang
     let mod_rs_path = "src/tools/refactoring/mod.rs";
-    let content = std::fs::read_to_string(mod_rs_path)
-        .expect("mod.rs should exist for this test");
+    let content = std::fs::read_to_string(mod_rs_path).expect("mod.rs should exist for this test");
 
     // Create tool with same params that caused the hang
     let tool = FuzzyReplaceTool {
