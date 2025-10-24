@@ -81,7 +81,8 @@ tree-sitter-zig = "1.1.2"
 # fastembed = "5.2"  # REMOVED - no GPU support
 
 # Tokenizer for BERT-based embeddings (BGE models)
-tokenizers = "0.20"
+# Disable esaxx_fast to avoid the C++ static CRT build on Windows debug builds.
+tokenizers = { version = "0.20", default-features = false, features = ["progressbar", "onig"] }
 
 # HuggingFace Hub for model downloading
 hf-hub = { version = "0.4", features = ["tokio"] }
