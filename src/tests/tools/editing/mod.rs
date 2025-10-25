@@ -10,6 +10,7 @@
 // Test submodules
 pub mod edit_lines;
 pub mod fuzzy_replace; // FuzzyReplaceTool comprehensive tests // EditLinesTool tests
+pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 
 // Legacy EditingTransaction tests
 use crate::tools::editing::EditingTransaction;
