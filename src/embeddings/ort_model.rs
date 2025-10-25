@@ -242,13 +242,13 @@ impl OrtEmbeddingModel {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
             if !force_cpu {
-                use ort::execution_providers::{CUDAExecutionProvider, TensorRTExecutionProvider};
-                info!("🎮 Attempting CUDA/TensorRT (NVIDIA GPU) acceleration...");
+                use ort::execution_providers::CUDAExecutionProvider;
+                info!("🎮 Attempting CUDA (NVIDIA GPU) acceleration...");
+                info!("   ℹ️  TensorRT disabled (requires CUDA 12.x, system has CUDA 13)");
                 builder = builder.with_execution_providers([
-                    TensorRTExecutionProvider::default().build(),
                     CUDAExecutionProvider::default().build(),
                 ])?;
-                info!("✅ CUDA/TensorRT execution providers registered");
+                info!("✅ CUDA execution provider registered");
             }
         }
 

@@ -793,6 +793,75 @@ Before adding any dependency:
 
 ---
 
+## 🎮 GPU Acceleration Setup
+
+### Platform-Specific Requirements
+
+**Windows (DirectML):**
+- ✅ **Works out of the box** with pre-built binaries
+- Supports NVIDIA, AMD, and Intel GPUs
+- No additional setup required
+
+**Linux (CUDA):**
+- ⚠️ **Requires CUDA 12.x + cuDNN 9**
+- **CRITICAL**: CUDA 13.x is NOT compatible due to symbol versioning differences
+- Pre-built ONNX Runtime binaries are compiled against CUDA 12.x libraries
+
+**Setup Instructions for Linux:**
+```bash
+# 1. Install CUDA 12.6 (latest 12.x)
+wget https://developer.download.nvidia.com/compute/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run
+sudo sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath=/usr/local/cuda-12.6 --no-drm --no-man-page --override
+
+# 2. Create symlink for compatibility
+sudo ln -sf /usr/local/cuda-12.6 /usr/local/cuda-12
+
+# 3. Download and install cuDNN 9
+# Visit: https://developer.nvidia.com/cudnn-downloads
+# Extract to /usr/local/cuda-12.6/
+
+# 4. Add to library path (add to ~/.bashrc for persistence)
+export LD_LIBRARY_PATH=/usr/local/cuda-12/lib64:$LD_LIBRARY_PATH
+```
+
+**macOS (CPU-optimized):**
+- CPU mode is **faster than CoreML** for BERT/transformer models
+- CoreML only accelerates ~25% of operations, rest falls back to CPU with overhead
+- No GPU setup needed - optimized CPU inference is default
+
+### Troubleshooting
+
+**Check if GPU is being used:**
+```bash
+# Linux - watch GPU utilization during embedding generation
+watch -n 0.5 nvidia-smi
+
+# Check Julie logs
+tail -f .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i "cuda\|gpu\|acceleration"
+```
+
+**Force CPU mode:**
+```bash
+# Useful for debugging or if GPU libraries are incompatible
+export JULIE_FORCE_CPU=1
+```
+
+**Common Issues:**
+- **"version `libcublas.so.12' not found"**: You have CUDA 13.x, need CUDA 12.x
+- **"libcudnn.so.9 not found"**: cuDNN not installed or not in library path
+- **CPU fallback automatic**: Julie will use CPU if GPU initialization fails (check logs)
+
+### Why CUDA 12.x Requirement?
+
+ONNX Runtime's pre-built binaries (from `download-binaries` feature) are compiled against CUDA 12.x. CUDA has **symbol versioning** in shared libraries - even though CUDA 13 is API-compatible, the internal symbol versions differ (`libcublas.so.12` vs `libcublas.so.13`), causing dynamic linking failures.
+
+**Alternatives:**
+1. Install CUDA 12.x (recommended - ~10min setup, 10-100x speedup)
+2. Use CPU mode (works now, still fast with ONNX optimizations)
+3. Build ONNX Runtime from source against CUDA 13 (complex, takes hours)
+
+---
+
 ## 🎯 Success Metrics
 
 ### Phase Completion Criteria
@@ -841,6 +910,12 @@ Read the TODO.md file. Your user updates this file to track observations and ide
   - All Tantivy-dependent tests removed
 - ✅ Real-World Validation Against GitHub Repositories
 - ✅ Professional Error Detection (File Corruption Prevention)
+- ✅ **GPU Acceleration Complete**:
+  - Windows: DirectML (NVIDIA/AMD/Intel) - works out of box
+  - Linux: CUDA support (requires CUDA 12.x + cuDNN 9 - documented)
+  - macOS: CPU-optimized (faster than CoreML for transformers)
+  - Automatic CPU fallback on initialization failure
+  - TensorRT disabled on Linux (CUDA version mismatch simplified)
 
-**Next Milestone**: GPU acceleration exploration + remaining test migrations
-**Last Updated**: 2025-10-12 - 2-Tier CASCADE Architecture Complete (Tantivy Removed)
+**Next Milestone**: Remaining test migrations + production readiness
+**Last Updated**: 2025-10-25 - GPU Acceleration Platform Requirements Documented

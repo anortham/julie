@@ -21,7 +21,7 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - **Windows (GPU via DirectML)**: ~30 seconds per 10,000 symbols
 - **macOS (CPU-optimized)**: ~1-3 minutes per 10,000 symbols
 - **Linux (CPU default)**: ~5-10 minutes per 10,000 symbols
-  - Compile with `--features cuda` for NVIDIA GPU acceleration (~30 seconds per 10,000 symbols)
+  - **Linux (GPU via CUDA)**: ~30 seconds per 10,000 symbols (requires CUDA 12.x + cuDNN 9 - see GPU Acceleration section below)
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds regardless of platform.
 
@@ -31,13 +31,19 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 
 Julie automatically uses GPU acceleration for semantic embeddings when available:
 
-- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs) - **enabled by default**
-- **Linux**: CPU-optimized by default (compile with `--features cuda` for NVIDIA GPU support)
-- **macOS**: CPU-optimized (faster than CoreML for BERT models)
+- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs) - **✅ Enabled by default**
+- **Linux**: CUDA support built-in - **⚠️ Requires CUDA 12.x + cuDNN 9**
+  - Pre-built binaries use CUDA 12.x libraries (CUDA 13+ not compatible due to symbol versioning)
+  - Install CUDA 12.6 from [NVIDIA Developer](https://developer.nvidia.com/cuda-12-6-0-download-archive)
+  - Install cuDNN 9 from [NVIDIA Developer](https://developer.nvidia.com/cudnn-downloads)
+  - Add to library path: `export LD_LIBRARY_PATH=/usr/local/cuda-12/lib64:$LD_LIBRARY_PATH`
+  - **CPU fallback automatic** if CUDA libraries not found
+- **macOS**: CPU-optimized (faster than CoreML for BERT/transformer models)
 
 **Automatic CPU Fallback**: If GPU initialization or inference fails, Julie automatically detects the failure and reinitializes in CPU-only mode. This handles:
+- Missing or incompatible CUDA/cuDNN libraries
 - Incompatible GPU drivers
-- DirectML/CUDA crashes
+- DirectML/CUDA crashes during inference
 - Remote Desktop sessions (GPU unavailable)
 - Specific GPU/model incompatibilities
 
