@@ -38,12 +38,10 @@ static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)
 /// - Generics and type parameters
 /// - Flutter widgets and StatefulWidget patterns
 /// - Imports and library dependencies
-#[allow(dead_code)] // TODO: Implement Dart/Flutter extraction
 pub struct DartExtractor {
     pub(crate) base: BaseExtractor,
 }
 
-#[allow(dead_code)] // TODO: Implement Dart extraction methods
 impl DartExtractor {
     pub fn new(language: String, file_path: String, content: String) -> Self {
         Self {

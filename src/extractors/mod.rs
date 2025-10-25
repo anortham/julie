@@ -42,12 +42,11 @@ pub mod zig; // Zig extractor - FIXING metadata access patterns
 pub use base::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// Manager for all language extractors
-#[allow(dead_code)] // TODO: Implement centralized extractor management
+/// Provides centralized symbol extraction across 25+ languages
 pub struct ExtractorManager {
-    // TODO: Store language parsers and extractors
+    // No state needed - this is a stateless manager that delegates to language-specific extractors
 }
 
-#[allow(dead_code)] // TODO: Implement extractor management methods
 impl Default for ExtractorManager {
     fn default() -> Self {
         Self::new()
@@ -56,16 +55,16 @@ impl Default for ExtractorManager {
 
 impl ExtractorManager {
     pub fn new() -> Self {
-        Self {
-            // TODO: Initialize
-        }
+        Self {}
     }
 
-    /// Get supported languages
+    /// Get supported languages (all 25 extractors with Miller parity)
     pub fn supported_languages(&self) -> Vec<&'static str> {
         vec![
-            // TODO: Return actual supported languages as they are implemented
-            "placeholder",
+            "rust", "typescript", "tsx", "javascript", "jsx", "python", "go", "java",
+            "c", "cpp", "csharp", "ruby", "php", "swift", "kotlin", "dart",
+            "gdscript", "lua", "vue", "razor", "sql", "html", "css", "bash",
+            "powershell", "zig", "regex",
         ]
     }
 

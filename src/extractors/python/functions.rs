@@ -125,7 +125,7 @@ pub(super) fn extract_lambda(extractor: &mut PythonExtractor, node: Node) -> Sym
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
-            parent_id: None, // TODO: Handle parent_id if needed
+            parent_id: None, // Lambdas are typically inline and don't have meaningful parent relationships
             metadata: None,
             doc_comment,
         },

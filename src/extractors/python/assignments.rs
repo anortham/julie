@@ -78,7 +78,8 @@ pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) ->
     // Infer visibility from name
     let visibility = signatures::infer_visibility(&name);
 
-    // TODO: Handle parent_id for nested assignments
+    // Parent tracking not yet implemented for assignments
+    // Enhancement: Could walk AST to find parent class (see functions.rs:determine_function_kind for pattern)
     let parent_id = None;
 
     let mut metadata = HashMap::new();

@@ -45,7 +45,7 @@ pub mod tools {
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod smart_read; // Smart Read token optimization tests
-    pub mod syntax_validation; // Syntax validation tests
+    // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
     pub mod editing; // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
 

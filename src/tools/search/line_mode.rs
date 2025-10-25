@@ -74,7 +74,7 @@ pub async fn line_mode_search(
         // Search primary workspace using shared connection
         tokio::task::block_in_place(|| -> Result<Vec<LineMatch>> {
             let db_lock = db.lock().unwrap();
-            let file_results = db_lock.search_file_content_fts(&processed_query, fetch_limit)?;
+            let file_results = db_lock.search_file_content_fts(&processed_query, &None, &None, fetch_limit)?;
 
             let mut matches = Vec::new();
             for file_result in file_results {
@@ -107,7 +107,7 @@ pub async fn line_mode_search(
             }
 
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-            let file_results = ref_db.search_file_content_fts(&query_clone, fetch_limit)?;
+            let file_results = ref_db.search_file_content_fts(&query_clone, &None, &None, fetch_limit)?;
 
             let mut matches = Vec::new();
             for file_result in file_results {

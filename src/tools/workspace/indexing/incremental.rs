@@ -274,18 +274,44 @@ impl ManageWorkspaceTool {
         let db = if is_primary {
             // Primary workspace - use handler's database connection
             match &primary_workspace.db {
-                Some(db_arc) => db_arc,
+                Some(db_arc) => db_arc.clone(),
                 None => return Ok(0),
             }
         } else {
-            // Reference workspace - DON'T delete from primary workspace DB!
-            // This is the bug: we were comparing reference workspace files against primary DB
-            // and deleting all primary files as "orphaned"
-            warn!("🚨 CRITICAL BUG PREVENTED: Attempted to clean orphaned files for reference workspace using primary DB!");
-            warn!("   This would have deleted all primary workspace files!");
-            warn!("   Reference workspace orphan cleanup is not yet implemented - skipping.");
-            // TODO: Implement reference workspace orphan cleanup by opening the correct DB
-            return Ok(0);
+            // Reference workspace - open its separate database
+            let ref_db_path = primary_workspace.workspace_db_path(_workspace_id);
+
+            debug!(
+                "🗄️ Opening reference workspace DB for orphan cleanup: {}",
+                ref_db_path.display()
+            );
+
+            if !ref_db_path.exists() {
+                debug!("Reference workspace DB doesn't exist yet - no orphans to clean");
+                return Ok(0);
+            }
+
+            match tokio::task::spawn_blocking(move || {
+                crate::database::SymbolDatabase::new(ref_db_path)
+            })
+            .await
+            {
+                Ok(Ok(db)) => std::sync::Arc::new(std::sync::Mutex::new(db)),
+                Ok(Err(e)) => {
+                    warn!(
+                        "Reference workspace DB doesn't exist yet: {} - no orphans to clean",
+                        e
+                    );
+                    return Ok(0);
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to open reference workspace DB: {} - skipping orphan cleanup",
+                        e
+                    );
+                    return Ok(0);
+                }
+            }
         };
 
         // Delete orphaned entries
@@ -324,6 +350,13 @@ impl ManageWorkspaceTool {
                 cleaned_count += 1;
                 trace!("Cleaned up orphaned file: {}", file_path);
             }
+        }
+
+        if cleaned_count > 0 && !is_primary {
+            debug!(
+                "✅ Reference workspace orphan cleanup: {} files removed from workspace {}",
+                cleaned_count, _workspace_id
+            );
         }
 
         Ok(cleaned_count)

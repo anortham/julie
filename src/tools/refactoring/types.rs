@@ -19,6 +19,8 @@ pub struct SmartRefactorResult {
 }
 
 /// Syntax error detected by tree-sitter
+/// (Preserved from abandoned AutoFixSyntax feature - may be useful in future)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SyntaxError {
     /// Line number where error occurs (1-based)
@@ -38,6 +40,8 @@ pub struct SyntaxError {
 }
 
 /// Result of auto-fix operation
+/// (Preserved from abandoned AutoFixSyntax feature - may be useful in future)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AutoFixResult {
     /// Whether any fixes were applied
@@ -89,7 +93,6 @@ pub enum RefactorOperation {
     InlineVariable,
     /// Inline a function by replacing calls with function body
     InlineFunction,
-    /// Validate syntax using tree-sitter error detection
-    /// Reports errors but doesn't attempt automatic fixes - agent handles corrections
-    ValidateSyntax,
+    // ValidateSyntax removed - abandoned AutoFixSyntax feature (Oct 2025)
+    // See commit e9ff6e9 - only 2/6 tests passing after days of work
 }

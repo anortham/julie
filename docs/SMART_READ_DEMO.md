@@ -1,10 +1,16 @@
 # Smart Read Demo - 70-90% Token Savings
 
-## Current Status: PARTIAL IMPLEMENTATION
+## ⚠️ FUTURE VISION DOCUMENT ⚠️
 
-**Note (2025-10-17):** This documentation describes the *target* Smart Read feature set. Currently, only the first phase is implemented:
+**Status:** This is a **planning document** for future enhancements, not current functionality.
+
+**Current Implementation (Phase 1):**
 - ✅ **Implemented**: Target filtering and limit parameters for symbol structure
-- ❌ **Not Yet Implemented**: `include_body` parameter and body extraction modes ("minimal", "full")
+- ✅ **Implemented**: Token optimization through code_context stripping
+
+**Future Enhancements (Phase 2 - Not Yet Built):**
+- ❌ **Planned**: `include_body` parameter and body extraction modes ("minimal", "full")
+- ❌ **Planned**: Surgical code extraction with complete function/class bodies
 
 The TOKEN_OPTIMIZATION feature referenced in the docstring has been implemented for structure-only views through code_context stripping and response optimization.
 

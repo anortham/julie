@@ -515,20 +515,77 @@ impl SmartRefactorTool {
         let mut parser = Parser::new();
         parser.set_language(&ts_language)?;
 
-        let _tree = parser
+        let tree = parser
             .parse(content, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
 
-        // Use fallback simple replacement
-        let is_identifier_char = |c: char| c.is_alphanumeric() || c == '_';
-        let (result, _changed) = helpers::replace_identifier_with_boundaries(
-            content,
+        // 🌳 AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
+        let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+        let content_bytes = content.as_bytes();
+
+        self.collect_identifier_replacements(
+            tree.root_node(),
+            content_bytes,
             old_name,
             new_name,
-            &is_identifier_char,
+            &mut replacements,
         );
 
+        // Apply replacements in reverse order (end to start) to preserve byte positions
+        replacements.sort_by(|a, b| b.0.cmp(&a.0));
+
+        let mut result = content.to_string();
+        for (start, end, replacement) in replacements {
+            result.replace_range(start..end, &replacement);
+        }
+
         Ok(result)
+    }
+
+    /// Recursively walk tree and collect identifier nodes to replace
+    fn collect_identifier_replacements(
+        &self,
+        node: tree_sitter::Node,
+        content_bytes: &[u8],
+        old_name: &str,
+        new_name: &str,
+        replacements: &mut Vec<(usize, usize, String)>,
+    ) {
+        let node_kind = node.kind();
+
+        // Skip string literals and comments - these should NOT be renamed
+        if node_kind.contains("string")
+            || node_kind.contains("comment")
+            || node_kind == "template_string"
+            || node_kind == "string_fragment"
+        {
+            return;
+        }
+
+        // Check if this node is an identifier matching old_name
+        if node_kind == "identifier" || node_kind == "type_identifier" {
+            let start = node.start_byte();
+            let end = node.end_byte();
+
+            if let Ok(text) = std::str::from_utf8(&content_bytes[start..end]) {
+                if text == old_name {
+                    replacements.push((start, end, new_name.to_string()));
+                    return; // Don't recurse into children of identifiers
+                }
+            }
+        }
+
+        // Recurse into children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_identifier_replacements(
+                child,
+                content_bytes,
+                old_name,
+                new_name,
+                replacements,
+            );
+        }
     }
 
     /// Get tree-sitter language for file type (delegates to shared language module)

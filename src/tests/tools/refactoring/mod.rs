@@ -11,6 +11,9 @@ mod scope_test;
 mod edit_symbol;
 mod rename_symbol;
 
+// AST-aware refactoring tests (CRITICAL - verifies tree-sitter is actually used)
+mod ast_aware;
+
 use crate::tools::refactoring::*;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde_json::json;

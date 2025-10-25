@@ -354,9 +354,12 @@ impl JulieWorkspace {
         // Check permissions
         health.check_permissions(&self.julie_dir)?;
 
-        // TODO: Check database integrity when db module is ready
-        // TODO: Check search index when Tantivy module is ready
-        // TODO: Check embedding store when embeddings module is ready
+        // ✅ Comprehensive health checks implemented in ManageWorkspaceTool::health_command()
+        // See src/tools/workspace/commands/registry.rs:
+        // - check_database_health() - SQLite statistics and integrity
+        // - check_search_engine_health() - FTS5 search status
+        // - check_embedding_health() - HNSW semantic search status
+        // This basic check only validates directory permissions.
 
         if health.errors.is_empty() {
             info!("Workspace health check passed");

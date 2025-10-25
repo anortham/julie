@@ -380,4 +380,93 @@ mod reference_workspace_tests {
 
         Ok(())
     }
+
+    /// Test that orphaned files are cleaned up from reference workspace database
+    ///
+    /// This verifies the fix for INCOMPLETE_IMPLEMENTATIONS.md Issue #2:
+    /// Reference workspace orphan cleanup must open the correct database to clean up deleted files.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+        // Initialize handler with primary fixture
+        let primary_path = get_fixture_path("tiny-primary");
+        let handler = JulieServerHandler::new().await?;
+        handler
+            .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
+            .await?;
+
+        // Setup both workspaces using fixtures
+        let (_primary_id, reference_id) = setup_test_workspaces(&handler).await?;
+
+        // Verify initial files are indexed in reference workspace
+        let initial_search = FastSearchTool {
+            query: "helper".to_string(),
+            search_method: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some(reference_id.clone()),
+            search_target: "content".to_string(),
+            output: Some("lines".to_string()),
+            context_lines: None,
+        };
+
+        let initial_result = initial_search.call_tool(&handler).await?;
+        let initial_response = extract_text_from_result(&initial_result);
+
+        assert!(
+            initial_response.contains("helper.rs"),
+            "Initial search should find helper.rs: {}",
+            initial_response
+        );
+
+        // Now simulate file deletion: Delete helper.rs from the reference workspace fixture
+        let reference_path = get_fixture_path("tiny-reference");
+        let helper_file_path = reference_path.join("src").join("helper.rs");
+
+        // Create a backup and delete the file
+        let backup_content = std::fs::read_to_string(&helper_file_path)?;
+        std::fs::remove_file(&helper_file_path)?;
+
+        // Re-index the reference workspace to trigger orphan cleanup
+        let reindex_tool = ManageWorkspaceTool {
+            operation: "refresh".to_string(),
+            path: None,
+            force: Some(false), // Incremental mode should trigger orphan cleanup
+            name: None,
+            workspace_id: Some(reference_id.clone()),
+            detailed: None,
+        };
+
+        let _reindex_result = reindex_tool.call_tool(&handler).await?;
+
+        // Search for the deleted file - should NOT be found
+        let search_deleted = FastSearchTool {
+            query: "helper".to_string(),
+            search_method: "text".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some(reference_id.clone()),
+            search_target: "content".to_string(),
+            output: Some("lines".to_string()),
+            context_lines: None,
+        };
+
+        let deleted_result = search_deleted.call_tool(&handler).await?;
+        let deleted_response = extract_text_from_result(&deleted_result);
+
+        // Restore the file for other tests
+        std::fs::write(&helper_file_path, backup_content)?;
+
+        // Verify orphaned file was cleaned up from database
+        assert!(
+            !deleted_response.contains("helper.rs") || deleted_response.contains("No lines found"),
+            "Orphaned file helper.rs should have been cleaned up from reference workspace database, but was still found: {}",
+            deleted_response
+        );
+
+        Ok(())
+    }
 }

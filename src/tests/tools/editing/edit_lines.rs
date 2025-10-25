@@ -42,6 +42,8 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_insert_import() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
@@ -78,6 +80,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_delete_comment() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
@@ -109,6 +112,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_replace_function() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
@@ -147,6 +151,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_relative_path_uses_workspace_root() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
@@ -181,6 +186,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_preserves_crlf_line_endings() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
@@ -227,6 +233,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_dry_run() -> Result<()> {
         // TDD RED: Verify dry_run doesn't modify file
 
@@ -265,6 +272,7 @@ mod edit_lines_tests {
     // ===== SECURITY TESTS =====
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_path_traversal_prevention_absolute_path() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
@@ -303,6 +311,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_path_traversal_prevention_relative_traversal() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
@@ -340,6 +349,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     #[cfg(unix)] // Symlink test only applicable on Unix systems
     async fn test_path_traversal_prevention_symlink_outside_workspace() -> Result<()> {
         use crate::handler::JulieServerHandler;
@@ -386,6 +396,7 @@ mod edit_lines_tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_secure_path_resolution_valid_paths() -> Result<()> {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;

@@ -328,6 +328,8 @@ impl SymbolDatabase {
     pub fn search_file_content_fts(
         &self,
         query: &str,
+        language: &Option<String>,
+        file_pattern: &Option<String>,
         limit: usize,
     ) -> Result<Vec<FileSearchResult>> {
         // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
@@ -338,10 +340,46 @@ impl SymbolDatabase {
             query, sanitized_query
         );
 
-        let mut stmt = self.conn.prepare(
+        // Build WHERE clause dynamically based on filters
+        let mut where_clauses = vec!["files_fts MATCH ?1".to_string()];
+        let mut param_index = 2;
+
+        if language.is_some() {
+            where_clauses.push(format!("files.language = ?{}", param_index));
+            param_index += 1;
+        }
+
+        // Normalize file_pattern for better UX
+        // Database stores canonical absolute paths (e.g., \\?\C:\source\julie\src\tests\...)
+        // User expects to use relative patterns (e.g., src/tests/**)
+        // Solution: Prepend wildcard to relative patterns to match any absolute prefix
+        let normalized_pattern = file_pattern.as_ref().map(|pattern| {
+            if pattern.starts_with('*') || pattern.starts_with('/') || pattern.starts_with('\\') {
+                // Already absolute or has wildcards - use as-is
+                pattern.clone()
+            } else {
+                // Relative pattern - prepend wildcard to match any absolute path prefix
+                // Platform-aware: Use backslashes on Windows, forward slashes on Unix
+                // src/tests/** becomes *\src\tests\** on Windows, */src/tests/** on Unix
+                #[cfg(windows)]
+                let normalized = format!("*\\{}", pattern.replace('/', "\\"));
+                #[cfg(not(windows))]
+                let normalized = format!("*/{}", pattern.replace('\\', "/"));
+                normalized
+            }
+        });
+
+        if normalized_pattern.is_some() {
+            where_clauses.push(format!("f.path GLOB ?{}", param_index));
+            param_index += 1;
+        }
+
+        let where_clause = where_clauses.join(" AND ");
+
+        let query_sql = format!(
             "SELECT
                 f.path,
-                snippet(files_fts, 1, '<mark>', '</mark>', '...', 32) as snippet,
+                COALESCE(snippet(files_fts, 1, '<mark>', '</mark>', '...', 32), '[Content unavailable - file may need re-indexing]') as snippet,
                 -- Custom ranking with Lucene-style boosting
                 -- 🔥 FIX: Negate BM25 (returns negative scores) so multipliers work correctly
                 -- Without negation: test files get -0.17, source files get -18.00 (test files rank higher!)
@@ -396,22 +434,59 @@ impl SymbolDatabase {
                  WHERE kind IN ('function', 'class', 'struct', 'interface', 'method', 'impl')
                  GROUP BY file_path
              ) s ON f.path = s.file_path
-             WHERE files_fts MATCH ?1
+             WHERE {}
              ORDER BY rank DESC
-             LIMIT ?2"
-        )?;
+             LIMIT ?{}",
+            where_clause, param_index
+        );
 
-        let rows = stmt.query_map(params![sanitized_query, limit], |row| {
-            Ok(FileSearchResult {
-                path: row.get(0)?,
-                snippet: row.get(1)?,
-                rank: row.get::<_, f64>(2)? as f32,
-            })
-        })?;
+        let mut stmt = self.conn.prepare(&query_sql)?;
 
+        // Bind parameters dynamically based on filters and collect results
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+
+        // Use normalized_pattern for parameter binding (handles relative path conversion)
+        match (language, normalized_pattern.as_ref()) {
+            (Some(lang), Some(pattern)) => {
+                let mut rows = stmt.query(params![sanitized_query, lang, pattern, limit])?;
+                while let Some(row) = rows.next()? {
+                    results.push(FileSearchResult {
+                        path: row.get(0)?,
+                        snippet: row.get(1)?,
+                        rank: row.get::<_, f64>(2)? as f32,
+                    });
+                }
+            }
+            (Some(lang), None) => {
+                let mut rows = stmt.query(params![sanitized_query, lang, limit])?;
+                while let Some(row) = rows.next()? {
+                    results.push(FileSearchResult {
+                        path: row.get(0)?,
+                        snippet: row.get(1)?,
+                        rank: row.get::<_, f64>(2)? as f32,
+                    });
+                }
+            }
+            (None, Some(pattern)) => {
+                let mut rows = stmt.query(params![sanitized_query, pattern, limit])?;
+                while let Some(row) = rows.next()? {
+                    results.push(FileSearchResult {
+                        path: row.get(0)?,
+                        snippet: row.get(1)?,
+                        rank: row.get::<_, f64>(2)? as f32,
+                    });
+                }
+            }
+            (None, None) => {
+                let mut rows = stmt.query(params![sanitized_query, limit])?;
+                while let Some(row) = rows.next()? {
+                    results.push(FileSearchResult {
+                        path: row.get(0)?,
+                        snippet: row.get(1)?,
+                        rank: row.get::<_, f64>(2)? as f32,
+                    });
+                }
+            }
         }
 
         Ok(results)
@@ -470,6 +545,11 @@ impl SymbolDatabase {
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
+        // FTS5 CRITICAL: Rebuild index to prevent desync with external content table
+        // Without this, snippet() queries will fail with "missing row X from content table"
+        // when trying to access deleted rowids
+        self.rebuild_files_fts()?;
+
         debug!(
             "Deleted file record for: {} ({} rows affected)",
             file_path, count
@@ -482,6 +562,9 @@ impl SymbolDatabase {
         let count = self
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
+
+        // FTS5 CRITICAL: Rebuild index to prevent desync
+        self.rebuild_files_fts()?;
 
         debug!(
             "Deleted file record for '{}' ({} rows affected)",
