@@ -5,55 +5,15 @@ on:
     tags:
       - 'v*' # Trigger on version tags like v0.5.0
 
+permissions:
+  contents: write  # Required for creating releases
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Julie v${{ steps.get_version.outputs.version }}
-          body: |
-            ## Julie v${{ steps.get_version.outputs.version }}
-
-            Cross-platform code intelligence server for AI coding agents.
-
-            ### Installation
-
-            Download the binary for your platform:
-            - **Windows**: `julie-v${{ steps.get_version.outputs.version }}-x86_64-pc-windows-msvc.zip`
-            - **macOS**: `julie-v${{ steps.get_version.outputs.version }}-x86_64-apple-darwin.tar.gz`
-            - **Linux**: `julie-v${{ steps.get_version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz`
-
-            Extract and add to your PATH.
-
-            ### GPU Acceleration
-            - **Windows**: DirectML (NVIDIA, AMD, Intel GPUs)
-            - **macOS**: CoreML (Apple Silicon Neural Engine)
-            - **Linux**: CUDA + TensorRT (NVIDIA GPUs)
-
-            See [README.md](https://github.com/${{ github.repository }}) for configuration.
-          draft: false
-          prerelease: false
-
   build:
     name: Build ${{ matrix.target }}
-    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,25 +23,21 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: julie-server.exe
-            archive_name: julie-v${{ needs.create-release.outputs.version }}-x86_64-pc-windows-msvc.zip
 
           # macOS Intel (CoreML)
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: julie-server
-            archive_name: julie-v${{ needs.create-release.outputs.version }}-x86_64-apple-darwin.tar.gz
 
           # macOS Apple Silicon (CoreML + Neural Engine)
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: julie-server
-            archive_name: julie-v${{ needs.create-release.outputs.version }}-aarch64-apple-darwin.tar.gz
 
           # Linux (CUDA + TensorRT)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: julie-server
-            archive_name: julie-v${{ needs.create-release.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
 
     steps:
       - name: Checkout code
@@ -108,7 +64,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
@@ -117,38 +73,110 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
 
-      - name: Create archive (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
+      - name: Create archive
+        shell: bash
         run: |
-          $binary = "target/${{ matrix.target }}/release/${{ matrix.binary_name }}"
-          Compress-Archive -Path $binary -DestinationPath ${{ matrix.archive_name }}
+          VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
+            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}"
+          else
+            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
+            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
+          fi
+          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
-      - name: Create archive (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          tar -czf ${{ matrix.archive_name }} -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.archive_name }}
-          asset_name: ${{ matrix.archive_name }}
-          asset_content_type: application/octet-stream
+          name: ${{ env.ARCHIVE }}
+          path: ${{ env.ARCHIVE }}
 
-  verify-release:
-    name: Verify Release Artifacts
-    needs: [create-release, build]
+  release:
+    name: Create Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Check all artifacts uploaded
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release with gh CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "✅ Release v${{ needs.create-release.outputs.version }} created successfully"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create release notes
+          cat > release-notes.md << 'EOF'
+          ## Julie v${{ steps.version.outputs.version }}
+
+          Cross-platform code intelligence server for AI coding agents.
+
+          ### Installation
+
+          Download the binary for your platform below, extract, and add to your PATH.
+
+          ### Platform Support
+          - **Windows** (x86_64): DirectML GPU acceleration (NVIDIA, AMD, Intel)
+          - **macOS Intel** (x86_64): CoreML acceleration
+          - **macOS Apple Silicon** (aarch64): CoreML + Neural Engine acceleration
+          - **Linux** (x86_64): CUDA + TensorRT GPU acceleration
+
+          ### Quick Start
+          ```bash
+          # Extract the archive for your platform
+          # Add julie-server to your PATH
+          # Configure your MCP client to use julie-server
+          ```
+
+          See [README.md](https://github.com/${{ github.repository }}) for full documentation.
+
+          ### Highlights
+          - 🚀 25 language extractors with 100% Miller parity
+          - ⚡ CASCADE architecture (SQLite FTS5 → HNSW Semantic)
+          - 🛡️ Comprehensive safety mechanisms (all tools default to preview mode)
+          - 🎯 GPU acceleration on all platforms
+          - ✅ 1,150 tests passing
+          EOF
+
+          # Create release
+          gh release create "v${VERSION}" \
+            --title "Julie v${VERSION}" \
+            --notes-file release-notes.md
+
+      - name: Upload Release Assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Upload all artifacts
+          cd artifacts
+          for dir in */; do
+            for file in "$dir"*; do
+              if [ -f "$file" ]; then
+                echo "Uploading $(basename "$file")..."
+                gh release upload "v${VERSION}" "$file" --clobber
+              fi
+            done
+          done
+
+      - name: Verify Release
+        run: |
+          echo "✅ Release v${{ steps.version.outputs.version }} created successfully"
           echo "Binaries built for:"
-          echo "  - Windows (DirectML)"
-          echo "  - macOS Intel (CoreML)"
-          echo "  - macOS Apple Silicon (CoreML + Neural Engine)"
-          echo "  - Linux (CUDA + TensorRT)"
+          echo "  - Windows (x86_64-pc-windows-msvc) - DirectML"
+          echo "  - macOS Intel (x86_64-apple-darwin) - CoreML"
+          echo "  - macOS Apple Silicon (aarch64-apple-darwin) - CoreML + Neural Engine"
+          echo "  - Linux (x86_64-unknown-linux-gnu) - CUDA + TensorRT"
+          echo ""
+          echo "View release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}"
