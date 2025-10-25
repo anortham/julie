@@ -53,6 +53,86 @@ The fallback happens once at runtime with clear logging - no manual intervention
 
 **Specialized:** GDScript, Vue, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
 
+## Installation
+
+### Download Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases):
+
+**Windows:**
+```bash
+# Download julie-v0.5.0-x86_64-pc-windows-msvc.zip
+# Extract julie-server.exe
+# Add to MCP configuration (see below)
+```
+
+**macOS (Intel):**
+```bash
+# Download julie-v0.5.0-x86_64-apple-darwin.tar.gz
+tar -xzf julie-v0.5.0-x86_64-apple-darwin.tar.gz
+# Add to MCP configuration (see below)
+```
+
+**macOS (Apple Silicon):**
+```bash
+# Download julie-v0.5.0-aarch64-apple-darwin.tar.gz
+tar -xzf julie-v0.5.0-aarch64-apple-darwin.tar.gz
+# Add to MCP configuration (see below)
+```
+
+**Linux:**
+```bash
+# Download julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
+# Add to MCP configuration (see below)
+```
+
+### Configure as MCP Server
+
+Once downloaded, add Julie to your MCP client:
+
+**Claude Code:**
+```bash
+# Windows
+claude mcp add julie C:\path\to\julie-server.exe
+
+# macOS/Linux
+claude mcp add julie /path/to/julie-server
+```
+
+**Manual Configuration:**
+
+Add to your MCP client settings (e.g., `claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "command": "/path/to/julie-server",
+      "args": []
+    }
+  }
+}
+```
+
+**First Use:**
+
+Julie will automatically index your workspace on first use:
+- **Text search**: Available immediately (~2s)
+- **Semantic search**: Builds in background (30s-3min depending on workspace size and GPU)
+
+You can start searching with text mode while semantic indexing completes.
+
+### Build from Source
+
+If you prefer to build from source:
+
+```bash
+git clone https://github.com/anortham/julie.git
+cd julie
+cargo build --release
+# Binary will be at: target/release/julie-server[.exe]
+```
+
 ## Tools
 
 ### Search & Navigation
@@ -91,9 +171,13 @@ The fallback happens once at runtime with clear logging - no manual intervention
 - **ONNX embeddings** for semantic search capabilities
 - **MCP protocol** for AI agent integration
 
-## Building
+## Development
 
 ```bash
+# Clone repository
+git clone https://github.com/anortham/julie.git
+cd julie
+
 # Development build
 cargo build
 
@@ -103,39 +187,6 @@ cargo test
 # Production build
 cargo build --release
 ```
-
-## Usage
-
-Julie runs as an MCP server. First, build the release version:
-
-```bash
-cargo build --release
-```
-
-Then add it to Claude Code:
-
-```bash
-# Windows
-claude mcp add julie C:\source\julie\target\release\julie-server.exe
-
-# macOS/Linux
-claude mcp add julie /path/to/julie/target/release/julie-server
-```
-
-Alternatively, manually configure in your MCP client settings:
-
-```json
-{
-  "mcpServers": {
-    "julie": {
-      "command": "/path/to/julie-server",
-      "args": []
-    }
-  }
-}
-```
-
-The server will automatically index your workspace on first use. Text search is available immediately (<2s); semantic search builds in the background (2-5 minutes per 10,000 symbols, faster on Apple Silicon). You can use text search while semantic indexing completes.
 
 ## Testing
 
