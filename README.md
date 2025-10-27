@@ -103,7 +103,7 @@ tar -xzf julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
 
 Once downloaded, add Julie to your MCP client:
 
-**Claude Code:**
+**Claude Code (Recommended):**
 
 ```bash
 # Windows
@@ -113,9 +113,11 @@ claude mcp add julie C:\path\to\julie-server.exe
 claude mcp add julie /path/to/julie-server
 ```
 
+Claude Code automatically detects your workspace and creates `.julie/` folders in the correct location.
+
 **VS Code with GitHub Copilot:**
 
-Add to workspace-level `.vscode/mcp.json` (recommended for per-workspace configuration):
+Create a workspace-level `.vscode/mcp.json` file in your project:
 
 ```json
 {
@@ -132,26 +134,9 @@ Add to workspace-level `.vscode/mcp.json` (recommended for per-workspace configu
 }
 ```
 
-Or add to user-level MCP configuration at:
+**Important:** The `JULIE_WORKSPACE` environment variable is **required** for VS Code to ensure Julie creates its `.julie` folder in your workspace directory (not your home directory). VS Code automatically substitutes `${workspaceFolder}` with the actual workspace path.
 
-- **Windows**: `%APPDATA%\Code\User\mcp.json` (or `Code - Insiders`)
-- **macOS/Linux**: `~/.config/Code/User/mcp.json`
-
-```json
-{
-  "servers": {
-    "Julie": {
-      "type": "stdio",
-      "command": "/path/to/julie-server",
-      "args": []
-    }
-  }
-}
-```
-
-**Note**: The `JULIE_WORKSPACE` environment variable is **required** when using workspace-level configuration to ensure Julie creates its `.julie` folder in the correct workspace directory. The `${workspaceFolder}` variable is automatically substituted by VS Code.
-
-**Manual Configuration (Other MCP Clients):**
+**Other MCP Clients:**
 
 Add to your MCP client settings (e.g., `claude_desktop_config.json`):
 
@@ -160,11 +145,16 @@ Add to your MCP client settings (e.g., `claude_desktop_config.json`):
   "mcpServers": {
     "julie": {
       "command": "/path/to/julie-server",
-      "args": []
+      "args": [],
+      "env": {
+        "JULIE_WORKSPACE": "/path/to/your/workspace"
+      }
     }
   }
 }
 ```
+
+If your MCP client doesn't support environment variables, Julie will use the current working directory as the workspace root.
 
 **First Use:**
 
@@ -174,6 +164,16 @@ Julie will automatically index your workspace on first use:
 - **Semantic search**: Builds in background (30s-3min depending on workspace size and GPU)
 
 You can start searching with text mode while semantic indexing completes.
+
+**Workspace Detection:**
+
+Julie determines where to create the `.julie/` folder using this priority order:
+
+1. **CLI argument** (if passed): `--workspace /path/to/workspace`
+2. **JULIE_WORKSPACE environment variable** (VS Code `${workspaceFolder}`)
+3. **Current working directory** (fallback for Claude Code and other clients)
+
+If you see a `.julie/` folder in an unexpected location, check your `JULIE_WORKSPACE` environment variable setting.
 
 ### Build from Source
 
