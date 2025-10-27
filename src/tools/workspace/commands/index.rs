@@ -5,6 +5,7 @@ use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
@@ -29,12 +30,31 @@ impl ManageWorkspaceTool {
         info!("📚 Starting workspace indexing...");
 
         // Get original path for reference workspace check BEFORE resolution
+        // Priority: explicit path > initialized workspace root > JULIE_WORKSPACE env > current_dir
         let original_path = match path {
             Some(ref p) => {
                 let expanded = shellexpand::tilde(p).to_string();
                 PathBuf::from(expanded)
             }
-            None => std::env::current_dir()?,
+            None => {
+                // Try to use already-initialized workspace root first
+                if let Ok(Some(ws)) = handler.get_workspace().await {
+                    ws.root.clone()
+                } else {
+                    // Fall back to JULIE_WORKSPACE env var (same as main.rs get_workspace_root())
+                    if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
+                        let expanded = shellexpand::tilde(&path_str).to_string();
+                        let path = PathBuf::from(expanded);
+                        if path.exists() {
+                            path.canonicalize().unwrap_or(path)
+                        } else {
+                            env::current_dir()?
+                        }
+                    } else {
+                        env::current_dir()?
+                    }
+                }
+            }
         };
 
         // 🔥 CRITICAL FIX: Check if this is a reference workspace FIRST before calling find_workspace_root

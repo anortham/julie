@@ -30,6 +30,7 @@ pub mod core {
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
+    pub mod workspace_init; // Workspace root detection and initialization tests
 
     pub mod embeddings; // Embedding tests with cross-language support
 }

@@ -18,6 +18,7 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - Single binary deployment with no external dependencies
 
 **Semantic Indexing Performance** (background, non-blocking):
+
 - **Windows (GPU via DirectML)**: ~30 seconds per 10,000 symbols
 - **macOS (CPU-optimized)**: ~1-3 minutes per 10,000 symbols
 - **Linux (CPU default)**: ~5-10 minutes per 10,000 symbols
@@ -41,6 +42,7 @@ Julie automatically uses GPU acceleration for semantic embeddings when available
 - **macOS**: CPU-optimized (faster than CoreML for BERT/transformer models)
 
 **Automatic CPU Fallback**: If GPU initialization or inference fails, Julie automatically detects the failure and reinitializes in CPU-only mode. This handles:
+
 - Missing or incompatible CUDA/cuDNN libraries
 - Incompatible GPU drivers
 - DirectML/CUDA crashes during inference
@@ -66,6 +68,7 @@ The fallback happens once at runtime with clear logging - no manual intervention
 Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases):
 
 **Windows:**
+
 ```bash
 # Download julie-v0.5.0-x86_64-pc-windows-msvc.zip
 # Extract julie-server.exe
@@ -73,6 +76,7 @@ Download the latest release for your platform from the [Releases page](https://g
 ```
 
 **macOS (Intel):**
+
 ```bash
 # Download julie-v0.5.0-x86_64-apple-darwin.tar.gz
 tar -xzf julie-v0.5.0-x86_64-apple-darwin.tar.gz
@@ -80,6 +84,7 @@ tar -xzf julie-v0.5.0-x86_64-apple-darwin.tar.gz
 ```
 
 **macOS (Apple Silicon):**
+
 ```bash
 # Download julie-v0.5.0-aarch64-apple-darwin.tar.gz
 tar -xzf julie-v0.5.0-aarch64-apple-darwin.tar.gz
@@ -87,6 +92,7 @@ tar -xzf julie-v0.5.0-aarch64-apple-darwin.tar.gz
 ```
 
 **Linux:**
+
 ```bash
 # Download julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
@@ -98,6 +104,7 @@ tar -xzf julie-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
 Once downloaded, add Julie to your MCP client:
 
 **Claude Code:**
+
 ```bash
 # Windows
 claude mcp add julie C:\path\to\julie-server.exe
@@ -106,9 +113,48 @@ claude mcp add julie C:\path\to\julie-server.exe
 claude mcp add julie /path/to/julie-server
 ```
 
-**Manual Configuration:**
+**VS Code with GitHub Copilot:**
+
+Add to workspace-level `.vscode/mcp.json` (recommended for per-workspace configuration):
+
+```json
+{
+  "servers": {
+    "Julie": {
+      "type": "stdio",
+      "command": "/path/to/julie-server",
+      "args": [],
+      "env": {
+        "JULIE_WORKSPACE": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+Or add to user-level MCP configuration at:
+
+- **Windows**: `%APPDATA%\Code\User\mcp.json` (or `Code - Insiders`)
+- **macOS/Linux**: `~/.config/Code/User/mcp.json`
+
+```json
+{
+  "servers": {
+    "Julie": {
+      "type": "stdio",
+      "command": "/path/to/julie-server",
+      "args": []
+    }
+  }
+}
+```
+
+**Note**: The `JULIE_WORKSPACE` environment variable is **required** when using workspace-level configuration to ensure Julie creates its `.julie` folder in the correct workspace directory. The `${workspaceFolder}` variable is automatically substituted by VS Code.
+
+**Manual Configuration (Other MCP Clients):**
 
 Add to your MCP client settings (e.g., `claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -123,6 +169,7 @@ Add to your MCP client settings (e.g., `claude_desktop_config.json`):
 **First Use:**
 
 Julie will automatically index your workspace on first use:
+
 - **Text search**: Available immediately (~2s)
 - **Semantic search**: Builds in background (30s-3min depending on workspace size and GPU)
 
@@ -142,6 +189,7 @@ cargo build --release
 ## Tools
 
 ### Search & Navigation
+
 - `fast_search` - Unified text and semantic code search with multiple output modes (symbols/lines)
   - Search full file content or symbol definitions only
   - Text mode (<10ms), semantic mode (<100ms), or hybrid
@@ -157,6 +205,7 @@ cargo build --release
   - Uses semantic similarity for cross-language matching
 
 ### Code Intelligence & Editing
+
 - `find_logic` - Discover core business logic by filtering framework noise
 - `fuzzy_replace` - Diff-match-patch fuzzy text replacement with validation
 - `smart_refactor` - AST-aware semantic refactoring
@@ -167,6 +216,7 @@ cargo build --release
 - `edit_lines` - Surgical line-level editing (insert/replace/delete)
 
 ### Workspace Management
+
 - `manage_workspace` - Index, add, remove, refresh, and clean workspaces
 
 ## Architecture

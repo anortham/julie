@@ -3,7 +3,9 @@
 // Use modules from the library crate
 // (imports are done directly where needed)
 
+use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
@@ -56,21 +58,88 @@ Use Julie for INTELLIGENCE, built-in tools for MECHANICS."#
     }
 }
 
+/// Determine the workspace root path from CLI args, environment, or current directory
+///
+/// Priority order:
+/// 1. --workspace <path> CLI argument
+/// 2. JULIE_WORKSPACE environment variable
+/// 3. Current working directory (fallback)
+///
+/// Paths are canonicalized to prevent duplicate workspace IDs for the same logical directory.
+/// Tilde expansion is performed for paths like "~/projects/foo".
+fn get_workspace_root() -> PathBuf {
+    // Check CLI arguments for --workspace flag
+    let args: Vec<String> = env::args().collect();
+    if let Some(pos) = args.iter().position(|a| a == "--workspace") {
+        if let Some(path_str) = args.get(pos + 1) {
+            // Expand tilde for paths like "~/projects/foo"
+            let expanded = shellexpand::tilde(path_str).to_string();
+            let path = PathBuf::from(expanded);
+
+            if path.exists() {
+                // Canonicalize to resolve symlinks and normalize path representation
+                let canonical = path.canonicalize().unwrap_or_else(|e| {
+                    eprintln!("⚠️ Warning: Could not canonicalize path {:?}: {}", path, e);
+                    path.clone()
+                });
+                eprintln!("📂 Using workspace from CLI argument: {:?}", canonical);
+                return canonical;
+            } else {
+                eprintln!("⚠️ Warning: --workspace path does not exist: {:?}", path);
+            }
+        }
+    }
+
+    // Check environment variable (e.g., JULIE_WORKSPACE set by VS Code)
+    if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
+        // Expand tilde for paths like "~/projects/foo"
+        let expanded = shellexpand::tilde(&path_str).to_string();
+        let path = PathBuf::from(expanded);
+
+        if path.exists() {
+            // Canonicalize to resolve symlinks and normalize path representation
+            let canonical = path.canonicalize().unwrap_or_else(|e| {
+                eprintln!("⚠️ Warning: Could not canonicalize path {:?}: {}", path, e);
+                path.clone()
+            });
+            eprintln!("📂 Using workspace from JULIE_WORKSPACE env var: {:?}", canonical);
+            return canonical;
+        } else {
+            eprintln!("⚠️ Warning: JULIE_WORKSPACE path does not exist: {:?}", path);
+        }
+    }
+
+    // Fallback to current directory
+    let current = env::current_dir().unwrap_or_else(|e| {
+        eprintln!("⚠️ Warning: Could not determine current directory: {}", e);
+        eprintln!("Using fallback path '.'");
+        PathBuf::from(".")
+    });
+
+    // Canonicalize current directory as well for consistency
+    current.canonicalize().unwrap_or(current)
+}
+
 #[tokio::main]
 async fn main() -> SdkResult<()> {
+    // 🔧 CRITICAL: Determine workspace root BEFORE setting up logging
+    // VS Code/MCP servers may start with arbitrary working directories
+    // We support multiple detection methods (see get_workspace_root())
+    let workspace_root = get_workspace_root();
+
     // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
         .unwrap();
 
-    // Ensure .julie/logs directory exists
-    let logs_dir = ".julie/logs";
-    fs::create_dir_all(logs_dir).unwrap_or_else(|e| {
-        eprintln!("Failed to create logs directory: {}", e);
+    // Ensure .julie/logs directory exists in the workspace root
+    let logs_dir = workspace_root.join(".julie").join("logs");
+    fs::create_dir_all(&logs_dir).unwrap_or_else(|e| {
+        eprintln!("Failed to create logs directory at {:?}: {}", logs_dir, e);
     });
 
     // Set up file appender with daily rolling
-    let file_appender = rolling::daily(logs_dir, "julie.log");
+    let file_appender = rolling::daily(&logs_dir, "julie.log");
     let (non_blocking_file, _file_guard) = non_blocking(file_appender);
 
     // 🔥 CRITICAL FIX: MCP servers MUST NOT log to stdout
@@ -91,7 +160,8 @@ async fn main() -> SdkResult<()> {
 
     info!("🚀 Starting Julie - Cross-Platform Code Intelligence Server");
     debug!("Built with Rust for true cross-platform compatibility");
-    info!("📝 Logging enabled - File output to .julie/logs/julie.log");
+    info!("📝 Logging enabled - File output to {:?}", logs_dir.join("julie.log"));
+    info!("📂 Workspace root: {:?}", workspace_root);
 
     // STEP 1: Define server details and capabilities
     let server_details = InitializeResult {
@@ -137,7 +207,7 @@ async fn main() -> SdkResult<()> {
     let indexing_start = std::time::Instant::now();
     match tokio::time::timeout(
         std::time::Duration::from_secs(60), // 60 second timeout for large workspaces
-        perform_auto_indexing(&handler),
+        perform_auto_indexing(&handler, &workspace_root),
     )
     .await
     {
@@ -188,14 +258,21 @@ async fn main() -> SdkResult<()> {
 /// 2. Checks if database is empty or stale
 /// 3. Performs fast indexing using bulk SQLite operations
 /// 4. Starts background tasks for Tantivy and embeddings
-async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<()> {
+///
+/// # Arguments
+/// * `handler` - The Julie server handler
+/// * `workspace_root` - The workspace root directory (from get_workspace_root())
+async fn perform_auto_indexing(
+    handler: &JulieServerHandler,
+    workspace_root: &Path,
+) -> anyhow::Result<()> {
     use anyhow::Context;
 
     info!("🔍 Starting auto-indexing process...");
+    info!("📂 Workspace root for indexing: {:?}", workspace_root);
 
     // STEP 1: Check if we need indexing BEFORE creating any folders
-    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
-    let julie_dir = current_dir.join(".julie");
+    let julie_dir = workspace_root.join(".julie");
 
     let needs_indexing = if !julie_dir.exists() {
         info!("📁 No .julie folder found - this is a new project, indexing needed");
@@ -203,7 +280,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
     } else {
         // Initialize workspace to check existing state
         handler
-            .initialize_workspace(None)
+            .initialize_workspace(Some(workspace_root.to_string_lossy().to_string()))
             .await
             .context("Failed to initialize workspace")?;
         info!("✅ Workspace initialized");
@@ -216,7 +293,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
         info!("📋 Workspace is up-to-date, no indexing needed");
 
         // Even though no indexing is needed, update statistics to keep registry in sync
-        update_workspace_statistics(&current_dir, handler).await?;
+        update_workspace_statistics(workspace_root, handler).await?;
 
         return Ok(());
     }
@@ -226,7 +303,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
     // STEP 2: Initialize workspace if not already done (for new projects)
     if !julie_dir.exists() {
         handler
-            .initialize_workspace(None)
+            .initialize_workspace(Some(workspace_root.to_string_lossy().to_string()))
             .await
             .context("Failed to initialize workspace")?;
         info!("✅ Workspace initialized");
@@ -236,7 +313,7 @@ async fn perform_auto_indexing(handler: &JulieServerHandler) -> anyhow::Result<(
 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
-        path: Some(current_dir.to_string_lossy().to_string()),
+        path: Some(workspace_root.to_string_lossy().to_string()),
         force: Some(false), // Don't force unless database is completely empty
         name: None,
         workspace_id: None,

@@ -1,5 +1,6 @@
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
+use std::env;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
@@ -10,7 +11,20 @@ impl ManageWorkspaceTool {
                 let expanded_path = shellexpand::tilde(&path).to_string();
                 PathBuf::from(expanded_path)
             }
-            None => std::env::current_dir()?,
+            None => {
+                // Respect JULIE_WORKSPACE env var (same priority as main.rs get_workspace_root())
+                if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
+                    let expanded = shellexpand::tilde(&path_str).to_string();
+                    let path = PathBuf::from(expanded);
+                    if path.exists() {
+                        path.canonicalize().unwrap_or(path)
+                    } else {
+                        env::current_dir()?
+                    }
+                } else {
+                    env::current_dir()?
+                }
+            }
         };
 
         // Ensure path exists
