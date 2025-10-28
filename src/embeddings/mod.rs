@@ -168,6 +168,11 @@ impl EmbeddingEngine {
         &self.model_name
     }
 
+    /// Check if GPU acceleration is actually being used
+    pub fn is_using_gpu(&self) -> bool {
+        self.model.is_using_gpu()
+    }
+
     /// PERFORMANCE OPTIMIZATION: Generate embeddings for a batch of symbols using batched ML inference
     /// This dramatically reduces ML model overhead compared to individual embedding calls
     /// Now GPU-accelerated for 10-100x speedup!

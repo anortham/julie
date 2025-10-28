@@ -168,7 +168,7 @@ windows = { version = "0.58", features = ["Win32_Graphics_Dxgi", "Win32_Graphics
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 # CUDA - NVIDIA GPU acceleration on Linux (TensorRT disabled due to CUDA version mismatch)
-ort = { version = "2.0.0-rc.10", features = ["cuda", "download-binaries", "ndarray"] }
+ort = { version = "2.0.0-rc.10", features = ["cuda", "download-binaries", "copy-dylibs", "ndarray"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # CoreML - Apple Silicon Neural Engine acceleration

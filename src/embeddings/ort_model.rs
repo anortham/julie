@@ -13,10 +13,7 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use std::path::Path;
 use tokenizers::Tokenizer;
-use tracing::{debug, info};
-
-#[cfg(target_os = "windows")]
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
@@ -28,6 +25,7 @@ pub struct OrtEmbeddingModel {
     dimensions: usize,
     model_name: String,
     max_length: usize,
+    is_gpu: bool, // Track actual execution provider (not just what we attempted)
 }
 
 impl OrtEmbeddingModel {
@@ -85,7 +83,7 @@ impl OrtEmbeddingModel {
         info!("✅ Tokenizer loaded successfully with padding and truncation configured");
 
         // 3. Create ONNX Runtime session with platform-specific GPU acceleration
-        let session = Self::create_session_with_gpu(model_path.as_ref(), cache_dir)
+        let (session, is_gpu) = Self::create_session_with_gpu(model_path.as_ref(), cache_dir)
             .context("Failed to create ONNX Runtime session")?;
 
         // 4. Determine model dimensions (384 for BGE-Small)
@@ -105,6 +103,7 @@ impl OrtEmbeddingModel {
             dimensions,
             model_name: model_name.to_string(),
             max_length,
+            is_gpu,
         })
     }
 
@@ -190,11 +189,13 @@ impl OrtEmbeddingModel {
     /// Tries GPU acceleration first, ORT automatically falls back to CPU if unavailable.
     ///
     /// Set JULIE_FORCE_CPU=1 environment variable to skip GPU and use CPU only.
+    ///
+    /// Returns (Session, is_gpu) where is_gpu indicates if GPU acceleration is actually active
     #[allow(unused_variables)] // cache_dir used on Windows/Linux but not macOS
     fn create_session_with_gpu(
         model_path: &Path,
         cache_dir: Option<impl AsRef<Path>>,
-    ) -> Result<Session> {
+    ) -> Result<(Session, bool)> {
         // Check if user wants to force CPU mode (optional override)
         let force_cpu = std::env::var("JULIE_FORCE_CPU")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -215,45 +216,97 @@ impl OrtEmbeddingModel {
             .with_optimization_level(GraphOptimizationLevel::Level3)?;
 
         // Platform-specific execution providers
-        // ORT will automatically fall back to CPU if these aren't available
+        // Track actual GPU usage (not just attempted registration)
+        let mut is_gpu = false; // Default to CPU, set to true if GPU initialization succeeds
+
         #[cfg(target_os = "windows")]
         {
             if !force_cpu {
                 use ort::execution_providers::DirectMLExecutionProvider;
 
                 // Select the most powerful GPU available
-                let device_id = Self::select_best_directml_device()?;
-
-                info!(
-                    "🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...",
-                    device_id
-                );
-                builder =
-                    builder.with_execution_providers([DirectMLExecutionProvider::default()
-                        .with_device_id(device_id)
-                        .build()])?;
-                info!(
-                    "✅ DirectML execution provider registered on device {}",
-                    device_id
-                );
+                match Self::select_best_directml_device() {
+                    Ok(device_id) => {
+                        info!(
+                            "🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...",
+                            device_id
+                        );
+                        match builder.with_execution_providers([DirectMLExecutionProvider::default()
+                            .with_device_id(device_id)
+                            .build()]) {
+                            Ok(b) => {
+                                builder = b;
+                                is_gpu = true;
+                                info!("✅ DirectML execution provider initialized successfully on device {}", device_id);
+                                info!("   GPU acceleration active");
+                            }
+                            Err(e) => {
+                                warn!("⚠️  DirectML initialization failed: {}", e);
+                                warn!("   Falling back to CPU execution");
+                                // Builder was moved, recreate it without GPU provider
+                                builder = Session::builder()
+                                    .context("Failed to recreate SessionBuilder")?
+                                    .with_optimization_level(GraphOptimizationLevel::Level3)?;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("⚠️  Failed to select DirectML device: {}", e);
+                        warn!("   Falling back to CPU execution");
+                    }
+                }
             }
         }
 
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
             if !force_cpu {
-                use ort::execution_providers::CUDAExecutionProvider;
-                info!("🎮 Attempting CUDA (NVIDIA GPU) acceleration...");
-                info!("   ℹ️  TensorRT disabled (requires CUDA 12.x, system has CUDA 13)");
-                builder = builder.with_execution_providers([
-                    CUDAExecutionProvider::default().build(),
-                ])?;
-                info!("✅ CUDA execution provider registered");
+                // Check if CUDA libraries are actually available before trying to use them
+                // Common CUDA library locations on Linux
+                let cuda_available = std::path::Path::new("/usr/local/cuda-12/lib64/libcudart.so").exists()
+                    || std::path::Path::new("/usr/local/cuda-12.6/lib64/libcudart.so").exists()
+                    || std::path::Path::new("/usr/local/cuda/lib64/libcudart.so").exists()
+                    || std::path::Path::new("/usr/lib/x86_64-linux-gnu/libcudart.so.12").exists();
+
+                if !cuda_available {
+                    warn!("⚠️  CUDA libraries not found - GPU acceleration unavailable");
+                    warn!("   Falling back to CPU execution");
+                    warn!("   📋 To enable GPU acceleration:");
+                    warn!("      1. Install CUDA Toolkit 12.x from NVIDIA");
+                    warn!("      2. Install cuDNN 9 for CUDA 12.x");
+                    warn!("      3. Ensure libraries are in LD_LIBRARY_PATH");
+                    warn!("   See CLAUDE.md for detailed setup instructions");
+                    // Don't even try to register CUDA provider
+                } else {
+                    use ort::execution_providers::CUDAExecutionProvider;
+                    info!("🎮 CUDA libraries found - attempting GPU acceleration...");
+
+                    match builder.with_execution_providers([
+                        CUDAExecutionProvider::default()
+                            .build(),
+                    ]) {
+                        Ok(b) => {
+                            builder = b;
+                            is_gpu = true;
+                            info!("✅ CUDA execution provider registered successfully");
+                            info!("   GPU acceleration active");
+                        }
+                        Err(e) => {
+                            warn!("⚠️  CUDA provider registration failed: {}", e);
+                            warn!("   Falling back to CPU execution");
+                            // Builder was moved, recreate it without GPU provider
+                            builder = Session::builder()
+                                .context("Failed to recreate SessionBuilder")?
+                                .with_optimization_level(GraphOptimizationLevel::Level3)?;
+                        }
+                    }
+                }
             }
         }
 
         #[cfg(target_os = "macos")]
         {
+            // macOS uses CPU (faster than CoreML for transformers)
             info!("🍎 macOS detected - using optimized CPU execution");
             info!("   ⚠️  CoreML has poor transformer/BERT support:");
             info!("      - Only 25% of operations can use Neural Engine");
@@ -272,7 +325,12 @@ impl OrtEmbeddingModel {
 
         info!("✅ ONNX session created successfully");
 
-        Ok(session)
+        Ok((session, is_gpu))
+    }
+
+    /// Check if GPU acceleration is actually being used
+    pub fn is_using_gpu(&self) -> bool {
+        self.is_gpu
     }
 
     /// Encode a batch of texts into embeddings

@@ -86,12 +86,23 @@ pub async fn generate_embeddings_from_sqlite(
     // Initialize embedding engine if needed
     initialize_embedding_engine(&embedding_engine, &workspace_root, &db).await?;
 
-    // Generate embeddings in batches
-    // Adaptive batch sizing: smaller batches for GPU to prevent memory exhaustion
-    let is_cpu_mode = std::env::var("JULIE_FORCE_CPU")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    let batch_size = if is_cpu_mode { BATCH_SIZE_CPU } else { BATCH_SIZE_GPU };
+    // Query ACTUAL GPU status from the engine (not just forced CPU mode)
+    // This prevents misleading [GPU] labels when CUDA/DirectML initialization failed
+    let is_using_gpu = {
+        let read_guard = embedding_engine.read().await;
+        if let Some(ref engine) = read_guard.as_ref() {
+            engine.is_using_gpu()
+        } else {
+            false // Engine not initialized = fallback to CPU
+        }
+    };
+
+    // Adaptive batch sizing based on ACTUAL execution provider
+    let batch_size = if is_using_gpu {
+        BATCH_SIZE_GPU
+    } else {
+        BATCH_SIZE_CPU
+    };
 
     let total_batches = symbols.len().div_ceil(batch_size);
     let mut consecutive_failures = 0;
@@ -109,7 +120,7 @@ pub async fn generate_embeddings_from_sqlite(
             batch_idx + 1,
             total_batches,
             chunk.len(),
-            if is_cpu_mode { "CPU" } else { "GPU" }
+            if is_using_gpu { "GPU" } else { "CPU" }
         );
 
         // 🔓 CRITICAL: Acquire write lock ONLY for this batch, then release
@@ -126,7 +137,7 @@ pub async fn generate_embeddings_from_sqlite(
 
                         // Check batch processing time for GPU health monitoring
                         let batch_elapsed = batch_start.elapsed();
-                        if !is_cpu_mode && batch_elapsed.as_secs() > GPU_BATCH_TIMEOUT_SECS {
+                        if is_using_gpu && batch_elapsed.as_secs() > GPU_BATCH_TIMEOUT_SECS {
                             warn!(
                                 "⚠️  GPU batch took {:.1}s (>{} sec threshold) - GPU may be struggling with memory pressure",
                                 batch_elapsed.as_secs_f32(),
