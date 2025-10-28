@@ -47,6 +47,13 @@ mod fts5_minimal_tests {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
 
         let primary_path = get_fixture_path("tiny-primary");
+
+        // Clean up any stale .julie directory from previous test runs
+        let julie_dir = primary_path.join(".julie");
+        if julie_dir.exists() {
+            std::fs::remove_dir_all(&julie_dir).ok();
+        }
+
         let handler = JulieServerHandler::new().await?;
 
         // Step 1: Initialize with force=true
@@ -103,6 +110,13 @@ mod fts5_minimal_tests {
 
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
+
+        // Clean up any stale .julie directory from previous test runs
+        let julie_dir = primary_path.join(".julie");
+        if julie_dir.exists() {
+            std::fs::remove_dir_all(&julie_dir).ok();
+        }
+
         let handler = JulieServerHandler::new().await?;
 
         // Step 1: Initialize with force=true
