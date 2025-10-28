@@ -154,7 +154,7 @@ impl SmartRefactorTool {
             // Pass the files we already found - no need to search again
             let file_paths: Vec<String> = file_locations.keys().cloned().collect();
             match self
-                .update_import_statements_in_files(&file_paths, old_name, new_name, &dmp)
+                .update_import_statements_in_files(handler, &file_paths, old_name, new_name, &dmp)
                 .await
             {
                 Ok(updated_files) => {
@@ -269,6 +269,7 @@ impl SmartRefactorTool {
     /// This works for both indexed files and temp test files
     async fn update_import_statements_in_files(
         &self,
+        handler: &JulieServerHandler,
         file_paths: &[String],
         old_name: &str,
         new_name: &str,
@@ -279,7 +280,7 @@ impl SmartRefactorTool {
         // Check each file directly - no search needed since we already know which files to check
         for file_path in file_paths {
             match self
-                .update_imports_in_file(file_path, old_name, new_name, dmp)
+                .update_imports_in_file(handler, file_path, old_name, new_name, dmp)
                 .await
             {
                 Ok(changes) if changes > 0 => {
@@ -301,6 +302,7 @@ impl SmartRefactorTool {
     /// Update imports in a single file
     async fn update_imports_in_file(
         &self,
+        handler: &JulieServerHandler,
         file_path: &str,
         old_name: &str,
         new_name: &str,
@@ -308,7 +310,19 @@ impl SmartRefactorTool {
     ) -> Result<usize> {
         use regex::Regex;
 
-        let content = std::fs::read_to_string(file_path)?;
+        // Resolve file path relative to workspace root
+        let workspace_guard = handler.workspace.read().await;
+        let workspace = workspace_guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
+
+        let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            workspace.root.join(file_path).to_string_lossy().to_string()
+        };
+
+        let content = std::fs::read_to_string(&absolute_path)?;
         let mut changes = 0;
 
         // Build regex patterns with word boundaries to avoid partial matches
@@ -357,7 +371,7 @@ impl SmartRefactorTool {
 
         if changes > 0 && !self.dry_run {
             use crate::tools::editing::EditingTransaction;
-            let tx = EditingTransaction::begin(file_path)?;
+            let tx = EditingTransaction::begin(&absolute_path)?;
             tx.commit(&modified_content)?;
         }
 

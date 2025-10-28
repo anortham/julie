@@ -16,6 +16,8 @@ use tempfile::TempDir;
 /// The tool should accept relative paths and find symbols correctly.
 #[tokio::test]
 async fn test_get_symbols_with_relative_path() -> Result<()> {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
     // Setup: Create temp workspace with a Rust file
     let temp_dir = TempDir::new()?;
     let src_dir = temp_dir.path().join("src");
@@ -83,6 +85,8 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
 /// and convert them to relative before querying.
 #[tokio::test]
 async fn test_get_symbols_with_absolute_path() -> Result<()> {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
     // Setup: Create temp workspace with a Rust file
     let temp_dir = TempDir::new()?;
     let src_dir = temp_dir.path().join("src");

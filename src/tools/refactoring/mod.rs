@@ -394,8 +394,20 @@ impl SmartRefactorTool {
         update_comments: bool,
         _dmp: &DiffMatchPatch,
     ) -> Result<usize> {
+        // Resolve file path relative to workspace root
+        let workspace_guard = handler.workspace.read().await;
+        let workspace = workspace_guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
+
+        let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            workspace.root.join(file_path).to_string_lossy().to_string()
+        };
+
         // Read file content
-        let content = fs::read_to_string(file_path)?;
+        let content = fs::read_to_string(&absolute_path)?;
 
         // Use AST-aware replacement to avoid strings/comments
         let updated_content = self
@@ -415,7 +427,7 @@ impl SmartRefactorTool {
 
         // Write back using atomic operations (skip if dry-run)
         if !self.dry_run {
-            let tx = EditingTransaction::begin(file_path)?;
+            let tx = EditingTransaction::begin(&absolute_path)?;
             tx.commit(&updated_content)?;
         }
 

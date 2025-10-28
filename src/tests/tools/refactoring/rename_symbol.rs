@@ -11,6 +11,8 @@ use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_rename_symbol_basic() -> Result<()> {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
     // Setup: Create temp workspace with a Rust file
     let temp_dir = TempDir::new()?;
     let test_file = temp_dir.path().join("main.rs");
@@ -42,11 +44,16 @@ async fn test_rename_symbol_basic() -> Result<()> {
 
     let result = tool.call_tool(&handler).await?;
 
+    // Debug: Print result
+    eprintln!("Rename result: {:?}", result);
+
     // Verify rename occurred
     let content = fs::read_to_string(&test_file)?;
+    eprintln!("File content after rename: {}", content);
     assert!(
         content.contains("fetchUserData"),
-        "Symbol should be renamed"
+        "Symbol should be renamed, but file contains: {}",
+        content
     );
     assert!(
         !content.contains("getUserData"),
@@ -177,6 +184,8 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
 
 #[tokio::test]
 async fn test_rename_symbol_multiple_files() -> Result<()> {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
     // Verify workspace-wide rename across multiple files
     let temp_dir = TempDir::new()?;
     let file1 = temp_dir.path().join("main.rs");
