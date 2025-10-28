@@ -368,7 +368,7 @@ async fn test_incremental_indexing_respects_env_var() {
     // Initialize handler and workspace
     let handler = JulieServerHandler::new().await.expect("Failed to create handler");
     handler
-        .initialize_workspace(Some(target_workspace.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(target_workspace.path().to_string_lossy().to_string()), true)
         .await
         .expect("Failed to initialize workspace");
 

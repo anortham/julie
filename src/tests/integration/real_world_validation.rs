@@ -1014,7 +1014,7 @@ mod real_world_refactoring_tests {
 
         // Initialize workspace for the refactoring tool
         let workspace_path = temp_dir.path().to_string_lossy().to_string();
-        if let Err(e) = handler.initialize_workspace(Some(workspace_path)).await {
+        if let Err(e) = handler.initialize_workspace_with_force(Some(workspace_path), true).await {
             println!("⚠️ Failed to initialize workspace: {}", e);
             return;
         }

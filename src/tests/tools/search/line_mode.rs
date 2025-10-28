@@ -85,7 +85,7 @@ fn processPayment() {
         // Initialize handler and index
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -162,7 +162,7 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -248,7 +248,7 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -322,7 +322,7 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -408,7 +408,7 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -504,7 +504,7 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -594,7 +594,7 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
             .await?;
 
         let index_tool = ManageWorkspaceTool {

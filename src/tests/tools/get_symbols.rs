@@ -64,7 +64,7 @@ pub const MAX_USERS: usize = 100;
     // Initialize handler and index the workspace
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Explicitly trigger indexing (initialize_workspace doesn't auto-index)
@@ -161,7 +161,7 @@ pub fn process_data(input: &str) -> String {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Explicitly trigger indexing
@@ -218,7 +218,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Explicitly trigger indexing
@@ -290,7 +290,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Index the workspace

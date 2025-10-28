@@ -37,7 +37,7 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
     // Initialize the Julie server handler
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Index the workspace using ManageWorkspaceTool
@@ -125,7 +125,7 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     // Index the workspace

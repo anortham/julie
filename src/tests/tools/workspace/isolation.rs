@@ -51,7 +51,7 @@ mod workspace_isolation {
         // STEP 2: Initialize handler and set primary workspace
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(primary_workspace.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(primary_workspace.path().to_string_lossy().to_string()), true)
             .await?;
 
         // STEP 3: Index primary workspace
@@ -205,7 +205,7 @@ mod workspace_isolation {
         fs::write(primary_workspace.path().join("main.rs"), "fn main() {}")?;
 
         handler
-            .initialize_workspace(Some(primary_workspace.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(primary_workspace.path().to_string_lossy().to_string()), true)
             .await?;
 
         // STEP 3: Add reference workspace

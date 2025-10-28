@@ -35,7 +35,7 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
     // Initialize workspace and index
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -98,7 +98,7 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
     // Initialize workspace and index
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -156,7 +156,7 @@ async fn test_database_stores_relative_unix_paths() -> Result<()> {
     // Initialize and index
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {

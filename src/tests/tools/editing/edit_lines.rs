@@ -59,7 +59,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -93,7 +93,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -132,7 +132,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -167,7 +167,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -198,7 +198,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -245,7 +245,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -280,7 +280,7 @@ mod edit_lines_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         // Try to access /etc/passwd using absolute path
@@ -319,7 +319,7 @@ mod edit_lines_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         // Try to access ../../../../etc/passwd using relative path traversal
@@ -365,7 +365,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(workspace_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(workspace_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         // Try to access through symlink
@@ -407,7 +407,7 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
             .await?;
 
         // Valid absolute path should work

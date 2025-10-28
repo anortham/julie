@@ -363,7 +363,7 @@ export type ServiceFactory = () => UserService;
         // Initialize workspace with the temp directory path
         let workspace_path = fixture.temp_dir.path().to_string_lossy().to_string();
         handler
-            .initialize_workspace(Some(workspace_path))
+            .initialize_workspace_with_force(Some(workspace_path), true)
             .await
             .unwrap();
 

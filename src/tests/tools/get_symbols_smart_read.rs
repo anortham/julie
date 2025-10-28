@@ -87,7 +87,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -135,7 +135,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -182,7 +182,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -229,7 +229,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -292,7 +292,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -345,7 +345,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -411,7 +411,7 @@ async fn test_file_read_error_handling() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {
@@ -462,7 +462,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.clone()))
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
 
     let index_tool = ManageWorkspaceTool {

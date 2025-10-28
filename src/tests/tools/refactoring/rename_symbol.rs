@@ -18,7 +18,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -65,7 +65,7 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // ERROR CASE: old_name == new_name
@@ -95,7 +95,7 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // ERROR CASE: Empty old_name
@@ -127,7 +127,7 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -190,7 +190,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup

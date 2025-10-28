@@ -38,7 +38,7 @@ async fn test_workspace_access_during_vector_store_init() -> Result<()> {
     // Initialize handler with test workspace
     let handler = Arc::new(JulieServerHandler::new().await?);
     handler
-        .initialize_workspace(Some(workspace_path.to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await?;
 
     // Spawn vector store initialization in background (this used to block for 30-60s)
@@ -88,7 +88,7 @@ async fn test_database_access_during_hnsw_build() -> Result<()> {
     // Initialize workspace (creates database)
     let handler = Arc::new(JulieServerHandler::new().await?);
     handler
-        .initialize_workspace(Some(workspace_path.to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await?;
 
     // Get workspace reference for testing
@@ -162,7 +162,7 @@ async fn test_concurrent_tool_execution_during_indexing() -> Result<()> {
 
     let handler = Arc::new(JulieServerHandler::new().await?);
     handler
-        .initialize_workspace(Some(workspace_path.to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await?;
 
     // Simulate indexing (triggers HNSW build)
@@ -218,7 +218,7 @@ async fn test_lock_hold_time_is_minimal() -> Result<()> {
 
     let handler = Arc::new(JulieServerHandler::new().await?);
     handler
-        .initialize_workspace(Some(workspace_path.to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await?;
 
     // Spawn vector store initialization

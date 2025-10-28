@@ -190,7 +190,7 @@ fn goodbye_world() {
     // Create handler (simulates the server context)
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace(Some(primary_dir.path().to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(primary_dir.path().to_str().unwrap().to_string()), true)
         .await
         .unwrap();
 
@@ -289,7 +289,7 @@ fn test_function() {
     // Initialize workspace and handler
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
         .unwrap();
 
@@ -385,7 +385,7 @@ fn test_function() {
     // Initialize workspace and handler
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
         .unwrap();
 
@@ -460,7 +460,7 @@ fn test_function() {
     // Initialize workspace and handler
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
         .unwrap();
 
@@ -550,7 +550,7 @@ fn function_two() {
     // Initialize workspace and handler
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
         .unwrap();
 

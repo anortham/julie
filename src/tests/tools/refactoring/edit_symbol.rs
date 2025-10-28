@@ -20,7 +20,7 @@ async fn test_edit_symbol_replace_body_basic() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -64,7 +64,7 @@ async fn test_edit_symbol_replace_body_validation_no_file() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // ERROR CASE: File doesn't exist
@@ -97,7 +97,7 @@ async fn test_edit_symbol_insert_after() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -152,7 +152,7 @@ async fn test_edit_symbol_insert_before() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -208,7 +208,7 @@ async fn test_edit_symbol_extract_to_file() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup
@@ -262,7 +262,7 @@ async fn test_edit_symbol_extract_validation_no_target() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // ERROR CASE: ExtractToFile without target_file
@@ -298,7 +298,7 @@ async fn test_edit_symbol_dry_run() -> Result<()> {
 
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(temp_dir.path().to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
 
     // Index workspace for symbol lookup

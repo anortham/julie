@@ -159,7 +159,7 @@ use crate::tools::workspace::ManageWorkspaceTool;
 async fn create_test_handler(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
     let handler = JulieServerHandler::new().await?;
     handler
-        .initialize_workspace(Some(workspace_path.to_string_lossy().to_string()))
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
     Ok(handler)
 }
