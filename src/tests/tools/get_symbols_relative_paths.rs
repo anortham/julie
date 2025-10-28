@@ -23,7 +23,7 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
     let src_dir = temp_dir.path().join("src");
     fs::create_dir(&src_dir)?;
 
-    let test_file = src_dir.join("main.rs");
+    let test_file = src_dir.join("test_unique_file.rs");
     fs::write(&test_file, r#"
         pub fn get_user_data(id: u32) -> String {
             format!("User {}", id)
@@ -52,7 +52,7 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
 
     // TEST: Call get_symbols with RELATIVE path (Phase 2 format)
     let tool = GetSymbolsTool {
-        file_path: "src/main.rs".to_string(), // RELATIVE, not absolute!
+        file_path: "src/test_unique_file.rs".to_string(), // RELATIVE, not absolute!
         max_depth: 1,
         mode: None,
         limit: None,
@@ -92,7 +92,7 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
     let src_dir = temp_dir.path().join("src");
     fs::create_dir(&src_dir)?;
 
-    let test_file = src_dir.join("lib.rs");
+    let test_file = src_dir.join("test_unique_lib.rs");
     fs::write(&test_file, r#"
         pub fn calculate_score(points: i32) -> i32 {
             points * 2
