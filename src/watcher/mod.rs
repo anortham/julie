@@ -525,7 +525,7 @@ impl IncrementalIndexer {
         db.begin_transaction()?;
 
         // Ensure file record exists (required for foreign key constraint)
-        let file_info = crate::database::create_file_info(&path, &language)?;
+        let file_info = crate::database::create_file_info(&path, &language, &self.workspace_root)?;
         if let Err(e) = db.store_file_info(&file_info) {
             db.rollback_transaction()?;
             return Err(e);
@@ -851,7 +851,7 @@ impl IncrementalIndexer {
             db_lock.begin_transaction()?;
 
             // Ensure file record exists (required for foreign key constraint)
-            let file_info = crate::database::create_file_info(&path, &language)?;
+            let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
             if let Err(e) = db_lock.store_file_info(&file_info) {
                 db_lock.rollback_transaction()?;
                 return Err(e);

@@ -149,17 +149,22 @@ impl GetSymbolsTool {
 
             (relative, canonical.to_string_lossy().to_string())
         } else {
-            // Relative path input - normalize separators for query, join for absolute
-            let relative_unix = self.file_path.replace('\\', "/");
+            // Relative path input - need to normalize (handle ./ and ../)
+            // Join with workspace root, canonicalize, then convert back to relative
             let absolute = workspace
                 .root
                 .join(&self.file_path)
                 .canonicalize()
-                .unwrap_or_else(|_| workspace.root.join(&self.file_path))
-                .to_string_lossy()
-                .to_string();
+                .unwrap_or_else(|_| workspace.root.join(&self.file_path));
 
-            (relative_unix, absolute)
+            // Convert canonicalized path back to relative Unix-style for database query
+            let relative_unix = crate::utils::paths::to_relative_unix_style(&absolute, &workspace.root)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to convert path to relative: {}", self.file_path);
+                    self.file_path.replace('\\', "/")
+                });
+
+            (relative_unix, absolute.to_string_lossy().to_string())
         };
 
         debug!(

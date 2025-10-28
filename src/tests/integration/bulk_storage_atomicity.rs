@@ -139,8 +139,8 @@ fn test_bulk_store_files_atomicity() -> Result<()> {
     fs::write(&test_file1, "fn test1() {}")?;
     fs::write(&test_file2, "fn test2() {}")?;
 
-    let file_info1 = create_file_info(&test_file1, "rust")?;
-    let file_info2 = create_file_info(&test_file2, "rust")?;
+    let file_info1 = create_file_info(&test_file1, "rust", temp_dir.path())?;
+    let file_info2 = create_file_info(&test_file2, "rust", temp_dir.path())?;
 
     // Store files
     {

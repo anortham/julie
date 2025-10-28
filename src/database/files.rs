@@ -637,7 +637,7 @@ pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
 
 /// Create FileInfo from a file path
 /// CASCADE: Now reads and includes file content for FTS5 search
-pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<FileInfo> {
+pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str, workspace_root: &Path) -> Result<FileInfo> {
     let path = file_path.as_ref();
     let metadata = std::fs::metadata(path)?;
     let hash = calculate_file_hash(path)?;
@@ -650,17 +650,17 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str) -> Result<
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64;
 
-    // CRITICAL FIX: Canonicalize path to resolve symlinks (macOS /var vs /private/var)
-    // This ensures files table and symbols table use same canonical paths
-    // Without this: files table has /var/..., symbols have /private/var/... → FOREIGN KEY fail
+    // CRITICAL FIX: Canonicalize path to resolve symlinks, then convert to relative
+    // This ensures files table and symbols table use same relative Unix-style paths
     let canonical_path = path
         .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_string();
+        .unwrap_or_else(|_| path.to_path_buf());
+
+    // Convert to relative Unix-style path for token efficiency and cross-platform compatibility
+    let relative_path = crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
 
     Ok(FileInfo {
-        path: canonical_path, // Use canonical path, not original
+        path: relative_path, // Use relative Unix-style path
         language: language.to_string(),
         hash,
         size: metadata.len() as i64,

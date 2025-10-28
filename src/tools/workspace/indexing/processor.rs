@@ -336,17 +336,8 @@ impl ManageWorkspaceTool {
                 file_path.display()
             );
 
-            // Convert to relative path for database storage (handle both absolute and relative paths)
-            let relative_path = if file_path.is_absolute() {
-                crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
-            } else {
-                file_path.to_string_lossy().replace('\\', "/")
-            };
-            // 🔥 create_file_info needs absolute path to read file metadata
-            let mut file_info = crate::database::create_file_info(file_path, language)?;
-
-            // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
-            file_info.path = relative_path;
+            // 🔥 create_file_info now handles relative path conversion internally
+            let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
 
             // Return file info, but no extracted symbols
             return Ok((Vec::new(), Vec::new(), file_info));
@@ -373,12 +364,8 @@ impl ManageWorkspaceTool {
             self.extract_symbols_with_existing_tree(&tree, &relative_path, &content, language, workspace_root)?;
 
         // Calculate file info for database storage
-        // 🔥 create_file_info needs absolute path to read file metadata, it will canonicalize internally
-        let mut file_info = crate::database::create_file_info(file_path, language)?;
-
-        // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
-        // create_file_info returns canonical absolute path, but we store relative for Phase 2
-        file_info.path = relative_path.clone();
+        // 🔥 create_file_info now handles relative path conversion internally
+        let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
 
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
@@ -418,19 +405,9 @@ impl ManageWorkspaceTool {
 
         trace!("Read {} bytes from {:?}", content.len(), canonical_file_path);
 
-        // Convert to relative path for database storage (handle both absolute and relative paths)
-        let relative_path = if file_path.is_absolute() {
-            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
-        } else {
-            file_path.to_string_lossy().replace('\\', "/")
-        };
-
         // Calculate file info for database storage
-        // 🔥 create_file_info needs absolute path to read file metadata, it will canonicalize internally
-        let mut file_info = crate::database::create_file_info(file_path, language)?;
-
-        // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
-        file_info.path = relative_path;
+        // 🔥 create_file_info now handles relative path conversion internally
+        let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
 
         // No symbols extracted (no parser available)
         Ok((Vec::new(), Vec::new(), file_info))

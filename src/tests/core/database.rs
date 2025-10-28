@@ -54,16 +54,12 @@ async fn test_debug_foreign_key_constraint() {
     std::fs::write(&test_file, "// test content").unwrap();
 
     // Store file info
-    let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
+    let file_info = crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
     println!("File path in file_info: {}", file_info.path);
     db.store_file_info(&file_info).unwrap();
 
-    // Create a symbol with the same file path (canonicalized to match file_info)
-    let file_path = test_file
-        .canonicalize()
-        .unwrap_or_else(|_| test_file.clone())
-        .to_string_lossy()
-        .to_string();
+    // Create a symbol with the same file path (relative to match file_info)
+    let file_path = crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
     println!("File path in symbol: {}", file_path);
 
     let symbol = Symbol {
@@ -228,7 +224,8 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/real-world/go/main.go");
     let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
-    let file_info = crate::database::create_file_info(&fixture_path, "go").unwrap();
+    let workspace_root = fixture_path.parent().unwrap_or_else(|| std::path::Path::new("/tmp/test"));
+    let file_info = crate::database::create_file_info(&fixture_path, "go", workspace_root).unwrap();
     db.bulk_store_files(&[file_info]).unwrap();
 
     let mut parser = Parser::new();
@@ -236,8 +233,6 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
         .set_language(&tree_sitter_go::LANGUAGE.into())
         .unwrap();
     let tree = parser.parse(&fixture_content, None).unwrap();
-
-    let workspace_root = fixture_path.parent().unwrap_or_else(|| std::path::Path::new("/tmp/test"));
     let mut extractor = crate::extractors::go::GoExtractor::new(
         "go".to_string(),
         fixture_path.to_string_lossy().to_string(),
@@ -279,11 +274,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         name: "getUserAsync".to_string(),
         kind: SymbolKind::Function,
         language: "typescript".to_string(),
-        file_path: test_file
-            .canonicalize()
-            .unwrap_or_else(|_| test_file.clone())
-            .to_string_lossy()
-            .to_string(),
+        file_path: crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap(),
         start_line: 20,
         start_column: 4,
         end_line: 30,
@@ -301,7 +292,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     };
 
     // First, store the file record (required due to foreign key constraint)
-    let file_info = crate::database::create_file_info(&test_file, "typescript").unwrap();
+    let file_info = crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
     println!("DEBUG: File path in file_info: {}", file_info.path);
     println!("DEBUG: Symbol file path: {}", symbol.file_path);
     db.store_file_info(&file_info).unwrap();

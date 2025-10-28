@@ -179,6 +179,7 @@ fn test_files_fts5_integrity_check_detects_missing_entries() -> Result<()> {
         let file_info = crate::database::create_file_info(
             &test_file,
             "rust",
+            temp_dir.path(),
         )?;
 
         db.store_file_info(&file_info)?;
