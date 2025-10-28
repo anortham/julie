@@ -10,8 +10,15 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
 
 /// Embedding generation batch size for ONNX inference
-/// Tested: 256 (76s), 64 (60s), 100 (60s) - CPU bottleneck, not batch overhead
-const BATCH_SIZE: usize = 100;
+/// GPU mode: 50 symbols (~37MB/batch) to prevent memory exhaustion on 4GB GPUs
+/// CPU mode: 100 symbols (~no GPU memory constraint, CPU bottleneck dominates)
+/// Note: Previous testing (256/64/100) was CPU-only - GPU has different memory limits
+const BATCH_SIZE_GPU: usize = 50;
+const BATCH_SIZE_CPU: usize = 100;
+
+/// GPU batch timeout threshold - if a batch takes longer than this, GPU is struggling
+/// Proactively fall back to CPU to prevent driver TDR (Timeout Detection and Recovery)
+const GPU_BATCH_TIMEOUT_SECS: u64 = 10;
 
 /// Maximum consecutive batch failures before circuit breaker activates
 const MAX_CONSECUTIVE_FAILURES: usize = 5;
@@ -80,7 +87,13 @@ pub async fn generate_embeddings_from_sqlite(
     initialize_embedding_engine(&embedding_engine, &workspace_root, &db).await?;
 
     // Generate embeddings in batches
-    let total_batches = symbols.len().div_ceil(BATCH_SIZE);
+    // Adaptive batch sizing: smaller batches for GPU to prevent memory exhaustion
+    let is_cpu_mode = std::env::var("JULIE_FORCE_CPU")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let batch_size = if is_cpu_mode { BATCH_SIZE_CPU } else { BATCH_SIZE_GPU };
+
+    let total_batches = symbols.len().div_ceil(batch_size);
     let mut consecutive_failures = 0;
     let mut total_failures = 0;
     let mut successful_batches = 0;
@@ -88,12 +101,15 @@ pub async fn generate_embeddings_from_sqlite(
     let mut model_name = String::from("bge-small");
     let mut dimensions = 384;
 
-    for (batch_idx, chunk) in symbols.chunks(BATCH_SIZE).enumerate() {
+    for (batch_idx, chunk) in symbols.chunks(batch_size).enumerate() {
+        let batch_start = std::time::Instant::now();
+
         info!(
-            "🔄 Processing embedding batch {}/{} ({} symbols)",
+            "🔄 Processing embedding batch {}/{} ({} symbols) [{}]",
             batch_idx + 1,
             total_batches,
-            chunk.len()
+            chunk.len(),
+            if is_cpu_mode { "CPU" } else { "GPU" }
         );
 
         // 🔓 CRITICAL: Acquire write lock ONLY for this batch, then release
@@ -101,10 +117,30 @@ pub async fn generate_embeddings_from_sqlite(
         let batch_result = {
             let mut embedding_guard = embedding_engine.write().await;
             if let Some(ref mut engine) = embedding_guard.as_mut() {
-                match engine.embed_symbols_batch(chunk) {
+                let embed_result = engine.embed_symbols_batch(chunk);
+
+                match embed_result {
                     Ok(batch_embeddings) => {
                         model_name = engine.model_name().to_string();
                         dimensions = engine.dimensions();
+
+                        // Check batch processing time for GPU health monitoring
+                        let batch_elapsed = batch_start.elapsed();
+                        if !is_cpu_mode && batch_elapsed.as_secs() > GPU_BATCH_TIMEOUT_SECS {
+                            warn!(
+                                "⚠️  GPU batch took {:.1}s (>{} sec threshold) - GPU may be struggling with memory pressure",
+                                batch_elapsed.as_secs_f32(),
+                                GPU_BATCH_TIMEOUT_SECS
+                            );
+                            warn!("   Consider reducing batch size or freeing GPU memory");
+                        } else {
+                            debug!(
+                                "✅ Batch {}/{} completed in {:.1}s",
+                                batch_idx + 1,
+                                total_batches,
+                                batch_elapsed.as_secs_f32()
+                            );
+                        }
 
                         // 🕐 Update last_used timestamp after successful engine use
                         {
