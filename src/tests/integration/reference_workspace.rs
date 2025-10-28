@@ -152,8 +152,13 @@ mod reference_workspace_tests {
     async fn test_reference_workspace_end_to_end() -> Result<()> {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
 
-        // Initialize handler with primary fixture
+        // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");
+        let reference_path = get_fixture_path("tiny-reference");
+        let _ = std::fs::remove_dir_all(primary_path.join(".julie"));
+        let _ = std::fs::remove_dir_all(reference_path.join(".julie"));
+
+        // Initialize handler with primary fixture
         let handler = JulieServerHandler::new().await?;
         // CRITICAL: Use force=true to prevent detect_and_load from walking up to parent .julie/
         handler
@@ -389,8 +394,13 @@ mod reference_workspace_tests {
     async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
 
-        // Initialize handler with primary fixture
+        // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");
+        let reference_path = get_fixture_path("tiny-reference");
+        let _ = std::fs::remove_dir_all(primary_path.join(".julie"));
+        let _ = std::fs::remove_dir_all(reference_path.join(".julie"));
+
+        // Initialize handler with primary fixture
         let handler = JulieServerHandler::new().await?;
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)

@@ -18,6 +18,8 @@ use tempfile::TempDir;
 /// Expected: Returns false (no indexing needed)
 #[tokio::test]
 async fn test_fresh_index_no_reindex_needed() -> Result<()> {
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
 
@@ -28,6 +30,10 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     // Initialize workspace and index
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
+
+    // Small delay to ensure database mtime is definitely > file mtime
+    // (filesystem timestamp resolution can cause issues otherwise)
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
     // Verify: No indexing needed (database is fresh)
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
