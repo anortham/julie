@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use hex;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
@@ -34,6 +34,10 @@ pub struct IncrementalIndexer {
 
     // Processing queues
     pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
+
+    // Event deduplication: Track recently processed files to avoid duplicate processing
+    // Key: file path, Value: last processed timestamp
+    last_processed: Arc<TokioMutex<HashMap<PathBuf, SystemTime>>>,
 
     // File filters
     supported_extensions: HashSet<String>,
@@ -89,6 +93,7 @@ impl IncrementalIndexer {
             extractor_manager,
             vector_store,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
+            last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
             ignore_patterns,
             workspace_root,
@@ -155,6 +160,7 @@ impl IncrementalIndexer {
         let extractor_manager = self.extractor_manager.clone();
         let vector_store = self.vector_store.clone();
         let queue_for_processing = self.index_queue.clone();
+        let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
 
         tokio::spawn(async move {
@@ -179,6 +185,39 @@ impl IncrementalIndexer {
                     let mut queue = queue_for_processing.lock().await;
                     queue.pop_front()
                 } {
+                    // Deduplication: Skip if we processed this file very recently (within 1 second)
+                    // This prevents duplicate processing when notify fires multiple events (Create + Modify)
+                    let should_skip = {
+                        let mut last_proc = last_processed.lock().await;
+                        let now = SystemTime::now();
+
+                        if let Some(last_time) = last_proc.get(&event.path) {
+                            if let Ok(elapsed) = now.duration_since(*last_time) {
+                                if elapsed < Duration::from_secs(1) {
+                                    debug!(
+                                        "⏭️  Skipping duplicate event for {:?} (processed {}ms ago)",
+                                        event.path,
+                                        elapsed.as_millis()
+                                    );
+                                    true
+                                } else {
+                                    last_proc.insert(event.path.clone(), now);
+                                    false
+                                }
+                            } else {
+                                last_proc.insert(event.path.clone(), now);
+                                false
+                            }
+                        } else {
+                            last_proc.insert(event.path.clone(), now);
+                            false
+                        }
+                    };
+
+                    if should_skip {
+                        continue;
+                    }
+
                     info!("🔄 Background task processing: {:?}", event.path);
                     if let Err(e) = Self::handle_file_change_static(
                         event,
@@ -747,7 +786,7 @@ impl IncrementalIndexer {
         db: &Arc<StdMutex<SymbolDatabase>>,
         embeddings: &Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: &Arc<ExtractorManager>,
-        vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+        _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
         workspace_root: &Path,
     ) -> Result<()> {
         info!("Processing file: {}", path.display());
@@ -831,71 +870,33 @@ impl IncrementalIndexer {
             db_lock.commit_transaction()?;
         }
 
-        // 5. Generate embeddings asynchronously (non-blocking)
-        // Spawn background task so file save completes immediately
+        // 5. Update embeddings cache (non-blocking background task)
+        // Note: We only update the embedding cache, NOT the HNSW index
+        // CASCADE architecture: SQLite is single source of truth, HNSW rebuilt on demand
         let embeddings_clone = embeddings.clone();
-        let vector_store_clone = vector_store.cloned();
         let symbols_for_embedding = symbols.clone();
         let path_for_log = path.clone();
 
         tokio::spawn(async move {
-            info!(
+            debug!(
                 "🧠 Generating embeddings for {} symbols in {}",
                 symbols_for_embedding.len(),
                 path_for_log.display()
             );
 
-            // Step 1: Generate embeddings with GPU
             let mut embedding_guard = embeddings_clone.write().await;
-            let embeddings_result = if let Some(ref mut engine) = embedding_guard.as_mut() {
+            if let Some(ref mut engine) = embedding_guard.as_mut() {
                 match engine.embed_symbols_batch(&symbols_for_embedding) {
-                    Ok(embeddings_vec) => {
-                        info!(
-                            "✅ Generated {} embeddings for {}",
-                            embeddings_vec.len(),
-                            path_for_log.display()
-                        );
-                        Some(embeddings_vec)
-                    }
-                    Err(e) => {
-                        warn!(
-                            "⚠️ Failed to generate embeddings for {}: {}",
-                            path_for_log.display(),
-                            e
-                        );
-                        None
-                    }
-                }
-            } else {
-                warn!(
-                    "⏭️ Embedding engine not initialized, skipping embeddings for {}",
-                    path_for_log.display()
-                );
-                None
-            };
-            drop(embedding_guard); // Release embedding engine lock
-
-            // Step 2: Update HNSW index incrementally (if embeddings generated successfully)
-            if let (Some(embeddings_vec), Some(vector_store_arc)) =
-                (embeddings_result, vector_store_clone)
-            {
-                info!(
-                    "📊 Updating HNSW index with {} new vectors",
-                    embeddings_vec.len()
-                );
-
-                let mut vs_guard = vector_store_arc.write().await;
-                match vs_guard.insert_batch(&embeddings_vec) {
                     Ok(_) => {
-                        info!(
-                            "✅ HNSW index updated with {} vectors for {}",
-                            embeddings_vec.len(),
+                        debug!(
+                            "✅ Cached embeddings for {} symbols in {}",
+                            symbols_for_embedding.len(),
                             path_for_log.display()
                         );
                     }
                     Err(e) => {
                         warn!(
-                            "⚠️ Failed to update HNSW index for {}: {}",
+                            "⚠️ Failed to cache embeddings for {}: {}",
                             path_for_log.display(),
                             e
                         );

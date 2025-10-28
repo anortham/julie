@@ -70,9 +70,13 @@ async fn test_real_time_file_watcher_indexing() {
     use std::time::Duration;
     use tokio::time::sleep;
 
-    // Create temp workspace
-    let temp_dir = TempDir::new().unwrap();
-    let workspace_root = temp_dir.path().to_path_buf();
+    // CRITICAL: Use real directory instead of tmpfs (notify/inotify doesn't work reliably on tmpfs)
+    // tempfile::TempDir uses /tmp which is often tmpfs on Linux, causing test failures
+    let workspace_root = std::env::current_dir()
+        .unwrap()
+        .join(".test_watcher")
+        .join(format!("test_{}", std::process::id()));
+    fs::create_dir_all(&workspace_root).unwrap();
 
     // Initialize components
     let db_path = workspace_root.join(".julie/db/test.db");
@@ -113,7 +117,8 @@ async fn test_real_time_file_watcher_indexing() {
     eprintln!("✅ Created test file: {}", test_file.display());
 
     // Wait for file system event to be detected and queued
-    sleep(Duration::from_millis(100)).await;
+    // Note: Real filesystems (not tmpfs) may take longer for notify events
+    sleep(Duration::from_millis(500)).await;
 
     // Check queue size before processing
     let queue_size = {
@@ -151,6 +156,9 @@ async fn test_real_time_file_watcher_indexing() {
         "Should find test_function from new_file.rs. Symbols found: {:?}",
         symbols
     );
+
+    // Cleanup: Remove test directory
+    fs::remove_dir_all(&workspace_root).ok(); // Ignore errors if already removed
 }
 
 #[tokio::test]
