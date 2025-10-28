@@ -27,9 +27,10 @@ impl SymbolDatabase {
 
         tx.commit()?;
 
-        // FTS5 CRITICAL: Rebuild index after bulk deletion to prevent desync
-        // Bulk deletions create large rowid gaps that FTS5 external content table
-        // still references, causing "missing row X from content table" errors
+        // FTS5 CRITICAL: Rebuild indexes after bulk deletion to prevent desync
+        // Bulk deletions create large rowid gaps that FTS5 external content tables
+        // still reference, causing "missing row X from content table" errors
+        self.rebuild_symbols_fts()?;
         self.rebuild_files_fts()?;
 
         let stats = WorkspaceCleanupStats {

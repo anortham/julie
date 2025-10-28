@@ -131,6 +131,12 @@ impl SymbolDatabase {
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],
         )?;
+
+        // FTS5 CRITICAL: Rebuild index to prevent desync with external content table
+        // Without this, FTS5 shadow tables retain orphaned content for deleted symbols
+        // causing "missing row X from content table" errors during search
+        self.rebuild_symbols_fts()?;
+
         Ok(())
     }
 
@@ -139,6 +145,9 @@ impl SymbolDatabase {
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],
         )?;
+
+        // FTS5 CRITICAL: Rebuild index to prevent desync
+        self.rebuild_symbols_fts()?;
 
         debug!("Deleted {} symbols for file '{}'", count, file_path);
         Ok(())
