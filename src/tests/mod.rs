@@ -42,6 +42,7 @@ pub mod tools {
     pub mod ast_symbol_finder; // AST symbol finder tests
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_reference_workspace; // GetSymbolsTool reference workspace bug test
+    pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
     pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
@@ -90,6 +91,8 @@ pub mod utils {
 // INTEGRATION TESTS - End-to-end and cross-component tests
 // ============================================================================
 pub mod integration {
+    pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod fts5_integrity; // FTS5 integrity check and auto-rebuild tests (TDD)
     pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
     pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests

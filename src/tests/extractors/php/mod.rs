@@ -20,22 +20,26 @@ fn init_parser() -> Parser {
 
 // Helper function to extract symbols from PHP code
 fn extract_symbols(code: &str) -> Vec<Symbol> {
+    use std::path::PathBuf;
     let mut parser = init_parser();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string());
+        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string(), &workspace_root);
 
     extractor.extract_symbols(&tree)
 }
 
 // Helper function to extract relationships
 fn extract_relationships(code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
+    use std::path::PathBuf;
     let mut parser = init_parser();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string());
+        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string(), &workspace_root);
 
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
@@ -1126,13 +1130,16 @@ class UserService
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1369,13 +1376,16 @@ class Calculator {
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -1433,13 +1443,16 @@ class User {
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1482,13 +1495,16 @@ class Service {
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1526,13 +1542,16 @@ class DataService {
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1571,13 +1590,16 @@ class Test {
 }
 "#;
 
+        use std::path::PathBuf;
         let mut parser = init_parser();
         let tree = parser.parse(php_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = PhpExtractor::new(
             "php".to_string(),
             "test.php".to_string(),
             php_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

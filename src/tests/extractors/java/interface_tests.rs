@@ -7,6 +7,7 @@
 // - Static methods (Java 8+)
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod interface_tests {
@@ -14,6 +15,7 @@ mod interface_tests {
 
     #[test]
     fn test_extract_interface_definitions() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 package com.example;
 
@@ -38,6 +40,7 @@ private interface InternalInterface {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -65,6 +68,7 @@ private interface InternalInterface {
 
     #[test]
     fn test_extract_interface_methods() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public interface Service {
     void process();                    // Abstract method
@@ -84,6 +88,7 @@ public interface Service {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

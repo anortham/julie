@@ -17,6 +17,7 @@ pub mod types;
 
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::rust::RustExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 /// Initialize Rust parser
@@ -26,6 +27,11 @@ fn init_parser() -> Parser {
         .set_language(&tree_sitter_rust::LANGUAGE.into())
         .expect("Error loading Rust grammar");
     parser
+}
+
+/// Get test workspace root
+fn test_workspace_root() -> PathBuf {
+    PathBuf::from("/tmp/test")
 }
 
 #[cfg(test)]
@@ -51,10 +57,12 @@ struct Point(f64, f64);
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -104,10 +112,12 @@ enum Color { Red, Green, Blue }
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -157,10 +167,12 @@ trait Clone {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -213,10 +225,12 @@ fn private_helper() {}
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -284,10 +298,12 @@ impl Calculator {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -337,10 +353,12 @@ impl SymbolDatabase {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "database/files.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -400,10 +418,12 @@ mod private_module {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -443,10 +463,12 @@ use crate::model::User;
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -497,10 +519,12 @@ static GLOBAL_CONFIG: Config = Config::new();
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -568,10 +592,12 @@ macro_rules! create_function {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -664,10 +690,12 @@ where
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -833,10 +861,12 @@ pub extern "C" fn create_point(x: f64, y: f64, z: f64) -> Point3D {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -989,10 +1019,12 @@ static mut COUNTER: i32 = 0;
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1076,10 +1108,12 @@ impl Calculator {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             // Extract symbols first
@@ -1132,10 +1166,12 @@ fn get_coordinates(point: &Point) -> (f64, f64) {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1173,10 +1209,12 @@ fn process() -> i32 {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1222,10 +1260,12 @@ fn get_balance(user: &User) -> i32 {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1266,10 +1306,12 @@ fn run() {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1323,10 +1365,12 @@ pub fn create_connection(config: &str) -> Result<Connection, Error> {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1365,10 +1409,12 @@ pub struct UserConfig {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1407,10 +1453,12 @@ pub enum Status {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1447,10 +1495,12 @@ pub trait Serializer {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1485,10 +1535,12 @@ pub const MAX_CONNECTIONS: usize = 1024;
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1522,10 +1574,12 @@ pub fn no_doc_function() {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1557,10 +1611,12 @@ pub trait Container {
             let mut parser = init_parser();
             let tree = parser.parse(rust_code, None).unwrap();
 
+            let workspace_root = test_workspace_root();
             let mut extractor = RustExtractor::new(
                 "rust".to_string(),
                 "test.rs".to_string(),
                 rust_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);

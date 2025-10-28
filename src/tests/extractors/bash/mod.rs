@@ -8,6 +8,7 @@ mod bash_extractor_tests {
 
     use crate::extractors::base::{IdentifierKind, RelationshipKind, Symbol, SymbolKind};
     use crate::extractors::bash::BashExtractor;
+    use std::path::PathBuf;
     use tree_sitter::Parser;
 
     fn init_parser() -> Parser {
@@ -19,20 +20,22 @@ mod bash_extractor_tests {
     }
 
     fn extract_symbols(code: &str) -> Vec<Symbol> {
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
         let mut extractor =
-            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
+            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string(), &workspace_root);
         extractor.extract_symbols(&tree)
     }
 
     fn extract_symbols_and_relationships(
         code: &str,
     ) -> (Vec<Symbol>, Vec<crate::extractors::base::Relationship>) {
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
         let mut extractor =
-            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
+            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
         (symbols, relationships)
@@ -471,12 +474,14 @@ configure_app() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).expect("Failed to parse code");
         let mut extractor = BashExtractor::new(
             "bash".to_string(),
             "types.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
         let types = extractor.infer_types(&symbols);
@@ -677,6 +682,7 @@ helper_function() {
 mod identifier_extraction_tests {
     use crate::extractors::base::{IdentifierKind, SymbolKind};
     use crate::extractors::bash::BashExtractor;
+    use std::path::PathBuf;
     use tree_sitter::Parser;
 
     fn init_parser() -> Parser {
@@ -705,6 +711,7 @@ build_app() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).unwrap();
 
@@ -712,6 +719,7 @@ build_app() {
             "bash".to_string(),
             "test.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -768,6 +776,7 @@ process_data() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).unwrap();
 
@@ -775,6 +784,7 @@ process_data() {
             "bash".to_string(),
             "test.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -815,6 +825,7 @@ helper_function() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).unwrap();
 
@@ -822,6 +833,7 @@ helper_function() {
             "bash".to_string(),
             "test.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -860,6 +872,7 @@ process_config() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).unwrap();
 
@@ -867,6 +880,7 @@ process_config() {
             "bash".to_string(),
             "test.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -900,6 +914,7 @@ run_tests() {
 }
 "#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).unwrap();
 
@@ -907,6 +922,7 @@ run_tests() {
             "bash".to_string(),
             "test.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1002,12 +1018,14 @@ backup_files() {
 }
 "##;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).expect("Failed to parse code");
         let mut extractor = BashExtractor::new(
             "bash".to_string(),
             "expansion.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1112,12 +1130,14 @@ process_multiple_files() {
 }
 "##;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).expect("Failed to parse code");
         let mut extractor = BashExtractor::new(
             "bash".to_string(),
             "process.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1259,12 +1279,14 @@ collect_files() {
 }
 "###;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(bash_code, None).expect("Failed to parse code");
         let mut extractor = BashExtractor::new(
             "bash".to_string(),
             "arrays.sh".to_string(),
             bash_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 

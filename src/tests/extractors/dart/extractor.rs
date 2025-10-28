@@ -10,13 +10,16 @@
 // - Improves test organization and maintainability
 
 use crate::extractors::dart::DartExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_dart_extractor_creation() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let extractor = DartExtractor::new(
         "dart".to_string(),
         "test.dart".to_string(),
         "void main() {}".to_string(),
+        &workspace_root,
     );
     assert_eq!(extractor.base.language, "dart");
 }

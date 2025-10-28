@@ -10,10 +10,12 @@
 use crate::extractors::base::IdentifierKind;
 use crate::extractors::lua::LuaExtractor;
 use crate::tests::extractors::lua::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_lua_function_calls() {
@@ -33,10 +35,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(lua_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             lua_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -82,10 +86,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(lua_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             lua_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -134,10 +140,12 @@ return M
         let mut parser = init_parser();
         let tree = parser.parse(lua_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             lua_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -185,10 +193,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(lua_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             lua_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -228,10 +238,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(lua_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             lua_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

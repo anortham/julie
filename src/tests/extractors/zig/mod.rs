@@ -6,11 +6,13 @@ mod zig_extractor_tests {
     use crate::extractors::base::SymbolKind;
     use crate::extractors::zig::ZigExtractor;
     use crate::tests::test_utils::init_parser;
+    use std::path::PathBuf;
 
     pub(crate) fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
         let tree = init_parser(code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string());
+            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
         extractor.extract_symbols(&tree)
     }
 
@@ -19,8 +21,9 @@ mod zig_extractor_tests {
         symbols: &[crate::extractors::base::Symbol],
     ) -> Vec<crate::extractors::base::Relationship> {
         let tree = init_parser(code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string());
+            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
         extractor.extract_relationships(&tree, symbols)
     }
 
@@ -1140,6 +1143,7 @@ mod zig_identifier_extraction_tests {
     use crate::extractors::base::IdentifierKind;
     use crate::extractors::zig::ZigExtractor;
     use crate::tests::test_utils::init_parser;
+    use std::path::PathBuf;
 
     #[test]
     fn test_zig_function_calls() {
@@ -1157,10 +1161,12 @@ fn processData() void {
 "#;
 
         let tree = init_parser(zig_code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = ZigExtractor::new(
             "zig".to_string(),
             "test.zig".to_string(),
             zig_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -1214,10 +1220,12 @@ fn getY(point: Point) f32 {
 "#;
 
         let tree = init_parser(zig_code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = ZigExtractor::new(
             "zig".to_string(),
             "test.zig".to_string(),
             zig_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1252,10 +1260,12 @@ fn process() void {
 "#;
 
         let tree = init_parser(zig_code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = ZigExtractor::new(
             "zig".to_string(),
             "test.zig".to_string(),
             zig_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1299,10 +1309,12 @@ fn getBalance(user: User) i32 {
 "#;
 
         let tree = init_parser(zig_code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = ZigExtractor::new(
             "zig".to_string(),
             "test.zig".to_string(),
             zig_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1332,10 +1344,12 @@ fn run() void {
 "#;
 
         let tree = init_parser(zig_code, "zig");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = ZigExtractor::new(
             "zig".to_string(),
             "test.zig".to_string(),
             zig_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

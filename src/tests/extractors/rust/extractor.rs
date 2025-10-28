@@ -8,13 +8,16 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::rust::RustExtractor;
+    use std::path::PathBuf;
 
     #[test]
     fn test_rust_extractor_creation() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = RustExtractor::new(
             "rust".to_string(),
             "test.rs".to_string(),
             "fn main() {}".to_string(),
+            &workspace_root,
         );
         assert_eq!(extractor.get_base_mut().file_path, "test.rs");
     }

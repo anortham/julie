@@ -4,6 +4,7 @@
 //! including function declarations, async functions, and their metadata handling.
 
 use crate::extractors::typescript::TypeScriptExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_function_with_signature() {
@@ -14,11 +15,15 @@ fn test_extract_function_with_signature() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(symbols.iter().any(|s| s.name == "add"));
@@ -35,11 +40,15 @@ fn test_extract_async_function() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "fetchData").unwrap();
@@ -59,11 +68,15 @@ fn test_extract_function_with_jsdoc_comment() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "validateEmail").unwrap();
@@ -92,11 +105,15 @@ fn test_extract_function_without_jsdoc_comment() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "add").unwrap();

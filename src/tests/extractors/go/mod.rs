@@ -3,6 +3,7 @@ mod go_extractor_tests {
     use crate::extractors::base::{SymbolKind, Visibility};
     use crate::extractors::go::GoExtractor;
     use crate::tests::test_utils::init_parser;
+    use std::path::PathBuf;
 
     #[test]
     fn test_extract_package_declarations() {
@@ -12,8 +13,9 @@ package main
 package utils
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let main_package = symbols.iter().find(|s| s.name == "main");
@@ -40,8 +42,9 @@ type Point struct {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let user_struct = symbols.iter().find(|s| s.name == "User");
@@ -111,8 +114,9 @@ type Reader interface {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let user_service = symbols.iter().find(|s| s.name == "UserService");
@@ -141,8 +145,9 @@ type Username string
 type Config map[string]interface{}
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let user_id = symbols.iter().find(|s| s.name == "UserID");
@@ -188,8 +193,9 @@ func privateHelper() {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let add_func = symbols.iter().find(|s| s.name == "Add");
@@ -253,8 +259,9 @@ func (u *User) SetName(name string) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let get_name = symbols.iter().find(|s| s.name == "GetName");
@@ -303,8 +310,9 @@ import (
 )
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let fmt_import = symbols.iter().find(|s| s.name == "fmt");
@@ -351,8 +359,9 @@ const (
 )
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let max_users = symbols.iter().find(|s| s.name == "MaxUsers");
@@ -391,8 +400,9 @@ var (
 )
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let global_config = symbols.iter().find(|s| s.name == "GlobalConfig");
@@ -445,8 +455,9 @@ func SendData(ch chan<- string, data string) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let process_data = symbols.iter().find(|s| s.name == "ProcessData");
@@ -490,8 +501,9 @@ var Count int = 42
 var Message string = "hello"
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
         let types = extractor.infer_types(&symbols);
 
@@ -529,8 +541,9 @@ func (u *User) SetName(name string) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -610,8 +623,9 @@ func Sum[T Numeric](values ...T) T {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let ordered = symbols.iter().find(|s| s.name == "Ordered");
@@ -775,8 +789,9 @@ func (wp *WorkerPool) worker(id int) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let worker_pool = symbols.iter().find(|s| s.name == "WorkerPool");
@@ -896,8 +911,9 @@ func Err[T any](err error) Result[T] {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
@@ -1046,8 +1062,9 @@ func ProcessValue(value interface{}) string {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let reader = symbols.iter().find(|s| s.name == "Reader");
@@ -1186,8 +1203,9 @@ func FuzzUserValidation(f *testing.F) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         let test_user_service = symbols.iter().find(|s| s.name == "TestUserService");
@@ -1315,8 +1333,9 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
 
         // Check we extracted all major symbols
@@ -1454,8 +1473,9 @@ func main() {{
         );
 
         let tree = init_parser(&code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
         let symbols = extractor.extract_symbols(&tree);
         let _relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -1554,8 +1574,9 @@ var (
 )
 "#;
         let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+            GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
 
         // Should not panic even with malformed code
         let symbols = extractor.extract_symbols(&tree);
@@ -1638,6 +1659,7 @@ var (
         use crate::extractors::base::{IdentifierKind, SymbolKind};
         use crate::extractors::go::GoExtractor;
         use crate::tests::test_utils::init_parser;
+        use std::path::PathBuf;
 
         #[test]
         fn test_extract_function_calls() {
@@ -1658,8 +1680,9 @@ func Calculate() int {
 "#;
 
             let tree = init_parser(go_code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string(), &workspace_root);
 
             // Extract symbols first
             let symbols = extractor.extract_symbols(&tree);
@@ -1718,8 +1741,9 @@ func PrintInfo(u *User) {
 "#;
 
             let tree = init_parser(go_code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string(), &workspace_root);
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1761,8 +1785,9 @@ func Helper() {
 "#;
 
             let tree = init_parser(go_code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string(), &workspace_root);
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1807,8 +1832,9 @@ func Execute() {
 "#;
 
             let tree = init_parser(go_code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string(), &workspace_root);
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1838,8 +1864,9 @@ func Process() {
 "#;
 
             let tree = init_parser(go_code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), go_code.to_string(), &workspace_root);
 
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -1878,8 +1905,9 @@ func AnotherFunction(name string) string {
 }
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let new_server = symbols.iter().find(|s| s.name == "NewServer");
@@ -1919,8 +1947,9 @@ func (s *Server) Stop() {
 }
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let start_method = symbols.iter().find(|s| s.name == "Start");
@@ -1960,8 +1989,9 @@ type Admin struct {
 }
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let user = symbols.iter().find(|s| s.name == "User");
@@ -1998,8 +2028,9 @@ const (
 )
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let max_retries = symbols.iter().find(|s| s.name == "MaxRetries");
@@ -2035,8 +2066,9 @@ import (
 )
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let fmt_import = symbols.iter().find(|s| s.name == "fmt");
@@ -2073,8 +2105,9 @@ type NoDocType struct {
 const NoDocConst = 5
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let no_doc_func = symbols.iter().find(|s| s.name == "NoDocFunction");
@@ -2108,8 +2141,9 @@ func Start() {
 }
 "#;
             let tree = init_parser(code, "go");
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor =
-                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string());
+                GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
             let symbols = extractor.extract_symbols(&tree);
 
             let start = symbols.iter().find(|s| s.name == "Start");

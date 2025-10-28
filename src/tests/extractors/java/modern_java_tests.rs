@@ -8,6 +8,7 @@
 // - Text blocks (Java 13+)
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod modern_java_tests {
@@ -15,6 +16,7 @@ mod modern_java_tests {
 
     #[test]
     fn test_extract_lambda_expressions() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 import java.util.*;
 import java.util.function.*;
@@ -49,6 +51,7 @@ public class LambdaExample {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -64,6 +67,7 @@ public class LambdaExample {
 
     #[test]
     fn test_extract_records() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public record Person(String name, int age) {
     public Person {
@@ -92,6 +96,7 @@ record Point(int x, int y) implements Comparable<Point> {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -127,6 +132,7 @@ record Point(int x, int y) implements Comparable<Point> {
 
     #[test]
     fn test_extract_text_blocks() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class TextBlockExample {
     public void demonstrate() {
@@ -161,6 +167,7 @@ public class TextBlockExample {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -175,6 +182,7 @@ public class TextBlockExample {
 
     #[test]
     fn test_extract_streams_and_optionals() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 import java.util.*;
 import java.util.stream.*;
@@ -202,6 +210,7 @@ public class StreamExample {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

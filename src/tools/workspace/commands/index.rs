@@ -182,13 +182,22 @@ impl ManageWorkspaceTool {
                 } else {
                     0
                 };
-                let message = format!(
-                    "Workspace already indexed: {} symbols\nUse force: true to re-index",
-                    symbol_count
-                );
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
-                    message,
-                )]));
+
+                // 🔥 CRITICAL FIX: If database is empty, clear the flag and proceed with indexing
+                // This prevents the nonsensical "Workspace already indexed: 0 symbols" message
+                if symbol_count == 0 {
+                    warn!("is_indexed flag was true but database has 0 symbols - clearing flag and proceeding with indexing");
+                    *handler.is_indexed.write().await = false;
+                    // Fall through to indexing logic below
+                } else {
+                    let message = format!(
+                        "Workspace already indexed: {} symbols\nUse force: true to re-index",
+                        symbol_count
+                    );
+                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                        message,
+                    )]));
+                }
             }
         }
 

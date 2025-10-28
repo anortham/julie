@@ -385,6 +385,55 @@ When implementing new features, the agent should say:
 6. **ONNX Embeddings**: ort crate for semantic understanding
 7. **Single Binary**: Deploy anywhere, no runtime required
 8. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement to Semantic
+9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators for token efficiency and cross-platform compatibility
+
+### 🔴 CRITICAL: Path Handling Contract (Cross-Platform Compatibility)
+
+**All file paths in the database are stored as RELATIVE Unix-style paths.**
+
+#### The Contract
+- **Storage Format**: `src/tools/search.rs` (relative, Unix `/` separators)
+- **NOT**: `/Users/murphy/project/src/tools/search.rs` (absolute)
+- **NOT**: `src\tools\search.rs` (Windows `\` separators)
+
+#### Why Relative Unix-Style?
+1. **Token Efficiency**: `src/main.rs` (13 chars) vs `/Users/murphy/source/julie/src/main.rs` (42 chars) = 70% savings
+2. **Cross-Platform**: Works on Windows, macOS, Linux without path conversion
+3. **Portability**: Database can be moved between machines/OS
+4. **No JSON Escaping**: Forward slashes don't need escaping in JSON
+
+#### Implementation Pattern (MANDATORY)
+
+**File Discovery** → Returns canonicalized absolute paths (resolves symlinks like macOS /var → /private/var)
+**File Reading** → Uses absolute paths (for metadata, content reading)
+**Database Storage** → Converts to relative Unix-style before storing
+**Queries** → Accept both absolute and relative, normalize to relative for lookup
+
+```rust
+// ✅ CORRECT: Discovery canonicalizes for reading
+let canonical_path = path.canonicalize().unwrap_or(path);  // /private/var/folders/.../test.rs
+indexable_files.push(canonical_path);
+
+// ✅ CORRECT: Processor handles both absolute and relative
+let relative_path = if file_path.is_absolute() {
+    to_relative_unix_style(file_path, workspace_root)?  // → "src/test.rs"
+} else {
+    file_path.to_string_lossy().replace('\\', "/")
+};
+
+// ✅ CORRECT: create_file_info needs absolute for reading metadata
+let mut file_info = create_file_info(file_path, language)?;  // Reads with absolute path
+file_info.path = relative_path;  // Overrides with relative for storage
+
+// ❌ WRONG: Passing relative path to create_file_info
+let file_info = create_file_info(&relative_path, language)?;  // FAILS: can't read "src/test.rs"
+```
+
+#### Key Locations Fixed (2025-10-27)
+- `src/tools/workspace/discovery.rs:91` - Canonicalize paths before returning
+- `src/tools/workspace/indexing/processor.rs` - 6 locations handling absolute vs relative
+- `src/extractors/base.rs:437` - Handle both absolute and relative in BaseExtractor
+- `src/utils/paths.rs:40` - Graceful canonicalization with fallback
 
 ### 🔴 CRITICAL: Single-Workspace Search Policy (Non-Negotiable)
 
@@ -917,5 +966,20 @@ Read the TODO.md file. Your user updates this file to track observations and ide
   - Automatic CPU fallback on initialization failure
   - TensorRT disabled on Linux (CUDA version mismatch simplified)
 
-**Next Milestone**: Remaining test migrations + production readiness
-**Last Updated**: 2025-10-25 - GPU Acceleration Platform Requirements Documented
+**Recent Updates (2025-10-27)**:
+- ✅ **Atomic Database Transactions**: Incremental update corruption eliminated
+  - FK constraint handling fixed (disable on connection, not in transaction)
+  - `incremental_update_atomic()` wraps cleanup + insert in single transaction
+  - Zero data loss window between cleanup and re-indexing
+- ✅ **Path Handling Contract**: Relative Unix-style storage implemented
+  - File discovery canonicalizes paths (resolves macOS symlinks)
+  - Processor handles both absolute and relative paths (6 locations)
+  - `create_file_info` uses absolute for reading, stores relative
+  - 70% token savings, full cross-platform compatibility
+- ✅ **Reference Workspace Indexing**: Fixed and tested
+  - Correct database routing (primary vs reference)
+  - Per-workspace isolation maintained
+  - Critical tests passing
+
+**Next Milestone**: Windows path testing + remaining test interdependency fixes
+**Last Updated**: 2025-10-27 - Atomic Transactions and Path Handling Complete

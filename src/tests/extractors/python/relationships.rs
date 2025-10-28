@@ -3,6 +3,7 @@
 //! Tests for Python relationship extraction (inheritance, calls)
 
 use crate::extractors::base::RelationshipKind;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_inheritance_relationships() {
@@ -19,8 +20,12 @@ class Derived(Base):
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -54,8 +59,12 @@ class Derived(Base1, Base2):
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -79,8 +88,12 @@ def callee():
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -108,8 +121,12 @@ fn test_extract_relationships_empty_code() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -135,8 +152,12 @@ class Child(Base):
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -165,8 +186,12 @@ class Derived(Base):
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -192,8 +217,12 @@ class Child(Base):
     let tree = parser.parse(code, None).unwrap();
 
     let file_path = "my_module.py";
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new(file_path.to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        file_path.to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -225,8 +254,12 @@ class MyClass:
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
-    let mut extractor =
-        crate::extractors::python::PythonExtractor::new("test.py".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::extractors::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 

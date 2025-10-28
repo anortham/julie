@@ -203,7 +203,10 @@ impl ParallelExtractor {
     pub fn extract_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
         let content = std::fs::read_to_string(file_path)?;
         let extractor_manager = ExtractorManager::new();
-        extractor_manager.extract_symbols(file_path, &content)
+        // Derive workspace_root from file path (use parent directory or current directory as fallback)
+        let file_path_buf = std::path::Path::new(file_path);
+        let workspace_root = file_path_buf.parent().unwrap_or_else(|| std::path::Path::new("."));
+        extractor_manager.extract_symbols(file_path, &content, workspace_root)
     }
 
     /// Synchronous file extraction (for Rayon compatibility)
@@ -213,8 +216,11 @@ impl ParallelExtractor {
 
         let extractor_manager = ExtractorManager::new();
 
+        // Derive workspace_root from file path (use parent directory or current directory as fallback)
+        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
         // Now that extract_symbols is synchronous, we can call it directly
-        extractor_manager.extract_symbols(&file_path_str, &content)
+        extractor_manager.extract_symbols(&file_path_str, &content, workspace_root)
     }
 
     /// Synchronous identifier extraction (NEW for LSP-quality reference tracking)
@@ -246,8 +252,9 @@ impl ParallelExtractor {
             .ok_or_else(|| anyhow!("Failed to parse {}", file_path_str))?;
 
         // Create Rust extractor and extract identifiers
+        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
         let mut rust_extractor =
-            crate::extractors::rust::RustExtractor::new("rust".to_string(), file_path_str, content);
+            crate::extractors::rust::RustExtractor::new("rust".to_string(), file_path_str, content, workspace_root);
 
         Ok(rust_extractor.extract_identifiers(&tree, symbols))
     }

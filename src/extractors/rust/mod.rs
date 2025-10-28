@@ -31,9 +31,9 @@ pub struct RustExtractor {
 }
 
 impl RustExtractor {
-    pub fn new(language: String, file_path: String, content: String) -> Self {
+    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new(language, file_path, content),
+            base: BaseExtractor::new(language, file_path, content, workspace_root),
             impl_blocks: Vec::new(),
             is_processing_impl_blocks: false,
         }

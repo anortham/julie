@@ -1,5 +1,6 @@
 use crate::extractors::base::Symbol;
 use crate::extractors::css::CSSExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 pub fn init_parser() -> Parser {
@@ -13,8 +14,13 @@ pub fn init_parser() -> Parser {
 pub fn extract_symbols(code: &str) -> Vec<Symbol> {
     let mut parser = init_parser();
     let tree = parser.parse(code, None).unwrap();
-    let mut extractor =
-        CSSExtractor::new("css".to_string(), "test.css".to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = CSSExtractor::new(
+        "css".to_string(),
+        "test.css".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     extractor.extract_symbols(&tree)
 }
 

@@ -16,9 +16,9 @@ pub struct ZigExtractor {
 }
 
 impl ZigExtractor {
-    pub fn new(language: String, file_path: String, content: String) -> Self {
+    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new(language, file_path, content),
+            base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
     }
 

@@ -13,7 +13,9 @@ mod vue_extractor_tests {
 
     // Helper function to create a VueExtractor - Vue doesn't use tree-sitter
     fn create_extractor(file_path: &str, code: &str) -> VueExtractor {
-        VueExtractor::new("vue".to_string(), file_path.to_string(), code.to_string())
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
+        VueExtractor::new("vue".to_string(), file_path.to_string(), code.to_string(), &workspace_root)
     }
 
     #[test]
@@ -345,10 +347,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "test.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -393,10 +398,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "test.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(None);
@@ -440,10 +448,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "test.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(None);
@@ -475,10 +486,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "test.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(None);
@@ -520,10 +534,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "test.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(None);
@@ -566,10 +583,13 @@ export default {
 </script>
 "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "malformed.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -590,10 +610,13 @@ export default {
 </style>
 "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "empty.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -611,10 +634,13 @@ export default {
 </script>
 "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "minimal.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -649,10 +675,13 @@ export default defineComponent<Props>({
 </script>
 "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "typescript.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -697,10 +726,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "counter.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -740,10 +772,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "data.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -782,10 +817,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "computed.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -823,10 +861,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "props.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -876,10 +917,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "methods.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -940,10 +984,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "user-card.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -984,10 +1031,13 @@ export default {
 </style>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "styles.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -1034,10 +1084,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "multiline.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 
@@ -1078,10 +1131,13 @@ export default {
 </script>
         "#;
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = VueExtractor::new(
             "vue".to_string(),
             "no-comments.vue".to_string(),
             vue_code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(None);
 

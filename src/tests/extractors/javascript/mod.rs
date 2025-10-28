@@ -8,6 +8,7 @@ pub mod relationships;
 
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::javascript::JavaScriptExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 /// Initialize JavaScript parser for JavaScript files
@@ -127,10 +128,12 @@ class AsyncEventEmitter extends EventEmitter {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -423,10 +426,12 @@ function Counter(initialValue) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "legacy.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -648,10 +653,12 @@ async function* fetchPages(baseUrl) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "modern.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -889,10 +896,12 @@ function createClosures() {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "scoping.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1158,10 +1167,12 @@ function logUnknownError(error) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "errors.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1451,10 +1462,12 @@ function verifyToken(token, secret) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "server.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1601,10 +1614,12 @@ function calculate() {
             let mut parser = init_parser();
             let tree = parser.parse(js_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 js_code.to_string(),
+                &workspace_root,
             );
 
             // Extract symbols first
@@ -1666,10 +1681,12 @@ class User {
             let mut parser = init_parser();
             let tree = parser.parse(js_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 js_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1712,10 +1729,12 @@ function helper() {
             let mut parser = init_parser();
             let tree = parser.parse(js_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 js_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1755,10 +1774,12 @@ class DataService {
             let mut parser = init_parser();
             let tree = parser.parse(js_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 js_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1797,10 +1818,12 @@ function process() {
             let mut parser = init_parser();
             let tree = parser.parse(js_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 js_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1845,10 +1868,12 @@ function authenticate(username, password) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1900,10 +1925,12 @@ class AuthService {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1960,10 +1987,12 @@ const processData = (data) => {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -2015,10 +2044,12 @@ class Config {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -2071,10 +2102,12 @@ function noDocumentation() {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -2105,10 +2138,12 @@ import { debounce, throttle } from 'lodash';
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = JavaScriptExtractor::new(
                 "javascript".to_string(),
                 "test.js".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);

@@ -11,12 +11,16 @@ impl ManageWorkspaceTool {
     /// Extract symbols from an already-parsed tree (PERFORMANCE OPTIMIZED)
     ///
     /// This bypasses the expensive tree-sitter parsing step when parser is reused.
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now requires workspace_root_path parameter to enable relative path storage in extractors
     pub(crate) fn extract_symbols_with_existing_tree(
         &self,
         tree: &Tree,
         file_path: &str,
         content: &str,
         language: &str,
+        workspace_root_path: &std::path::Path, // NEW: Phase 2 - workspace root for relative paths
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         debug!(
             "Extracting symbols: language={}, file={}",
@@ -33,6 +37,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 debug!("    Calling extract_symbols...");
                 let symbols = extractor.extract_symbols(tree);
@@ -46,6 +51,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 debug!("    Calling extract_symbols...");
                 let symbols = extractor.extract_symbols(tree);
@@ -61,6 +67,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -70,6 +77,7 @@ impl ManageWorkspaceTool {
                 let mut extractor = crate::extractors::python::PythonExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -80,6 +88,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -90,6 +99,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -99,6 +109,7 @@ impl ManageWorkspaceTool {
                 let mut extractor = crate::extractors::ruby::RubyExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -109,6 +120,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -119,6 +131,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -129,6 +142,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -139,6 +153,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -148,6 +163,7 @@ impl ManageWorkspaceTool {
                 let mut extractor = crate::extractors::cpp::CppExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -158,6 +174,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -168,6 +185,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -178,6 +196,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -188,6 +207,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = Vec::new(); // CSS extractor doesn't have relationships
@@ -198,6 +218,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(Some(tree));
                 let relationships = extractor.extract_relationships(Some(tree), &symbols);
@@ -208,6 +229,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -218,6 +240,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -228,6 +251,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -238,6 +262,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -248,6 +273,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -258,6 +284,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);
@@ -268,6 +295,7 @@ impl ManageWorkspaceTool {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root_path,
                 );
                 let symbols = extractor.extract_symbols(tree);
                 let relationships = extractor.extract_relationships(tree, &symbols);

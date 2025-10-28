@@ -14,7 +14,7 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::resolve_workspace_filter;
@@ -130,37 +130,49 @@ impl GetSymbolsTool {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
-        // Normalize path: database stores canonical absolute paths (symlinks resolved)
-        // Convert user input (relative or absolute) to canonical absolute path
-        let absolute_path = if std::path::Path::new(&self.file_path).is_absolute() {
-            // Already absolute - canonicalize to resolve symlinks (macOS /var -> /private/var)
-            std::path::Path::new(&self.file_path)
+        // Phase 2: Database stores relative Unix-style paths for token efficiency
+        // We need TWO paths:
+        // 1. query_path: Relative Unix-style for database queries
+        // 2. absolute_path: Absolute path for file I/O (extract_code_bodies)
+
+        let (query_path, absolute_path) = if std::path::Path::new(&self.file_path).is_absolute() {
+            // Absolute path input
+            let canonical = std::path::Path::new(&self.file_path)
                 .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(&self.file_path))
-                .to_string_lossy()
-                .to_string()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&self.file_path));
+
+            let relative = crate::utils::paths::to_relative_unix_style(&canonical, &workspace.root)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to convert absolute path to relative: {}", self.file_path);
+                    self.file_path.clone()
+                });
+
+            (relative, canonical.to_string_lossy().to_string())
         } else {
-            // Relative path - join with workspace root and canonicalize
-            workspace
+            // Relative path input - normalize separators for query, join for absolute
+            let relative_unix = self.file_path.replace('\\', "/");
+            let absolute = workspace
                 .root
                 .join(&self.file_path)
                 .canonicalize()
                 .unwrap_or_else(|_| workspace.root.join(&self.file_path))
                 .to_string_lossy()
-                .to_string()
+                .to_string();
+
+            (relative_unix, absolute)
         };
 
         debug!(
-            "🔍 Path normalization: '{}' -> '{}'",
-            self.file_path, absolute_path
+            "🔍 Path normalization: '{}' -> query='{}', absolute='{}'",
+            self.file_path, query_path, absolute_path
         );
         debug!("🔍 Workspace root: '{}'", workspace.root.display());
 
-        // Query symbols for this file using normalized path
+        // Query symbols for this file using relative Unix-style path
         let symbols = {
             let db_lock = db.lock().unwrap();
             db_lock
-                .get_symbols_for_file(&absolute_path)
+                .get_symbols_for_file(&query_path)
                 .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
         };
 
@@ -581,36 +593,45 @@ impl GetSymbolsTool {
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
 
-        // Normalize path: convert user input (relative or absolute) to canonical absolute path
+        // Phase 2: Database stores relative Unix-style paths
         // Reference workspace root is from WorkspaceEntry.original_path
         let ref_workspace_root = std::path::PathBuf::from(&ref_workspace_entry.original_path);
 
-        let absolute_path = if std::path::Path::new(&self.file_path).is_absolute() {
-            // Already absolute - canonicalize to resolve symlinks
-            std::path::Path::new(&self.file_path)
+        let (query_path, absolute_path) = if std::path::Path::new(&self.file_path).is_absolute() {
+            // Absolute path input
+            let canonical = std::path::Path::new(&self.file_path)
                 .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(&self.file_path))
-                .to_string_lossy()
-                .to_string()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&self.file_path));
+
+            let relative = crate::utils::paths::to_relative_unix_style(&canonical, &ref_workspace_root)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to convert absolute path to relative: {}", self.file_path);
+                    self.file_path.clone()
+                });
+
+            (relative, canonical.to_string_lossy().to_string())
         } else {
-            // Relative path - join with reference workspace root and canonicalize
-            ref_workspace_root
+            // Relative path input - normalize separators for query, join for absolute
+            let relative_unix = self.file_path.replace('\\', "/");
+            let absolute = ref_workspace_root
                 .join(&self.file_path)
                 .canonicalize()
                 .unwrap_or_else(|_| ref_workspace_root.join(&self.file_path))
                 .to_string_lossy()
-                .to_string()
+                .to_string();
+
+            (relative_unix, absolute)
         };
 
         debug!(
-            "🔍 Path normalization: '{}' -> '{}' (ref workspace: {})",
-            self.file_path, absolute_path, ref_workspace_id
+            "🔍 Path normalization: '{}' -> query='{}', absolute='{}' (ref workspace: {})",
+            self.file_path, query_path, absolute_path, ref_workspace_id
         );
 
-        // Query symbols for this file using normalized path
+        // Query symbols using relative Unix-style path
         // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
         let symbols = ref_db
-            .get_symbols_for_file(&absolute_path)
+            .get_symbols_for_file(&query_path)
             .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
 
         if symbols.is_empty() {

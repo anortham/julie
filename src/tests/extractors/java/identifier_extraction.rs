@@ -16,9 +16,11 @@ use crate::tests::extractors::java::init_parser;
 #[cfg(test)]
 mod identifier_extraction_tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_extract_function_calls() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let java_code = r#"
 public class Calculator {
     public int add(int a, int b) {
@@ -40,6 +42,7 @@ public class Calculator {
             "java".to_string(),
             "test.java".to_string(),
             java_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -84,6 +87,7 @@ public class Calculator {
 
     #[test]
     fn test_extract_member_access() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let java_code = r#"
 public class User {
     public String name;
@@ -103,6 +107,7 @@ public class User {
             "java".to_string(),
             "test.java".to_string(),
             java_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -130,6 +135,7 @@ public class User {
 
     #[test]
     fn test_file_scoped_containing_symbol() {
+        let workspace_root = PathBuf::from("/tmp/test");
         // This test ensures we ONLY match symbols from the SAME FILE
         // Critical bug fix from Rust implementation (line 1311-1318 in rust.rs)
         let java_code = r#"
@@ -151,6 +157,7 @@ public class Service {
             "java".to_string(),
             "test.java".to_string(),
             java_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -178,6 +185,7 @@ public class Service {
 
     #[test]
     fn test_chained_member_access() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let java_code = r#"
 public class DataService {
     public void execute() {
@@ -194,6 +202,7 @@ public class DataService {
             "java".to_string(),
             "test.java".to_string(),
             java_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -219,6 +228,7 @@ public class DataService {
 
     #[test]
     fn test_no_duplicate_identifiers() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let java_code = r#"
 public class Test {
     public void run() {
@@ -238,6 +248,7 @@ public class Test {
             "java".to_string(),
             "test.java".to_string(),
             java_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

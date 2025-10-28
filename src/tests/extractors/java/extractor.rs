@@ -1,9 +1,11 @@
 /// Tests for Java extractor JavaDoc comment extraction
 use crate::extractors::java::JavaExtractor;
 use crate::tests::test_utils::init_parser;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_javadoc_on_class() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 /**
  * Manages user sessions and authentication
@@ -18,6 +20,7 @@ public class SessionManager {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -43,6 +46,7 @@ public class SessionManager {
 
 #[test]
 fn test_extract_javadoc_on_method() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 public class SessionManager {
     /**
@@ -61,6 +65,7 @@ public class SessionManager {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -86,6 +91,7 @@ public class SessionManager {
 
 #[test]
 fn test_extract_javadoc_on_field() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 public class SessionManager {
     /** The session timeout in milliseconds */
@@ -98,6 +104,7 @@ public class SessionManager {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -123,6 +130,7 @@ public class SessionManager {
 
 #[test]
 fn test_no_javadoc_when_missing() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 public class SimpleClass {
     private String name;
@@ -134,6 +142,7 @@ public class SimpleClass {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -152,6 +161,7 @@ public class SimpleClass {
 
 #[test]
 fn test_extract_javadoc_on_interface() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 /**
  * Authentication service interface
@@ -169,6 +179,7 @@ public interface AuthService {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -194,6 +205,7 @@ public interface AuthService {
 
 #[test]
 fn test_extract_javadoc_on_enum() {
+    let workspace_root = PathBuf::from("/tmp/test");
     let code = r#"
 /**
  * User role enumeration
@@ -211,6 +223,7 @@ public enum Role {
         "java".to_string(),
         "test.java".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 

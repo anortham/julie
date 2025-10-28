@@ -1,4 +1,5 @@
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
@@ -31,10 +32,12 @@ namespace MyProject
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -95,10 +98,12 @@ namespace MyProject
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -179,10 +184,12 @@ namespace MyProject
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -255,10 +262,12 @@ namespace MyProject
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

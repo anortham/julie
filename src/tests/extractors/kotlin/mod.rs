@@ -5,6 +5,7 @@
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::kotlin::KotlinExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 /// Initialize Kotlin parser
@@ -85,10 +86,12 @@ class Vehicle(
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -176,10 +179,12 @@ enum class Color(val rgb: Int) {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -331,10 +336,12 @@ operator fun Point.plus(other: Point): Point {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -536,10 +543,12 @@ class ProcessorImpl : StringProcessor {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -698,10 +707,12 @@ import kotlin.jvm.JvmStatic
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -894,10 +905,12 @@ fun <K, V> Map<K, V>.getValueOrDefault(key: K, default: () -> V): V {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1018,10 +1031,12 @@ class UserRepository : Repository<User> {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1086,10 +1101,12 @@ sealed class State {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1211,10 +1228,12 @@ class UserService {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1245,10 +1264,12 @@ fun validateCredentials(username: String): Boolean {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1276,10 +1297,12 @@ fun validateCredentials(username: String): Boolean {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1310,10 +1333,12 @@ interface AuthService {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1344,10 +1369,12 @@ object Configuration {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1368,10 +1395,12 @@ object Configuration {
 
         let mut parser = init_parser();
         let tree = parser.parse(source, None).expect("Parse failed");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             source.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -1419,10 +1448,12 @@ class Calculator {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -1482,10 +1513,12 @@ class User {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1530,10 +1563,12 @@ class Service {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1573,10 +1608,12 @@ class DataService {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1617,10 +1654,12 @@ class Test {
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = KotlinExtractor::new(
             "kotlin".to_string(),
             "test.kt".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

@@ -12,6 +12,7 @@
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::gdscript::GDScriptExtractor;
 use crate::tests::test_utils::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -32,10 +33,12 @@ func calculate(a, b):
 "#;
 
         let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = GDScriptExtractor::new(
             "gdscript".to_string(),
             "test.gd".to_string(),
             gdscript_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -91,10 +94,12 @@ func _ready():
 "#;
 
         let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = GDScriptExtractor::new(
             "gdscript".to_string(),
             "test.gd".to_string(),
             gdscript_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -135,10 +140,12 @@ func helper():
 "#;
 
         let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = GDScriptExtractor::new(
             "gdscript".to_string(),
             "test.gd".to_string(),
             gdscript_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -175,10 +182,12 @@ func get_data():
 "#;
 
         let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = GDScriptExtractor::new(
             "gdscript".to_string(),
             "test.gd".to_string(),
             gdscript_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -216,10 +225,12 @@ func process():
 "#;
 
         let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = GDScriptExtractor::new(
             "gdscript".to_string(),
             "test.gd".to_string(),
             gdscript_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

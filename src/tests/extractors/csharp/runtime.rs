@@ -1,4 +1,5 @@
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
@@ -109,10 +110,12 @@ namespace ExceptionHandling
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -190,10 +193,12 @@ namespace TestingPatterns
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -255,10 +260,12 @@ namespace PerformanceTests
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -396,10 +403,12 @@ namespace EdgeCases
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "c_sharp".to_string(),
             "complex-test.cs".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

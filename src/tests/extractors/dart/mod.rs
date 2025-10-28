@@ -8,6 +8,7 @@ pub mod extractor;
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::dart::DartExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 /// Initialize Dart parser for Dart files
@@ -80,10 +81,12 @@ class Dog extends Animal {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -227,10 +230,12 @@ extension on List<int> {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -356,10 +361,12 @@ T processData<T extends Comparable<T>>(T data, T Function(T) processor) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -559,10 +566,12 @@ class CustomButton extends StatelessWidget {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -729,10 +738,12 @@ class Container<T> {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -834,10 +845,12 @@ class Calculator {
             let mut parser = init_parser();
             let tree = parser.parse(dart_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 dart_code.to_string(),
+                &workspace_root,
             );
 
             // Extract symbols first
@@ -905,10 +918,12 @@ class User {
             let mut parser = init_parser();
             let tree = parser.parse(dart_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 dart_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -953,10 +968,12 @@ class Service {
             let mut parser = init_parser();
             let tree = parser.parse(dart_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 dart_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1003,10 +1020,12 @@ class DataService {
             let mut parser = init_parser();
             let tree = parser.parse(dart_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 dart_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1047,10 +1066,12 @@ class Test {
             let mut parser = init_parser();
             let tree = parser.parse(dart_code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 dart_code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1133,10 +1154,12 @@ Future<String> chainOperations() {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "async.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1237,10 +1260,12 @@ void runWithErrorHandling(void Function() operation) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "errors.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1352,10 +1377,12 @@ List<String> processChunk(List<String> chunk) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "isolates.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1486,10 +1513,12 @@ Future<String> riskyOperation() async {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "streams.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1631,10 +1660,12 @@ class UserService {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "annotations.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1688,10 +1719,12 @@ class UserService {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1731,10 +1764,12 @@ bool validateCredentials(String username, String password) {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1786,10 +1821,12 @@ class Calculator {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1846,10 +1883,12 @@ class Server {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);
@@ -1900,10 +1939,12 @@ class Person {
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
 
+            let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
                 "dart".to_string(),
                 "test.dart".to_string(),
                 code.to_string(),
+                &workspace_root,
             );
 
             let symbols = extractor.extract_symbols(&tree);

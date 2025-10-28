@@ -69,10 +69,14 @@ impl ExtractorManager {
     }
 
     /// Extract symbols from file content using the appropriate language extractor
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now requires workspace_root for relative path storage
     pub fn extract_symbols(
         &self,
         file_path: &str,
         content: &str,
+        workspace_root: &std::path::Path, // NEW: Phase 2 - workspace root
     ) -> Result<Vec<Symbol>, anyhow::Error> {
         use std::path::Path;
         use tree_sitter::Parser;
@@ -129,7 +133,7 @@ impl ExtractorManager {
             .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
 
         // Extract symbols using the appropriate extractor
-        let symbols = self.extract_symbols_for_language(file_path, content, language, &tree)?;
+        let symbols = self.extract_symbols_for_language(file_path, content, language, &tree, workspace_root)?;
 
         tracing::debug!(
             "Extracted {} symbols from {} file: {}",
@@ -149,12 +153,16 @@ impl ExtractorManager {
     }
 
     /// Extract symbols using the appropriate extractor for the detected language
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now requires workspace_root for relative path storage
     fn extract_symbols_for_language(
         &self,
         file_path: &str,
         content: &str,
         language: &str,
         tree: &tree_sitter::Tree,
+        workspace_root: &std::path::Path, // NEW: Phase 2 - workspace root for relative paths
     ) -> Result<Vec<Symbol>, anyhow::Error> {
         match language {
             "rust" => {
@@ -162,6 +170,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -170,6 +179,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -178,6 +188,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -185,6 +196,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::python::PythonExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -193,6 +205,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -201,6 +214,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -209,6 +223,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -216,6 +231,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::cpp::CppExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -224,6 +240,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -231,6 +248,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::ruby::RubyExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -239,6 +257,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -247,6 +266,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -255,6 +275,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -263,6 +284,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -271,6 +293,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -279,6 +302,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -287,6 +311,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(Some(tree)))
             }
@@ -295,6 +320,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -303,6 +329,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -311,6 +338,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -319,6 +347,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -327,6 +356,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -335,6 +365,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -343,6 +374,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -351,6 +383,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    workspace_root,
                 );
                 Ok(extractor.extract_symbols(tree))
             }
@@ -463,6 +496,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -471,6 +505,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -478,6 +513,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::python::PythonExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -486,6 +522,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -494,6 +531,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -502,6 +540,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -510,6 +549,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -518,6 +558,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -529,6 +570,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::ruby::RubyExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -537,6 +579,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -545,6 +588,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -553,6 +597,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -560,6 +605,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::cpp::CppExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -568,6 +614,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -580,6 +627,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -588,6 +636,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -596,6 +645,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 // Vue parses internally (extracts <script> section first)
                 Ok(extractor.extract_identifiers(symbols))
@@ -605,6 +655,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -613,6 +664,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -621,6 +673,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -633,6 +686,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -641,6 +695,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -649,6 +704,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -657,6 +713,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -665,6 +722,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_identifiers(tree, symbols))
             }
@@ -775,6 +833,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -783,6 +842,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -790,6 +850,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::python::PythonExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -798,6 +859,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -806,6 +868,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -814,6 +877,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -822,6 +886,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -830,6 +895,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -837,6 +903,7 @@ impl ExtractorManager {
                 let extractor = crate::extractors::ruby::RubyExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -845,6 +912,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -853,6 +921,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -861,6 +930,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -868,6 +938,7 @@ impl ExtractorManager {
                 let mut extractor = crate::extractors::cpp::CppExtractor::new(
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -876,6 +947,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -884,6 +956,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -892,6 +965,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -900,6 +974,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(Some(tree), symbols))
             }
@@ -908,6 +983,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -916,6 +992,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -924,6 +1001,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -932,6 +1010,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -940,6 +1019,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -952,6 +1032,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }
@@ -960,6 +1041,7 @@ impl ExtractorManager {
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),
+                    &std::path::PathBuf::from("/tmp/test"),
                 );
                 Ok(extractor.extract_relationships(tree, symbols))
             }

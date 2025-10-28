@@ -34,9 +34,9 @@ pub struct PythonExtractor {
 }
 
 impl PythonExtractor {
-    pub fn new(file_path: String, content: String) -> Self {
+    pub fn new(file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new("python".to_string(), file_path, content),
+            base: BaseExtractor::new("python".to_string(), file_path, content, workspace_root),
         }
     }
 

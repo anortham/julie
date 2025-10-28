@@ -34,9 +34,17 @@ pub struct TypeScriptExtractor {
 
 impl TypeScriptExtractor {
     /// Create a new TypeScript extractor
-    pub fn new(language: String, file_path: String, content: String) -> Self {
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now accepts workspace_root to enable relative path storage
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
-            base: BaseExtractor::new(language, file_path, content),
+            base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
     }
 

@@ -3,6 +3,7 @@
 // Direct port of Miller's Java extractor tests (TDD RED phase)
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod class_tests {
@@ -10,6 +11,7 @@ mod class_tests {
 
     #[test]
     fn test_extract_class_definitions_with_modifiers() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 package com.example;
 
@@ -38,6 +40,7 @@ class DefaultClass {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

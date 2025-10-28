@@ -11,6 +11,8 @@ mod swift_extractor_tests {
 
     // Helper function to create a SwiftExtractor and parse Swift code
     fn create_extractor_and_parse(code: &str) -> (SwiftExtractor, Tree) {
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&tree_sitter_swift::LANGUAGE.into())
@@ -20,6 +22,7 @@ mod swift_extractor_tests {
             "swift".to_string(),
             "test.swift".to_string(),
             code.to_string(),
+            &workspace_root,
         );
         (extractor, tree)
     }

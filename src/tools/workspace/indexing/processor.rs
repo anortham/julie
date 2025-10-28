@@ -23,6 +23,7 @@ impl ManageWorkspaceTool {
         is_primary_workspace: bool,
         total_files: &mut usize,
         workspace_id: String, // Pass workspace_id instead of re-looking it up
+        workspace_path: &Path, // Path of workspace being indexed (primary OR reference)
     ) -> Result<()> {
         // Group files by language for batch processing
         let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -42,6 +43,9 @@ impl ManageWorkspaceTool {
             "🚀 Processing {} languages with optimized parser reuse",
             files_by_language.len()
         );
+
+        // Phase 2: Use workspace_path for relative path storage (works for primary AND reference workspaces)
+        let workspace_root = workspace_path;
 
         // 🔥 CRITICAL FIX: Open correct database for reference vs primary workspaces
         // Reference workspaces need their own separate database at indexes/{workspace_id}/db/symbols.db
@@ -109,7 +113,7 @@ impl ManageWorkspaceTool {
                     // Has parser: full symbol extraction + text indexing for all files
                     for file_path in file_paths {
                         match self
-                            .process_file_with_parser(&file_path, &language, parser)
+                            .process_file_with_parser(&file_path, &language, parser, &workspace_root)
                             .await
                         {
                             Ok((symbols, relationships, file_info)) => {
@@ -123,7 +127,15 @@ impl ManageWorkspaceTool {
                                 );
 
                                 // Track this file for cleanup (remove old symbols/data before adding new)
-                                files_to_clean.push(file_path.to_string_lossy().to_string());
+                                // MUST use relative path to match how symbols are stored in database
+                                let relative_path = if file_path.is_absolute() {
+                                    crate::utils::paths::to_relative_unix_style(&file_path, &workspace_root)
+                                        .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                                } else {
+                                    // Already relative - use as-is (just normalize to Unix-style)
+                                    file_path.to_string_lossy().replace('\\', "/")
+                                };
+                                files_to_clean.push(relative_path);
 
                                 // Collect data for bulk storage
                                 all_symbols.extend(symbols);
@@ -154,13 +166,21 @@ impl ManageWorkspaceTool {
                     );
                     for file_path in file_paths {
                         match self
-                            .process_file_without_parser(&file_path, &language)
+                            .process_file_without_parser(&file_path, &language, &workspace_root)
                             .await
                         {
                             Ok((symbols, relationships, file_info)) => {
                                 debug!("📄 Processed file without parser: {:?}", file_path);
                                 *total_files += 1;
-                                files_to_clean.push(file_path.to_string_lossy().to_string());
+                                // MUST use relative path to match how symbols are stored in database
+                                let relative_path = if file_path.is_absolute() {
+                                    crate::utils::paths::to_relative_unix_style(&file_path, &workspace_root)
+                                        .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                                } else {
+                                    // Already relative - use as-is (just normalize to Unix-style)
+                                    file_path.to_string_lossy().replace('\\', "/")
+                                };
+                                files_to_clean.push(relative_path);
                                 all_symbols.extend(symbols); // Will be empty
                                 all_relationships.extend(relationships); // Will be empty
                                 all_file_infos.push(file_info);
@@ -177,73 +197,56 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // 🧹 CLEANUP: Remove old data for files being re-processed (incremental updates)
-        if !files_to_clean.is_empty() {
-            debug!(
-                "Cleaning up old data for {} modified files before bulk storage",
-                files_to_clean.len()
-            );
-
-            // Use correct database: reference workspace DB or primary workspace DB
-            let db_to_use = if let Some(ref ref_db) = ref_workspace_db {
-                // Reference workspace - use separate DB
-                Some(ref_db.clone())
+        // Get database handle
+        let db_to_use = if let Some(ref ref_db) = ref_workspace_db {
+            Some(ref_db.clone())
+        } else {
+            if let Some(workspace) = handler.get_workspace().await? {
+                workspace.db.clone()
             } else {
-                // Primary workspace - use handler's DB
-                if let Some(workspace) = handler.get_workspace().await? {
-                    workspace.db.clone()
-                } else {
-                    None
-                }
-            };
-
-            if let Some(db) = db_to_use {
-                let db_lock = db.lock().unwrap();
-
-                // Clean up database entries for modified files
-                for file_path in &files_to_clean {
-                    if let Err(e) = db_lock.delete_symbols_for_file_in_workspace(file_path) {
-                        warn!("Failed to delete old symbols for {}: {}", file_path, e);
-                    }
-                    if let Err(e) = db_lock.delete_relationships_for_file(file_path) {
-                        warn!(
-                            "Failed to delete old relationships for {}: {}",
-                            file_path, e
-                        );
-                    }
-                }
-
-                debug!("Cleanup complete for {} files", files_to_clean.len());
-
-                // 🔥 CRITICAL: Explicitly release the database lock before bulk storage!
-                drop(db_lock);
+                None
             }
-        }
+        };
 
-        // 🚀 BLAZING-FAST BULK STORAGE: Store everything at once using optimized bulk methods
-        // CRITICAL FIX: Store files even if they have 0 symbols (file records are still needed!)
-        if !all_file_infos.is_empty() {
-            info!("🚀 Starting blazing-fast bulk storage of {} symbols, {} relationships, {} files...",
-                  all_symbols.len(), all_relationships.len(), all_file_infos.len());
+        if let Some(db) = db_to_use {
+            let bulk_start = std::time::Instant::now();
 
-            // Use correct database: reference workspace DB or primary workspace DB
-            let db_to_use = if let Some(ref ref_db) = ref_workspace_db {
-                // Reference workspace - use separate DB
-                Some(ref_db.clone())
-            } else {
-                // Primary workspace - use handler's DB
-                if let Some(workspace) = handler.get_workspace().await? {
-                    workspace.db.clone()
-                } else {
-                    None
-                }
-            };
+            // 🔥 ATOMIC INCREMENTAL UPDATE: Use new method that wraps cleanup + insert in ONE transaction
+            // This prevents the critical corruption window where cleanup commits but insert never happens
+            if !files_to_clean.is_empty() {
+                info!(
+                    "🔐 Starting ATOMIC incremental update: {} files to clean, {} symbols, {} relationships, {} files",
+                    files_to_clean.len(),
+                    all_symbols.len(),
+                    all_relationships.len(),
+                    all_file_infos.len()
+                );
 
-            if let Some(db) = db_to_use {
                 let mut db_lock = db.lock().unwrap();
 
-                // 🔥 BULK OPERATIONS for maximum speed
-                let bulk_start = std::time::Instant::now();
+                if let Err(e) = db_lock.incremental_update_atomic(
+                    &files_to_clean,
+                    &all_file_infos,
+                    &all_symbols,
+                    &all_relationships,
+                    &workspace_id,
+                ) {
+                    warn!("Failed to perform atomic incremental update: {}", e);
+                    return Err(e);
+                }
+
+                drop(db_lock);
+            } else {
+                // Fresh indexing (no files to clean) - use standard bulk operations
+                // Each bulk operation is already atomic from our previous fixes
+                info!(
+                    "🚀 Starting fresh bulk storage of {} symbols, {} relationships, {} files...",
+                    all_symbols.len(),
+                    all_relationships.len(),
+                    all_file_infos.len()
+                );
+
+                let mut db_lock = db.lock().unwrap();
 
                 // Bulk store files
                 if let Err(e) = db_lock.bulk_store_files(&all_file_infos) {
@@ -260,19 +263,21 @@ impl ManageWorkspaceTool {
                     warn!("Failed to bulk store relationships: {}", e);
                 }
 
-                let bulk_duration = bulk_start.elapsed();
-                info!(
-                    "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
-                    bulk_duration.as_secs_f64()
-                );
-
-                // Mark SQLite FTS5 as ready
-                handler
-                    .indexing_status
-                    .sqlite_fts_ready
-                    .store(true, std::sync::atomic::Ordering::Release);
-                debug!("🔍 SQLite FTS5 search now available");
+                drop(db_lock);
             }
+
+            let bulk_duration = bulk_start.elapsed();
+            info!(
+                "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
+                bulk_duration.as_secs_f64()
+            );
+
+            // Mark SQLite FTS5 as ready
+            handler
+                .indexing_status
+                .sqlite_fts_ready
+                .store(true, std::sync::atomic::Ordering::Release);
+            debug!("🔍 SQLite FTS5 search now available");
         }
 
         Ok(())
@@ -281,23 +286,37 @@ impl ManageWorkspaceTool {
     /// Process a single file with symbol extraction
     ///
     /// Returns (symbols, relationships, file_info) for bulk storage.
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now requires workspace_root for relative path storage in extractors
     pub(crate) async fn process_file_with_parser(
         &self,
         file_path: &Path,
         language: &str,
         parser: &mut Parser,
+        workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
         // Read file content for symbol extraction
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
+        // 🔥 CRITICAL: Canonicalize path first to resolve symlinks (macOS /var -> /private/var)
+        let canonical_file_path = file_path.canonicalize()
+            .unwrap_or_else(|_| file_path.to_path_buf());
+
+        let content = std::fs::read_to_string(&canonical_file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical_file_path, e))?;
 
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
+            // Convert to relative path for storage (handle both absolute and relative paths)
+            let relative_path = if file_path.is_absolute() {
+                crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
+            } else {
+                file_path.to_string_lossy().replace('\\', "/")
+            };
             return Ok((
                 Vec::new(),
                 Vec::new(),
                 crate::database::FileInfo {
-                    path: file_path.to_string_lossy().to_string(),
+                    path: relative_path,
                     language: language.to_string(),
                     hash: "empty".to_string(),
                     size: 0,
@@ -317,34 +336,56 @@ impl ManageWorkspaceTool {
                 file_path.display()
             );
 
-            // Calculate file info for database storage
-            let file_path_str = file_path.to_string_lossy().to_string();
-            let file_info = crate::database::create_file_info(&file_path_str, language)?;
+            // Convert to relative path for database storage (handle both absolute and relative paths)
+            let relative_path = if file_path.is_absolute() {
+                crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
+            } else {
+                file_path.to_string_lossy().replace('\\', "/")
+            };
+            // 🔥 create_file_info needs absolute path to read file metadata
+            let mut file_info = crate::database::create_file_info(file_path, language)?;
+
+            // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
+            file_info.path = relative_path;
 
             // Return file info, but no extracted symbols
             return Ok((Vec::new(), Vec::new(), file_info));
         }
 
-        let file_path_str = file_path.to_string_lossy().to_string();
+        // 🔥 CRITICAL: Convert to relative Unix-style path for storage
+        // File paths from discovery might be absolute OR relative - handle both
+        let relative_path = if file_path.is_absolute() {
+            // Absolute path - convert to relative
+            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
+        } else {
+            // Already relative - use as-is (just normalize to Unix-style)
+            file_path.to_string_lossy().replace('\\', "/")
+        };
 
         // PERFORMANCE OPTIMIZATION: Use pre-initialized parser instead of creating new one
         let tree = parser
             .parse(&content, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path_str))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", relative_path))?;
 
         // Extract symbols and relationships using language-specific extractor
+        // Pass relative path so symbols are stored with relative paths
         let (symbols, relationships) =
-            self.extract_symbols_with_existing_tree(&tree, &file_path_str, &content, language)?;
+            self.extract_symbols_with_existing_tree(&tree, &relative_path, &content, language, workspace_root)?;
 
         // Calculate file info for database storage
-        let file_info = crate::database::create_file_info(&file_path_str, language)?;
+        // 🔥 create_file_info needs absolute path to read file metadata, it will canonicalize internally
+        let mut file_info = crate::database::create_file_info(file_path, language)?;
+
+        // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
+        // create_file_info returns canonical absolute path, but we store relative for Phase 2
+        file_info.path = relative_path.clone();
 
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
             debug!(
                 "📊 Extracted {} symbols from {}",
                 symbols.len(),
-                file_path_str
+                relative_path
             );
         }
 
@@ -359,6 +400,7 @@ impl ManageWorkspaceTool {
         &self,
         file_path: &Path,
         language: &str,
+        workspace_root: &Path, // NEW: Required for relative path conversion
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
         trace!(
             "Processing file without parser: {:?} (language: {})",
@@ -367,15 +409,28 @@ impl ManageWorkspaceTool {
         );
 
         // Read file content for database storage
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
+        // 🔥 CRITICAL: Canonicalize path first to resolve symlinks (macOS /var -> /private/var)
+        let canonical_file_path = file_path.canonicalize()
+            .unwrap_or_else(|_| file_path.to_path_buf());
 
-        trace!("Read {} bytes from {:?}", content.len(), file_path);
+        let content = std::fs::read_to_string(&canonical_file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical_file_path, e))?;
 
-        let file_path_str = file_path.to_string_lossy().to_string();
+        trace!("Read {} bytes from {:?}", content.len(), canonical_file_path);
+
+        // Convert to relative path for database storage (handle both absolute and relative paths)
+        let relative_path = if file_path.is_absolute() {
+            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
+        } else {
+            file_path.to_string_lossy().replace('\\', "/")
+        };
 
         // Calculate file info for database storage
-        let file_info = crate::database::create_file_info(&file_path_str, language)?;
+        // 🔥 create_file_info needs absolute path to read file metadata, it will canonicalize internally
+        let mut file_info = crate::database::create_file_info(file_path, language)?;
+
+        // 🔥 CRITICAL: Override path with relative Unix-style path for token-efficient storage
+        file_info.path = relative_path;
 
         // No symbols extracted (no parser available)
         Ok((Vec::new(), Vec::new(), file_info))

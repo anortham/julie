@@ -10,6 +10,7 @@
 
 use crate::extractors::base::Visibility;
 use crate::extractors::python::helpers;
+use std::path::PathBuf;
 
 // ============================================================================
 // Tests from extractors/python/mod.rs
@@ -18,7 +19,12 @@ use crate::extractors::python::helpers;
 #[test]
 fn test_python_extractor_initialization() {
     use crate::extractors::python::PythonExtractor;
-    let extractor = PythonExtractor::new("test.py".to_string(), "def hello(): pass".to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let extractor = PythonExtractor::new(
+        "test.py".to_string(),
+        "def hello(): pass".to_string(),
+        &workspace_root,
+    );
     assert_eq!(extractor.base().file_path, "test.py");
 }
 

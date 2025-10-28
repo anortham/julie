@@ -12,6 +12,7 @@
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::csharp::CSharpExtractor;
 use crate::tests::extractors::csharp::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -38,10 +39,12 @@ public class Calculator {
         let mut parser = init_parser();
         let tree = parser.parse(csharp_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "csharp".to_string(),
             "test.cs".to_string(),
             csharp_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -101,10 +104,12 @@ public class User {
         let mut parser = init_parser();
         let tree = parser.parse(csharp_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "csharp".to_string(),
             "test.cs".to_string(),
             csharp_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -149,10 +154,12 @@ public class Service {
         let mut parser = init_parser();
         let tree = parser.parse(csharp_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "csharp".to_string(),
             "test.cs".to_string(),
             csharp_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -192,10 +199,12 @@ public class DataService {
         let mut parser = init_parser();
         let tree = parser.parse(csharp_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "csharp".to_string(),
             "test.cs".to_string(),
             csharp_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -236,10 +245,12 @@ public class Test {
         let mut parser = init_parser();
         let tree = parser.parse(csharp_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = CSharpExtractor::new(
             "csharp".to_string(),
             "test.cs".to_string(),
             csharp_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

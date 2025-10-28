@@ -27,9 +27,9 @@ pub struct RubyExtractor {
 }
 
 impl RubyExtractor {
-    pub fn new(file_path: String, content: String) -> Self {
+    pub fn new(file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new("ruby".to_string(), file_path, content),
+            base: BaseExtractor::new("ruby".to_string(), file_path, content, workspace_root),
             current_visibility: Visibility::Public,
         }
     }

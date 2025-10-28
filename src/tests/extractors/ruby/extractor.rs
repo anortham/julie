@@ -6,13 +6,18 @@
 #[cfg(test)]
 mod ruby_extractor_tests {
     use crate::extractors::ruby::RubyExtractor;
+    use std::path::PathBuf;
 
     #[test]
     fn test_ruby_extractor_creation() {
         // Verify that RubyExtractor can be created successfully
         // The constructor should not panic and should accept valid file paths and content
-        let _extractor =
-            RubyExtractor::new("test.rb".to_string(), "class MyClass\nend".to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let _extractor = RubyExtractor::new(
+            "test.rb".to_string(),
+            "class MyClass\nend".to_string(),
+            &workspace_root,
+        );
         // If we reach here without panicking, the test passes
         assert!(true);
     }

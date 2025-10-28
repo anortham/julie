@@ -3,6 +3,7 @@
 //! Tests for JavaScript relationship extraction (calls, inheritance)
 
 use crate::extractors::base::RelationshipKind;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_call_relationships() {
@@ -18,10 +19,12 @@ fn test_extract_call_relationships() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
         "javascript".to_string(),
         "test.js".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
@@ -47,10 +50,12 @@ fn test_extract_inheritance_relationships() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
         "javascript".to_string(),
         "test.js".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);

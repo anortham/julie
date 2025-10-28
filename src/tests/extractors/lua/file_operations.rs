@@ -1,8 +1,10 @@
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_file_io_and_path_operations() {
@@ -166,10 +168,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "file_operations.lua".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

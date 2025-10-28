@@ -60,6 +60,9 @@ mod real_world_tests {
 
         let tree = init_parser(&content, language);
 
+        // Derive workspace_root from file_path
+        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new(REAL_WORLD_TEST_DIR));
+
         // Extract symbols using the appropriate extractor
         let symbols = match language {
             "kotlin" => {
@@ -67,6 +70,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -74,6 +78,7 @@ mod real_world_tests {
                 let mut extractor = ruby::RubyExtractor::new(
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -82,6 +87,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -90,6 +96,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -98,6 +105,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -105,6 +113,7 @@ mod real_world_tests {
                 let mut extractor = python::PythonExtractor::new(
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -113,6 +122,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -121,6 +131,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -129,6 +140,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -137,6 +149,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -145,6 +158,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -153,6 +167,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -161,6 +176,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(Some(&tree))
             }
@@ -169,6 +185,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -177,6 +194,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -185,6 +203,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -193,6 +212,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -201,14 +221,17 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
             "powershell" => {
+                let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
                 let mut extractor = powershell::PowerShellExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    &workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -217,6 +240,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -225,6 +249,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -233,6 +258,7 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
@@ -241,21 +267,26 @@ mod real_world_tests {
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
             "cpp" => {
+                let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
                 let mut extractor = cpp::CppExtractor::new(
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    &workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }
             "lua" => {
+                let workspace_root = PathBuf::from(REAL_WORLD_TEST_DIR);
                 let mut extractor = lua::LuaExtractor::new(
                     language.to_string(),
                     file_path.to_string_lossy().to_string(),
                     content.clone(),
+                    &workspace_root,
                 );
                 extractor.extract_symbols(&tree)
             }

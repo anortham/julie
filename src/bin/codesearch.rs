@@ -320,9 +320,10 @@ fn process_file(
     let language = detect_language(file_path);
 
     // Extract symbols
+    let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
     let extractor_manager = ExtractorManager::new();
     let symbols = extractor_manager
-        .extract_symbols(&path_str, &content)
+        .extract_symbols(&path_str, &content, workspace_root)
         .unwrap_or_default();
 
     Ok(Some(FileResult {
@@ -696,9 +697,10 @@ fn update_file(file: PathBuf, db: PathBuf) -> Result<()> {
     }
 
     // Extract symbols
+    let workspace_root = file.parent().unwrap_or_else(|| std::path::Path::new("."));
     let extractor_manager = ExtractorManager::new();
     let symbols = extractor_manager
-        .extract_symbols(&path_str, &content)
+        .extract_symbols(&path_str, &content, workspace_root)
         .unwrap_or_default();
 
     info!("🔍 Extracted {} symbols", symbols.len());

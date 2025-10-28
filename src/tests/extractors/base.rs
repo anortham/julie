@@ -7,10 +7,12 @@ use crate::extractors::base::*;
 fn test_context_extraction_edge_cases() {
     // Test case 1: Symbol at the beginning of file (not enough lines before)
     let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let mut extractor = BaseExtractor::new(
         "rust".to_string(),
         "test.rs".to_string(),
         content.to_string(),
+        &workspace_root,
     );
 
     let context = extractor.extract_code_context(2, 4); // function on line 3-5 (0-indexed: 2-4)
@@ -55,10 +57,12 @@ fn test_context_extraction_edge_cases() {
 fn test_context_configuration() {
     let content =
         "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}\nline 7\nline 8\nline 9\nline 10";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let mut extractor = BaseExtractor::new(
         "rust".to_string(),
         "test.rs".to_string(),
         content.to_string(),
+        &workspace_root,
     );
 
     // Test custom context config (1 line before, 2 lines after)
@@ -91,10 +95,12 @@ fn test_context_configuration() {
 fn test_line_truncation() {
     let very_long_line = "a".repeat(150); // 150 character line
     let content = format!("line 1\nline 2\n{}\nline 4", very_long_line);
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let mut extractor = BaseExtractor::new(
         "rust".to_string(),
         "test.rs".to_string(),
         content.to_string(),
+        &workspace_root,
     );
 
     // Set config with short max line length
@@ -118,10 +124,12 @@ fn test_line_truncation() {
 #[test]
 fn test_context_without_line_numbers() {
     let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let mut extractor = BaseExtractor::new(
         "rust".to_string(),
         "test.rs".to_string(),
         content.to_string(),
+        &workspace_root,
     );
 
     // Disable line numbers
@@ -150,10 +158,12 @@ fn test_context_without_line_numbers() {
 
 #[test]
 fn test_symbol_creation() {
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let extractor = BaseExtractor::new(
         "javascript".to_string(),
         "test.js".to_string(),
         "function test() {}".to_string(),
+        &workspace_root,
     );
 
     // This will be tested with actual tree-sitter nodes in integration tests
@@ -166,10 +176,12 @@ fn test_symbol_creation() {
 
 #[test]
 fn test_id_generation() {
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let extractor = BaseExtractor::new(
         "rust".to_string(),
         "src/lib.rs".to_string(),
         "fn test() {}".to_string(),
+        &workspace_root,
     );
 
     let id1 = extractor.generate_id("test", 1, 0);

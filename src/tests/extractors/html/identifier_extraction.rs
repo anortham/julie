@@ -34,10 +34,13 @@ mod identifier_extraction_tests {
         let mut parser = init_parser();
         let tree = parser.parse(html_code, None).unwrap();
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = HTMLExtractor::new(
             "html".to_string(),
             "test.html".to_string(),
             html_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -88,10 +91,13 @@ mod identifier_extraction_tests {
         let mut parser = init_parser();
         let tree = parser.parse(html_code, None).unwrap();
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = HTMLExtractor::new(
             "html".to_string(),
             "test.html".to_string(),
             html_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -144,10 +150,13 @@ mod identifier_extraction_tests {
         let mut parser = init_parser();
         let tree = parser.parse(html_code, None).unwrap();
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = HTMLExtractor::new(
             "html".to_string(),
             "test.html".to_string(),
             html_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -195,10 +204,13 @@ mod identifier_extraction_tests {
         let mut parser = init_parser();
         let tree = parser.parse(html_code, None).unwrap();
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = HTMLExtractor::new(
             "html".to_string(),
             "test.html".to_string(),
             html_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -245,10 +257,13 @@ mod identifier_extraction_tests {
         let mut parser = init_parser();
         let tree = parser.parse(html_code, None).unwrap();
 
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = HTMLExtractor::new(
             "html".to_string(),
             "test.html".to_string(),
             html_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

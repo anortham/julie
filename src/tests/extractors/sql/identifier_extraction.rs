@@ -12,6 +12,7 @@
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::sql::SqlExtractor;
 use crate::tests::extractors::sql::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -42,10 +43,12 @@ END
         let mut parser = init_parser();
         let tree = parser.parse(sql_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = SqlExtractor::new(
             "sql".to_string(),
             "test.sql".to_string(),
             sql_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -98,10 +101,12 @@ END
         let mut parser = init_parser();
         let tree = parser.parse(sql_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = SqlExtractor::new(
             "sql".to_string(),
             "test.sql".to_string(),
             sql_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -149,10 +154,12 @@ END
         let mut parser = init_parser();
         let tree = parser.parse(sql_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = SqlExtractor::new(
             "sql".to_string(),
             "test.sql".to_string(),
             sql_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -201,10 +208,12 @@ JOIN analytics a ON u.id = a.user_id
         let mut parser = init_parser();
         let tree = parser.parse(sql_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = SqlExtractor::new(
             "sql".to_string(),
             "test.sql".to_string(),
             sql_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -247,10 +256,12 @@ END
         let mut parser = init_parser();
         let tree = parser.parse(sql_code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = SqlExtractor::new(
             "sql".to_string(),
             "test.sql".to_string(),
             sql_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

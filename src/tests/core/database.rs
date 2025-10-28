@@ -237,10 +237,12 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
         .unwrap();
     let tree = parser.parse(&fixture_content, None).unwrap();
 
+    let workspace_root = fixture_path.parent().unwrap_or_else(|| std::path::Path::new("/tmp/test"));
     let mut extractor = crate::extractors::go::GoExtractor::new(
         "go".to_string(),
         fixture_path.to_string_lossy().to_string(),
         fixture_content,
+        workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -539,10 +541,12 @@ async fn test_extractor_database_integration() {
 
     // This test will initially fail - we need to verify extractors can create symbols
     // with the new field structure that work with the database
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
     let base_extractor = BaseExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         source_code.to_string(),
+        &workspace_root,
     );
 
     // Create a symbol like an extractor would

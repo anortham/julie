@@ -13,13 +13,16 @@ fn init_parser() -> Parser {
 }
 
 pub fn extract_symbols(code: &str) -> Vec<Symbol> {
+    use std::path::PathBuf;
     let mut parser = init_parser();
     let tree = parser.parse(code, None).expect("Failed to parse HTML code");
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = HTMLExtractor::new(
         "html".to_string(),
         "test.html".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     extractor.extract_symbols(&tree)
 }

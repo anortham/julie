@@ -6,13 +6,16 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::lua::LuaExtractor;
+    use std::path::PathBuf;
 
     #[test]
     fn test_lua_extractor_initialization() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let extractor = LuaExtractor::new(
             "lua".to_string(),
             "test.lua".to_string(),
             "function hello() end".to_string(),
+            &workspace_root,
         );
         assert_eq!(extractor.base().file_path, "test.lua");
     }

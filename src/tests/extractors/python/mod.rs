@@ -15,6 +15,7 @@ pub mod types;
 
 use crate::extractors::base::{RelationshipKind, SymbolKind};
 use crate::extractors::python::PythonExtractor;
+use std::path::PathBuf;
 use tree_sitter::Tree;
 
 #[cfg(test)]
@@ -28,7 +29,8 @@ mod python_extractor_tests {
             .set_language(&tree_sitter_python::LANGUAGE.into())
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
-        let extractor = PythonExtractor::new("test.py".to_string(), code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let extractor = PythonExtractor::new("test.py".to_string(), code.to_string(), &workspace_root);
         (extractor, tree)
     }
 

@@ -98,7 +98,7 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Create FTS5 virtual table for full-text search on file content
-    fn create_files_fts_table(&self) -> Result<()> {
+    pub(crate) fn create_files_fts_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
                 path,
@@ -113,7 +113,7 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Create triggers to keep FTS5 in sync with files table
-    fn create_files_fts_triggers(&self) -> Result<()> {
+    pub(crate) fn create_files_fts_triggers(&self) -> Result<()> {
         // Trigger for INSERT
         self.conn.execute(
             "CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
@@ -147,6 +147,7 @@ impl SymbolDatabase {
 
     /// CASCADE: Disable FTS5 triggers for bulk operations
     /// This prevents row-by-row FTS updates during bulk inserts
+    #[allow(dead_code)]
     pub(crate) fn disable_files_fts_triggers(&self) -> Result<()> {
         self.conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
         self.conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
@@ -156,6 +157,7 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Re-enable FTS5 triggers after bulk operations
+    #[allow(dead_code)]
     pub(crate) fn enable_files_fts_triggers(&self) -> Result<()> {
         self.create_files_fts_triggers()?;
         debug!("Re-enabled files FTS5 triggers");
@@ -251,7 +253,7 @@ impl SymbolDatabase {
 
     /// CASCADE: Create FTS5 virtual table for full-text search on symbols
     /// Indexes name, signature, doc_comment, and code_context for fast relevance-ranked search
-    fn create_symbols_fts_table(&self) -> Result<()> {
+    pub(crate) fn create_symbols_fts_table(&self) -> Result<()> {
         self.conn.execute(
             r#"CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
                 name,
@@ -269,7 +271,7 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Create triggers to keep symbols_fts in sync with symbols table
-    fn create_symbols_fts_triggers(&self) -> Result<()> {
+    pub(crate) fn create_symbols_fts_triggers(&self) -> Result<()> {
         // Trigger for INSERT
         self.conn.execute(
             "CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
@@ -306,6 +308,7 @@ impl SymbolDatabase {
 
     /// CASCADE: Disable symbols FTS5 triggers for bulk operations
     /// This prevents row-by-row FTS updates during bulk inserts
+    #[allow(dead_code)]
     pub(crate) fn disable_symbols_fts_triggers(&self) -> Result<()> {
         self.conn.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
         self.conn.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
@@ -315,6 +318,7 @@ impl SymbolDatabase {
     }
 
     /// CASCADE: Re-enable symbols FTS5 triggers after bulk operations
+    #[allow(dead_code)]
     pub(crate) fn enable_symbols_fts_triggers(&self) -> Result<()> {
         self.create_symbols_fts_triggers()?;
         debug!("Re-enabled symbols FTS5 triggers");

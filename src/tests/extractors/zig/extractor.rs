@@ -1,5 +1,6 @@
 use crate::extractors::base::SymbolKind;
 use crate::extractors::zig::ZigExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_zig_basic_extraction() {
@@ -14,8 +15,9 @@ pub fn main() void {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(!symbols.is_empty());
@@ -35,8 +37,9 @@ pub const Point = struct {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Should extract struct (as Class)
@@ -58,8 +61,9 @@ fn test_zig_doc_comment_on_function() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Find the function
@@ -103,8 +107,9 @@ fn test_zig_doc_comment_on_struct() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Find the struct symbol
@@ -149,8 +154,9 @@ fn test_zig_doc_comment_on_enum() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Find the enum symbol
@@ -191,8 +197,9 @@ fn test_zig_doc_comment_on_const() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Find the constant symbol
@@ -233,8 +240,9 @@ pub fn noComment() void {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor =
-        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string());
+        ZigExtractor::new("Zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
     let symbols = extractor.extract_symbols(&tree);
 
     // Find the function

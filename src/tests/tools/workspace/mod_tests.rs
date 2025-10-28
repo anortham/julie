@@ -3,8 +3,25 @@
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::JulieWorkspace;
+use rust_mcp_sdk::schema::CallToolResult;
 use std::fs;
 use tempfile::TempDir;
+
+/// Extract text from CallToolResult safely
+fn extract_text_from_result(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 #[tokio::test]
 async fn test_workspace_initialization() {
@@ -238,4 +255,382 @@ fn goodbye_world() {
         "Expected 1 file (test.rs), got {}",
         reference_ws.file_count
     );
+}
+
+/// Regression test for Bug: "Workspace already indexed: 0 symbols"
+///
+/// Bug: The is_indexed flag could be true while the database had 0 symbols,
+/// causing the nonsensical message "Workspace already indexed: 0 symbols".
+///
+/// Root cause: The is_indexed flag was checked before querying the database,
+/// and if true, would return early even when symbol_count was 0.
+///
+/// Fix: Added validation to check if symbol_count == 0, and if so, clear the
+/// is_indexed flag and proceed with indexing instead of returning early.
+#[tokio::test]
+async fn test_is_indexed_flag_with_empty_database() {
+    // Skip background tasks
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create a test file
+    let test_file = temp_dir.path().join("test.rs");
+    fs::write(
+        &test_file,
+        r#"
+fn test_function() {
+    println!("test");
+}
+        "#,
+    )
+    .unwrap();
+
+    // Initialize workspace and handler
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .await
+        .unwrap();
+
+    // First index to populate the database
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_str().unwrap().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    assert!(
+        result_text.contains("Workspace indexing complete"),
+        "First indexing should succeed, got: {}",
+        result_text
+    );
+
+    // Verify is_indexed is true
+    assert!(*handler.is_indexed.read().await, "is_indexed should be true after indexing");
+
+    // SIMULATE THE BUG: Manually clear the database while keeping is_indexed=true
+    // This simulates scenarios like database corruption, manual deletion, or partial cleanup
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            // Clear all symbols to simulate empty database
+            // The FTS triggers will automatically sync symbols_fts table
+            db_lock.conn.execute("DELETE FROM symbols", []).unwrap();
+        }
+    }
+
+    // Verify database is now empty
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count = db_lock.count_symbols_for_workspace().unwrap();
+            assert_eq!(count, 0, "Database should be empty after manual deletion");
+        }
+    }
+
+    // Verify is_indexed flag is still true (simulating the bug condition)
+    assert!(
+        *handler.is_indexed.read().await,
+        "is_indexed should still be true (bug condition)"
+    );
+
+    // NOW TEST THE FIX: Try to index again with force=false
+    // Before the fix: Would return "Workspace already indexed: 0 symbols"
+    // After the fix: Should detect empty database, clear flag, and proceed with indexing
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    // THE FIX: Should NOT see "already indexed: 0 symbols"
+    assert!(
+        !result_text.contains("already indexed: 0 symbols"),
+        "Bug regression: Should not see 'already indexed: 0 symbols', got: {}",
+        result_text
+    );
+
+    // THE FIX: Should proceed with indexing and report success
+    assert!(
+        result_text.contains("Workspace indexing complete") || result_text.contains("symbols"),
+        "Should re-index when database is empty, got: {}",
+        result_text
+    );
+}
+
+/// Test that when is_indexed=true AND database has symbols, indexing is correctly skipped
+#[tokio::test]
+async fn test_is_indexed_flag_with_populated_database() {
+    // Skip background tasks
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create a test file
+    let test_file = temp_dir.path().join("test.rs");
+    fs::write(
+        &test_file,
+        r#"
+fn test_function() {
+    println!("test");
+}
+        "#,
+    )
+    .unwrap();
+
+    // Initialize workspace and handler
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .await
+        .unwrap();
+
+    // First index to populate the database
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_str().unwrap().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    assert!(
+        result_text.contains("Workspace indexing complete"),
+        "First indexing should succeed"
+    );
+
+    // Verify is_indexed is true
+    assert!(*handler.is_indexed.read().await);
+
+    // Verify database has symbols
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count = db_lock.count_symbols_for_workspace().unwrap();
+            assert!(count > 0, "Database should have symbols");
+        }
+    }
+
+    // Try to index again with force=false - should skip
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    // Should see "already indexed" message with symbol count > 0
+    assert!(
+        result_text.contains("already indexed"),
+        "Should skip re-indexing when database has symbols, got: {}",
+        result_text
+    );
+
+    assert!(
+        !result_text.contains("0 symbols"),
+        "Should NOT report 0 symbols, got: {}",
+        result_text
+    );
+}
+
+/// Test that force=true clears the is_indexed flag and performs re-indexing
+#[tokio::test]
+async fn test_force_reindex_clears_flag() {
+    // Skip background tasks
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create a test file
+    let test_file = temp_dir.path().join("test.rs");
+    fs::write(
+        &test_file,
+        r#"
+fn test_function() {
+    println!("test");
+}
+        "#,
+    )
+    .unwrap();
+
+    // Initialize workspace and handler
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .await
+        .unwrap();
+
+    // First index
+    let tool_no_force = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_str().unwrap().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool_no_force.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    assert!(result_text.contains("Workspace indexing complete"));
+
+    // Verify is_indexed is true
+    assert!(*handler.is_indexed.read().await);
+
+    // Force reindex
+    let tool_force = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_str().unwrap().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool_force.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    // Should complete indexing again (not skip)
+    assert!(
+        result_text.contains("Workspace indexing complete"),
+        "Force reindex should complete indexing, got: {}",
+        result_text
+    );
+
+    // Verify is_indexed is true after force reindex
+    assert!(*handler.is_indexed.read().await);
+}
+
+/// Regression test for Bug: Incremental indexing skips files when database has 0 symbols
+///
+/// Bug: When database files table has file hashes but symbols table is empty,
+/// incremental indexing considers files "unchanged" and skips them, resulting
+/// in persistent 0 symbols even after re-indexing.
+///
+/// Root cause: filter_changed_files() only checks file hashes, not symbol count.
+/// It doesn't detect the empty database condition and force full re-extraction.
+///
+/// Fix: Add check at start of filter_changed_files() to detect 0 symbols and
+/// bypass incremental logic, returning all files for re-indexing.
+#[tokio::test]
+async fn test_incremental_indexing_detects_empty_database() {
+    // Skip background tasks
+    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create test files with actual code
+    let test_file_1 = temp_dir.path().join("file1.rs");
+    fs::write(
+        &test_file_1,
+        r#"
+fn function_one() {
+    println!("one");
+}
+        "#,
+    )
+    .unwrap();
+
+    let test_file_2 = temp_dir.path().join("file2.rs");
+    fs::write(
+        &test_file_2,
+        r#"
+fn function_two() {
+    println!("two");
+}
+        "#,
+    )
+    .unwrap();
+
+    // Initialize workspace and handler
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace(Some(temp_dir.path().to_str().unwrap().to_string()))
+        .await
+        .unwrap();
+
+    // First index to populate database
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_str().unwrap().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    assert!(
+        result_text.contains("Workspace indexing complete"),
+        "First indexing should succeed"
+    );
+
+    // Verify we have symbols
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count = db_lock.count_symbols_for_workspace().unwrap();
+            assert_eq!(count, 2, "Should have 2 symbols from 2 functions");
+        }
+    }
+
+    // SIMULATE THE BUG: Clear symbols table while keeping files table intact
+    // This simulates the condition where file hashes exist but no symbols are extracted
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            // Clear symbols but keep files table (file hashes remain)
+            db_lock.conn.execute("DELETE FROM symbols", []).unwrap();
+
+            // Verify files table still has entries
+            let file_count: i64 = db_lock
+                .conn
+                .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap();
+            assert!(file_count > 0, "Files table should still have entries");
+        }
+    }
+
+    // Verify database is now empty (0 symbols) but files table has hashes
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count = db_lock.count_symbols_for_workspace().unwrap();
+            assert_eq!(count, 0, "Database should have 0 symbols after manual deletion");
+        }
+    }
+
+    // Clear is_indexed flag to force the indexing logic to run
+    *handler.is_indexed.write().await = false;
+
+    // NOW TEST THE FIX: Try to index again with force=false
+    // Before the fix: Incremental logic sees matching file hashes, skips files → 0 symbols persist
+    // After the fix: Should detect empty database, bypass incremental logic, re-extract all symbols
+    let result = tool.call_tool(&handler).await.unwrap();
+    let result_text = extract_text_from_result(&result);
+
+    assert!(
+        result_text.contains("Workspace indexing complete"),
+        "Re-indexing should complete"
+    );
+
+    // THE FIX: Should have re-extracted symbols despite matching file hashes
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count = db_lock.count_symbols_for_workspace().unwrap();
+            assert_eq!(
+                count, 2,
+                "Bug regression: Incremental indexing should detect empty database and re-extract symbols, got {} symbols",
+                count
+            );
+        }
+    }
 }

@@ -7,6 +7,7 @@
 // - Type parameters with bounds
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod generic_tests {
@@ -14,6 +15,7 @@ mod generic_tests {
 
     #[test]
     fn test_extract_generic_classes() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class Container<T> {
     private T value;
@@ -41,6 +43,7 @@ interface Repository<T, ID> {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -77,6 +80,7 @@ interface Repository<T, ID> {
 
     #[test]
     fn test_extract_generic_methods() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class Utils {
     public static <T> T getFirst(List<T> list) {
@@ -98,6 +102,7 @@ public class Utils {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -124,6 +129,7 @@ public class Utils {
 
     #[test]
     fn test_extract_wildcards_and_bounds() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 import java.util.*;
 
@@ -149,6 +155,7 @@ public class Processor {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

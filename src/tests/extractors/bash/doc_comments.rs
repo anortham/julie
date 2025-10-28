@@ -5,6 +5,7 @@
 
 use crate::extractors::base::{Symbol, SymbolKind};
 use crate::extractors::bash::BashExtractor;
+use std::path::PathBuf;
 use tree_sitter::Parser;
 
 fn init_parser() -> Parser {
@@ -16,10 +17,11 @@ fn init_parser() -> Parser {
 }
 
 fn extract_symbols(code: &str) -> Vec<Symbol> {
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut parser = init_parser();
     let tree = parser.parse(code, None).expect("Failed to parse code");
     let mut extractor =
-        BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string());
+        BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string(), &workspace_root);
     extractor.extract_symbols(&tree)
 }
 

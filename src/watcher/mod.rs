@@ -434,7 +434,7 @@ impl IncrementalIndexer {
         // Enhanced extraction with graceful error handling
         let symbols = match self
             .extractor_manager
-            .extract_symbols(&path_str, &content_str)
+            .extract_symbols(&path_str, &content_str, &self.workspace_root)
         {
             Ok(symbols) => symbols,
             Err(e) => {
@@ -778,7 +778,7 @@ impl IncrementalIndexer {
         let language = Self::detect_language_static(&path, workspace_root)?;
         let content_str = String::from_utf8_lossy(&content);
 
-        let symbols = match extractor_manager.extract_symbols(&path_str, &content_str) {
+        let symbols = match extractor_manager.extract_symbols(&path_str, &content_str, workspace_root) {
             Ok(symbols) => symbols,
             Err(e) => {
                 error!("❌ Symbol extraction failed for {}: {}", path_str, e);

@@ -169,6 +169,9 @@ pub mod query_expansion;
 /// String similarity utilities for fuzzy matching
 pub mod string_similarity;
 
+/// Path conversion utilities (absolute ↔ relative Unix-style)
+pub mod paths;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;

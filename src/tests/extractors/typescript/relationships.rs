@@ -4,6 +4,7 @@
 //! including function calls and inheritance relationships.
 
 use crate::extractors::base::RelationshipKind;
+use std::path::PathBuf;
 use crate::extractors::typescript::relationships::extract_relationships;
 use crate::extractors::typescript::TypeScriptExtractor;
 
@@ -21,11 +22,15 @@ fn test_extract_call_relationships() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 
@@ -47,11 +52,15 @@ fn test_extract_inheritance_relationships() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
+
+
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    );
+    &workspace_root,
+        );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 

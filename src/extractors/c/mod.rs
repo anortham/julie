@@ -28,9 +28,9 @@ pub struct CExtractor {
 
 impl CExtractor {
     /// Create a new C extractor for the given file
-    pub fn new(language: String, file_path: String, content: String) -> Self {
+    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new(language, file_path, content),
+            base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
     }
 

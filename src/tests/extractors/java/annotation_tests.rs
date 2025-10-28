@@ -7,6 +7,7 @@
 // - Custom annotations with parameters
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod annotation_tests {
@@ -14,6 +15,7 @@ mod annotation_tests {
 
     #[test]
     fn test_extract_annotation_definitions() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 package com.example.annotations;
 
@@ -39,6 +41,7 @@ public @interface RequestMapping {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -64,6 +67,7 @@ public @interface RequestMapping {
 
     #[test]
     fn test_extract_annotation_usage() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 @RestController
 @RequestMapping("/api/users")
@@ -97,6 +101,7 @@ public class UserController {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -145,6 +150,7 @@ public class UserController {
 
     #[test]
     fn test_extract_builtin_annotations() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class Example {
     @Override
@@ -176,6 +182,7 @@ public class Example {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

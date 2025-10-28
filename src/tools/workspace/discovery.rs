@@ -86,7 +86,10 @@ impl ManageWorkspaceTool {
             } else if path.is_file() {
                 // Check file extension and size
                 if self.should_index_file(&path, blacklisted_exts, max_file_size)? {
-                    indexable_files.push(path);
+                    // 🔥 CRITICAL: Canonicalize paths to resolve symlinks (macOS /var -> /private/var)
+                    // This ensures file reads work correctly downstream
+                    let canonical_path = path.canonicalize().unwrap_or(path);
+                    indexable_files.push(canonical_path);
                 }
             }
         }

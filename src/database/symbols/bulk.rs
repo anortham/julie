@@ -39,28 +39,40 @@ impl SymbolDatabase {
         // caller's original durability guarantees once we're done.
         self.conn.pragma_update(None, "synchronous", 1)?;
 
-        // These flags ensure we rebuild indexes and re-enable FTS triggers even when
-        // the bulk insert fails somewhere mid-flight.
-        let mut triggers_disabled = false;
-        let mut indexes_need_restore = false;
+        // Track processing progress for logging
         let mut processed = 0usize;
 
         let mut result: Result<()> = (|| -> Result<()> {
-            // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates
-            debug!("🔇 Disabling FTS triggers for bulk insert optimization");
-            self.disable_symbols_fts_triggers()?;
-            triggers_disabled = true;
+            // 🔥 CRITICAL FIX: Wrap ENTIRE bulk operation in outer transaction for atomicity
+            // If crash happens anywhere, rollback restores ALL state (triggers, indexes, symbols, FTS5)
+            debug!("🔐 Starting atomic transaction for entire bulk operation");
+            let mut outer_tx = self.conn.transaction()?;
 
-            // STEP 2: Drop all indexes for maximum insert speed
+            // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates (WITHIN TRANSACTION)
+            debug!("🔇 Disabling FTS triggers for bulk insert optimization");
+            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
+            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
+            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_au", [])?;
+
+            // STEP 2: Drop all indexes for maximum insert speed (WITHIN TRANSACTION)
             debug!("🗑️ Dropping indexes for bulk insert optimization");
-            self.drop_symbol_indexes()?;
-            indexes_need_restore = true;
+            let indexes = [
+                "idx_symbols_name",
+                "idx_symbols_kind",
+                "idx_symbols_language",
+                "idx_symbols_file",
+                "idx_symbols_semantic",
+                "idx_symbols_parent",
+            ];
+            for index in &indexes {
+                outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), [])?;
+            }
 
             // STEP 3: Optimize SQLite cache for bulk operations
-            self.conn.execute("PRAGMA cache_size = 20000", [])?;
+            outer_tx.execute("PRAGMA cache_size = 20000", [])?;
 
-            // STEP 4: Start transaction for atomic bulk insert
-            let tx = self.conn.transaction()?;
+            // STEP 4: Use savepoint for symbol inserts (nested transaction)
+            let tx = outer_tx.savepoint()?;
 
             // STEP 4.5: Insert file records first to satisfy foreign key constraints
             let mut unique_files: std::collections::HashMap<String, String> =
@@ -236,20 +248,73 @@ impl SymbolDatabase {
             }
 
             drop(stmt);
-            tx.commit()?;
+            tx.commit()?; // Commit savepoint
 
+            // STEP 5: Rebuild FTS5 index (WITHIN OUTER TRANSACTION - atomic with inserts!)
             debug!("🔄 Rebuilding symbols FTS index atomically");
-            self.rebuild_symbols_fts()?;
+            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')", [])?;
+            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
 
+            // STEP 6: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding symbol indexes after bulk insert");
-            self.create_symbol_indexes()?;
-            indexes_need_restore = false;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_language ON symbols(language)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_semantic ON symbols(semantic_group)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
+                [],
+            )?;
 
+            // STEP 7: Re-enable FTS triggers (WITHIN OUTER TRANSACTION)
             debug!("🔊 Re-enabling FTS triggers");
-            self.enable_symbols_fts_triggers()?;
-            triggers_disabled = false;
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
+                    INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
+                    VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
+                END",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
+                    DELETE FROM symbols_fts WHERE rowid = old.rowid;
+                END",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
+                    UPDATE symbols_fts
+                    SET name = new.name,
+                        signature = new.signature,
+                        doc_comment = new.doc_comment,
+                        code_context = new.code_context
+                    WHERE rowid = old.rowid;
+                END",
+                [],
+            )?;
 
-            debug!("💾 Passive WAL checkpoint (non-blocking)");
+            // STEP 8: Commit ENTIRE operation atomically
+            debug!("💾 Committing atomic bulk operation");
+            outer_tx.commit()?;
+
+            // Post-transaction: Non-critical WAL checkpoint
+            debug!("💾 Passive WAL checkpoint (non-blocking, post-commit)");
             match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
                 Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
                 Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
@@ -258,28 +323,15 @@ impl SymbolDatabase {
             Ok(())
         })();
 
-        if indexes_need_restore {
-            if let Err(e) = self.create_symbol_indexes() {
-                warn!("Failed to rebuild symbol indexes after error: {}", e);
-                if result.is_ok() {
-                    result = Err(e);
-                }
-            } else {
-                debug!("🏗️ Rebuilt symbol indexes after recoverable error");
-            }
-        }
+        // 🔥 ATOMICITY WIN: No manual cleanup needed!
+        // If transaction failed, SQLite rolled back EVERYTHING automatically:
+        // - Triggers restored to original state
+        // - Indexes restored to original state
+        // - Symbols not inserted
+        // - FTS5 unchanged
+        // Manual cleanup code removed - transaction guarantees consistency!
 
-        if triggers_disabled {
-            if let Err(e) = self.enable_symbols_fts_triggers() {
-                warn!("Failed to re-enable symbol FTS triggers after error: {}", e);
-                if result.is_ok() {
-                    result = Err(e);
-                }
-            } else {
-                debug!("🔊 Re-enabled symbol FTS triggers after recoverable error");
-            }
-        }
-
+        // Restore original synchronous setting (outside transaction)
         if let Err(e) = self.conn.pragma_update(None, "synchronous", original_sync) {
             warn!(
                 "Failed to restore PRAGMA synchronous to {}: {}",
@@ -304,6 +356,7 @@ impl SymbolDatabase {
     }
 
     /// Drop all symbol table indexes for bulk operations
+    #[allow(dead_code)]
     fn drop_symbol_indexes(&self) -> Result<()> {
         let indexes = [
             "idx_symbols_name",
@@ -328,6 +381,7 @@ impl SymbolDatabase {
     }
 
     /// Recreate all symbol table indexes after bulk operations
+    #[allow(dead_code)]
     fn create_symbol_indexes(&self) -> Result<()> {
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name)",

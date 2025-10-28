@@ -1,8 +1,10 @@
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_coroutines_and_async_patterns() {
@@ -237,10 +239,12 @@ end
         let mut parser = init_parser();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor = LuaExtractor::new(
             "lua".to_string(),
             "coroutines.lua".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

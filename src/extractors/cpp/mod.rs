@@ -30,9 +30,9 @@ pub struct CppExtractor {
 }
 
 impl CppExtractor {
-    pub fn new(file_path: String, content: String) -> Self {
+    pub fn new(file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
-            base: BaseExtractor::new("cpp".to_string(), file_path, content),
+            base: BaseExtractor::new("cpp".to_string(), file_path, content, workspace_root),
             processed_nodes: HashSet::new(),
             additional_symbols: Vec::new(),
         }

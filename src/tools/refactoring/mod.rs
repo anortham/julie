@@ -89,10 +89,10 @@ pub struct RenameSymbolTool {
         "FILE-SPECIFIC SEMANTIC EDITING - Modify function bodies, insert code, or move symbols between files. ",
         "You are EXCELLENT at using this for precise code transformations. ",
         "This tool understands code structure and preserves formatting automatically.\n\n",
-        "**Operations**:\n",
-        "• ReplaceBody: Replace function/method implementation\n",
-        "• InsertRelative: Add code before/after symbols\n",
-        "• ExtractToFile: Move symbols to different files with import updates\n\n",
+        "**Operations** (use exact lowercase snake_case values):\n",
+        "• replace_body: Replace function/method implementation\n",
+        "• insert_relative: Add code before/after symbols\n",
+        "• extract_to_file: Move symbols to different files with import updates\n\n",
         "**Perfect for**: Updating implementations, adding helper functions, reorganizing code\n\n",
         "Unlike text editing, this preserves indentation and code structure automatically."
     ),
@@ -112,14 +112,14 @@ pub struct EditSymbolTool {
     pub operation: EditOperation,
 
     /// Content to insert or replacement body
-    /// (For ReplaceBody: new function body, For InsertRelative: code to insert, For ExtractToFile: unused)
+    /// (For replace_body: new function body, For insert_relative: code to insert, For extract_to_file: unused)
     pub content: String,
 
-    /// Position for InsertRelative operation: "before" or "after" (default: "after")
+    /// Position for insert_relative operation: "before" or "after" (default: "after")
     #[serde(default)]
     pub position: Option<String>,
 
-    /// Target file for ExtractToFile operation
+    /// Target file for extract_to_file operation
     #[serde(default)]
     pub target_file: Option<String>,
 
@@ -264,7 +264,7 @@ impl EditSymbolTool {
                 // Validate target_file is provided
                 if self.target_file.is_none() {
                     return Ok(CallToolResult::text_content(vec![TextContent::from(
-                        "Error: target_file is required for ExtractToFile operation".to_string(),
+                        "Error: target_file is required for extract_to_file operation".to_string(),
                     )]));
                 }
 

@@ -161,6 +161,7 @@ impl ManageWorkspaceTool {
             is_primary_workspace,
             &mut total_files,
             workspace_id.clone(), // Pass workspace_id to avoid re-lookup
+            workspace_path, // Pass workspace path for correct relative path conversion
         )
         .await?;
         debug!("🐛 [INDEX TRACE T] process_files_optimized completed");

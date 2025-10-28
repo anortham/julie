@@ -1,23 +1,28 @@
 use crate::extractors::base::{Relationship, Symbol, SymbolKind};
 use crate::extractors::razor::RazorExtractor;
 use crate::tests::test_utils::init_parser;
+use std::path::PathBuf;
 
 fn extract_symbols(code: &str) -> Vec<Symbol> {
+    let workspace_root = PathBuf::from("/tmp/test");
     let tree = init_parser(code, "razor");
     let mut extractor = RazorExtractor::new(
         "razor".to_string(),
         "test.razor".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     extractor.extract_symbols(&tree)
 }
 
 fn extract_relationships(code: &str, symbols: &[Symbol]) -> Vec<Relationship> {
+    let workspace_root = PathBuf::from("/tmp/test");
     let tree = init_parser(code, "razor");
     let mut extractor = RazorExtractor::new(
         "razor".to_string(),
         "test.razor".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     extractor.extract_relationships(&tree, symbols)
 }
@@ -1415,11 +1420,13 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
         let types = {
+            let workspace_root = PathBuf::from("/tmp/test");
             let _tree = init_parser(razor_code, "razor");
             let extractor = RazorExtractor::new(
                 "razor".to_string(),
                 "test.razor".to_string(),
                 razor_code.to_string(),
+                &workspace_root,
             );
             extractor.infer_types(&symbols)
         };
@@ -1592,11 +1599,13 @@ mod razor_identifier_extraction_tests {
     }
 }"#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(razor_code, "razor");
         let mut extractor = RazorExtractor::new(
             "razor".to_string(),
             "test.razor".to_string(),
             razor_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -1645,11 +1654,13 @@ mod razor_identifier_extraction_tests {
     }
 }"#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(razor_code, "razor");
         let mut extractor = RazorExtractor::new(
             "razor".to_string(),
             "test.razor".to_string(),
             razor_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1690,11 +1701,13 @@ mod razor_identifier_extraction_tests {
     }
 }"#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(razor_code, "razor");
         let mut extractor = RazorExtractor::new(
             "razor".to_string(),
             "test.razor".to_string(),
             razor_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1738,11 +1751,13 @@ mod razor_identifier_extraction_tests {
     }
 }"#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(razor_code, "razor");
         let mut extractor = RazorExtractor::new(
             "razor".to_string(),
             "test.razor".to_string(),
             razor_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1780,11 +1795,13 @@ mod razor_identifier_extraction_tests {
     }
 }"#;
 
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(razor_code, "razor");
         let mut extractor = RazorExtractor::new(
             "razor".to_string(),
             "test.razor".to_string(),
             razor_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

@@ -409,7 +409,16 @@ pub struct BaseExtractor {
 
 impl BaseExtractor {
     /// Create new abstract extractor - port of Miller's constructor
-    pub fn new(language: String, file_path: String, content: String) -> Self {
+    ///
+    /// # Phase 2: Relative Unix-Style Path Storage
+    /// Now accepts workspace_root to convert absolute paths to relative Unix-style paths
+    /// for token-efficient storage (7-12% savings per search result).
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         // CRITICAL FIX: Canonicalize file_path to resolve symlinks (macOS /var vs /private/var)
         // This ensures database queries match during get_symbols (which also canonicalizes)
         // Without this: indexing stores /var/..., queries use /private/var/... → zero results
@@ -421,18 +430,36 @@ impl BaseExtractor {
                     file_path, e
                 );
                 std::path::PathBuf::from(&file_path)
+            });
+
+        // Phase 2: Convert absolute path to relative Unix-style path for storage
+        // File paths might be absolute OR relative - handle both
+        let relative_unix_path = if canonical_path.is_absolute() {
+            crate::utils::paths::to_relative_unix_style(
+                &canonical_path,
+                workspace_root,
+            )
+            .unwrap_or_else(|e| {
+                warn!(
+                    "⚠️  Failed to convert to relative path '{}': {} - using absolute as fallback",
+                    canonical_path.display(),
+                    e
+                );
+                canonical_path.to_string_lossy().to_string()
             })
-            .to_string_lossy()
-            .to_string();
+        } else {
+            // Already relative - use as-is (just normalize to Unix-style)
+            canonical_path.to_string_lossy().replace('\\', "/")
+        };
 
         debug!(
-            "BaseExtractor path: '{}' -> '{}'",
-            file_path, canonical_path
+            "BaseExtractor path: '{}' -> '{}' (relative)",
+            file_path, relative_unix_path
         );
 
         Self {
             language,
-            file_path: canonical_path, // Use canonical path, not original
+            file_path: relative_unix_path, // Phase 2: Store relative Unix-style path
             content,
             symbol_map: HashMap::new(),
             relationships: Vec::new(),

@@ -7,6 +7,7 @@
 // - Overloaded methods
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod method_tests {
@@ -14,6 +15,7 @@ mod method_tests {
 
     #[test]
     fn test_extract_method_definitions() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class Calculator {
     public int add(int a, int b) {
@@ -41,6 +43,7 @@ public class Calculator {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -76,6 +79,7 @@ public class Calculator {
 
     #[test]
     fn test_extract_constructor_definitions() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class Person {
     private String name;
@@ -107,6 +111,7 @@ public class Person {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -139,6 +144,7 @@ public class Person {
 
     #[test]
     fn test_extract_overloaded_methods() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public class OverloadedExample {
     public void process() {
@@ -166,6 +172,7 @@ public class OverloadedExample {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -202,6 +209,7 @@ public class OverloadedExample {
 
     #[test]
     fn test_extract_abstract_methods() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 public abstract class AbstractProcessor {
     public abstract void process();
@@ -219,6 +227,7 @@ public abstract class AbstractProcessor {
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

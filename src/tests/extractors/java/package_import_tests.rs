@@ -3,6 +3,7 @@
 // Direct port of Miller's Java extractor tests (TDD RED phase)
 
 use super::*;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod package_import_tests {
@@ -10,6 +11,7 @@ mod package_import_tests {
 
     #[test]
     fn test_extract_package_declarations() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 package com.example.app;
 
@@ -23,6 +25,7 @@ package com.acme.utils;
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -44,6 +47,7 @@ package com.acme.utils;
 
     #[test]
     fn test_extract_import_statements() {
+        let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
 package com.example;
 
@@ -61,6 +65,7 @@ import static java.util.Collections.*;
             "java".to_string(),
             "test.java".to_string(),
             code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

@@ -16,8 +16,8 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 file_info.path,
                 file_info.language,
@@ -25,7 +25,8 @@ impl SymbolDatabase {
                 file_info.size,
                 file_info.last_modified,
                 now, // Use calculated timestamp instead of unixepoch()
-                file_info.symbol_count
+                file_info.symbol_count,
+                file_info.content.as_deref().unwrap_or("") // FTS5 CRITICAL: Must include content for triggers!
             ],
         )?;
 
@@ -78,80 +79,113 @@ impl SymbolDatabase {
             .unwrap()
             .as_secs() as i64;
 
-        // SAFETY: disable triggers/indexes and remember state so we can always
-        // restore them even if the bulk insert returns early with an error.
-        self.disable_files_fts_triggers()?;
-        // Flags let us attempt to rebuild indexes/re-enable triggers even if we
-        // return early with an error.
-        let mut triggers_disabled = true;
-        let mut indexes_need_restore = false;
-
         let mut result: Result<()> = (|| -> Result<()> {
-            self.drop_file_indexes()?;
-            indexes_need_restore = true;
+            // 🔥 CRITICAL FIX: Wrap ENTIRE bulk operation in outer transaction for atomicity
+            // If crash happens anywhere, rollback restores ALL state (triggers, indexes, files, FTS5)
+            debug!("🔐 Starting atomic transaction for entire bulk file operation");
+            let mut outer_tx = self.conn.transaction()?;
 
-            let tx = self.conn.transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT OR REPLACE INTO files
-                     (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                )?;
+            // STEP 1: Disable FTS triggers (WITHIN TRANSACTION)
+            debug!("🔇 Disabling FTS triggers for bulk file insert optimization");
+            outer_tx.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+            outer_tx.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+            outer_tx.execute("DROP TRIGGER IF EXISTS files_au", [])?;
 
-                for file in files {
-                    stmt.execute(params![
-                        file.path,
-                        file.language,
-                        file.hash,
-                        file.size,
-                        file.last_modified,
-                        now,
-                        file.symbol_count,
-                        file.content.as_deref().unwrap_or("") // CASCADE: Include content
-                    ])?;
-                }
+            // STEP 2: Drop indexes (WITHIN TRANSACTION)
+            debug!("🗑️ Dropping file indexes for bulk insert optimization");
+            let indexes = ["idx_files_language", "idx_files_modified"];
+            for index in &indexes {
+                outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), [])?;
             }
-            tx.commit()?;
 
-            self.rebuild_files_fts()?;
+            // STEP 3: Use savepoint for file inserts (nested transaction)
+            let tx = outer_tx.savepoint()?;
 
-            self.create_file_indexes()?;
-            indexes_need_restore = false;
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO files
+                 (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
 
-            self.enable_files_fts_triggers()?;
-            triggers_disabled = false;
+            for file in files {
+                stmt.execute(params![
+                    file.path,
+                    file.language,
+                    file.hash,
+                    file.size,
+                    file.last_modified,
+                    now,
+                    file.symbol_count,
+                    file.content.as_deref().unwrap_or("") // CASCADE: Include content
+                ])?;
+            }
+
+            drop(stmt);
+            tx.commit()?; // Commit savepoint
+
+            // STEP 4: Rebuild FTS5 index (WITHIN OUTER TRANSACTION - atomic!)
+            debug!("🔄 Rebuilding files FTS index atomically");
+            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
+            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+
+            // STEP 5: Recreate indexes (WITHIN OUTER TRANSACTION)
+            debug!("🏗️ Rebuilding file indexes after bulk insert");
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
+                [],
+            )?;
+
+            // STEP 6: Re-enable FTS triggers (WITHIN OUTER TRANSACTION)
+            debug!("🔊 Re-enabling FTS triggers");
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
+                    INSERT INTO files_fts(rowid, path, content)
+                    VALUES (new.rowid, new.path, new.content);
+                END",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN
+                    DELETE FROM files_fts WHERE rowid = old.rowid;
+                END",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE TRIGGER IF NOT EXISTS files_au AFTER UPDATE ON files BEGIN
+                    UPDATE files_fts
+                    SET path = new.path, content = new.content
+                    WHERE rowid = old.rowid;
+                END",
+                [],
+            )?;
+
+            // STEP 7: Commit ENTIRE operation atomically
+            debug!("💾 Committing atomic bulk file operation");
+            outer_tx.commit()?;
+
+            // Post-transaction: Non-critical WAL checkpoint
+            debug!("💾 Passive WAL checkpoint (non-blocking, post-commit)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
+                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            }
 
             Ok(())
         })();
 
-        if indexes_need_restore {
-            if let Err(e) = self.create_file_indexes() {
-                warn!(
-                    "Failed to rebuild file indexes after bulk insert error: {}",
-                    e
-                );
-                if result.is_ok() {
-                    result = Err(e);
-                }
-            } else {
-                debug!("🏗️ Rebuilt file indexes after recoverable error");
-            }
-        }
+        // 🔥 ATOMICITY WIN: No manual cleanup needed!
+        // If transaction failed, SQLite rolled back EVERYTHING automatically:
+        // - Triggers restored to original state
+        // - Indexes restored to original state
+        // - Files not inserted
+        // - FTS5 unchanged
+        // Manual cleanup code removed - transaction guarantees consistency!
 
-        if triggers_disabled {
-            if let Err(e) = self.enable_files_fts_triggers() {
-                warn!(
-                    "Failed to re-enable file FTS triggers after bulk insert error: {}",
-                    e
-                );
-                if result.is_ok() {
-                    result = Err(e);
-                }
-            } else {
-                debug!("🔊 Re-enabled file FTS triggers after recoverable error");
-            }
-        }
-
+        // Restore original synchronous setting (outside transaction)
         if let Err(e) = self.conn.pragma_update(None, "synchronous", original_sync) {
             warn!(
                 "Failed to restore PRAGMA synchronous to {}: {}",
@@ -159,14 +193,6 @@ impl SymbolDatabase {
             );
             if result.is_ok() {
                 result = Err(anyhow!("Failed to restore PRAGMA synchronous: {}", e));
-            }
-        }
-
-        if result.is_ok() {
-            debug!("💾 Passive WAL checkpoint (non-blocking)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
-                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
             }
         }
 
@@ -183,6 +209,7 @@ impl SymbolDatabase {
     }
 
     /// Drop all file table indexes for bulk operations
+    #[allow(dead_code)]
     fn drop_file_indexes(&self) -> Result<()> {
         let indexes = [
             "idx_files_language",
@@ -203,6 +230,7 @@ impl SymbolDatabase {
     }
 
     /// Recreate all file table indexes after bulk operations
+    #[allow(dead_code)]
     fn create_file_indexes(&self) -> Result<()> {
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",

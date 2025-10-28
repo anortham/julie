@@ -6,6 +6,7 @@
 mod tests {
     use crate::extractors::base::SymbolKind;
     use crate::extractors::typescript::TypeScriptExtractor;
+    use std::path::PathBuf;
 
     #[test]
     fn test_extract_import_named() {
@@ -16,10 +17,14 @@ mod tests {
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
+
+
         let mut extractor = TypeScriptExtractor::new(
             "typescript".to_string(),
             "test.ts".to_string(),
             code.to_string(),
+        &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -35,10 +40,14 @@ mod tests {
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
 
+        let workspace_root = PathBuf::from("/tmp/test");
+
+
         let mut extractor = TypeScriptExtractor::new(
             "typescript".to_string(),
             "test.ts".to_string(),
             code.to_string(),
+        &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 

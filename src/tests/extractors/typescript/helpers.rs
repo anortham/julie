@@ -1,6 +1,7 @@
 //! Inline tests extracted from extractors/typescript/helpers.rs
 
 use tree_sitter::Node;
+use std::path::PathBuf;
 
 /// Check if a node has a modifier child of the given kind
 ///

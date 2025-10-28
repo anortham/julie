@@ -8,6 +8,7 @@
 // - Enum extraction with members
 
 use crate::extractors::csharp::CSharpExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_basic_class_extraction() {
@@ -24,10 +25,12 @@ fn test_basic_class_extraction() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = CSharpExtractor::new(
         "csharp".to_string(),
         "test.cs".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -51,10 +54,12 @@ fn test_interface_extraction() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = CSharpExtractor::new(
         "csharp".to_string(),
         "test.cs".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -75,10 +80,12 @@ fn test_property_extraction() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = CSharpExtractor::new(
         "csharp".to_string(),
         "test.cs".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -100,10 +107,12 @@ fn test_enum_extraction() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = CSharpExtractor::new(
         "csharp".to_string(),
         "test.cs".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 
@@ -135,10 +144,12 @@ fn test_xml_doc_comment_extraction() {
         .unwrap();
     let tree = parser.parse(code, None).unwrap();
 
+    let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = CSharpExtractor::new(
         "csharp".to_string(),
         "test.cs".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
 

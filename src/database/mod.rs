@@ -58,7 +58,87 @@ impl SymbolDatabase {
 
         db.initialize_schema()?;
 
+        // 🔥 CRITICAL: FTS5 Integrity Check - detect and rebuild corrupted FTS5 indexes
+        // This prevents "missing row" and "invalid fts5 file format" errors
+        db.check_and_rebuild_fts5_indexes()?;
+
         info!("Database initialized successfully");
         Ok(db)
+    }
+
+    /// Check FTS5 indexes for corruption and rebuild if needed
+    /// Detects "invalid fts5 file format" and "missing row" errors
+    fn check_and_rebuild_fts5_indexes(&mut self) -> Result<()> {
+        // Check symbols_fts integrity
+        let symbols_corrupted = self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'test'",
+            [],
+            |_| Ok(()),
+        ).is_err();
+
+        if symbols_corrupted {
+            warn!("⚠️  Detected corrupted symbols_fts index - rebuilding...");
+
+            // Try standard rebuild first
+            if self.rebuild_symbols_fts().is_err() {
+                // Severe corruption - force drop and recreate FTS5 table
+                warn!("Standard rebuild failed - performing full FTS5 table recreation");
+
+                // Enable schema modification to manually remove corrupted FTS5 table
+                self.conn.execute("PRAGMA writable_schema=ON", [])?;
+                // Delete all entries for symbols_fts from sqlite_master
+                self.conn.execute(
+                    "DELETE FROM sqlite_master WHERE name LIKE 'symbols_fts%'",
+                    [],
+                )?;
+                self.conn.execute("PRAGMA writable_schema=OFF", [])?;
+                // Force schema reload with VACUUM
+                self.conn.execute("VACUUM", [])?;
+
+                self.create_symbols_fts_table()?;
+                self.create_symbols_fts_triggers()?;
+                // Rebuild from base table (now that table exists)
+                self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+            }
+
+            info!("✅ symbols_fts index rebuilt successfully");
+        }
+
+        // Check files_fts integrity
+        let files_corrupted = self.conn.query_row(
+            "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH 'test'",
+            [],
+            |_| Ok(()),
+        ).is_err();
+
+        if files_corrupted {
+            warn!("⚠️  Detected corrupted files_fts index - rebuilding...");
+
+            // Try standard rebuild first
+            if self.rebuild_files_fts().is_err() {
+                // Severe corruption - force drop and recreate FTS5 table
+                warn!("Standard rebuild failed - performing full FTS5 table recreation");
+
+                // Enable schema modification to manually remove corrupted FTS5 table
+                self.conn.execute("PRAGMA writable_schema=ON", [])?;
+                // Delete all entries for files_fts from sqlite_master
+                self.conn.execute(
+                    "DELETE FROM sqlite_master WHERE name LIKE 'files_fts%'",
+                    [],
+                )?;
+                self.conn.execute("PRAGMA writable_schema=OFF", [])?;
+                // Force schema reload with VACUUM
+                self.conn.execute("VACUUM", [])?;
+
+                self.create_files_fts_table()?;
+                self.create_files_fts_triggers()?;
+                // Rebuild from base table (now that table exists)
+                self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+            }
+
+            info!("✅ files_fts index rebuilt successfully");
+        }
+
+        Ok(())
     }
 }

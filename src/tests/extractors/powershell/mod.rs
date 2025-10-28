@@ -3,6 +3,7 @@
 
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::powershell::PowerShellExtractor;
+use std::path::PathBuf;
 use tree_sitter::Tree;
 
 #[cfg(test)]
@@ -11,6 +12,7 @@ mod powershell_extractor_tests {
 
     // Helper function to create a PowerShellExtractor and parse PowerShell code
     fn create_extractor_and_parse(code: &str) -> (PowerShellExtractor, Tree) {
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&tree_sitter_powershell::LANGUAGE.into())
@@ -20,6 +22,7 @@ mod powershell_extractor_tests {
             "powershell".to_string(),
             "test.ps1".to_string(),
             code.to_string(),
+            &workspace_root,
         );
         (extractor, tree)
     }

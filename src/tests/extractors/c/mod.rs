@@ -1,5 +1,6 @@
 use crate::extractors::base::{Symbol, SymbolKind};
 use crate::extractors::c::CExtractor;
+use std::path::PathBuf;
 use tree_sitter::{Parser, Tree};
 
 fn init_parser() -> Parser {
@@ -13,7 +14,13 @@ fn init_parser() -> Parser {
 pub fn parse_c(code: &str, file_name: &str) -> (CExtractor, Tree) {
     let mut parser = init_parser();
     let tree = parser.parse(code, None).expect("Failed to parse C code");
-    let extractor = CExtractor::new("c".to_string(), file_name.to_string(), code.to_string());
+    let workspace_root = PathBuf::from("/tmp/test");
+    let extractor = CExtractor::new(
+        "c".to_string(),
+        file_name.to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     (extractor, tree)
 }
 

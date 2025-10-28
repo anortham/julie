@@ -64,6 +64,8 @@ impl ManageWorkspaceTool {
             };
 
             let is_primary = workspace_id == primary_workspace_id;
+            debug!("🐛 filter_changed_files: is_primary={}, workspace_id={}, primary_workspace_id={}",
+                is_primary, workspace_id, primary_workspace_id);
 
             // Get the correct database based on workspace type
             let db_to_query = if is_primary {
@@ -72,6 +74,8 @@ impl ManageWorkspaceTool {
             } else {
                 // Reference workspace - open its separate database
                 let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
+                debug!("🐛 filter_changed_files: Reference workspace DB path: {}, exists: {}",
+                    ref_db_path.display(), ref_db_path.exists());
 
                 if ref_db_path.exists() {
                     match tokio::task::spawn_blocking(move || {
@@ -99,6 +103,17 @@ impl ManageWorkspaceTool {
             // Query the correct database
             if let Some(db) = db_to_query {
                 let db_lock = db.lock().unwrap();
+
+                // 🔥 CRITICAL FIX: Check if THIS workspace's database has 0 symbols
+                // If so, bypass incremental logic and re-index all files
+                // This prevents the bug where file hashes exist but symbols were never extracted
+                let symbol_count = db_lock.count_symbols_for_workspace().unwrap_or(0);
+                if symbol_count == 0 {
+                    info!("🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files", all_files.len());
+                    drop(db_lock);
+                    return Ok(all_files);
+                }
+
                 match db_lock.get_file_hashes_for_workspace() {
                     Ok(hashes) => hashes,
                     Err(e) => {

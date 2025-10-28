@@ -15,12 +15,14 @@ mod ruby_extractor_tests {
 
     // Helper function to create a RubyExtractor and parse Ruby code
     pub(crate) fn create_extractor_and_parse(code: &str) -> (RubyExtractor, Tree) {
+        use std::path::PathBuf;
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&tree_sitter_ruby::LANGUAGE.into())
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
-        let extractor = RubyExtractor::new("test.rb".to_string(), code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let extractor = RubyExtractor::new("test.rb".to_string(), code.to_string(), &workspace_root);
         (extractor, tree)
     }
 

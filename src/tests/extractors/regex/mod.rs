@@ -10,13 +10,16 @@ pub mod signatures;
 use crate::extractors::base::{SymbolKind, Visibility};
 use crate::extractors::regex::RegexExtractor;
 use crate::tests::test_utils::init_parser;
+use std::path::PathBuf;
 
 fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
+    let workspace_root = PathBuf::from("/tmp/test");
     let tree = init_parser(code, "regex");
     let mut extractor = RegexExtractor::new(
         "regex".to_string(),
         "test.regex".to_string(),
         code.to_string(),
+        &workspace_root,
     );
     extractor.extract_symbols(&tree)
 }
@@ -219,11 +222,13 @@ mod identifier_extraction_tests {
         Vec<crate::extractors::base::Symbol>,
         Vec<crate::extractors::base::Identifier>,
     ) {
+        let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(code, "regex");
         let mut extractor = RegexExtractor::new(
             "regex".to_string(),
             "test.regex".to_string(),
             code.to_string(),
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);

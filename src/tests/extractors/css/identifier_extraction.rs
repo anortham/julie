@@ -12,6 +12,7 @@
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::css::CSSExtractor;
 use crate::tests::extractors::css::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -29,11 +30,13 @@ mod identifier_extraction_tests {
 
         let mut parser = init_parser();
         let tree = parser.parse(css_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = CSSExtractor::new(
             "css".to_string(),
             "test.css".to_string(),
             css_code.to_string(),
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -92,11 +95,13 @@ mod identifier_extraction_tests {
 
         let mut parser = init_parser();
         let tree = parser.parse(css_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = CSSExtractor::new(
             "css".to_string(),
             "test.css".to_string(),
             css_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -145,11 +150,13 @@ mod identifier_extraction_tests {
 
         let mut parser = init_parser();
         let tree = parser.parse(css_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = CSSExtractor::new(
             "css".to_string(),
             "test.css".to_string(),
             css_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -190,11 +197,13 @@ mod identifier_extraction_tests {
 
         let mut parser = init_parser();
         let tree = parser.parse(css_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = CSSExtractor::new(
             "css".to_string(),
             "test.css".to_string(),
             css_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -241,11 +250,13 @@ mod identifier_extraction_tests {
 
         let mut parser = init_parser();
         let tree = parser.parse(css_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = CSSExtractor::new(
             "css".to_string(),
             "test.css".to_string(),
             css_code.to_string(),
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

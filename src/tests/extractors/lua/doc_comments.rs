@@ -3,6 +3,7 @@
 mod tests {
     use crate::extractors::base::SymbolKind;
     use crate::extractors::lua::LuaExtractor;
+    use std::path::PathBuf;
 
     fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
         let mut parser = tree_sitter::Parser::new();
@@ -10,8 +11,9 @@ mod tests {
             .set_language(&tree_sitter_lua::LANGUAGE.into())
             .expect("Error loading Lua grammar");
         let tree = parser.parse(code, None).expect("Failed to parse code");
+        let workspace_root = PathBuf::from("/tmp/test");
         let mut extractor =
-            LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string());
+            LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
         extractor.extract_symbols(&tree)
     }
 

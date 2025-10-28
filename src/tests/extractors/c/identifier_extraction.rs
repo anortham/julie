@@ -10,6 +10,7 @@
 use crate::extractors::base::IdentifierKind;
 use crate::extractors::c::CExtractor;
 use crate::tests::extractors::c::init_parser;
+use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -34,8 +35,13 @@ int calculate() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor =
-            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
 
         // Extract symbols first
         let symbols = extractor.extract_symbols(&tree);
@@ -94,8 +100,13 @@ void print_point(Point* p) {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor =
-            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -131,8 +142,13 @@ void process() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor =
-            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -176,8 +192,13 @@ void execute(User* user) {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor =
-            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -208,8 +229,13 @@ void run() {
         let mut parser = init_parser();
         let tree = parser.parse(c_code, None).unwrap();
 
-        let mut extractor =
-            CExtractor::new("c".to_string(), "test.c".to_string(), c_code.to_string());
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
