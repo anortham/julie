@@ -222,7 +222,7 @@ impl ManageWorkspaceTool {
 
         // 🧹 ORPHAN CLEANUP: Remove database entries for files that no longer exist
         let orphaned_count = self
-            .clean_orphaned_files(handler, &existing_file_hashes, &all_files, &workspace_id)
+            .clean_orphaned_files(handler, &existing_file_hashes, &all_files, &workspace_id, workspace_path)
             .await?;
 
         if orphaned_count > 0 {
@@ -244,11 +244,20 @@ impl ManageWorkspaceTool {
         existing_file_hashes: &HashMap<String, String>,
         current_disk_files: &[PathBuf],
         _workspace_id: &str,
+        workspace_root: &Path,  // NEW: needed to convert absolute paths to relative
     ) -> Result<usize> {
         // Build set of current disk file paths for fast lookup
+        // 🔥 CRITICAL FIX: Convert to relative Unix-style paths to match database format
+        // Database stores relative paths like "src/helper.rs" after relative path storage contract
         let current_files: HashSet<String> = current_disk_files
             .iter()
-            .map(|p| p.to_string_lossy().to_string())
+            .filter_map(|p| {
+                if p.is_absolute() {
+                    crate::utils::paths::to_relative_unix_style(p, workspace_root).ok()
+                } else {
+                    Some(p.to_string_lossy().replace('\\', "/"))
+                }
+            })
             .collect();
 
         // Find files that are in database but not on disk (orphans)
