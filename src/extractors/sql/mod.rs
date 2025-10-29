@@ -295,7 +295,13 @@ impl SqlExtractor {
                                 if expr_text.contains("OVER (") {
                                     if let Some(over_index) = expr_text.find("OVER (") {
                                         if let Some(end_index) = expr_text[over_index..].find(')') {
-                                            expr_text[0..over_index + end_index + 1].to_string()
+                                            // Use safe UTF-8 aware substring extraction
+                                            let total_len = over_index + end_index + 1;
+                                            if expr_text.is_char_boundary(total_len) {
+                                                expr_text[0..total_len].to_string()
+                                            } else {
+                                                expr_text.clone()
+                                            }
                                         } else {
                                             expr_text.clone() // Keep full text if no closing paren
                                         }
@@ -311,7 +317,13 @@ impl SqlExtractor {
                                     // Handle expressions with OVER clauses that aren't detected as window_function
                                     if let Some(over_index) = expr_text.find("OVER (") {
                                         if let Some(end_index) = expr_text[over_index..].find(')') {
-                                            expr_text[0..over_index + end_index + 1].to_string()
+                                            // Use safe UTF-8 aware substring extraction
+                                            let total_len = over_index + end_index + 1;
+                                            if expr_text.is_char_boundary(total_len) {
+                                                expr_text[0..total_len].to_string()
+                                            } else {
+                                                expr_text.clone()
+                                            }
                                         } else {
                                             expr_text.clone()
                                         }
@@ -406,13 +418,17 @@ impl SqlExtractor {
             .map(|from_match| select_index + from_match.start());
 
         let select_section = if let Some(from_idx) = from_index {
-            if from_idx > select_index {
+            if from_idx > select_index && error_text.is_char_boundary(select_index) && error_text.is_char_boundary(from_idx) {
                 &error_text[select_index..from_idx]
-            } else {
+            } else if error_text.is_char_boundary(select_index) {
                 &error_text[select_index..]
+            } else {
+                &error_text
             }
-        } else {
+        } else if error_text.is_char_boundary(select_index) {
             &error_text[select_index..]
+        } else {
+            &error_text
         };
 
         // Extract SELECT aliases using regex patterns

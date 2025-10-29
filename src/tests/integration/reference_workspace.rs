@@ -150,7 +150,9 @@ mod reference_workspace_tests {
     /// REFACTORING STATUS: Complete - uses fixture setup, bug fixed, test passing
     #[tokio::test(flavor = "multi_thread")]
     async fn test_reference_workspace_end_to_end() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");
@@ -249,8 +251,10 @@ mod reference_workspace_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_invalid_reference_workspace_id_error() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        }
 
         // Use fixture path (no need for TempDir since we're just testing error handling)
         let workspace_path = get_fixture_path("tiny-primary");
@@ -300,7 +304,9 @@ mod reference_workspace_tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "Test isolation issue - passes alone, fails when run with other tests"]
     async fn test_workspace_filtering() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         // Initialize handler with primary fixture
         let primary_path = get_fixture_path("tiny-primary");
@@ -392,7 +398,9 @@ mod reference_workspace_tests {
     /// Reference workspace orphan cleanup must open the correct database to clean up deleted files.
     #[tokio::test(flavor = "multi_thread")]
     async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");

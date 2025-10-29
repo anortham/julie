@@ -11,7 +11,9 @@ use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_rename_symbol_basic() -> Result<()> {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     // Setup: Create temp workspace with a Rust file
     let temp_dir = TempDir::new()?;
@@ -184,7 +186,9 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
 
 #[tokio::test]
 async fn test_rename_symbol_multiple_files() -> Result<()> {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     // Verify workspace-wide rename across multiple files
     let temp_dir = TempDir::new()?;

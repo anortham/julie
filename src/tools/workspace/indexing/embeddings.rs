@@ -304,7 +304,7 @@ async fn initialize_embedding_engine(
         info!("🔧 Initializing embedding engine for background generation...");
 
         // 🔧 FIX: Use workspace .julie/cache directory instead of polluting CWD
-        let cache_dir = if let Some(ref root) = workspace_root {
+        let cache_dir = if let Some(root) = workspace_root {
             root.join(".julie").join("cache").join("embeddings")
         } else {
             // Fallback to temp directory if workspace root not available
@@ -371,7 +371,7 @@ async fn build_and_save_hnsw_index(
                     );
 
                     // Save to disk for lazy loading on next startup
-                    let vectors_path = if let Some(ref root) = workspace_root {
+                    let vectors_path = if let Some(root) = workspace_root {
                         root.join(".julie")
                             .join("indexes")
                             .join(workspace_id)

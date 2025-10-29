@@ -396,7 +396,9 @@ pub fn embedding_vector_semantic() {}
     #[ignore] // SLOW: Indexes entire workspace - integration test, run manually with --ignored
     async fn test_reference_workspace_search() -> Result<()> {
         // Skip embeddings to speed up test (we're testing search, not embeddings)
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         // Create primary workspace
         let primary_dir = TempDir::new()?;
@@ -531,7 +533,9 @@ pub fn embedding_vector_semantic() {}
     #[ignore = "Lock contention test - may be slow or hang"]
     async fn test_reference_workspace_reindex_does_not_lock() -> Result<()> {
         // Skip embeddings to avoid network/download requirements in test environment
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         // Primary workspace (required for registry service)
         let primary_dir = TempDir::new()?;

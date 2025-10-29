@@ -137,7 +137,7 @@ pub async fn line_mode_search(
         .into_iter()
         .filter(|line_match| {
             // Apply language filter if specified
-            let language_match = if let Some(ref lang) = language {
+            let language_match = if let Some(lang) = language {
                 // Extract file extension and match against language
                 let path = std::path::Path::new(&line_match.file_path);
                 if let Some(ext) = path.extension() {

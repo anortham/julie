@@ -13,7 +13,7 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use std::path::Path;
 use tokenizers::Tokenizer;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
@@ -217,7 +217,11 @@ impl OrtEmbeddingModel {
 
         // Platform-specific execution providers
         // Track actual GPU usage (not just attempted registration)
-        let mut is_gpu = false; // Default to CPU, set to true if GPU initialization succeeds
+        #[cfg(not(target_os = "macos"))]
+        let mut is_gpu = false; // Default to CPU, set to true if GPU initialization succeeds on Windows/Linux
+
+        #[cfg(target_os = "macos")]
+        let is_gpu = false; // macOS uses CPU only, no GPU mutation needed
 
         #[cfg(target_os = "windows")]
         {

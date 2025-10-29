@@ -56,8 +56,12 @@ mod search_line_mode_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_basic() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -138,8 +142,12 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -228,8 +236,12 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_handles_exclusion_queries() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -302,8 +314,12 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_symbols_mode_default() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -371,8 +387,12 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_language_filter() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -483,8 +503,12 @@ def python_function():
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
@@ -576,8 +600,12 @@ def python_function():
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
+        }
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
 
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();

@@ -25,8 +25,12 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
 
 #[tokio::test]
 async fn test_workspace_initialization() {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
     let temp_dir = TempDir::new().unwrap();
     let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
         .await
@@ -52,8 +56,12 @@ async fn test_workspace_initialization() {
 
 #[tokio::test]
 async fn test_workspace_detection() {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
     let temp_dir = TempDir::new().unwrap();
 
     // Initialize workspace
@@ -84,8 +92,12 @@ async fn test_workspace_detection() {
 
 #[tokio::test]
 async fn test_health_check() {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
     let temp_dir = TempDir::new().unwrap();
     let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
         .await
@@ -102,8 +114,12 @@ async fn test_health_check() {
           // Run manually with: cargo test test_concurrent_manage_workspace --ignored
 async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
     // Skip expensive embedding initialization but allow Tantivy to initialize
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+    }
 
     let workspace_path = std::env::current_dir()
         .unwrap()
@@ -160,7 +176,9 @@ async fn test_add_workspace_updates_statistics() {
     use crate::workspace::registry_service::WorkspaceRegistryService;
 
     // Skip background tasks for this test
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     // Setup: Create test workspaces with actual files
     let primary_dir = TempDir::new().unwrap();
@@ -270,7 +288,9 @@ fn goodbye_world() {
 #[tokio::test]
 async fn test_is_indexed_flag_with_empty_database() {
     // Skip background tasks
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     let temp_dir = TempDir::new().unwrap();
 
@@ -366,7 +386,9 @@ fn test_function() {
 #[tokio::test]
 async fn test_is_indexed_flag_with_populated_database() {
     // Skip background tasks
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     let temp_dir = TempDir::new().unwrap();
 
@@ -441,7 +463,9 @@ fn test_function() {
 #[tokio::test]
 async fn test_force_reindex_clears_flag() {
     // Skip background tasks
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     let temp_dir = TempDir::new().unwrap();
 
@@ -520,7 +544,9 @@ fn test_function() {
 #[tokio::test]
 async fn test_incremental_indexing_detects_empty_database() {
     // Skip background tasks
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     let temp_dir = TempDir::new().unwrap();
 

@@ -44,7 +44,9 @@ mod fts5_minimal_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_minimal_fts5_corruption_step1_index_only() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         let primary_path = get_fixture_path("tiny-primary");
 
@@ -106,7 +108,9 @@ mod fts5_minimal_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_minimal_fts5_corruption_step2_add_reference() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");

@@ -33,7 +33,9 @@ fn test_workspace_detection_priority() {
 
     // Test 1: Only current_dir (lowest priority)
     env::set_current_dir(workspace1.path()).expect("Failed to set cwd");
-    env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        env::remove_var("JULIE_WORKSPACE");
+    }
 
     // Since we can't easily test get_workspace_root() directly (it's private),
     // we verify the behavior through the documented contract:
@@ -45,7 +47,9 @@ fn test_workspace_detection_priority() {
     );
 
     // Test 2: Env var overrides current_dir (medium priority)
-    env::set_var("JULIE_WORKSPACE", workspace2.path());
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", workspace2.path());
+    }
     env::set_current_dir(workspace1.path()).expect("Failed to set cwd");
 
     // Verify env var is set correctly
@@ -73,10 +77,12 @@ fn test_workspace_detection_priority() {
     // Try to restore original cwd, but don't fail if it doesn't exist
     let _ = env::set_current_dir(&original_cwd);
 
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }
 
@@ -94,13 +100,17 @@ fn test_tilde_expansion_in_env_var() {
     let test_path = test_workspace.path();
 
     // Test 1: Tilde-prefixed path that DOESN'T exist (should not be used)
-    env::set_var("JULIE_WORKSPACE", "~/nonexistent_julie_test_dir_12345");
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", "~/nonexistent_julie_test_dir_12345");
+    }
 
     // Since the path doesn't exist, get_workspace_root would fall back to current_dir
     // This validates the "path must exist" check works with tilde expansion
 
     // Test 2: Absolute path (no tilde) should work
-    env::set_var("JULIE_WORKSPACE", test_path);
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", test_path);
+    }
     let env_value = env::var("JULIE_WORKSPACE").expect("Should have JULIE_WORKSPACE set");
     assert_eq!(PathBuf::from(env_value), test_path);
 
@@ -116,10 +126,12 @@ fn test_tilde_expansion_in_env_var() {
     );
 
     // Cleanup
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }
 
@@ -215,7 +227,9 @@ fn test_env_var_concept() {
     let original_cwd = env::current_dir().expect("Failed to get cwd");
 
     // Set up the scenario: env var points to one dir, cwd is different
-    env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    }
     env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
 
     // Verify the env var is set (we don't need to validate the exact value,
@@ -250,10 +264,12 @@ fn test_env_var_concept() {
     // Try to restore original cwd, but don't fail if it doesn't exist
     let _ = env::set_current_dir(&original_cwd);
 
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }
 
@@ -277,7 +293,9 @@ fn test_nonexistent_env_var_fallback() {
         "/nonexistent/julie/test/directory/that/does/not/exist/12345"
     };
 
-    env::set_var("JULIE_WORKSPACE", &nonexistent_path);
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", &nonexistent_path);
+    }
     env::set_current_dir(workspace.path()).expect("Failed to set cwd");
 
     // Verify the env var is set to something that doesn't exist
@@ -307,10 +325,12 @@ fn test_nonexistent_env_var_fallback() {
     // Try to restore original cwd, but don't fail if it doesn't exist
     let _ = env::set_current_dir(&original_cwd);
 
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }
 
@@ -362,7 +382,9 @@ async fn test_incremental_indexing_respects_env_var() {
     let original_cwd = env::current_dir().expect("Failed to get cwd");
 
     // Set up scenario: JULIE_WORKSPACE points to one dir, cwd is different
-    env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    }
     env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
 
     // Initialize handler and workspace
@@ -401,10 +423,12 @@ async fn test_incremental_indexing_respects_env_var() {
 
     // Restore original state
     let _ = env::set_current_dir(&original_cwd);
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }
 
@@ -429,7 +453,9 @@ fn test_resolve_workspace_path_respects_env_var() {
     let original_cwd = env::current_dir().expect("Failed to get cwd");
 
     // Set up scenario: JULIE_WORKSPACE points to one dir, cwd is different
-    env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    unsafe {
+        env::set_var("JULIE_WORKSPACE", target_workspace.path());
+    }
     env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
 
     // Create tool and resolve path with None
@@ -466,9 +492,11 @@ fn test_resolve_workspace_path_respects_env_var() {
     drop(different_cwd);
 
     let _ = env::set_current_dir(&original_cwd);
-    if let Some(val) = original_env {
-        env::set_var("JULIE_WORKSPACE", val);
-    } else {
-        env::remove_var("JULIE_WORKSPACE");
+    unsafe {
+        if let Some(val) = original_env {
+            env::set_var("JULIE_WORKSPACE", val);
+        } else {
+            env::remove_var("JULIE_WORKSPACE");
+        }
     }
 }

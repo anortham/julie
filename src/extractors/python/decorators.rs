@@ -30,15 +30,18 @@ pub fn extract_decorators(extractor: &PythonExtractor, node: &Node) -> Vec<Strin
             if child.kind() == "decorator" {
                 let mut decorator_text = base.get_node_text(&child);
 
-                // Remove @ prefix
-                if decorator_text.starts_with('@') {
+                // Remove @ prefix (@ is ASCII, so this is safe)
+                if decorator_text.starts_with('@') && decorator_text.is_char_boundary(1) {
                     decorator_text = decorator_text[1..].to_string();
                 }
 
                 // Extract just the decorator name without parameters
                 // e.g., "lru_cache(maxsize=128)" -> "lru_cache"
                 if let Some(paren_index) = decorator_text.find('(') {
-                    decorator_text = decorator_text[..paren_index].to_string();
+                    // '(' is ASCII, so this should be safe, but verify
+                    if decorator_text.is_char_boundary(paren_index) {
+                        decorator_text = decorator_text[..paren_index].to_string();
+                    }
                 }
 
                 decorators.push(decorator_text);

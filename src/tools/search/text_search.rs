@@ -177,13 +177,13 @@ async fn database_search_with_workspace_filter(
     };
 
     // Apply language filtering if specified
-    if let Some(ref lang) = language {
+    if let Some(lang) = language {
         results.retain(|symbol| symbol.language.eq_ignore_ascii_case(lang));
     }
 
     // CRITICAL FIX: Use proper glob matching instead of flawed split() logic
     // This now correctly handles patterns like "src/**/*.rs", "!**/target/*", etc.
-    if let Some(ref pattern) = file_pattern {
+    if let Some(pattern) = file_pattern {
         results.retain(|symbol| matches_glob_pattern(&symbol.file_path, pattern));
     }
 

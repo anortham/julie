@@ -54,11 +54,8 @@ impl ScriptStyleExtractor {
         );
 
         if let Some(content) = content {
-            let truncated_content = if content.len() > 100 {
-                format!("{}...", &content[..100])
-            } else {
-                content
-            };
+            // Safely truncate UTF-8 string at character boundary
+            let truncated_content = BaseExtractor::truncate_string(&content, 100);
             metadata.insert(
                 "content".to_string(),
                 serde_json::Value::String(truncated_content),
@@ -108,11 +105,8 @@ impl ScriptStyleExtractor {
         }
 
         if let Some(content) = content {
-            let truncated_content = if content.len() > 100 {
-                format!("{}...", &content[..100])
-            } else {
-                content
-            };
+            // Safely truncate UTF-8 string at character boundary
+            let truncated_content = BaseExtractor::truncate_string(&content, 100);
             metadata.insert(
                 "content".to_string(),
                 serde_json::Value::String(truncated_content),

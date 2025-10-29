@@ -82,6 +82,7 @@ pub mod utils {
     pub mod progressive_reduction; // Progressive reduction tests
     pub mod query_expansion; // Query expansion tests
     pub mod token_estimation; // Token estimation tests
+    pub mod utf8_truncation; // UTF-8 safe string truncation tests
 
     pub mod exact_match_boost; // Exact match boost tests
 

@@ -118,7 +118,9 @@ impl EmbeddingEngine {
         tracing::warn!("   This is slower but stable. Future batches will use CPU.");
 
         // Set environment variable to force CPU mode
-        std::env::set_var("JULIE_FORCE_CPU", "1");
+        unsafe {
+            std::env::set_var("JULIE_FORCE_CPU", "1");
+        }
 
         // Recreate the model manager and get model paths
         let model_manager = ModelManager::new(self.cache_dir.clone())?;

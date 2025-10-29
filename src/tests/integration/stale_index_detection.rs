@@ -19,7 +19,9 @@ use tempfile::TempDir;
 #[tokio::test]
 #[ignore = "Flaky due to filesystem timestamp resolution - needs investigation"]
 async fn test_fresh_index_no_reindex_needed() -> Result<()> {
-    std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
 
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();

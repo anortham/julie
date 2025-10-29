@@ -334,8 +334,9 @@ fn extract_standard_variable(
     // If it contains a switch expression, include that in the signature
     if let Some(switch_node) = switch_node {
         let switch_text = base.get_node_text(&switch_node);
-        if switch_text.len() > 50 {
-            var_type = format!("switch({}...)", &switch_text[0..20]);
+        // Safely truncate UTF-8 string at character boundary
+        if switch_text.chars().count() > 20 {
+            var_type = format!("switch({}...)", BaseExtractor::truncate_string(&switch_text, 20));
         } else {
             var_type = switch_text;
         }

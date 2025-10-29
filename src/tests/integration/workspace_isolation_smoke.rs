@@ -58,7 +58,9 @@ mod workspace_isolation_smoke_tests {
     /// should NEVER return results from reference workspace and vice versa.
     #[tokio::test(flavor = "multi_thread")]
     async fn test_search_never_crosses_workspaces() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
@@ -186,7 +188,9 @@ mod workspace_isolation_smoke_tests {
     /// resolve to their respective reference workspaces.
     #[tokio::test(flavor = "multi_thread")]
     async fn test_workspace_id_resolution() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
@@ -310,7 +314,9 @@ mod workspace_isolation_smoke_tests {
     /// helpful error message, not crash or return confusing results.
     #[tokio::test(flavor = "multi_thread")]
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        unsafe {
+            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+        }
 
         let primary_path = get_fixture_path("tiny-primary");
 

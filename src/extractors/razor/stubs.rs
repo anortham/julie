@@ -336,7 +336,7 @@ impl super::RazorExtractor {
                 signature_parts.push("var".to_string());
             }
             signature_parts.push(variable_name.clone());
-            if let Some(ref init) = initializer {
+            if let Some(init) = initializer {
                 signature_parts.push(format!("= {}", init));
             }
 
