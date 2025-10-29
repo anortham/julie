@@ -141,6 +141,24 @@ impl SymbolDatabase {
             return trimmed.to_string();
         }
 
+        // 🔥 CRITICAL: Check for special characters BEFORE separator splitting
+        // If query contains special chars, quote it immediately to prevent FTS5 syntax errors
+        // This must happen BEFORE hyphen/dot/colon splitting, otherwise splits can separate
+        // special chars from their context (e.g., "user[0-9]+" → "user[0 OR 9]+" leaves [ ] + unquoted)
+        const SPECIAL_CHARS: &[char] = &[
+            '#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '=', '|',
+        ];
+
+        let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
+
+        if has_special {
+            // Quote the entire query to treat it as a literal phrase
+            // Use double quotes and escape any internal double quotes
+            // (Backslashes already stripped earlier in this function)
+            let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
+            return format!("\"{}\"", escaped);
+        }
+
         // 🔥 FIX: Handle : (colon) specially - it's a tokenizer separator BUT also FTS5 column syntax
         // FTS5 treats : as column specification syntax (e.g., "name:term")
         // So "foo:bar" is interpreted as "column foo, term bar" which causes "no such column: foo" error
@@ -179,35 +197,11 @@ impl SymbolDatabase {
             }
         }
 
-        // FTS5 special characters that need escaping
-        // Note: Removed separators (_ - > .) since they're now tokenizer delimiters
-        // : is a separator BUT also FTS5 column syntax, handled specially above
-        // . is a separator BUT also FTS5 column syntax, handled specially above
-        // - is a separator BUT also FTS5 subtraction operator, handled specially above
-        // + is not officially documented as special, but causes "syntax error near +" in practice
-        // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
-        // = causes "syntax error near =" when used in queries
-        // | causes "syntax error near |" (regex alternation, not FTS5)
-        const SPECIAL_CHARS: &[char] = &[
-            '#', '@', '^', '[', ']', '+', '/', '\\', '!', '(', ')', '=', '|',
-        ];
-
-        // Check if query contains any special characters
-        let has_special = trimmed.chars().any(|c| SPECIAL_CHARS.contains(&c));
-
-        if has_special {
-            // Quote the entire query to treat it as a literal phrase
-            // Use double quotes and escape any internal double quotes
-            // (Backslashes already stripped earlier in this function)
-            let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
-            format!("\"{}\"", escaped)
-        } else {
-            // Multi-word queries use FTS5's default implicit AND behavior
-            // "bm25 rank ORDER" → matches documents containing ALL terms (AND logic)
-            // Users can explicitly use OR/NOT operators if needed
-            // This provides precise, relevant results instead of "any of these words" noise
-            trimmed.to_string()
-        }
+        // Multi-word queries use FTS5's default implicit AND behavior
+        // "bm25 rank ORDER" → matches documents containing ALL terms (AND logic)
+        // Users can explicitly use OR/NOT operators if needed
+        // This provides precise, relevant results instead of "any of these words" noise
+        trimmed.to_string()
     }
 
     /// 🔥 CASCADE FTS5: Find symbols using full-text search with BM25 ranking

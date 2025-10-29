@@ -9,10 +9,15 @@ mod edit_lines_tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    // Test helper: Copy source file to temp directory
-    fn setup_test_file(source_filename: &str) -> Result<(TempDir, PathBuf)> {
-        let temp_dir = TempDir::new()?;
-        let source_path = PathBuf::from("fixtures/editing/sources").join(source_filename);
+    // Test helper: Copy source file to temp directory with unique workspace per test
+    fn setup_test_file(source_filename: &str, test_name: &str) -> Result<(TempDir, PathBuf)> {
+        use crate::tests::helpers::workspace::create_unique_test_workspace;
+
+        let temp_dir = create_unique_test_workspace(test_name)?;
+
+        // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let source_path = manifest_dir.join("fixtures/editing/sources").join(source_filename);
         let dest_path = temp_dir.path().join(source_filename);
 
         fs::copy(&source_path, &dest_path)?;
@@ -21,8 +26,11 @@ mod edit_lines_tests {
 
     // Test helper: Load control file
     fn load_control_file(control_filename: &str) -> Result<String> {
-        let control_path =
-            PathBuf::from("fixtures/editing/controls/line-edit").join(control_filename);
+        // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let control_path = manifest_dir
+            .join("fixtures/editing/controls/line-edit")
+            .join(control_filename);
         Ok(fs::read_to_string(control_path)?)
     }
 
@@ -43,12 +51,11 @@ mod edit_lines_tests {
 
     #[tokio::test]
     #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
-    #[serial_test::serial] // Prevent parallel execution to avoid workspace init race conditions
     async fn test_edit_lines_insert_import() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
         // Setup: Copy SOURCE to temp location
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_insert_import")?;
 
         // Load CONTROL (expected result)
         let expected_content = load_control_file("line_edit_insert_import.py")?;
@@ -84,7 +91,7 @@ mod edit_lines_tests {
     async fn test_edit_lines_delete_comment() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_delete_comment")?;
         let expected_content = load_control_file("line_edit_delete_comment.py")?;
 
         // Operation: Delete line 15 ("# Test data" comment)
@@ -116,7 +123,7 @@ mod edit_lines_tests {
     async fn test_edit_lines_replace_function() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_replace_function")?;
         let expected_content = load_control_file("line_edit_replace_function_only.py")?;
 
         // Operation: Replace lines 7-12 (calculate_sum function) with calculate_average
@@ -156,7 +163,7 @@ mod edit_lines_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_relative_path")?;
         let relative_path = test_file
             .file_name()
             .expect("filename")
@@ -237,7 +244,7 @@ mod edit_lines_tests {
     async fn test_edit_lines_dry_run() -> Result<()> {
         // TDD RED: Verify dry_run doesn't modify file
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py")?;
+        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_dry_run")?;
         let original_content = fs::read_to_string(&test_file)?;
 
         use crate::handler::JulieServerHandler;

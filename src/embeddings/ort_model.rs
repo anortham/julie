@@ -15,6 +15,9 @@ use std::path::Path;
 use tokenizers::Tokenizer;
 use tracing::{debug, info};
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use tracing::warn;
+
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
 

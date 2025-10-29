@@ -3,60 +3,39 @@
 //! These tests validate search quality by running real queries against
 //! Julie's actual workspace. This is the ultimate integration test.
 //!
-//! **⏱️ PERFORMANCE NOTE:** These tests are marked `#[ignore]` because they're
-//! slow (60+ seconds each). They index the entire Julie workspace for real-world
-//! validation. Run them manually with:
+//! **⚡ PERFORMANCE:** These tests are now enabled by default (removed `#[ignore]`).
+//! The first test indexes Julie's workspace (~17s), then subsequent tests reuse
+//! the cached index. Total runtime: ~4 minutes for all 16 tests.
+//!
+//! Run them with:
 //!
 //! ```bash
-//! cargo test --lib -- --ignored              # Run ONLY slow tests
-//! cargo test --lib -- --include-ignored      # Run fast + slow tests
+//! cargo test --lib dogfood                   # Run all 16 dogfooding tests
+//! cargo test --lib test_multiword_and        # Run specific test
 //! ```
 //!
-//! ## Test Categories
+//! **Optimization Opportunity:** When the JulieTestFixture is built, these tests
+//! could run in <20 seconds total (see helpers.rs for details).
 //!
-//! 1. **Multi-word AND Logic** - Multiple terms should all match (not OR)
-//! 2. **Hyphenated Terms** - Handle separators correctly
-//! 3. **Symbol Definitions** - Find function/class definitions
-//! 4. **FTS5 Internals** - SQL patterns and database queries
-//! 5. **Ranking Quality** - Source files should rank above tests
+//! ## Test Categories (16 tests total)
+//!
+//! 1. **Multi-word AND Logic** (3 tests) - Multiple terms should all match (not OR)
+//! 2. **Hyphenated Terms** (3 tests) - Handle separators correctly
+//! 3. **Symbol Definitions** (2 tests) - Find function/class definitions
+//! 4. **FTS5 Internals** (3 tests) - SQL patterns and database queries
+//! 5. **Ranking Quality** (1 test) - Source files should rank above tests
+//! 6. **Special Characters** (3 tests) - Dots, colons, underscores
+//! 7. **Tokenizer Consistency** (1 test) - FTS5 tables use same tokenizer
 
 use super::helpers::*;
-use crate::handler::JulieServerHandler;
-use crate::tools::workspace::ManageWorkspaceTool;
-
-/// Setup Julie handler for testing
-async fn setup_handler() -> JulieServerHandler {
-    // Create handler - it will auto-detect Julie's workspace from CWD
-    let handler = JulieServerHandler::new()
-        .await
-        .expect("Failed to create handler");
-
-    // Ensure the workspace is indexed
-    let index_tool = ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: None,  // Use current workspace
-        force: Some(false),  // Use cache if available
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    };
-
-    index_tool
-        .call_tool(&handler)
-        .await
-        .expect("Failed to index workspace");
-
-    handler
-}
 
 // ============================================================================
 // Category 1: Multi-Word AND Logic Tests
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_finds_sql_ranking() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "bm25 rank ORDER" - should find SQL ranking code (all 3 terms present)
     let results = search_content(&handler, "bm25 rank ORDER", 10)
@@ -68,10 +47,9 @@ async fn test_multiword_and_finds_sql_ranking() {
     assert_min_results(&results, 1);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_cascade_architecture() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "CASCADE architecture SQLite FTS5"
     let results = search_content(&handler, "CASCADE architecture SQLite FTS5", 10)
@@ -87,10 +65,9 @@ async fn test_multiword_and_cascade_architecture() {
     assert!(has_docs, "Should find CASCADE docs");
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_incremental_update() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "incremental update atomic"
     let results = search_content(&handler, "incremental update atomic", 10)
@@ -106,10 +83,9 @@ async fn test_multiword_and_incremental_update() {
 // Category 2: Hyphenated Terms Tests
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_tree_sitter() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "tree-sitter parse"
     // The hyphen should be handled correctly (split to OR)
@@ -122,10 +98,9 @@ async fn test_hyphenated_tree_sitter() {
     assert_min_results(&results, 5);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_de_boost() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "DE-BOOST test files"
     let results = search_content(&handler, "DE-BOOST test files", 5)
@@ -137,10 +112,9 @@ async fn test_hyphenated_de_boost() {
     assert_min_results(&results, 1);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_cross_language() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "cross-language intelligence"
     let results = search_content(&handler, "cross-language intelligence", 5)
@@ -156,10 +130,9 @@ async fn test_hyphenated_cross_language() {
 // Category 3: Symbol Definition Tests
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_symbol_search_sanitize_function() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "sanitize_fts5_query" - should find the function definition
     let results = search_definitions(&handler, "sanitize_fts5_query", 5)
@@ -172,10 +145,9 @@ async fn test_symbol_search_sanitize_function() {
     assert_min_results(&results, 1);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_symbol_search_struct() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "JulieServerHandler"
     let results = search_definitions(&handler, "JulieServerHandler", 5)
@@ -191,10 +163,9 @@ async fn test_symbol_search_struct() {
 // Category 4: FTS5 Internals Tests
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_create_virtual_table() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "CREATE VIRTUAL TABLE fts5"
     let results = search_content(&handler, "CREATE VIRTUAL TABLE fts5", 10)
@@ -208,10 +179,9 @@ async fn test_fts5_create_virtual_table() {
     assert_min_results(&results, 2);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_snippet_function() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "snippet files_fts content"
     let results = search_content(&handler, "snippet files_fts content", 5)
@@ -223,10 +193,9 @@ async fn test_fts5_snippet_function() {
     assert_min_results(&results, 1);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_corruption_tests() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "FTS5 corruption rowid"
     let results = search_content(&handler, "FTS5 corruption rowid", 10)
@@ -244,10 +213,9 @@ async fn test_fts5_corruption_tests() {
 // Category 5: Ranking Quality Tests
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_ranking_source_over_tests() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query something that appears in both source and tests
     // "SymbolDatabase" - used in implementation and tests
@@ -275,10 +243,9 @@ async fn test_ranking_source_over_tests() {
 // Category 6: Special Characters & Edge Cases
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_dotted_identifiers() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "System.Collections.Generic" style patterns
     // We split on dots, so this becomes "CASCADE OR architecture"
@@ -291,10 +258,9 @@ async fn test_dotted_identifiers() {
     assert_min_results(&results, 1);
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_colons_in_rust_paths() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "std::vec" style patterns
     // Colons should split to OR
@@ -307,10 +273,9 @@ async fn test_colons_in_rust_paths() {
     // If we have Rust Result usage, we should find it
 }
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_underscore_snake_case() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // Query: "get_symbols"
     // Underscores are separators, but tokenizer handles them
@@ -326,10 +291,9 @@ async fn test_underscore_snake_case() {
 // Category 7: Tokenizer Consistency Tests (Will Fail Until Fixed)
 // ============================================================================
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tokenizer_consistency_hyphen() {
-    let handler = setup_handler().await;
+    let handler = setup_handler_with_fixture().await;
 
     // FIXED: files_fts now uses the same tokenizer as symbols_fts
     // Both use: tokenize = "unicode61 separators '_::->.''"

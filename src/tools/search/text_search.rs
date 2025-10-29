@@ -11,7 +11,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::search::query_preprocessor::{preprocess_query, QueryType};
 use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 
-use super::query::{matches_glob_pattern, preprocess_fallback_query};
+use super::query::matches_glob_pattern;
 
 /// Text search with workspace filtering and search target selection
 ///
@@ -137,11 +137,11 @@ async fn database_search_with_workspace_filter(
 
     let is_primary = target_workspace_id == &primary_workspace_id;
 
-    // Apply query preprocessing for better fallback search quality
-    let processed_query = preprocess_fallback_query(query);
+    // 🔥 CRITICAL FIX: Query is already sanitized by preprocess_query()!
+    // Do NOT call preprocess_fallback_query() - it overrides proper sanitization
     debug!(
-        "📝 Workspace filter query preprocessed: '{}' -> '{}' (workspace: {}, is_primary: {})",
-        query, processed_query, target_workspace_id, is_primary
+        "📝 Workspace filter symbol search: '{}' (workspace: {}, is_primary: {})",
+        query, target_workspace_id, is_primary
     );
 
     // Get the correct database (primary or reference workspace)
@@ -154,7 +154,7 @@ async fn database_search_with_workspace_filter(
 
         tokio::task::block_in_place(|| {
             let db_lock = db.lock().unwrap();
-            db_lock.find_symbols_by_pattern(&processed_query)
+            db_lock.find_symbols_by_pattern(query)  // Use already-sanitized query
         })?
     } else {
         // Open reference workspace database
@@ -168,9 +168,10 @@ async fn database_search_with_workspace_filter(
 
         debug!("📂 Opening reference workspace DB: {:?}", ref_db_path);
 
+        let query_clone = query.to_string(); // Clone for move into spawn_blocking
         tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-            ref_db.find_symbols_by_pattern(&processed_query)
+            ref_db.find_symbols_by_pattern(&query_clone)  // Use already-sanitized query
         })
         .await
         .map_err(|e| anyhow::anyhow!("Failed to search reference workspace: {}", e))??
@@ -414,25 +415,27 @@ async fn sqlite_fts_search(
             .clone()
     };
 
-    // Apply basic query intelligence even in fallback mode
-    // This improves search quality during the 20-30s window while HNSW builds
-    let processed_query = preprocess_fallback_query(query);
+    // 🔥 CRITICAL FIX: Query is already sanitized by preprocess_query()!
+    // Do NOT call preprocess_fallback_query() here - it overrides the proper sanitization
+    // that handles hyphens ("tree-sitter" → "tree OR sitter"), dots, colons, etc.
+    // The query parameter here is actually the fts5_query from query_preprocessor.
 
     // 🔥 CONTENT SEARCH FIX: Use AND logic for multi-word queries
     // Unlike symbol search which uses OR for flexibility, content search (grep-like)
     // expects AND behavior - all words must be present, but not necessarily adjacent.
     // Example: "LazyScripts System Administration" → "LazyScripts AND System AND Administration"
-    let content_query = if processed_query.split_whitespace().count() > 1
-        && !processed_query.contains('"')
-        && !processed_query.contains(" OR ")
-        && !processed_query.contains(" AND ")
+    // BUT: If query already has OR (from hyphen/dot/colon sanitization), preserve it!
+    let content_query = if query.split_whitespace().count() > 1
+        && !query.contains('"')
+        && !query.contains(" OR ")  // Don't AND-ify if already has OR from sanitization
+        && !query.contains(" AND ")
     {
-        processed_query
+        query
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" AND ")
     } else {
-        processed_query.clone()
+        query.to_string()
     };
 
     debug!(

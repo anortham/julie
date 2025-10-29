@@ -11,6 +11,11 @@
 // TODO: Add integration tests for concurrency, permissions, UTF-8, security
 
 // ============================================================================
+// TEST FIXTURES - Pre-indexed databases and test data
+// ============================================================================
+pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
+
+// ============================================================================
 // CLI TESTS - Command-line interface integration tests
 // ============================================================================
 pub mod cli {
@@ -225,6 +230,9 @@ impl UserService {
 
 // Test utilities
 pub mod test_utils;
+
+// Test helpers for isolation and cleanup
+pub mod helpers;
 
 // ============================================================================
 // EXTRACTOR TESTS - All 26 language extractors (100% Miller parity)

@@ -9,6 +9,7 @@
 #[cfg(test)]
 mod reference_workspace_tests {
     use crate::handler::JulieServerHandler;
+    use crate::tests::helpers::workspace::get_fixture_path;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
@@ -48,13 +49,6 @@ mod reference_workspace_tests {
             .semantic_ready
             .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
-    }
-
-    /// Get path to a test fixture workspace
-    fn get_fixture_path(name: &str) -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/test-workspaces")
-            .join(name)
     }
 
     /// Setup test workspaces using fixtures
@@ -149,16 +143,19 @@ mod reference_workspace_tests {
     ///
     /// REFACTORING STATUS: Complete - uses fixture setup, bug fixed, test passing
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
     async fn test_reference_workspace_end_to_end() -> Result<()> {
+        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
         }
 
-        // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
+        // CLEANUP: Atomic cleanup of .julie directories from previous test runs
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
-        let _ = std::fs::remove_dir_all(primary_path.join(".julie"));
-        let _ = std::fs::remove_dir_all(reference_path.join(".julie"));
+        atomic_cleanup_julie_dir(&primary_path)?;
+        atomic_cleanup_julie_dir(&reference_path)?;
 
         // Initialize handler with primary fixture
         let handler = JulieServerHandler::new().await?;
@@ -246,18 +243,26 @@ mod reference_workspace_tests {
             cross_response
         );
 
+        // CLEANUP: Atomic cleanup AFTER test
+        atomic_cleanup_julie_dir(&primary_path)?;
+        atomic_cleanup_julie_dir(&reference_path)?;
+
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
     async fn test_invalid_reference_workspace_id_error() -> Result<()> {
+        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
-        // Use fixture path (no need for TempDir since we're just testing error handling)
+        // Use fixture path and cleanup BEFORE test
         let workspace_path = get_fixture_path("tiny-primary");
+        atomic_cleanup_julie_dir(&workspace_path)?;
 
         let handler = JulieServerHandler::new().await?;
         handler
@@ -290,6 +295,9 @@ mod reference_workspace_tests {
             "Error message should indicate workspace not found: {}",
             error_message
         );
+
+        // CLEANUP: Atomic cleanup AFTER test
+        atomic_cleanup_julie_dir(&workspace_path)?;
 
         Ok(())
     }

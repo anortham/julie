@@ -11,7 +11,12 @@ mod real_world_tests {
     use std::path::{Path, PathBuf};
     use tree_sitter::{Parser, Tree};
 
-    const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world";
+    /// Get absolute path to real-world fixtures (prevents CWD issues in parallel tests)
+    fn real_world_test_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/real-world")
+    }
+
+    const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world"; // Deprecated - use real_world_test_dir() instead
 
     /// Initialize a tree-sitter parser for the given language
     fn init_parser(code: &str, language: &str) -> Tree {
@@ -824,8 +829,17 @@ mod real_world_tests {
     /// Integration test: Process multiple languages in sequence
     /// This validates cross-language consistency following Miller's approach
     #[test]
+    #[serial_test::serial]
     fn test_cross_language_real_world_integration() {
-        let base_dir = Path::new(REAL_WORLD_TEST_DIR);
+        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+        use std::path::PathBuf;
+
+        // CRITICAL: Cleanup before test to avoid "disk I/O error 1802"
+        let workspace_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        atomic_cleanup_julie_dir(&workspace_path).ok(); // Ignore error if already clean
+
+        // Use absolute path to avoid CWD issues in parallel tests
+        let base_dir = real_world_test_dir();
         let mut total_files_processed = 0;
         let mut total_symbols_extracted = 0;
 
@@ -902,6 +916,9 @@ mod real_world_tests {
             total_files_processed,
             total_symbols_extracted
         );
+
+        // CRITICAL: Cleanup after test
+        atomic_cleanup_julie_dir(&workspace_path).ok();
     }
 }
 

@@ -43,18 +43,18 @@ mod fts5_minimal_tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial]
     async fn test_minimal_fts5_corruption_step1_index_only() -> Result<()> {
+        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
         }
 
         let primary_path = get_fixture_path("tiny-primary");
 
-        // Clean up any stale .julie directory from previous test runs
-        let julie_dir = primary_path.join(".julie");
-        if julie_dir.exists() {
-            std::fs::remove_dir_all(&julie_dir).ok();
-        }
+        // CRITICAL: Atomic cleanup before test
+        atomic_cleanup_julie_dir(&primary_path)?;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -103,11 +103,18 @@ mod fts5_minimal_tests {
         );
 
         println!("✅ TEST PASSED: FTS5 works immediately after indexing");
+
+        // CRITICAL: Atomic cleanup after test
+        atomic_cleanup_julie_dir(&primary_path)?;
+
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial]
     async fn test_minimal_fts5_corruption_step2_add_reference() -> Result<()> {
+        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
+
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
         }
@@ -115,11 +122,8 @@ mod fts5_minimal_tests {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
-        // Clean up any stale .julie directory from previous test runs
-        let julie_dir = primary_path.join(".julie");
-        if julie_dir.exists() {
-            std::fs::remove_dir_all(&julie_dir).ok();
-        }
+        // CRITICAL: Atomic cleanup before test
+        atomic_cleanup_julie_dir(&primary_path)?;
 
         let handler = JulieServerHandler::new().await?;
 
@@ -196,6 +200,10 @@ mod fts5_minimal_tests {
         );
 
         println!("✅ TEST PASSED: FTS5 still works after adding reference workspace");
+
+        // CRITICAL: Atomic cleanup after test
+        atomic_cleanup_julie_dir(&primary_path)?;
+
         Ok(())
     }
 }
