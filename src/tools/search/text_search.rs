@@ -460,19 +460,31 @@ async fn sqlite_fts_search(
         // Get file content to find the actual line number of the match
         let db_lock = db.lock().unwrap();
         if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
-            // Find the line containing the snippet text
-            // Remove FTS highlighting markers (...) from snippet for matching
-            let clean_snippet = result.snippet.replace("...", "").trim().to_string();
+            // 🔥 FIX: Extract the actual matched term from <mark> tags instead of trying to match entire snippet
+            // FTS5 snippets can be multi-line, but we search line-by-line, so matching entire snippet fails.
+            // Instead, extract the text inside <mark>...</mark> tags and search for that.
+            let marked_term = if let Some(start) = result.snippet.find("<mark>") {
+                if let Some(end) = result.snippet[start..].find("</mark>") {
+                    result.snippet[start + 6..start + end].trim().to_string()
+                } else {
+                    // Fallback: use cleaned snippet
+                    result.snippet.replace("...", "").replace("<mark>", "").replace("</mark>", "").trim().to_string()
+                }
+            } else {
+                // Fallback: use cleaned snippet
+                result.snippet.replace("...", "").replace("<mark>", "").replace("</mark>", "").trim().to_string()
+            };
 
-            // Search for the snippet in file content
+            debug!("🔍 Searching for marked term '{}' in {}", marked_term, result.path);
+
+            // Search for the marked term in file content
             let content_lines: Vec<&str> = content.lines().collect();
             let mut found_line: Option<(usize, String)> = None;
 
             for (line_idx, line) in content_lines.iter().enumerate() {
                 // Check for non-empty trimmed lines before matching
                 let trimmed = line.trim();
-                if !trimmed.is_empty()
-                    && (line.contains(&clean_snippet) || clean_snippet.contains(trimmed))
+                if !trimmed.is_empty() && line.contains(&marked_term)
                 {
                     let initial_line_num = line_idx + 1; // 1-indexed
                     let initial_line_content = line.to_string();

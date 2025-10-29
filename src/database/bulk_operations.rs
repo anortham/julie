@@ -611,10 +611,24 @@ impl SymbolDatabase {
         // - Database consistent (old state preserved)
         // Next incremental run will re-process the modified files
 
-        if let Ok(()) = result.as_ref() {
+        // 🔥 FTS5 CRITICAL: Rebuild FTS5 indexes after incremental DELETE operations
+        // DELETE operations create rowid gaps in the base tables that FTS5 external
+        // content tables still reference, causing "missing row X from content table" errors.
+        // This is the same fix as delete_workspace_data() (workspace.rs:33-34)
+        if result.is_ok() {
+            debug!("🔄 Rebuilding FTS5 indexes after incremental update");
+            if let Err(e) = self.rebuild_symbols_fts() {
+                warn!("Failed to rebuild symbols_fts after incremental update: {}", e);
+                return Err(e);
+            }
+            if let Err(e) = self.rebuild_files_fts() {
+                warn!("Failed to rebuild files_fts after incremental update: {}", e);
+                return Err(e);
+            }
+
             let duration = start_time.elapsed();
             info!(
-                "✅ Atomic incremental update complete in {:.2}ms",
+                "✅ Atomic incremental update complete (with FTS5 rebuild) in {:.2}ms",
                 duration.as_millis()
             );
         }
