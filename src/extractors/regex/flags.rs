@@ -62,8 +62,13 @@ pub(crate) fn extract_unicode_property_name(property_text: &str) -> String {
         .or_else(|| property_text.find(r"\P{"))
     {
         if let Some(end) = property_text[start..].find('}') {
-            let inner = &property_text[start + 3..start + end];
-            return inner.to_string();
+            let inner_start = start + 3;
+            let inner_end = start + end;
+            // SAFETY: Check char boundaries before slicing to prevent UTF-8 panic
+            if property_text.is_char_boundary(inner_start) && property_text.is_char_boundary(inner_end) {
+                let inner = &property_text[inner_start..inner_end];
+                return inner.to_string();
+            }
         }
     }
     "unknown".to_string()
@@ -85,12 +90,20 @@ pub(crate) fn extract_group_number(backref_text: &str) -> Option<String> {
 pub(crate) fn extract_backref_group_name(backref_text: &str) -> Option<String> {
     if let Some(start) = backref_text.find(r"\k<") {
         if let Some(end) = backref_text[start + 3..].find('>') {
-            return Some(backref_text[start + 3..start + 3 + end].to_string());
+            let end_idx = start + 3 + end;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if backref_text.is_char_boundary(start + 3) && backref_text.is_char_boundary(end_idx) {
+                return Some(backref_text[start + 3..end_idx].to_string());
+            }
         }
     }
     if let Some(start) = backref_text.find("(?P=") {
         if let Some(end) = backref_text[start + 4..].find(')') {
-            return Some(backref_text[start + 4..start + 4 + end].to_string());
+            let end_idx = start + 4 + end;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if backref_text.is_char_boundary(start + 4) && backref_text.is_char_boundary(end_idx) {
+                return Some(backref_text[start + 4..end_idx].to_string());
+            }
         }
     }
     None
@@ -100,7 +113,12 @@ pub(crate) fn extract_backref_group_name(backref_text: &str) -> Option<String> {
 pub(crate) fn extract_condition(conditional_text: &str) -> String {
     if let Some(start) = conditional_text.find("(?(") {
         if let Some(end) = conditional_text[start + 3..].find(')') {
-            return conditional_text[start + 3..start + 3 + end].to_string();
+            let cond_start = start + 3;
+            let cond_end = start + 3 + end;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if conditional_text.is_char_boundary(cond_start) && conditional_text.is_char_boundary(cond_end) {
+                return conditional_text[cond_start..cond_end].to_string();
+            }
         }
     }
     "unknown".to_string()

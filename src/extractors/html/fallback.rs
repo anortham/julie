@@ -62,7 +62,14 @@ impl FallbackExtractor {
     fn find_doctype(content: &str) -> Option<String> {
         if let Some(start) = content.find("<!DOCTYPE") {
             if let Some(end) = content[start..].find('>') {
-                return Some(content[start..start + end + 1].to_string());
+                let total_len = start + end + 1;
+                // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+                if content.is_char_boundary(total_len) {
+                    return Some(content[start..total_len].to_string());
+                } else {
+                    // Fallback: return complete DOCTYPE up to found end, or full content if boundary check fails
+                    return Some(content.to_string());
+                }
             }
         }
         None

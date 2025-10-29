@@ -205,8 +205,12 @@ pub(super) fn extract_alignment_attributes(
     // Check for ALIGN(CACHE_LINE_SIZE) or similar patterns
     if let Some(align_start) = node_text.find("ALIGN(") {
         if let Some(align_end) = node_text[align_start..].find(')') {
-            let align_attr = &node_text[align_start..align_start + align_end + 1];
-            attributes.push(align_attr.to_string());
+            let end_idx = align_start + align_end + 1;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if node_text.is_char_boundary(align_start) && node_text.is_char_boundary(end_idx) {
+                let align_attr = &node_text[align_start..end_idx];
+                attributes.push(align_attr.to_string());
+            }
         }
     }
 
@@ -215,9 +219,13 @@ pub(super) fn extract_alignment_attributes(
         let parent_text = base.get_node_text(&parent);
         if let Some(align_start) = parent_text.find("ALIGN(") {
             if let Some(align_end) = parent_text[align_start..].find(')') {
-                let align_attr = &parent_text[align_start..align_start + align_end + 1];
-                if !attributes.contains(&align_attr.to_string()) {
-                    attributes.push(align_attr.to_string());
+                let end_idx = align_start + align_end + 1;
+                // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+                if parent_text.is_char_boundary(align_start) && parent_text.is_char_boundary(end_idx) {
+                    let align_attr = &parent_text[align_start..end_idx];
+                    if !attributes.contains(&align_attr.to_string()) {
+                        attributes.push(align_attr.to_string());
+                    }
                 }
             }
         }

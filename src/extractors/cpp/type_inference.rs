@@ -32,7 +32,13 @@ fn infer_function_return_type(symbol: &Symbol) -> Option<String> {
     // Remove template parameters if present
     let signature = if let Some(template_match) = signature.find("template<") {
         if let Some(newline_pos) = signature[template_match..].find('\n') {
-            &signature[template_match + newline_pos + 1..]
+            let end_idx = template_match + newline_pos + 1;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if signature.is_char_boundary(end_idx) {
+                &signature[end_idx..]
+            } else {
+                signature
+            }
         } else {
             signature
         }

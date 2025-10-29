@@ -54,17 +54,20 @@ fn extract_identifier_from_node(
             // Try to extract \k<name> pattern manually
             if content_after.starts_with("\\k<") {
                 if let Some(end_pos) = content_after.find('>') {
-                    let group_name = content_after[3..end_pos].to_string();
-                    if !group_name.is_empty() {
-                        let containing_symbol_id =
-                            find_containing_symbol_id(base, node, symbol_map);
+                    // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+                    if content_after.is_char_boundary(3) && content_after.is_char_boundary(end_pos) {
+                        let group_name = content_after[3..end_pos].to_string();
+                        if !group_name.is_empty() {
+                            let containing_symbol_id =
+                                find_containing_symbol_id(base, node, symbol_map);
 
-                        base.create_identifier(
-                            &node,
-                            group_name,
-                            IdentifierKind::Call,
-                            containing_symbol_id,
-                        );
+                            base.create_identifier(
+                                &node,
+                                group_name,
+                                IdentifierKind::Call,
+                                containing_symbol_id,
+                            );
+                        }
                     }
                 }
             }
@@ -115,12 +118,20 @@ fn extract_identifier_from_node(
 pub(crate) fn extract_group_name(group_text: &str) -> Option<String> {
     if let Some(start) = group_text.find("(?<") {
         if let Some(end) = group_text[start + 3..].find('>') {
-            return Some(group_text[start + 3..start + 3 + end].to_string());
+            let end_idx = start + 3 + end;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if group_text.is_char_boundary(start + 3) && group_text.is_char_boundary(end_idx) {
+                return Some(group_text[start + 3..end_idx].to_string());
+            }
         }
     }
     if let Some(start) = group_text.find("(?P<") {
         if let Some(end) = group_text[start + 4..].find('>') {
-            return Some(group_text[start + 4..start + 4 + end].to_string());
+            let end_idx = start + 4 + end;
+            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+            if group_text.is_char_boundary(start + 4) && group_text.is_char_boundary(end_idx) {
+                return Some(group_text[start + 4..end_idx].to_string());
+            }
         }
     }
     None

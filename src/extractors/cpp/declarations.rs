@@ -522,6 +522,10 @@ fn extract_destructor_from_declaration(
     let signature = base.get_node_text(&node);
     let name_start = signature.find('~')?;
     let name_end = signature[name_start..].find('(').map(|i| name_start + i)?;
+    // SAFETY: Check char boundaries before slicing to prevent UTF-8 panic
+    if !signature.is_char_boundary(name_start) || !signature.is_char_boundary(name_end) {
+        return None;
+    }
     let name = signature[name_start..name_end].to_string();
 
     let doc_comment = base.find_doc_comment(&node);

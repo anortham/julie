@@ -83,6 +83,7 @@ pub mod utils {
     pub mod query_expansion; // Query expansion tests
     pub mod token_estimation; // Token estimation tests
     pub mod utf8_truncation; // UTF-8 safe string truncation tests
+    pub mod utf8_boundary_safety; // UTF-8 boundary safety checks for unsafe slicing patterns
 
     pub mod exact_match_boost; // Exact match boost tests
 
