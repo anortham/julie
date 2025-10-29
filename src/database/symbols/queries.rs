@@ -166,10 +166,24 @@ impl SymbolDatabase {
             }
         }
 
+        // 🔥 FIX: Handle - (hyphen) specially - it's a tokenizer separator BUT also FTS5 subtraction operator
+        // FTS5 treats - as minus/NOT operator (e.g., "term1 -term2" excludes term2) BEFORE tokenization
+        // So "tree-sitter" is interpreted as "tree MINUS sitter" which causes "no such column: sitter"
+        // Solution: Split on - and OR the parts to match tokenized content
+        // Example: "DE-BOOST" → "DE OR BOOST", "tree-sitter" → "tree OR sitter"
+        if trimmed.contains('-') && !trimmed.chars().all(|c| c.is_ascii_digit() || c == '-') {
+            // Don't split negative numbers like "-42" or ranges like "1-10" - only split identifier-like strings
+            let parts: Vec<&str> = trimmed.split('-').filter(|s| !s.is_empty()).collect();
+            if parts.len() > 1 {
+                return parts.join(" OR ");
+            }
+        }
+
         // FTS5 special characters that need escaping
         // Note: Removed separators (_ - > .) since they're now tokenizer delimiters
         // : is a separator BUT also FTS5 column syntax, handled specially above
         // . is a separator BUT also FTS5 column syntax, handled specially above
+        // - is a separator BUT also FTS5 subtraction operator, handled specially above
         // + is not officially documented as special, but causes "syntax error near +" in practice
         // ! is used for NOT operator, ( ) for grouping - all need escaping when literal
         // = causes "syntax error near =" when used in queries
