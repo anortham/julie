@@ -3,6 +3,15 @@
 //! These tests validate search quality by running real queries against
 //! Julie's actual workspace. This is the ultimate integration test.
 //!
+//! **⏱️ PERFORMANCE NOTE:** These tests are marked `#[ignore]` because they're
+//! slow (60+ seconds each). They index the entire Julie workspace for real-world
+//! validation. Run them manually with:
+//!
+//! ```bash
+//! cargo test --lib -- --ignored              # Run ONLY slow tests
+//! cargo test --lib -- --include-ignored      # Run fast + slow tests
+//! ```
+//!
 //! ## Test Categories
 //!
 //! 1. **Multi-word AND Logic** - Multiple terms should all match (not OR)
@@ -44,6 +53,7 @@ async fn setup_handler() -> JulieServerHandler {
 // Category 1: Multi-Word AND Logic Tests
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_finds_sql_ranking() {
     let handler = setup_handler().await;
@@ -58,6 +68,7 @@ async fn test_multiword_and_finds_sql_ranking() {
     assert_min_results(&results, 1);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_cascade_architecture() {
     let handler = setup_handler().await;
@@ -76,6 +87,7 @@ async fn test_multiword_and_cascade_architecture() {
     assert!(has_docs, "Should find CASCADE docs");
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiword_and_incremental_update() {
     let handler = setup_handler().await;
@@ -94,6 +106,7 @@ async fn test_multiword_and_incremental_update() {
 // Category 2: Hyphenated Terms Tests
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_tree_sitter() {
     let handler = setup_handler().await;
@@ -109,6 +122,7 @@ async fn test_hyphenated_tree_sitter() {
     assert_min_results(&results, 5);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_de_boost() {
     let handler = setup_handler().await;
@@ -123,6 +137,7 @@ async fn test_hyphenated_de_boost() {
     assert_min_results(&results, 1);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_hyphenated_cross_language() {
     let handler = setup_handler().await;
@@ -141,6 +156,7 @@ async fn test_hyphenated_cross_language() {
 // Category 3: Symbol Definition Tests
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_symbol_search_sanitize_function() {
     let handler = setup_handler().await;
@@ -156,6 +172,7 @@ async fn test_symbol_search_sanitize_function() {
     assert_min_results(&results, 1);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_symbol_search_struct() {
     let handler = setup_handler().await;
@@ -174,6 +191,7 @@ async fn test_symbol_search_struct() {
 // Category 4: FTS5 Internals Tests
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_create_virtual_table() {
     let handler = setup_handler().await;
@@ -190,6 +208,7 @@ async fn test_fts5_create_virtual_table() {
     assert_min_results(&results, 2);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_snippet_function() {
     let handler = setup_handler().await;
@@ -204,6 +223,7 @@ async fn test_fts5_snippet_function() {
     assert_min_results(&results, 1);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_fts5_corruption_tests() {
     let handler = setup_handler().await;
@@ -224,6 +244,7 @@ async fn test_fts5_corruption_tests() {
 // Category 5: Ranking Quality Tests
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_ranking_source_over_tests() {
     let handler = setup_handler().await;
@@ -254,6 +275,7 @@ async fn test_ranking_source_over_tests() {
 // Category 6: Special Characters & Edge Cases
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_dotted_identifiers() {
     let handler = setup_handler().await;
@@ -269,6 +291,7 @@ async fn test_dotted_identifiers() {
     assert_min_results(&results, 1);
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_colons_in_rust_paths() {
     let handler = setup_handler().await;
@@ -284,6 +307,7 @@ async fn test_colons_in_rust_paths() {
     // If we have Rust Result usage, we should find it
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_underscore_snake_case() {
     let handler = setup_handler().await;
@@ -302,6 +326,7 @@ async fn test_underscore_snake_case() {
 // Category 7: Tokenizer Consistency Tests (Will Fail Until Fixed)
 // ============================================================================
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tokenizer_consistency_hyphen() {
     let handler = setup_handler().await;

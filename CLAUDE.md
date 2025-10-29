@@ -654,6 +654,51 @@ cargo tarpaulin
 cargo test --release
 ```
 
+### Test Performance Strategy
+
+**Fast Tests vs Slow Tests:**
+
+Julie's test suite is designed to run quickly during development, with slow integration tests marked as `#[ignore]`:
+
+**Fast Tests (default):**
+- Unit tests and focused integration tests
+- Run in <10 seconds total
+- Execute with: `cargo test`
+- Used during active development
+
+**Slow Dogfooding Tests (ignored by default):**
+- Real-world validation against Julie's own codebase
+- Index entire workspace and run complex queries
+- Take 60+ seconds each (16 tests total)
+- Located in: `src/tests/tools/search_quality/dogfood_tests.rs`
+
+**Running Slow Tests:**
+```bash
+# Run ONLY slow/ignored tests (for search quality validation)
+cargo test --lib -- --ignored
+
+# Run ALL tests (fast + slow) before releases
+cargo test --lib -- --include-ignored
+```
+
+**When to Run Dogfooding Tests:**
+- Before major releases
+- After significant search/ranking changes
+- After modifying FTS5 tokenization or query logic
+- When validating CASCADE architecture changes
+- Weekly regression checks
+
+**Test Categories (all marked `#[ignore]`):**
+1. Multi-word AND Logic (3 tests) - Validates boolean search operators
+2. Hyphenated Terms (3 tests) - Tests tokenizer separator handling
+3. Symbol Definitions (2 tests) - Verifies goto definition accuracy
+4. FTS5 Internals (3 tests) - SQL query and ranking validation
+5. Ranking Quality (1 test) - Source files rank above tests
+6. Special Characters (3 tests) - Dots, colons, underscores
+7. Tokenizer Consistency (1 test) - FTS5 tables use same tokenizer
+
+**Rationale:** Compiling Rust is already slow; running 16 slow integration tests during every `cargo test` would cripple the development cycle. Fast feedback loops are essential for productivity.
+
 ### 🚨 URGENT: Test Organization Tasks
 
 1. **Consolidate scattered tests** into `src/tests/` structure
