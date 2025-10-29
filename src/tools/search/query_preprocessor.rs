@@ -342,6 +342,16 @@ fn sanitize_standard_for_fts5(query: &str) -> String {
     // Just ensure we don't have problematic characters
     let mut result = query.to_string();
 
+    // Handle hyphens FIRST - FTS5 treats "-" as subtraction operator
+    // "tree-sitter" → "tree OR sitter" to match tokenized content
+    // Don't split negative numbers like "-42" or ranges like "1-10"
+    if result.contains('-') && !result.chars().all(|c| c.is_ascii_digit() || c == '-' || c == '.') {
+        let parts: Vec<&str> = result.split('-').filter(|s| !s.is_empty()).collect();
+        if parts.len() > 1 {
+            result = parts.join(" OR ");
+        }
+    }
+
     // Remove regex operators if present
     result = result.replace(".*", " ");
     result = result.replace(".+", " ");
