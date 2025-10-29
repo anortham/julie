@@ -1,8 +1,8 @@
 [package]
 name = "julie"
 version = "0.7.0"
-edition = "2021"
-authors = ["Claude & Murphy"]
+edition = "2024"
+authors = ["Alan"]
 description = "Julie - Cross-Platform Code Intelligence Server (Rising from Miller's ashes)"
 license = "MIT"
 
