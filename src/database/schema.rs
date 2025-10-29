@@ -100,15 +100,16 @@ impl SymbolDatabase {
     /// CASCADE: Create FTS5 virtual table for full-text search on file content
     pub(crate) fn create_files_fts_table(&self) -> Result<()> {
         self.conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+            r#"CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
                 path,
                 content,
+                tokenize = "unicode61 separators '_::->.'",
                 content='files',
                 content_rowid='rowid'
-            )",
+            )"#,
             [],
         )?;
-        debug!("Created files_fts virtual table");
+        debug!("Created files_fts virtual table with unicode61 tokenizer (separators: _::->.)");
         Ok(())
     }
 

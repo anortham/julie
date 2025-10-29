@@ -222,15 +222,34 @@ impl SymbolDatabase {
             pattern, sanitized_pattern
         );
 
-        // 🔥 FTS5 MATCH with BM25 ranking - no workspace filter needed
-        // Prioritize exact name matches with 10x weight, then signature (5x), doc_comment (2x), code_context (1x)
+        // 🔥 FTS5 MATCH with BM25 ranking + SymbolKind boost - no workspace filter needed
+        // Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
+        // SymbolKind boost: Definitions (class/struct/interface) rank higher than imports/exports
         let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
                            s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
                            s.parent_id, s.metadata, s.semantic_group, s.confidence
                      FROM symbols s
                      INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
                      WHERE symbols_fts MATCH ?1
-                     ORDER BY bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0)";
+                     ORDER BY
+                       bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0) *
+                       CASE s.kind
+                         WHEN 'class' THEN 2.5
+                         WHEN 'struct' THEN 2.5
+                         WHEN 'interface' THEN 2.5
+                         WHEN 'function' THEN 2.0
+                         WHEN 'method' THEN 2.0
+                         WHEN 'enum' THEN 1.8
+                         WHEN 'module' THEN 1.8
+                         WHEN 'namespace' THEN 1.8
+                         WHEN 'property' THEN 1.2
+                         WHEN 'field' THEN 1.2
+                         WHEN 'variable' THEN 0.8
+                         WHEN 'constant' THEN 0.8
+                         WHEN 'import' THEN 0.1
+                         WHEN 'export' THEN 0.1
+                         ELSE 0.3
+                       END";
 
         let mut stmt = self.conn.prepare(query)?;
         let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;

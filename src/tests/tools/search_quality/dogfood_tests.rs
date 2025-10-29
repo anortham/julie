@@ -303,14 +303,11 @@ async fn test_underscore_snake_case() {
 // ============================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore] // Enable after fixing tokenizer inconsistency
 async fn test_tokenizer_consistency_hyphen() {
     let handler = setup_handler().await;
 
-    // This test will FAIL until files_fts gets the same tokenizer as symbols_fts
-    //
-    // Problem: files_fts uses default tokenizer (no custom separators)
-    //          symbols_fts uses unicode61 with separators
+    // FIXED: files_fts now uses the same tokenizer as symbols_fts
+    // Both use: tokenize = "unicode61 separators '_::->.''"
     //
     // Query "tree-sitter" should work the same in both
 
