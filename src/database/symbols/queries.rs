@@ -188,17 +188,11 @@ impl SymbolDatabase {
             let escaped = trimmed.replace('"', "\"\""); // FTS5 uses doubled quotes for escaping
             format!("\"{}\"", escaped)
         } else {
-            // 🔥 FIX: Multi-word queries should use OR, not implicit AND
-            // "refresh workspace embedding" → "refresh OR workspace OR embedding"
-            // This makes search more forgiving and user-friendly
-            let words: Vec<&str> = trimmed.split_whitespace().collect();
-            if words.len() > 1 {
-                // Multi-word query without operators - use OR for flexibility
-                words.join(" OR ")
-            } else {
-                // Single word - pass through as-is
-                trimmed.to_string()
-            }
+            // Multi-word queries use FTS5's default implicit AND behavior
+            // "bm25 rank ORDER" → matches documents containing ALL terms (AND logic)
+            // Users can explicitly use OR/NOT operators if needed
+            // This provides precise, relevant results instead of "any of these words" noise
+            trimmed.to_string()
         }
     }
 
