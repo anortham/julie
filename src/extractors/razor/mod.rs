@@ -93,7 +93,7 @@ impl RazorExtractor {
                 symbol = self.extract_html_element(node, parent_id.as_deref());
                 // Also extract binding attributes from HTML elements
                 self.extract_binding_attributes_from_element(node, symbols, parent_id.as_deref());
-                // Create external component symbols for uppercase tag names (Miller's approach)
+                // Create external component symbols for uppercase tag names (standard approach)
                 self.create_external_component_symbols_if_needed(node, symbols);
             }
             "razor_component" => {

@@ -1,4 +1,5 @@
 // Submodule declarations
+pub mod advanced_features;
 pub mod classes;
 pub mod extractor;
 pub mod flags;

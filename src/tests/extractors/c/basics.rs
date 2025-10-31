@@ -234,7 +234,7 @@ mod tests {
         let (mut extractor, tree) = parse_c(code, "basic.c");
         let symbols = extractor.extract_symbols(&tree);
 
-        // Include statements - Miller expects these to be found
+        // Include statements - expects these to be found
         let stdio_include = symbols.iter().find(|s| {
             s.signature
                 .as_ref()
@@ -250,7 +250,7 @@ mod tests {
         });
         assert!(custom_include.is_some());
 
-        // Macro definitions - Miller tests these specific macros
+        // Macro definitions - Tests these specific macros
         let max_size_macro = symbols.iter().find(|s| s.name == "MAX_SIZE");
         assert!(max_size_macro.is_some());
         assert_eq!(max_size_macro.unwrap().kind, SymbolKind::Constant);
@@ -276,7 +276,7 @@ mod tests {
         let log_macro = symbols.iter().find(|s| s.name == "LOG");
         assert!(log_macro.is_some());
 
-        // Typedefs - Miller checks these type definitions
+        // Typedefs - checks these type definitions
         let error_code_typedef = symbols.iter().find(|s| s.name == "ErrorCode");
         assert!(error_code_typedef.is_some());
         assert_eq!(error_code_typedef.as_ref().unwrap().kind, SymbolKind::Type);
@@ -304,7 +304,7 @@ mod tests {
             .unwrap()
             .contains("typedef struct Point"));
 
-        // Struct definitions - Miller expects these as classes
+        // Struct definitions - expects these as classes
         let point_struct = symbols.iter().find(|s| {
             s.name == "Point"
                 && s.kind == SymbolKind::Class
@@ -322,7 +322,7 @@ mod tests {
         });
         assert!(rectangle_struct.is_some());
 
-        // Enum definitions - Miller tests enum extraction
+        // Enum definitions - Tests enum extraction
         let status_enum = symbols.iter().find(|s| s.name == "Status");
         assert!(status_enum.is_some());
         assert_eq!(status_enum.unwrap().kind, SymbolKind::Enum);
@@ -330,7 +330,7 @@ mod tests {
         let log_level_enum = symbols.iter().find(|s| s.name == "LogLevel");
         assert!(log_level_enum.is_some());
 
-        // Enum values - Miller extracts these as constants
+        // Enum values - extracts these as constants
         let status_success = symbols.iter().find(|s| s.name == "STATUS_SUCCESS");
         assert!(status_success.is_some());
         assert_eq!(status_success.unwrap().kind, SymbolKind::Constant);
@@ -338,7 +338,7 @@ mod tests {
         let log_debug = symbols.iter().find(|s| s.name == "LOG_LEVEL_DEBUG");
         assert!(log_debug.is_some());
 
-        // Global variables - Miller tests various variable types
+        // Global variables - Tests various variable types
         let global_counter = symbols.iter().find(|s| s.name == "global_counter");
         assert!(global_counter.is_some());
         assert_eq!(global_counter.unwrap().kind, SymbolKind::Variable);
@@ -385,7 +385,7 @@ mod tests {
             .unwrap()
             .contains("volatile int interrupt_flag"));
 
-        // Array variables - Miller tests array declarations
+        // Array variables - Tests array declarations
         let global_buffer = symbols.iter().find(|s| s.name == "global_buffer");
         assert!(global_buffer.is_some());
         assert!(global_buffer
@@ -404,7 +404,7 @@ mod tests {
             .unwrap()
             .contains("Point origin = {0.0, 0.0}"));
 
-        // Function declarations and definitions - Miller tests various function types
+        // Function declarations and definitions - Tests various function types
         let add_function = symbols.iter().find(|s| s.name == "add");
         assert!(add_function.is_some());
         assert_eq!(add_function.unwrap().kind, SymbolKind::Function);
@@ -427,7 +427,7 @@ mod tests {
             .unwrap()
             .contains("double multiply(double x, double y)"));
 
-        // Complex parameter functions - Miller tests complex signatures
+        // Complex parameter functions - Tests complex signatures
         let process_data_function = symbols.iter().find(|s| s.name == "process_data");
         assert!(process_data_function.is_some());
         assert!(process_data_function
@@ -455,7 +455,7 @@ mod tests {
             .unwrap()
             .contains("double sum_array(const double arr[], int count)"));
 
-        // Variadic function - Miller tests variadic parameters
+        // Variadic function - Tests variadic parameters
         let sum_variadic_function = symbols.iter().find(|s| s.name == "sum_variadic");
         assert!(sum_variadic_function.is_some());
         assert!(sum_variadic_function
@@ -465,7 +465,7 @@ mod tests {
             .unwrap()
             .contains("int sum_variadic(int count, ...)"));
 
-        // Static function - Miller tests static functions
+        // Static function - Tests static functions
         let internal_helper = symbols.iter().find(|s| s.name == "internal_helper");
         assert!(internal_helper.is_some());
         assert!(internal_helper
@@ -475,7 +475,7 @@ mod tests {
             .unwrap()
             .contains("static void internal_helper()"));
 
-        // Inline function - Miller tests inline functions
+        // Inline function - Tests inline functions
         let square_function = symbols.iter().find(|s| s.name == "square");
         assert!(square_function.is_some());
         assert!(square_function
@@ -485,7 +485,7 @@ mod tests {
             .unwrap()
             .contains("inline int square(int x)"));
 
-        // Function returning pointer - Miller tests pointer return types
+        // Function returning pointer - Tests pointer return types
         let create_greeting = symbols.iter().find(|s| s.name == "create_greeting");
         assert!(create_greeting.is_some());
         assert!(create_greeting
@@ -502,7 +502,7 @@ mod tests {
                 .map_or(false, |sig| sig.contains("CompareFn"))
         }));
 
-        // Function with function pointer parameter - Miller tests complex parameter types
+        // Function with function pointer parameter - Tests complex parameter types
         let sort_array_function = symbols.iter().find(|s| s.name == "sort_array");
         assert!(sort_array_function.is_some());
         assert!(sort_array_function
@@ -512,14 +512,14 @@ mod tests {
             .unwrap()
             .contains("CompareFn compare"));
 
-        // Comparison functions - Miller tests these implementations
+        // Comparison functions - Tests these implementations
         let compare_integers = symbols.iter().find(|s| s.name == "compare_integers");
         assert!(compare_integers.is_some());
 
         let compare_strings = symbols.iter().find(|s| s.name == "compare_strings");
         assert!(compare_strings.is_some());
 
-        // Main function - Miller tests main function signature
+        // Main function - Tests main function signature
         let main_function = symbols.iter().find(|s| s.name == "main");
         assert!(main_function.is_some());
         assert!(main_function

@@ -1,4 +1,4 @@
-// Port of Miller's comprehensive Vue extractor tests
+// Implementation of comprehensive Vue extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
 // Submodule declarations

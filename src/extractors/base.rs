@@ -1,10 +1,10 @@
 // Base Extractor Types and Traits for Julie
 //
-// This module is a precise port of Miller's base-extractor.ts (404 lines).
+// This module is a precise Implementation of base-extractor.ts (404 lines).
 // Every method, utility, and algorithm has been carefully ported to maintain exact functionality.
 //
-// CRITICAL: This represents months of Miller development work. Any changes must maintain
-// 100% functional parity with Miller's extractors and pass all Miller's tests.
+// CRITICAL: This represents months of development work. Any changes must maintain
+// 100% functional parity with extractors and pass all tests.
 
 use md5;
 use serde::{Deserialize, Serialize};
@@ -38,10 +38,10 @@ impl Default for ContextConfig {
 
 /// A code symbol (function, class, variable, etc.) extracted from source code
 ///
-/// Direct port of Miller's Symbol interface - exact field mapping maintained
+/// Direct Implementation of Symbol interface - exact field mapping maintained
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Symbol {
-    /// Unique identifier for this symbol (MD5 hash like Miller)
+    /// Unique identifier for this symbol (MD5 hash standard format)
     pub id: String,
     /// Symbol name as it appears in code
     pub name: String,
@@ -51,13 +51,13 @@ pub struct Symbol {
     pub language: String,
     /// File path where this symbol is defined
     pub file_path: String,
-    /// Start line number (1-based, exactly like Miller)
+    /// Start line number (1-based, exactly standard format)
     pub start_line: u32,
-    /// Start column number (0-based, exactly like Miller)
+    /// Start column number (0-based, exactly standard format)
     pub start_column: u32,
-    /// End line number (1-based, exactly like Miller)
+    /// End line number (1-based, exactly standard format)
     pub end_line: u32,
-    /// End column number (0-based, exactly like Miller)
+    /// End column number (0-based, exactly standard format)
     pub end_column: u32,
     /// Start byte offset in file
     pub start_byte: u32,
@@ -65,7 +65,7 @@ pub struct Symbol {
     pub end_byte: u32,
     /// Function/method signature
     pub signature: Option<String>,
-    /// Documentation comment (using Miller's extraction algorithm)
+    /// Documentation comment (using extraction algorithm)
     pub doc_comment: Option<String>,
     /// Visibility (public, private, protected)
     pub visibility: Option<Visibility>,
@@ -162,9 +162,9 @@ impl IdentifierKind {
     }
 }
 
-/// Symbol kinds - direct port of Miller's SymbolKind enum
+/// Symbol kinds - Implementation of SymbolKind enum
 ///
-/// CRITICAL: Order and values must match Miller exactly for test compatibility
+/// CRITICAL: Order and values must maintain test compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SymbolKind {
@@ -259,7 +259,7 @@ impl std::fmt::Display for SymbolKind {
     }
 }
 
-/// Visibility levels for symbols - direct port from Miller
+/// Visibility levels for symbols - reference implementation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
@@ -278,7 +278,7 @@ impl std::fmt::Display for Visibility {
     }
 }
 
-/// Relationship between two symbols - direct port from Miller
+/// Relationship between two symbols - reference implementation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Relationship {
     /// Unique identifier for this relationship
@@ -294,7 +294,7 @@ pub struct Relationship {
     /// File where this relationship occurs
     #[serde(rename = "filePath")]
     pub file_path: String,
-    /// Line number where relationship occurs (1-based like Miller)
+    /// Line number where relationship occurs (1-based standard format)
     #[serde(rename = "lineNumber")]
     pub line_number: u32,
     /// Confidence level (0.0 to 1.0)
@@ -303,7 +303,7 @@ pub struct Relationship {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
-/// Relationship kinds - direct port from Miller's RelationshipKind enum
+/// Relationship kinds - direct port from RelationshipKind enum
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationshipKind {
@@ -370,7 +370,7 @@ impl RelationshipKind {
     // No need for an inherent method that shadows it
 }
 
-/// Type information for a symbol - direct port from Miller
+/// Type information for a symbol - reference implementation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TypeInfo {
     /// Symbol this type info belongs to
@@ -395,7 +395,7 @@ pub struct TypeInfo {
 
 /// Base implementation for language extractors
 ///
-/// Direct port of Miller's BaseExtractor class with all utility methods
+/// Implementation of BaseExtractor class with all utility methods
 pub struct BaseExtractor {
     pub language: String,
     pub file_path: String,
@@ -408,7 +408,7 @@ pub struct BaseExtractor {
 }
 
 impl BaseExtractor {
-    /// Create new abstract extractor - port of Miller's constructor
+    /// Create new abstract extractor - port of constructor
     ///
     /// # Phase 2: Relative Unix-Style Path Storage
     /// Now accepts workspace_root to convert absolute paths to relative Unix-style paths
@@ -469,7 +469,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Get text from a tree-sitter node - exact port of Miller's getNodeText
+    /// Get text from a tree-sitter node - exact port of getNodeText
     pub fn get_node_text(&self, node: &Node) -> String {
         let start_byte = node.start_byte();
         let end_byte = node.end_byte();
@@ -483,7 +483,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Find documentation comment for a node - exact port of Miller's findDocComment
+    /// Find documentation comment for a node - exact port of findDocComment
     pub fn find_doc_comment(&self, node: &Node) -> Option<String> {
         let mut comments = Vec::new();
 
@@ -583,7 +583,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Generate ID for a symbol - exact port of Miller's generateId (MD5 hash)
+    /// Generate ID for a symbol - exact port of generateId (MD5 hash)
     pub fn generate_id(&self, name: &str, line: u32, column: u32) -> String {
         let input = format!("{}:{}:{}:{}", self.file_path, name, line, column);
         let digest = md5::compute(input.as_bytes());
@@ -653,7 +653,7 @@ impl BaseExtractor {
         &self.context_config
     }
 
-    /// Create a symbol - exact port of Miller's createSymbol method
+    /// Create a symbol - exact port of createSymbol method
     pub fn create_symbol(
         &mut self,
         node: &Node,
@@ -675,8 +675,8 @@ impl BaseExtractor {
             kind,
             language: self.language.clone(),
             file_path: self.file_path.clone(),
-            start_line: (start_pos.row + 1) as u32, // Miller uses 1-based line numbers
-            start_column: start_pos.column as u32,  // Miller uses 0-based column numbers
+            start_line: (start_pos.row + 1) as u32, // Uses 1-based line numbers
+            start_column: start_pos.column as u32,  // Uses 0-based column numbers
             end_line: (end_pos.row + 1) as u32,
             end_column: end_pos.column as u32,
             start_byte: node.start_byte() as u32,
@@ -738,7 +738,7 @@ impl BaseExtractor {
         identifier
     }
 
-    /// Create a relationship - exact port of Miller's createRelationship
+    /// Create a relationship - exact port of createRelationship
     pub fn create_relationship(
         &self,
         from_symbol_id: String,
@@ -760,13 +760,13 @@ impl BaseExtractor {
             to_symbol_id,
             kind,
             file_path: self.file_path.clone(),
-            line_number: (node.start_position().row + 1) as u32, // 1-based like Miller
+            line_number: (node.start_position().row + 1) as u32, // 1-based standard format
             confidence: confidence.unwrap_or(1.0),
             metadata,
         }
     }
 
-    /// Find containing symbol - exact port of Miller's findContainingSymbol
+    /// Find containing symbol - exact port of findContainingSymbol
     pub fn find_containing_symbol<'a>(
         &self,
         node: &Node,
@@ -783,7 +783,7 @@ impl BaseExtractor {
 
                 let line_contains = s.start_line <= pos_line && s.end_line >= pos_line;
 
-                // For column containment, handle multi-line spans exactly like Miller
+                // For column containment, handle multi-line spans exactly standard format
                 let col_contains = if pos_line == s.start_line && pos_line == s.end_line {
                     // Single line span
                     s.start_column <= pos_column && s.end_column >= pos_column
@@ -806,7 +806,7 @@ impl BaseExtractor {
             return None;
         }
 
-        // Priority order - exact copy from Miller
+        // Priority order - reference implementation
         let get_priority = |kind: &SymbolKind| -> u32 {
             match kind {
                 SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor => 1,
@@ -825,7 +825,7 @@ impl BaseExtractor {
                 return priority_a.cmp(&priority_b);
             }
 
-            // Then by size (smaller first) - exact Miller calculation
+            // Then by size (smaller first) - reference calculation
             let size_a = (a.end_line - a.start_line) * 1000 + (a.end_column - a.start_column);
             let size_b = (b.end_line - b.start_line) * 1000 + (b.end_column - b.start_column);
             size_a.cmp(&size_b)
@@ -834,7 +834,7 @@ impl BaseExtractor {
         Some(containing_symbols[0])
     }
 
-    /// Extract visibility - exact port of Miller's extractVisibility
+    /// Extract visibility - exact port of extractVisibility
     pub fn extract_visibility(&self, node: &Node) -> Option<Visibility> {
         // Look for visibility modifiers in child nodes
         for i in 0..node.child_count() {
@@ -861,7 +861,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Extract identifier name - exact port of Miller's extractIdentifierName
+    /// Extract identifier name - exact port of extractIdentifierName
     pub fn extract_identifier_name(&self, node: &Node) -> String {
         // Try to find the identifier node using field name
         if let Some(name_node) = node.child_by_field_name("name") {
@@ -877,7 +877,7 @@ impl BaseExtractor {
             }
         }
 
-        // Fallback: extract from the node text using regex (exact Miller pattern)
+        // Fallback: extract from the node text using regex (standard pattern)
         let node_text = self.get_node_text(node);
         let text = node_text.trim();
         if let Some(captures) = regex::Regex::new(r"^[a-zA-Z_$][a-zA-Z0-9_$]*")
@@ -890,7 +890,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Walk tree with visitor - exact port of Miller's walkTree
+    /// Walk tree with visitor - exact port of walkTree
     #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     pub fn walk_tree<F>(&self, node: &Node, visitor: &mut F, depth: u32)
     where
@@ -905,7 +905,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Find nodes by type - exact port of Miller's findNodesByType
+    /// Find nodes by type - exact port of findNodesByType
     pub fn find_nodes_by_type<'a>(&self, node: &Node<'a>, node_type: &str) -> Vec<Node<'a>> {
         let mut nodes = Vec::new();
         self.find_nodes_by_type_recursive(node, node_type, &mut nodes);
@@ -930,7 +930,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Find parent of type - exact port of Miller's findParentOfType
+    /// Find parent of type - exact port of findParentOfType
     pub fn find_parent_of_type<'a>(&self, node: &Node<'a>, parent_type: &str) -> Option<Node<'a>> {
         let mut current = node.parent();
         while let Some(parent) = current {
@@ -942,12 +942,12 @@ impl BaseExtractor {
         None
     }
 
-    /// Check if node has error - exact port of Miller's hasError
+    /// Check if node has error - exact port of hasError
     pub fn has_error(&self, node: &Node) -> bool {
         node.has_error() || node.kind() == "ERROR"
     }
 
-    /// Get children of type - exact port of Miller's getChildrenOfType
+    /// Get children of type - exact port of getChildrenOfType
     pub fn get_children_of_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Vec<Node<'a>> {
         let mut children = Vec::new();
         for i in 0..node.child_count() {
@@ -960,7 +960,7 @@ impl BaseExtractor {
         children
     }
 
-    /// Get field text safely - exact port of Miller's getFieldText
+    /// Get field text safely - exact port of getFieldText
     pub fn get_field_text(&self, node: &Node, field_name: &str) -> Option<String> {
         node.child_by_field_name(field_name)
             .map(|field_node| self.get_node_text(&field_node))
@@ -977,7 +977,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Reset extractor state - exact port of Miller's reset
+    /// Reset extractor state - exact port of reset
     pub fn reset(&mut self) {
         self.symbol_map.clear();
         self.relationships.clear();
@@ -985,7 +985,7 @@ impl BaseExtractor {
         self.identifiers.clear(); // NEW: Clear identifiers too
     }
 
-    /// Traverse tree with error handling - exact port of Miller's traverseTree
+    /// Traverse tree with error handling - exact port of traverseTree
     #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
     pub fn traverse_tree<F>(&self, node: &Node, callback: &mut F)
     where
@@ -1016,7 +1016,7 @@ impl BaseExtractor {
         }
     }
 
-    /// Find first child by type - exact port of Miller's findChildByType
+    /// Find first child by type - exact port of findChildByType
     pub fn find_child_by_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Option<Node<'a>> {
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -1028,7 +1028,7 @@ impl BaseExtractor {
         None
     }
 
-    /// Find children by type - exact port of Miller's findChildrenByType
+    /// Find children by type - exact port of findChildrenByType
     pub fn find_children_by_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Vec<Node<'a>> {
         let mut results = Vec::new();
         for i in 0..node.child_count() {
@@ -1041,7 +1041,7 @@ impl BaseExtractor {
         results
     }
 
-    /// Find child by multiple types - exact port of Miller's findChildByTypes
+    /// Find child by multiple types - exact port of findChildByTypes
     pub fn find_child_by_types<'a>(&self, node: &Node<'a>, types: &[&str]) -> Option<Node<'a>> {
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -1053,12 +1053,12 @@ impl BaseExtractor {
         None
     }
 
-    /// Extract documentation - alias for find_doc_comment (Miller consistency)
+    /// Extract documentation - alias for find_doc_comment (API consistency)
     pub fn extract_documentation(&self, node: &Node) -> Option<String> {
         self.find_doc_comment(node)
     }
 
-    /// Get extraction results - exact port of Miller's getResults
+    /// Get extraction results - exact port of getResults
     pub fn get_results(&self) -> ExtractionResults {
         ExtractionResults {
             symbols: self.symbol_map.values().cloned().collect(),
@@ -1069,7 +1069,7 @@ impl BaseExtractor {
     }
 }
 
-/// Options for creating symbols - matches Miller's createSymbol options
+/// Options for creating symbols - matches createSymbol options
 #[derive(Debug, Clone, Default)]
 pub struct SymbolOptions {
     pub signature: Option<String>,
@@ -1079,7 +1079,7 @@ pub struct SymbolOptions {
     pub doc_comment: Option<String>,
 }
 
-/// Extraction results - matches Miller's getResults return type
+/// Extraction results - matches getResults return type
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // TODO: Return type for extraction operations
 pub struct ExtractionResults {

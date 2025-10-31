@@ -24,7 +24,10 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
 
             // Extract type from PowerShell type annotations
             if let Some(captures) = TYPE_ANNOTATION_RE.captures(signature) {
-                type_name = captures.get(1).unwrap().as_str().to_lowercase();
+                let captured_type = captures.get(1).map_or("", |m| m.as_str());
+                if !captured_type.is_empty() {
+                    type_name = captured_type.to_lowercase();
+                }
             } else if signature.contains("=") {
                 // Infer from value
                 let value = signature.split('=').nth(1).map_or("", |v| v.trim());

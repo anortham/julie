@@ -1,4 +1,4 @@
-//! C++ extractor - Port of Miller's comprehensive C++ extraction logic
+//! C++ extractor - Implementation of comprehensive C++ extraction logic
 //! Modularized architecture with clear separation of concerns:
 //! - helpers: Template parameters, base classes, node utilities
 //! - types: Class/struct/union/enum extraction
@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
 /// C++ extractor for extracting symbols and relationships from C++ source code
-/// Direct port of Miller's CppExtractor with all advanced C++ features
+/// Direct Implementation of CppExtractor with all advanced C++ features
 pub struct CppExtractor {
     base: BaseExtractor,
     processed_nodes: HashSet<String>,

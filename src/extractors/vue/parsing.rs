@@ -54,7 +54,7 @@ impl VueSectionBuilder {
 }
 
 /// Parse Vue SFC structure to extract template, script, and style sections
-/// Port of Miller's parseVueSFC logic
+/// Implementation of parseVueSFC logic
 pub(crate) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn std::error::Error>> {
     let mut sections = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
@@ -65,7 +65,7 @@ pub(crate) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn st
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
 
-        // Check for section start - following Miller's regex patterns
+        // Check for section start - following regex patterns
         let template_match = TEMPLATE_START_RE.captures(trimmed);
         let script_match = SCRIPT_START_RE.captures(trimmed);
         let style_match = STYLE_START_RE.captures(trimmed);
@@ -126,7 +126,7 @@ pub(crate) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn st
         }
     }
 
-    // Handle unclosed section - following Miller's logic
+    // Handle unclosed section - following reference logic
     if let Some(section) = current_section {
         sections.push(section.build(section_content.join("\n"), lines.len()));
     }

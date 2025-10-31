@@ -235,7 +235,7 @@ pub mod test_utils;
 pub mod helpers;
 
 // ============================================================================
-// EXTRACTOR TESTS - All 26 language extractors (100% Miller parity)
+// EXTRACTOR TESTS - All 26 language extractors (Complete language support)
 // ============================================================================
 pub mod extractors {
     pub mod base; // BaseExtractor tests

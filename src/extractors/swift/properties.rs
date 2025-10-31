@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts Swift properties, variables, and subscripts
 impl SwiftExtractor {
-    /// Port of Miller's extractVariable method
+    /// Implementation of extractVariable method
     pub(super) fn extract_variable(
         &mut self,
         node: Node,
@@ -88,7 +88,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's extractProperty method
+    /// Implementation of extractProperty method
     pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
@@ -171,7 +171,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractSubscript method
+    /// Implementation of extractSubscript method
     pub(super) fn extract_subscript(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "subscript".to_string();
         let parameters = self

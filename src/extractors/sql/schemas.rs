@@ -21,7 +21,7 @@ pub(super) fn extract_table_definition(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's exact logic: Look for table name inside object_reference node
+    // Port exact logic: Look for table name inside object_reference node
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let table_name_node = if let Some(obj_ref) = object_ref_node {
         base.find_child_by_type(&obj_ref, "identifier")
@@ -83,7 +83,7 @@ pub(super) fn extract_view(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port of Miller's view extraction from error nodes
+    // Implementation of view extraction from error nodes
     let node_text = base.get_node_text(&node);
 
     // Extract views from ERROR nodes
@@ -119,7 +119,7 @@ pub(super) fn extract_index(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractIndex logic
+    // Port extractIndex logic
     let name_node = base
         .find_child_by_type(&node, "identifier")
         .or_else(|| base.find_child_by_type(&node, "index_name"))?;
@@ -140,38 +140,44 @@ pub(super) fn extract_index(
     // Add table and column information if found
     let on_regex = regex::Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
     if let Some(on_captures) = on_regex.captures(&node_text) {
-        signature.push_str(&format!(" ON {}", on_captures.get(1).unwrap().as_str()));
+        let table_name = on_captures.get(1).map_or("", |m| m.as_str());
+        if !table_name.is_empty() {
+            signature.push_str(&format!(" ON {}", table_name));
+        }
     }
 
     // Add USING clause if present (before columns)
     let using_regex = regex::Regex::new(r"USING\s+([A-Z]+)").unwrap();
     if let Some(using_captures) = using_regex.captures(&node_text) {
-        signature.push_str(&format!(
-            " USING {}",
-            using_captures.get(1).unwrap().as_str()
-        ));
+        let using_method = using_captures.get(1).map_or("", |m| m.as_str());
+        if !using_method.is_empty() {
+            signature.push_str(&format!(" USING {}", using_method));
+        }
     }
 
     // Add column information if found
     if let Some(column_captures) = INDEX_COLUMN_RE.captures(&node_text) {
-        signature.push_str(&format!(" {}", column_captures.get(1).unwrap().as_str()));
+        let columns = column_captures.get(1).map_or("", |m| m.as_str());
+        if !columns.is_empty() {
+            signature.push_str(&format!(" {}", columns));
+        }
     }
 
     // Add INCLUDE clause if present
     if let Some(include_captures) = INCLUDE_CLAUSE_RE.captures(&node_text) {
-        signature.push_str(&format!(
-            " INCLUDE {}",
-            include_captures.get(1).unwrap().as_str()
-        ));
+        let include_clause = include_captures.get(1).map_or("", |m| m.as_str());
+        if !include_clause.is_empty() {
+            signature.push_str(&format!(" INCLUDE {}", include_clause));
+        }
     }
 
     // Add WHERE clause if present
     let where_regex = regex::Regex::new(r"WHERE\s+(.+?)(?:;|$)").unwrap();
     if let Some(where_captures) = where_regex.captures(&node_text) {
-        signature.push_str(&format!(
-            " WHERE {}",
-            where_captures.get(1).unwrap().as_str().trim()
-        ));
+        let where_condition = where_captures.get(1).map_or("", |m| m.as_str()).trim();
+        if !where_condition.is_empty() {
+            signature.push_str(&format!(" WHERE {}", where_condition));
+        }
     }
 
     let mut metadata = HashMap::new();
@@ -195,7 +201,7 @@ pub(super) fn extract_trigger(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractTrigger logic
+    // Port extractTrigger logic
     let name_node = base
         .find_child_by_type(&node, "identifier")
         .or_else(|| base.find_child_by_type(&node, "trigger_name"))?;
@@ -222,7 +228,7 @@ pub(super) fn extract_schema(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port of Miller's schema extraction from error nodes
+    // Implementation of schema extraction from error nodes
     let node_text = base.get_node_text(&node);
 
     // Extract schemas from ERROR nodes
@@ -260,7 +266,7 @@ pub(super) fn extract_domain(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractDomain logic
+    // Port extractDomain logic
     // Look for domain name - it may be inside an object_reference
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {
@@ -315,7 +321,7 @@ pub(super) fn extract_type(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractType logic
+    // Port extractType logic
     // Look for type name in object_reference
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {
@@ -377,7 +383,7 @@ pub(super) fn extract_cte(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port of Miller's extractCte method
+    // Implementation of extractCte method
     // Extract CTE name from identifier child
     let name_node = base.find_child_by_type(&node, "identifier")?;
     let name = base.get_node_text(&name_node);
@@ -413,7 +419,7 @@ pub(super) fn extract_sequence(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractSequence logic
+    // Port extractSequence logic
     // Look for sequence name - it may be inside an object_reference
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {

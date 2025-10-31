@@ -1,7 +1,6 @@
 /// Lua Extractor Implementation
 ///
-/// Port of Miller's Lua extractor with idiomatic Rust patterns and modular architecture.
-/// Original: /Users/murphy/Source/miller/src/extractors/lua-extractor.ts
+/// Implementation of Lua extractor with idiomatic Rust patterns and modular architecture.
 ///
 /// This module is organized into focused sub-modules:
 /// - core: Symbol extraction and traversal orchestration

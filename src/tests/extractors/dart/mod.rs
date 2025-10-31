@@ -1,7 +1,6 @@
 // Dart Extractor Tests
 //
-// Direct port of Miller's Dart extractor tests (TDD RED phase)
-// Original: /Users/murphy/Source/miller/src/__tests__/parser/dart-extractor.test.ts
+// Direct Implementation of Dart extractor tests (TDD RED phase)
 
 // Submodule declarations
 pub mod extractor;

@@ -75,10 +75,8 @@ pub(super) fn build_conditional_signature(conditional_text: &str, condition: &st
     format!("Conditional ({}): {}", condition, conditional_text)
 }
 
-/// Build signature for an atomic group
-pub(super) fn build_atomic_group_signature(atomic_text: &str) -> String {
-    format!("Atomic group: {}", atomic_text)
-}
+// REMOVED (2025-10-31): build_atomic_group_signature() - Dead code
+// extract_atomic_group() was unreachable, so this helper is also unreachable
 
 /// Build signature for a literal
 pub(super) fn build_literal_signature(literal_text: &str) -> String {

@@ -6,7 +6,9 @@
 // - Method parameters and return types
 // - Overloaded methods
 
-use super::*;
+use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::java::JavaExtractor;
+use crate::tests::test_utils::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -36,8 +38,7 @@ public class Calculator {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -104,8 +105,7 @@ public class Person {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -165,8 +165,7 @@ public class OverloadedExample {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -220,8 +219,7 @@ public abstract class AbstractProcessor {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

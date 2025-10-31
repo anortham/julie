@@ -1,4 +1,4 @@
-// Bash Extractor Tests (ported from Miller's bash-extractor.test.ts)
+// Bash Extractor Tests ()
 // Following TDD methodology: RED -> GREEN -> REFACTOR -> ENHANCE
 
 #[cfg(test)]

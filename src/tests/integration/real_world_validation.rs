@@ -1,4 +1,4 @@
-//! Real-world validation tests following Miller's proven methodology
+//! Real-world validation tests following proven testing methodology
 //!
 //! This module tests all extractors against real-world code files to ensure
 //! they work correctly on actual codebases, not just carefully crafted test strings.
@@ -298,14 +298,14 @@ mod real_world_tests {
             _ => panic!("Unsupported language: {}", language),
         };
 
-        // Validate meaningful extraction - Miller's key requirement
+        // Validate meaningful extraction - key requirement
         assert!(
             !symbols.is_empty(),
             "❌ Should extract symbols from {}, but got 0. This indicates the extractor failed to parse real-world code.",
             file_path.display()
         );
 
-        // Generate symbol breakdown for analysis (Miller's logging approach)
+        // Generate symbol breakdown for analysis (standard logging approach)
         let symbol_summary = symbols.iter().fold(HashMap::new(), |mut acc, symbol| {
             *acc.entry(symbol.kind.clone()).or_insert(0) += 1;
             acc
@@ -827,7 +827,7 @@ mod real_world_tests {
     }
 
     /// Integration test: Process multiple languages in sequence
-    /// This validates cross-language consistency following Miller's approach
+    /// This validates cross-language consistency following standard approach
     #[test]
     #[serial_test::serial]
     fn test_cross_language_real_world_integration() {

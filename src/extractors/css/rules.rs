@@ -8,7 +8,7 @@ use tree_sitter::Node;
 pub(super) struct RuleExtractor;
 
 impl RuleExtractor {
-    /// Extract CSS rule - port of Miller's extractRule
+    /// Extract CSS rule - Implementation of extractRule
     pub(super) fn extract_rule(
         base: &mut BaseExtractor,
         node: Node,
@@ -85,7 +85,7 @@ impl RuleExtractor {
         ))
     }
 
-    /// Build rule signature - port of Miller's buildRuleSignature
+    /// Build rule signaimplementation's buildRuleSignature
     pub(super) fn build_rule_signature(
         base: &BaseExtractor,
         node: &Node,

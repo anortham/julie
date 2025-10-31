@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts Swift type declarations: classes, structs, protocols, and enums
 impl SwiftExtractor {
-    /// Port of Miller's extractClass method with full Swift class support
+    /// Implementation of extractClass method with full Swift class support
     pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         // Swift parser uses class_declaration for classes
         let name_node = node
@@ -98,7 +98,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractStruct method
+    /// Implementation of extractStruct method
     pub(super) fn extract_struct(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
@@ -153,7 +153,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractProtocol method
+    /// Implementation of extractProtocol method
     pub(super) fn extract_protocol(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
@@ -203,7 +203,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractEnum method
+    /// Implementation of extractEnum method
     pub(super) fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())

@@ -5,7 +5,7 @@ use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
-/// Extract PHP class declarations following Miller's logic
+/// Extract PHP class declarations following reference logic
 pub(super) fn extract_class(
     extractor: &mut PhpExtractor,
     node: Node,

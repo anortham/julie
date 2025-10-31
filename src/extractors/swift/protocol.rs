@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts protocol-specific members and requirements
 impl SwiftExtractor {
-    /// Port of Miller's extractProtocolFunction method
+    /// Implementation of extractProtocolFunction method
     pub(super) fn extract_protocol_function(
         &mut self,
         node: Node,
@@ -62,7 +62,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractProtocolProperty method
+    /// Implementation of extractProtocolProperty method
     pub(super) fn extract_protocol_property(
         &mut self,
         node: Node,
@@ -152,7 +152,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractAssociatedType method
+    /// Implementation of extractAssociatedType method
     pub(super) fn extract_associated_type(
         &mut self,
         node: Node,

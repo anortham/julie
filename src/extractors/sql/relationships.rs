@@ -50,7 +50,7 @@ pub(super) fn extract_foreign_key_relationship(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Port Miller's extractForeignKeyRelationship logic
+    // Port extractForeignKeyRelationship logic
     // Extract foreign key relationships between tables
     // Look for object_reference after keyword_references
     let references_keyword = base.find_child_by_type(&node, "keyword_references");
@@ -158,7 +158,7 @@ pub(super) fn extract_table_references(
     symbols: &[Symbol],
     _relationships: &mut Vec<Relationship>,
 ) {
-    // Port Miller's extractTableReferences logic
+    // Port extractTableReferences logic
     base.traverse_tree(&node, &mut |child_node| {
         if child_node.kind() == "table_name"
             || (child_node.kind() == "identifier"
@@ -181,7 +181,7 @@ pub(super) fn extract_join_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Port Miller's extractJoinRelationships logic
+    // Port extractJoinRelationships logic
     base.traverse_tree(&node, &mut |child_node| {
         if child_node.kind() == "table_name"
             || (child_node.kind() == "identifier"

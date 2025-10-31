@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Extract function declarations - direct port of Miller's extractFunction
+    /// Extract function declarations - direct Implementation of extractFunction
     pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name_node = node.child_by_field_name("name");
         let mut name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "Anonymous".to_string());
 
-        // Handle arrow functions assigned to variables (Miller's logic)
+        // Handle arrow functions assigned to variables (reference logic)
         if node.kind() == "arrow_function" || node.kind() == "function_expression" {
             if let Some(parent) = node.parent() {
                 if parent.kind() == "variable_declarator" {
@@ -70,7 +70,7 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract method definitions - direct port of Miller's extractMethod
+    /// Extract method definitions - implementation's extractMethod
     pub(super) fn extract_method(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name_node = node
             .child_by_field_name("name")
@@ -83,14 +83,14 @@ impl super::JavaScriptExtractor {
 
         let signature = self.build_method_signature(&node, &name);
 
-        // Determine if it's a constructor (Miller's logic)
+        // Determine if it's a constructor (reference logic)
         let symbol_kind = if name == "constructor" {
             SymbolKind::Constructor
         } else {
             SymbolKind::Method
         };
 
-        // Check for getters and setters (Miller's logic)
+        // Check for getters and setters (reference logic)
         let is_getter = node.children(&mut node.walk()).any(|c| c.kind() == "get");
         let is_setter = node.children(&mut node.walk()).any(|c| c.kind() == "set");
 

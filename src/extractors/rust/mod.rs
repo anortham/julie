@@ -5,7 +5,7 @@
 /// - Constants, statics
 /// - Two-phase processing: extract symbols → process impl blocks
 ///
-/// Port of Miller's comprehensive Rust extractor
+/// Implementation of comprehensive Rust extractor
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::{Node, Tree};
 
@@ -39,7 +39,7 @@ impl RustExtractor {
         }
     }
 
-    /// Extract symbols using Miller's two-phase approach
+    /// Extract symbols using two-phase approach
     /// Phase 1: Extract all symbols except methods in impl blocks
     /// Phase 2: Process impl blocks and link methods to parent structs/traits
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {

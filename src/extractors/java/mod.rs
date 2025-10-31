@@ -1,5 +1,5 @@
 /// Java extractor for extracting symbols and relationships from Java source code
-/// Port of Miller's Java extractor with comprehensive Java feature support
+/// Implementation of Java extractor with comprehensive Java feature support
 ///
 /// This module is organized into focused sub-modules:
 /// - helpers: Shared utility functions (modifiers, visibility, type parsing)

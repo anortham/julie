@@ -76,7 +76,7 @@ impl CExtractor {
 
         let mut symbol: Option<Symbol> = None;
 
-        // Port Miller's switch statement logic for C constructs
+        // Port switch statement logic for C constructs
         match node.kind() {
             "preproc_include" => {
                 symbol = Some(declarations::extract_include(

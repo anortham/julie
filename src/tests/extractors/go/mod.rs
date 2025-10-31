@@ -1,3 +1,12 @@
+// Test modules for specific Go features
+mod build_tags;
+mod concurrency;
+mod edge_cases;
+mod error_handling;
+mod generics;
+mod integration;
+mod type_assertions;
+
 #[cfg(test)]
 mod go_extractor_tests {
     use crate::extractors::base::{SymbolKind, Visibility};

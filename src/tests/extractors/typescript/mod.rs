@@ -1,7 +1,6 @@
 // TypeScript Extractor Tests
 //
-// Direct port of Miller's TypeScript extractor tests (TDD RED phase)
-// Original: /Users/murphy/Source/miller/src/__tests__/parser/typescript-extractor.test.ts
+// Direct Implementation of TypeScript extractor tests (TDD RED phase)
 
 // Submodule declarations
 pub mod extractor;
@@ -18,7 +17,7 @@ use crate::extractors::base::SymbolKind;
 use crate::extractors::typescript::TypeScriptExtractor;
 use tree_sitter::Parser;
 
-/// Initialize JavaScript parser for TypeScript files (Miller used JavaScript parser for TS)
+/// Initialize JavaScript parser for TypeScript files (JavaScript parser used for TypeScript)
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
     parser

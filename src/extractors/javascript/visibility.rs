@@ -7,10 +7,10 @@ use crate::extractors::base::Visibility;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Extract visibility - direct port of Miller's extractVisibility
+    /// Extract visibility - direct Implementation of extractVisibility
     pub(super) fn extract_visibility(&self, node: &Node) -> Visibility {
         // JavaScript doesn't have explicit visibility modifiers like TypeScript
-        // But we can infer from naming conventions (Miller's logic)
+        // But we can infer from naming conventions (reference logic)
         let name_node = node
             .child_by_field_name("name")
             .or_else(|| node.child_by_field_name("property"));

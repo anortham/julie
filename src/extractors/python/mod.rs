@@ -1,6 +1,6 @@
 pub(crate) mod assignments;
 /// Python extractor for extracting symbols and relationships from Python source code
-/// Port of Miller's Python extractor with comprehensive Python feature support
+/// Implementation of Python extractor with comprehensive Python feature support
 ///
 /// This module is organized into focused sub-modules:
 /// - helpers: Shared utility functions

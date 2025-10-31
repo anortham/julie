@@ -8,7 +8,7 @@ use super::SwiftExtractor;
 /// Extracts inheritance and protocol conformance relationships between Swift types
 impl SwiftExtractor {
     /// Extract relationships between Swift types (inheritance and protocol conformance)
-    /// Port of Miller's extractRelationships method
+    /// Implementation of extractRelationships method
     pub fn extract_relationships(
         &mut self,
         tree: &tree_sitter::Tree,
@@ -39,7 +39,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's extractInheritanceRelationships method
+    /// Implementation of extractInheritanceRelationships method
     fn extract_inheritance_relationships(
         &self,
         node: Node,
@@ -99,7 +99,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's addInheritanceRelationship method
+    /// Implementation of addInheritanceRelationship method
     fn add_inheritance_relationship(
         &self,
         type_symbol: &Symbol,
@@ -147,7 +147,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's infer_types method
+    /// Implementation of infer_types method
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
         for symbol in symbols {
@@ -198,7 +198,7 @@ impl SwiftExtractor {
         types
     }
 
-    /// Port of Miller's findTypeSymbol method
+    /// Implementation of findTypeSymbol method
     pub(super) fn find_type_symbol(&self, node: Node, symbols: &[Symbol]) -> Option<Symbol> {
         if let Some(name_node) = node
             .children(&mut node.walk())

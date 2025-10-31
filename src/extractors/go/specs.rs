@@ -111,7 +111,7 @@ impl super::GoExtractor {
 
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "package_identifier" => alias = Some(self.get_node_text(child)), // Miller uses package_identifier for alias
+                "package_identifier" => alias = Some(self.get_node_text(child)), // Uses package_identifier for alias
                 "interpreted_string_literal" => path = Some(self.get_node_text(child)),
                 _ => {}
             }

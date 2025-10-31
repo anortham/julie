@@ -11,7 +11,7 @@
 
 use crate::extractors::base::{IdentifierKind, SymbolKind};
 use crate::extractors::java::JavaExtractor;
-use crate::tests::extractors::java::init_parser;
+use crate::tests::test_utils::init_parser;
 
 #[cfg(test)]
 mod identifier_extraction_tests {
@@ -35,8 +35,7 @@ public class Calculator {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(java_code, None).unwrap();
+        let tree = init_parser(java_code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -100,8 +99,7 @@ public class User {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(java_code, None).unwrap();
+        let tree = init_parser(java_code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -150,8 +148,7 @@ public class Service {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(java_code, None).unwrap();
+        let tree = init_parser(java_code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -195,8 +192,7 @@ public class DataService {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(java_code, None).unwrap();
+        let tree = init_parser(java_code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -241,8 +237,7 @@ public class Test {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(java_code, None).unwrap();
+        let tree = init_parser(java_code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

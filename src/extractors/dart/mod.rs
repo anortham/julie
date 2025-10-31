@@ -1,10 +1,9 @@
-// Dart Extractor - Port of Miller's dart-extractor.ts (TDD GREEN phase)
+// Dart Extractor - Implementation of dart-extractor.ts (TDD GREEN phase)
 //
-// Direct port of Miller's Dart extractor logic (1075 lines) to idiomatic Rust.
-// Preserves Miller's proven extraction strategy while leveraging Rust's safety and performance.
+// Direct Implementation of Dart extractor logic (1075 lines) to idiomatic Rust.
+// Preserves proven extraction strategy while leveraging Rust's safety and performance.
 //
-// Original: /Users/murphy/Source/miller/src/extractors/dart-extractor.ts
-// Test parity: All Miller test cases must pass
+// Test parity: All test cases must pass
 
 mod functions;
 mod helpers;
@@ -68,7 +67,7 @@ impl DartExtractor {
         let mut symbol: Option<Symbol> = None;
         let current_parent_id = parent_id.map(|id| id.to_string());
 
-        // Extract symbol based on node type (port of Miller's switch statement)
+        // Extract symbol based on node type (Implementation of switch statement)
         match node.kind() {
             "class_definition" => {
                 symbol =
@@ -190,14 +189,14 @@ impl DartExtractor {
             current_parent_id.as_deref()
         };
 
-        // Recursively visit children (port of Miller's traversal logic)
+        // Recursively visit children (Implementation of traversal logic)
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.visit_node(child, symbols, next_parent_id);
         }
     }
 
-    // === Relationship and Type Extraction (Port of Miller's methods) ===
+    // === Relationship and Type Extraction (Implementation of methods) ===
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(&mut self.base, tree.root_node(), symbols)

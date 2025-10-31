@@ -1,4 +1,4 @@
-// Port of Miller's comprehensive Swift extractor tests
+// Implementation of comprehensive Swift extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};

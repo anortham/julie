@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts Swift extensions, imports, and type aliases
 impl SwiftExtractor {
-    /// Port of Miller's extractExtension method
+    /// Implementation of extractExtension method
     pub(super) fn extract_extension(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let type_node = node
             .children(&mut node.walk())
@@ -50,7 +50,7 @@ impl SwiftExtractor {
             .create_symbol(&node, name, SymbolKind::Class, options)
     }
 
-    /// Port of Miller's extractImport method
+    /// Implementation of extractImport method
     pub(super) fn extract_import(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
@@ -76,7 +76,7 @@ impl SwiftExtractor {
             .create_symbol(&node, name, SymbolKind::Import, options)
     }
 
-    /// Port of Miller's extractTypeAlias method
+    /// Implementation of extractTypeAlias method
     pub(super) fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())

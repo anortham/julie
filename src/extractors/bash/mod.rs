@@ -1,4 +1,4 @@
-//! Bash Extractor - Complete port of Miller's bash-extractor.ts
+//! Bash Extractor - Complete Implementation of bash-extractor.ts
 //!
 //! Handles Bash/shell-specific constructs for DevOps tracing:
 //! - Functions and their definitions

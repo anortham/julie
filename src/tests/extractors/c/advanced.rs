@@ -177,7 +177,7 @@ mod tests {
         let (mut extractor, tree) = parse_c(code, "advanced.c");
         let symbols = extractor.extract_symbols(&tree);
 
-        // Advanced macros - Miller tests sophisticated preprocessing
+        // Advanced macros - Tests sophisticated preprocessing
         let stringify_macro = symbols.iter().find(|s| s.name == "STRINGIFY");
         assert!(stringify_macro.is_some());
         assert!(stringify_macro
@@ -193,7 +193,7 @@ mod tests {
         let array_size_macro = symbols.iter().find(|s| s.name == "ARRAY_SIZE");
         assert!(array_size_macro.is_some());
 
-        // Complex structs - Miller tests advanced data structures
+        // Complex structs - Tests advanced data structures
         let account_struct = symbols.iter().find(|s| s.name == "Account");
         assert!(account_struct.is_some());
         assert_eq!(account_struct.unwrap().kind, SymbolKind::Class);
@@ -210,7 +210,7 @@ mod tests {
         let tree_node_struct = symbols.iter().find(|s| s.name == "TreeNode");
         assert!(tree_node_struct.is_some());
 
-        // Union types - Miller tests union extraction
+        // Union types - Tests union extraction
         let value_union = symbols.iter().find(|s| s.name == "Value");
         assert!(value_union.is_some());
         let value_union_symbol = value_union.as_ref().unwrap();
@@ -242,7 +242,7 @@ mod tests {
             .expect("OperationEntry underlying type");
         assert!(entry_underlying.contains("BinaryOperation"));
 
-        // Struct with function pointers - Miller tests virtual table patterns
+        // Struct with function pointers - Tests virtual table patterns
         let generic_object_struct = symbols
             .iter()
             .find(|s| s.name == "GenericObject")
@@ -258,7 +258,7 @@ mod tests {
         assert!(generic_object_underlying.contains("void (*destroy)(void* data)"));
         assert!(generic_object_underlying.contains("void* (*clone)(const void* data)"));
 
-        // Bit fields - Miller tests bit field structures
+        // Bit fields - Tests bit field structures
         let flags_struct = symbols
             .iter()
             .find(|s| s.name == "Flags")
@@ -283,12 +283,12 @@ mod tests {
             .unwrap_or("");
         assert!(network_packet_underlying.contains("Flags"));
 
-        // Memory management structures - Miller tests memory pool patterns
+        // Memory management structures - Tests memory pool patterns
         assert!(symbols.iter().any(|s| s.name == "MemoryBlock"));
 
         assert!(symbols.iter().any(|s| s.name == "MemoryPool"));
 
-        // Global arrays - Miller tests array declarations
+        // Global arrays - Tests array declarations
         let operation_table = symbols
             .iter()
             .find(|s| s.name == "operation_table")
@@ -299,7 +299,7 @@ mod tests {
             .unwrap()
             .contains("OperationEntry operation_table[]"));
 
-        // Memory management functions - Miller tests function signatures
+        // Memory management functions - Tests function signatures
         let create_memory_pool = symbols.iter().find(|s| s.name == "create_memory_pool");
         assert!(create_memory_pool.is_some());
         assert!(create_memory_pool
@@ -309,7 +309,7 @@ mod tests {
             .unwrap()
             .contains("MemoryPool* create_memory_pool(size_t total_size)"));
 
-        // Signal handling - Miller tests signal handling patterns
+        // Signal handling - Tests signal handling patterns
         let shutdown_flag = symbols.iter().find(|s| s.name == "shutdown_flag");
         assert!(shutdown_flag.is_some());
         assert!(shutdown_flag
@@ -328,7 +328,7 @@ mod tests {
             .unwrap()
             .contains("void signal_handler(int signum)"));
 
-        // Extern "C" handling - Miller tests linkage specifications
+        // Extern "C" handling - Tests linkage specifications
         let extern_c = symbols
             .iter()
             .filter(|s| {
@@ -339,7 +339,7 @@ mod tests {
             .count();
         assert!(extern_c >= 1);
 
-        // Standard library includes - Miller tests include extraction
+        // Standard library includes - Tests include extraction
         let stdint_include = symbols.iter().find(|s| {
             s.signature
                 .as_ref()

@@ -28,12 +28,12 @@ impl GoExtractor {
         }
     }
 
-    /// Extract symbols from Go source code - direct port from Miller's logic
+    /// Extract symbols from Go source code - direct port from reference logic
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.walk_tree(tree.root_node(), &mut symbols, None);
 
-        // Prioritize functions over fields with the same name (Miller's logic)
+        // Prioritize functions over fields with the same name (reference logic)
         self.prioritize_functions_over_fields(symbols)
     }
 
@@ -89,7 +89,7 @@ impl GoExtractor {
         self.base.identifiers.clone()
     }
 
-    /// Prioritize functions over fields with the same name (direct port from Miller)
+    /// Prioritize functions over fields with the same name (reference implementation)
     fn prioritize_functions_over_fields(&self, symbols: Vec<Symbol>) -> Vec<Symbol> {
         let mut symbol_map: HashMap<String, Vec<Symbol>> = HashMap::new();
 
@@ -123,7 +123,7 @@ impl GoExtractor {
         result
     }
 
-    /// Walk the tree and extract symbols (port from Miller's walkTree method)
+    /// Walk the tree and extract symbols (port from walkTree method)
     fn walk_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
         // Handle declarations that can produce multiple symbols
         match node.kind() {
@@ -167,7 +167,7 @@ impl GoExtractor {
         }
     }
 
-    /// Extract symbol from node (port from Miller's extractSymbol method)
+    /// Extract symbol from node (port from extractSymbol method)
     fn extract_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         match node.kind() {
             "package_clause" => self.extract_package(node, parent_id),

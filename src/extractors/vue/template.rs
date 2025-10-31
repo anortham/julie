@@ -9,7 +9,7 @@ use crate::extractors::base::BaseExtractor;
 use crate::extractors::base::SymbolKind;
 
 /// Extract symbols from template section (component usage, directives, etc.)
-/// Port of Miller's extractTemplateSymbols logic
+/// Implementation of extractTemplateSymbols logic
 pub(super) fn extract_template_symbols(
     base: &BaseExtractor,
     section: &VueSection,
@@ -23,7 +23,7 @@ pub(super) fn extract_template_symbols(
         // Extract doc comment for this line (look backward from current line)
         let doc_comment = find_doc_comment_before(&lines, i);
 
-        // Extract component usage - following Miller's pattern
+        // Extract component usage - following pattern
         for captures in COMPONENT_USAGE_RE.captures_iter(line) {
             if let Some(component_name) = captures.get(1) {
                 let name = component_name.as_str();
@@ -43,7 +43,7 @@ pub(super) fn extract_template_symbols(
             }
         }
 
-        // Extract directives - following Miller's pattern
+        // Extract directives - following pattern
         for captures in DIRECTIVE_USAGE_RE.captures_iter(line) {
             if let Some(directive_name) = captures.get(1) {
                 let name = directive_name.as_str();

@@ -1,7 +1,6 @@
 // Rust Extractor Tests
 //
-// Direct port of Miller's Rust extractor tests (TDD RED phase)
-// Original: /Users/murphy/Source/miller/src/__tests__/parser/rust-extractor.test.ts
+// Direct Implementation of Rust extractor tests (TDD RED phase)
 //
 
 // Submodule declarations
@@ -12,7 +11,7 @@ pub mod identifiers;
 pub mod relationships;
 pub mod signatures;
 pub mod types;
-// This is one of Miller's most comprehensive extractors with 2000+ lines of tests
+// This isImplementation of most comprehensive extractors with 2000+ lines of tests
 // covering everything from basic structs to unsafe FFI code and procedural macros.
 
 use crate::extractors::base::{SymbolKind, Visibility};

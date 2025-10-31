@@ -8,7 +8,7 @@ use tree_sitter::Node;
 use crate::extractors::base::BaseExtractor;
 
 impl super::JavaScriptExtractor {
-    /// Build class signature - direct port of Miller's buildClassSignature
+    /// Build class signature - direct Implementation of buildClassSignature
     pub(super) fn build_class_signature(&self, node: &Node) -> String {
         let name_node = node.child_by_field_name("name");
         let name = name_node
@@ -17,7 +17,7 @@ impl super::JavaScriptExtractor {
 
         let mut signature = format!("class {}", name);
 
-        // Look for extends clause (Miller's logic)
+        // Look for extends clause (reference logic)
         let heritage = node.child_by_field_name("superclass").or_else(|| {
             node.children(&mut node.walk())
                 .find(|c| c.kind() == "class_heritage")
@@ -42,7 +42,7 @@ impl super::JavaScriptExtractor {
         signature
     }
 
-    /// Build function signature - direct port of Miller's buildFunctionSignature
+    /// Build function signature - direct Implementation of buildFunctionSignature
     pub(super) fn build_function_signature(&self, node: &Node, name: &str) -> String {
         let is_async = self.is_async(node);
         let is_generator = self.is_generator(node);
@@ -82,7 +82,7 @@ impl super::JavaScriptExtractor {
         signature
     }
 
-    /// Build method signature - direct port of Miller's buildMethodSignature
+    /// Build method signature - implementation's buildMethodSignature
     pub(super) fn build_method_signature(&self, node: &Node, name: &str) -> String {
         let is_async = self.is_async(node);
         let is_generator = self.is_generator(node);
@@ -116,7 +116,7 @@ impl super::JavaScriptExtractor {
         signature
     }
 
-    /// Build variable signature - direct port of Miller's buildVariableSignature
+    /// Build variable signature - implementation's buildVariableSignature
     pub(super) fn build_variable_signature(&self, node: &Node, name: &str) -> String {
         let declaration_type = self.get_declaration_type(node);
         let value_node = node.child_by_field_name("value");
@@ -141,7 +141,7 @@ impl super::JavaScriptExtractor {
                     let params = self.extract_parameters(&value);
                     signature.push_str(&format!("({}) =>", params.join(", ")));
 
-                    // For simple arrow functions, include the body if it's a simple expression (Miller's logic)
+                    // For simple arrow functions, include the body if it's a simple expression (reference logic)
                     let body_node = value.children(&mut value.walk()).find(|c| {
                         matches!(
                             c.kind(),
@@ -163,7 +163,7 @@ impl super::JavaScriptExtractor {
                 }
                 _ => {
                     let value_text = self.base.get_node_text(&value);
-                    // Truncate very long values (Miller's logic) - safely handling UTF-8
+                    // Truncate very long values (reference logic) - safely handling UTF-8
                     let truncated_value = BaseExtractor::truncate_string(&value_text, 50);
                     signature.push_str(&format!(" = {}", truncated_value));
                 }
@@ -173,7 +173,7 @@ impl super::JavaScriptExtractor {
         signature
     }
 
-    /// Build property signature - direct port of Miller's buildPropertySignature
+    /// Build property signature - implementation's buildPropertySignature
     pub(super) fn build_property_signature(&self, node: &Node, name: &str) -> String {
         let value_node = node.child_by_field_name("value");
 

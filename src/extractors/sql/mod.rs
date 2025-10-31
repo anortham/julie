@@ -267,7 +267,7 @@ impl SqlExtractor {
         symbols: &mut Vec<Symbol>,
         parent_id: Option<&str>,
     ) {
-        // Port Miller's extractSelectAliases logic using iterative approach to avoid borrow checker issues
+        // Port extractSelectAliases logic using iterative approach to avoid borrow checker issues
         let term_nodes = self.base.find_nodes_by_type(&select_node, "term");
 
         for node in term_nodes {
@@ -379,7 +379,7 @@ impl SqlExtractor {
         symbols: &mut Vec<Symbol>,
         parent_view_id: &str,
     ) {
-        // Port Miller's extractViewColumns logic
+        // Port extractViewColumns logic
         let nodes = self.base.find_nodes_by_type(&view_node, "select_statement");
         for select_node in nodes {
             self.extract_select_aliases(select_node, symbols, Some(parent_view_id));
@@ -398,7 +398,7 @@ impl SqlExtractor {
         symbols: &mut Vec<Symbol>,
         parent_view_id: &str,
     ) {
-        // Port Miller's extractViewColumnsFromErrorNode logic
+        // Port extractViewColumnsFromErrorNode logic
         let error_text = self.base.get_node_text(&node);
 
         // Only process if this ERROR node contains a CREATE VIEW statement
@@ -438,8 +438,14 @@ impl SqlExtractor {
         .unwrap();
 
         for captures in alias_regex.captures_iter(select_section) {
-            let full_expression = captures.get(1).unwrap().as_str().trim();
-            let alias_name = captures.get(2).unwrap().as_str();
+            // Safe: if regex matched, capture groups should exist, but handle gracefully
+            let full_expression = captures.get(1).map_or("", |m| m.as_str()).trim();
+            let alias_name = captures.get(2).map_or("", |m| m.as_str());
+
+            // Skip if capture groups were empty
+            if full_expression.is_empty() || alias_name.is_empty() {
+                continue;
+            }
 
             // Skip if this looks like a table alias or common SQL keywords
             if [

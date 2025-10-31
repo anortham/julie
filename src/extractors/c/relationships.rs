@@ -98,6 +98,6 @@ fn find_containing_symbol<'a>(
     symbols: &'a [Symbol],
 ) -> Option<&'a Symbol> {
     // Reuse the shared BaseExtractor containment logic so we correctly match
-    // call expressions with their enclosing function definition (mirrors Miller).
+    // call expressions with their enclosing function definition (standard approach).
     extractor.base.find_containing_symbol(&node, symbols)
 }

@@ -304,7 +304,7 @@ mod tests {
         let (mut extractor, tree) = parse_c(code, "preprocessor.c");
         let symbols = extractor.extract_symbols(&tree);
 
-        // Compiler detection macros - Miller tests compiler feature detection
+        // Compiler detection macros - Tests compiler feature detection
         let compiler_gcc = symbols.iter().find(|s| s.name == "COMPILER_GCC");
         assert!(compiler_gcc.is_some());
         assert_eq!(compiler_gcc.unwrap().kind, SymbolKind::Constant);
@@ -324,7 +324,7 @@ mod tests {
         let packed_macro = symbols.iter().find(|s| s.name == "PACKED");
         assert!(packed_macro.is_some());
 
-        // Platform detection - Miller tests platform-specific macros
+        // Platform detection - Tests platform-specific macros
         let platform_windows = symbols.iter().find(|s| s.name == "PLATFORM_WINDOWS");
         assert!(platform_windows.is_some());
 
@@ -334,14 +334,14 @@ mod tests {
         let invalid_file_handle = symbols.iter().find(|s| s.name == "INVALID_FILE_HANDLE");
         assert!(invalid_file_handle.is_some());
 
-        // Architecture detection - Miller tests arch-specific features
+        // Architecture detection - Tests arch-specific features
         let arch_x64 = symbols.iter().find(|s| s.name == "ARCH_X64");
         assert!(arch_x64.is_some());
 
         let cache_line_size = symbols.iter().find(|s| s.name == "CACHE_LINE_SIZE");
         assert!(cache_line_size.is_some());
 
-        // Debug/Release configuration - Miller tests build configuration
+        // Debug/Release configuration - Tests build configuration
         let build_debug = symbols.iter().find(|s| s.name == "BUILD_DEBUG");
         assert!(build_debug.is_some());
 
@@ -354,35 +354,35 @@ mod tests {
         let debug_only = symbols.iter().find(|s| s.name == "DEBUG_ONLY");
         assert!(debug_only.is_some());
 
-        // Version information - Miller tests version macros
+        // Version information - Tests version macros
         let version_major = symbols.iter().find(|s| s.name == "VERSION_MAJOR");
         assert!(version_major.is_some());
 
         let version_string = symbols.iter().find(|s| s.name == "VERSION_STRING");
         assert!(version_string.is_some());
 
-        // Feature toggles - Miller tests conditional features
+        // Feature toggles - Tests conditional features
         let feature_networking = symbols.iter().find(|s| s.name == "FEATURE_NETWORKING");
         assert!(feature_networking.is_some());
 
         let feature_graphics = symbols.iter().find(|s| s.name == "FEATURE_GRAPHICS");
         assert!(feature_graphics.is_some());
 
-        // Conditional structs - Miller tests conditional compilation
+        // Conditional structs - Tests conditional compilation
         let network_connection = symbols.iter().find(|s| s.name == "NetworkConnection");
         assert!(network_connection.is_some());
 
         let audio_buffer = symbols.iter().find(|s| s.name == "AudioBuffer");
         assert!(audio_buffer.is_some());
 
-        // Conditional functions - Miller tests conditional function definitions
+        // Conditional functions - Tests conditional function definitions
         let network_init = symbols.iter().find(|s| s.name == "network_init");
         assert!(network_init.is_some());
 
         let audio_init = symbols.iter().find(|s| s.name == "audio_init");
         assert!(audio_init.is_some());
 
-        // Pragma-affected structures - Miller tests pragma handling
+        // Pragma-affected structures - Tests pragma handling
         let network_header = symbols.iter().find(|s| s.name == "NetworkHeader");
         assert!(network_header.is_some());
         assert!(network_header
@@ -392,7 +392,7 @@ mod tests {
             .unwrap()
             .contains("PACKED"));
 
-        // Alignment directives - Miller tests alignment features
+        // Alignment directives - Tests alignment features
         let align_macro = symbols.iter().find(|s| s.name == "ALIGN");
         assert!(align_macro.is_some());
 
@@ -406,7 +406,7 @@ mod tests {
             .unwrap()
             .contains("ALIGN(CACHE_LINE_SIZE)"));
 
-        // Inline assembly functions - Miller tests inline assembly
+        // Inline assembly functions - Tests inline assembly
         let rdtsc_function = symbols.iter().find(|s| s.name == "rdtsc");
         assert!(rdtsc_function.is_some());
         assert!(rdtsc_function
@@ -419,7 +419,7 @@ mod tests {
         let cpu_pause_function = symbols.iter().find(|s| s.name == "cpu_pause");
         assert!(cpu_pause_function.is_some());
 
-        // Advanced macro patterns - Miller tests sophisticated macro techniques
+        // Advanced macro patterns - Tests sophisticated macro techniques
         let get_macro = symbols.iter().find(|s| s.name == "GET_MACRO");
         assert!(get_macro.is_some());
 
@@ -429,7 +429,7 @@ mod tests {
         let macro1 = symbols.iter().find(|s| s.name == "MACRO1");
         assert!(macro1.is_some());
 
-        // X-Macro pattern - Miller tests X-macro techniques
+        // X-Macro pattern - Tests X-macro techniques
         let error_codes = symbols.iter().find(|s| s.name == "ERROR_CODES");
         assert!(error_codes.is_some());
 
@@ -445,21 +445,21 @@ mod tests {
         let get_error_string = symbols.iter().find(|s| s.name == "get_error_string");
         assert!(get_error_string.is_some());
 
-        // Generated getter/setter - Miller tests macro generation
+        // Generated getter/setter - Tests macro generation
         let declare_getter_setter = symbols.iter().find(|s| s.name == "DECLARE_GETTER_SETTER");
         assert!(declare_getter_setter.is_some());
 
         let global_value = symbols.iter().find(|s| s.name == "global_value");
         assert!(global_value.is_some());
 
-        // C11 specific features - Miller tests C standard features
+        // C11 specific features - Tests C standard features
         let atomic_int = symbols.iter().find(|s| s.name == "AtomicInt");
         assert!(atomic_int.is_some());
 
         let atomic_increment = symbols.iter().find(|s| s.name == "atomic_increment");
         assert!(atomic_increment.is_some());
 
-        // Compiler optimization attributes - Miller tests optimization directives
+        // Compiler optimization attributes - Tests optimization directives
         let optimize_size = symbols.iter().find(|s| s.name == "OPTIMIZE_SIZE");
         assert!(optimize_size.is_some());
 
@@ -469,7 +469,7 @@ mod tests {
         let no_optimize = symbols.iter().find(|s| s.name == "NO_OPTIMIZE");
         assert!(no_optimize.is_some());
 
-        // Optimization-specific functions - Miller tests optimization annotations
+        // Optimization-specific functions - Tests optimization annotations
         let fast_function = symbols.iter().find(|s| s.name == "fast_function");
         assert!(fast_function.is_some());
 
@@ -479,7 +479,7 @@ mod tests {
         let debug_function = symbols.iter().find(|s| s.name == "debug_function");
         assert!(debug_function.is_some());
 
-        // Standard library includes for conditional features - Miller tests conditional includes
+        // Standard library includes for conditional features - Tests conditional includes
         let socket_include = symbols.iter().find(|s| {
             s.signature
                 .as_ref()

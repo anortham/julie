@@ -5,7 +5,7 @@ use super::SwiftExtractor;
 
 /// Extracts and constructs function/type signatures and related metadata
 impl SwiftExtractor {
-    /// Port of Miller's extractModifiers method
+    /// Implementation of extractModifiers method
     pub(super) fn extract_modifiers(&self, node: Node) -> Vec<String> {
         let mut modifiers = Vec::new();
 
@@ -57,14 +57,14 @@ impl SwiftExtractor {
         modifiers
     }
 
-    /// Port of Miller's extractGenericParameters method
+    /// Implementation of extractGenericParameters method
     pub(super) fn extract_generic_parameters(&self, node: Node) -> Option<String> {
         node.children(&mut node.walk())
             .find(|c| c.kind() == "type_parameters")
             .map(|generic_params| self.base.get_node_text(&generic_params))
     }
 
-    /// Port of Miller's extractInheritance method
+    /// Implementation of extractInheritance method
     pub(super) fn extract_inheritance(&self, node: Node) -> Option<String> {
         // First try the standard type_inheritance_clause
         if let Some(inheritance) = node
@@ -103,7 +103,7 @@ impl SwiftExtractor {
         None
     }
 
-    /// Port of Miller's extractWhereClause method
+    /// Implementation of extractWhereClause method
     pub(super) fn extract_where_clause(&self, node: Node) -> Option<String> {
         // Look for where clause in class/function declarations
         if let Some(where_clause) = node.children(&mut node.walk()).find(|c| {
@@ -133,7 +133,7 @@ impl SwiftExtractor {
         None
     }
 
-    /// Port of Miller's extractParameters method
+    /// Implementation of extractParameters method
     pub(super) fn extract_parameters(&self, node: Node) -> Option<String> {
         // First try parameter_clause
         if let Some(param_clause) = node
@@ -162,7 +162,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's extractInitializerParameters method
+    /// Implementation of extractInitializerParameters method
     pub(super) fn extract_initializer_parameters(&self, node: Node) -> Option<String> {
         // Look for parameter nodes
         if let Some(parameter_node) = node
@@ -180,7 +180,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's extractReturnType method
+    /// Implementation of extractReturnType method
     pub(super) fn extract_return_type(&self, node: Node) -> Option<String> {
         // Try function_type first
         if let Some(return_clause) = node
@@ -227,7 +227,7 @@ impl SwiftExtractor {
         None
     }
 
-    /// Port of Miller's extractVariableType method
+    /// Implementation of extractVariableType method
     pub(super) fn extract_variable_type(&self, node: Node) -> Option<String> {
         if let Some(type_annotation) = node
             .children(&mut node.walk())
@@ -256,12 +256,12 @@ impl SwiftExtractor {
         None
     }
 
-    /// Port of Miller's extractPropertyType method
+    /// Implementation of extractPropertyType method
     pub(super) fn extract_property_type(&self, node: Node) -> Option<String> {
         self.extract_variable_type(node)
     }
 
-    /// Port of Miller's determineVisibility method
+    /// Implementation of determineVisibility method
     pub(super) fn determine_visibility(&self, modifiers: &[String]) -> Visibility {
         if modifiers
             .iter()

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Extract variable declarations - direct port of Miller's extractVariable
+    /// Extract variable declarations - direct Implementation of extractVariable
     pub(super) fn extract_variable(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name_node = node.child_by_field_name("name");
         let name = name_node
@@ -27,7 +27,7 @@ impl super::JavaScriptExtractor {
             node
         };
 
-        // Check if this is a CommonJS require statement (Miller's logic)
+        // Check if this is a CommonJS require statement (reference logic)
         if let Some(value) = &value_node {
             if self.is_require_call(value) {
                 let mut metadata = HashMap::new();
@@ -54,7 +54,7 @@ impl super::JavaScriptExtractor {
                 );
             }
 
-            // For function expressions, create a function symbol with the variable's name (Miller's logic)
+            // For function expressions, create a function symbol with the variable's name (reference logic)
             if value.kind() == "arrow_function"
                 || value.kind() == "function_expression"
                 || value.kind() == "generator_function"
@@ -122,7 +122,7 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract destructuring variables - direct port of Miller's extractDestructuringVariables
+    /// Extract destructuring variables - implementation's extractDestructuringVariables
     pub(super) fn extract_destructuring_variables(
         &mut self,
         node: Node,
@@ -140,7 +140,7 @@ impl super::JavaScriptExtractor {
 
             match name.kind() {
                 "object_pattern" => {
-                    // Handle object destructuring: const { name, age, ...rest } = user (Miller's logic)
+                    // Handle object destructuring: const { name, age, ...rest } = user (reference logic)
                     for child in name.children(&mut name.walk()) {
                         match child.kind() {
                             "shorthand_property_identifier_pattern"
@@ -175,7 +175,7 @@ impl super::JavaScriptExtractor {
                                 ));
                             }
                             "rest_pattern" => {
-                                // Handle rest parameters: const { name, ...rest } = user (Miller's logic)
+                                // Handle rest parameters: const { name, ...rest } = user (reference logic)
                                 if let Some(rest_identifier) = child
                                     .children(&mut child.walk())
                                     .find(|c| c.kind() == "identifier")
@@ -218,7 +218,7 @@ impl super::JavaScriptExtractor {
                     }
                 }
                 "array_pattern" => {
-                    // Handle array destructuring: const [first, second] = array (Miller's logic)
+                    // Handle array destructuring: const [first, second] = array (reference logic)
                     let mut index = 0;
                     for child in name.children(&mut name.walk()) {
                         if child.kind() == "identifier" {

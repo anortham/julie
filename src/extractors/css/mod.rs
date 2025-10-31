@@ -1,4 +1,4 @@
-// CSS Extractor - Port of Miller's css-extractor.ts
+// CSS Extractor - Implementation of css-extractor.ts
 //
 // Extracts CSS symbols including:
 // - Selectors (element, class, ID, attribute, pseudo)
@@ -40,7 +40,7 @@ impl CSSExtractor {
         symbols
     }
 
-    /// Main tree traversal - port of Miller's visitNode function
+    /// Main tree traversal - Implementation of visitNode function
     fn visit_node(
         &mut self,
         node: tree_sitter::Node,

@@ -1,4 +1,4 @@
-//! PowerShell language extractor - port of Miller's PowerShell extractor
+//! PowerShell language extractor - Implementation of PowerShell extractor
 //! Handles PowerShell-specific constructs for Windows/Azure DevOps
 //!
 //! Provides symbol extraction for:

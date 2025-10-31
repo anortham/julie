@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts Swift enum cases and members
 impl SwiftExtractor {
-    /// Port of Miller's extractEnumCases method
+    /// Implementation of extractEnumCases method
     pub(super) fn extract_enum_cases(
         &mut self,
         node: Node,
@@ -53,7 +53,7 @@ impl SwiftExtractor {
         }
     }
 
-    /// Port of Miller's extractEnumCase method
+    /// Implementation of extractEnumCase method
     pub(super) fn extract_enum_case(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())

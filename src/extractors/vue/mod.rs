@@ -3,7 +3,7 @@
 // Parses .vue files by extracting template, script, and style sections
 // and delegating to appropriate parsers for each section.
 //
-// Port of Miller's Vue extractor with comprehensive Vue SFC feature support
+// Implementation of Vue extractor with comprehensive Vue SFC feature support
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use serde_json::Value;
@@ -41,11 +41,11 @@ impl VueExtractor {
     }
 
     /// Extract all symbols from Vue SFC - doesn't use tree-sitter
-    /// Port of Miller's extractSymbols logic
+    /// Implementation of extractSymbols logic
     pub fn extract_symbols(&mut self, _tree: Option<&Tree>) -> Vec<Symbol> {
         let mut symbols = Vec::new();
 
-        // Parse Vue SFC structure - following Miller's approach
+        // Parse Vue SFC structure - following standard approach
         match parse_vue_sfc(&self.base.content.clone()) {
             Ok(sections) => {
                 // Extract symbols from each section
@@ -54,7 +54,7 @@ impl VueExtractor {
                     symbols.extend(section_symbols);
                 }
 
-                // Add component-level symbol - following Miller's logic
+                // Add component-level symbol - following reference logic
                 if let Some(component_name) =
                     component::extract_component_name(&self.base.file_path, &sections)
                 {
@@ -107,22 +107,22 @@ impl VueExtractor {
         _tree: Option<&Tree>,
         _symbols: &[Symbol],
     ) -> Vec<Relationship> {
-        // Miller's implementation returns empty for now - follow the same approach
+        // implementation returns empty for now - follow the same approach
         Vec::new()
     }
 
     /// Infer types from Vue SFC
     pub fn infer_types(&mut self, _symbols: &[Symbol]) -> HashMap<String, String> {
-        // Miller's implementation returns empty for now - follow the same approach
+        // implementation returns empty for now - follow the same approach
         HashMap::new()
     }
 
     /// Extract symbols from a specific section using appropriate parser
-    /// Port of Miller's extractSectionSymbols logic
+    /// Implementation of extractSectionSymbols logic
     fn extract_section_symbols(&self, section: &VueSection) -> Vec<Symbol> {
         match section.section_type.as_str() {
             "script" => {
-                // Extract basic Vue component structure - following Miller's approach
+                // Extract basic Vue component structure - following standard approach
                 script::extract_script_symbols(&self.base, section)
             }
             "template" => {

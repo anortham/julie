@@ -8,7 +8,7 @@ use tree_sitter::Node;
 pub(super) struct PropertyExtractor;
 
 impl PropertyExtractor {
-    /// Extract custom property - port of Miller's extractCustomProperty
+    /// Extract custom property - Implementation of extractCustomProperty
     pub(super) fn extract_custom_property(
         base: &mut BaseExtractor,
         node: Node,
@@ -53,7 +53,7 @@ impl PropertyExtractor {
         ))
     }
 
-    /// Extract supports rule - port of Miller's extractSupportsRule
+    /// Extract supports rule - port of extractSupportsRule
     pub(super) fn extract_supports_rule(
         base: &mut BaseExtractor,
         node: Node,
@@ -90,14 +90,19 @@ impl PropertyExtractor {
         ))
     }
 
-    /// Extract supports condition - port of Miller's extractSupportsCondition
+    /// Extract supports condition - port of extractSupportsCondition
     pub(super) fn extract_supports_condition(base: &BaseExtractor, node: &Node) -> String {
         let text = base.get_node_text(node);
         if let Some(captures) = regex::Regex::new(r"@supports\s+([^{]+)")
             .unwrap()
             .captures(&text)
         {
-            format!("@supports {}", captures.get(1).unwrap().as_str().trim())
+            // Safe: capture group 1 exists if regex matched (pattern has one capture group)
+            let condition = captures
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim();
+            format!("@supports {}", condition)
         } else {
             "@supports".to_string()
         }

@@ -1,115 +1,100 @@
 # Julie TODO
 
-# MILLER 
+Certainly. Here is the content formatted as a Markdown file.
 
-⏺ Perfect! Now I have a complete picture of Miller's WASM infrastructure. This is genuinely impressive work that shouldn't be lost. Let me create a comprehensive
-  proposal:
+-----
 
-  ★ Insight ─────────────────────────────────────
-  Miller's WASM infrastructure is a goldmine for the ecosystem:
+# ONNX Runtime GPU Acceleration on Linux (Non-NVIDIA)
 
-  1. Unique value: 24 pre-compiled WASM parsers with ABI 14 compatibility - this is rare! Most projects struggle with ABI mismatches.
-  2. Complete extractors: Each parser has a corresponding TypeScript extractor (665 lines for TypeScript alone) - not just parsing, but actual symbol extraction
-  logic.
-  3. Automated tooling: The build-parsers.sh script and documentation make it reproducible - others can maintain/extend it.
+Yes, you can use GPU acceleration on Linux for both Intel Arc and AMD GPUs with ONNX Runtime (ORT). You need to use the correct **Execution Provider (EP)** for each, just as you use the CUDA EP for NVIDIA.
 
-  The journey from Codesearch → Miller → Julie represents an evolution, but Miller's WASM work solves problems Julie can't (browser environments, pure JS/TS
-  projects).
-  ─────────────────────────────────────────────────
+For a Rust server, you'll need to enable these providers when building ORT from source or use a pre-built package that includes them. You must then specify the provider when you create your `InferenceSession`.
 
-  Proposal: Extract Miller's WASM Parsers as Standalone Package
+## Summary of Linux Execution Providers
 
-  Based on my analysis of Miller's codebase, here's what you have that's worth salvaging:
+| GPU Brand | Required Execution Provider | Typical Setup Difficulty on Linux |
+| :--- | :--- | :--- |
+| **Intel Arc** | OpenVINO™ EP | **Moderate.** Easier than AMD/NVIDIA. Install OpenVINO, then build ORT with the OpenVINO flag. |
+| **AMD** | ROCm EP | **High.** Requires a full ROCm driver/toolkit installation, which can be complex, before building ORT. |
+| **NVIDIA** | CUDA EP | **High.** (As you know) Requires matching CUDA toolkit and cuDNN versions, then building ORT. |
 
-  What Miller Has (Impressive!)
+-----
 
-  WASM Parsers (24 languages):
-  - All compiled with ABI 14 for web-tree-sitter 0.25.9 compatibility
-  - Total size: ~41MB of compiled parsers
-  - Languages: JavaScript, TypeScript, Python, Rust, Go, Java, C#, C, C++, PHP, Ruby, Swift, Kotlin, Dart, Zig, SQL, Vue, Razor, Regex, GDScript, Lua, PowerShell,
-  Bash, HTML, CSS
+## Intel Arc GPUs (OpenVINO Execution Provider)
 
-  TypeScript Extractors:
-  - Complete symbol extraction logic for each language
-  - Relationship extraction (calls, extends, implements, imports)
-  - Type inference capabilities
-  - Based on same patterns Julie uses (now in Rust)
+For Intel Arc, as well as their iGPUs and other dGPUs, the solution is the **OpenVINO™ Execution Provider**.
 
-  Infrastructure:
-  - scripts/build-parsers.sh - automated WASM compilation
-  - docs/custom-wasm-building.md - comprehensive build documentation
-  - Test suite for WASM compatibility
-  - Debug scripts for each parser
+  * **What it is:** OpenVINO is Intel's toolkit for optimizing and deploying AI inference. The OpenVINO EP allows ORT to hand off the computation to your Arc GPU.
 
-  Proposed New Project: tree-sitter-extractors
+  * **How to get it:**
 
-  Package Structure:
-  tree-sitter-extractors/
-  ├── wasm/                    # Pre-compiled WASM parsers (24 files)
-  ├── extractors/              # TypeScript symbol extractors
-  │   ├── base-extractor.ts   # Shared base class
-  │   ├── typescript-extractor.ts
-  │   └── ... (24 total)
-  ├── scripts/
-  │   └── build-parsers.sh    # WASM build automation
-  ├── docs/
-  │   └── custom-wasm-building.md
-  ├── package.json
-  └── README.md
+      * **Recommended (Python):** The easiest way to test is often via the Python package: `pip install onnxruntime-openvino`. This package bundles the necessary OpenVINO libraries.
+      * **For Rust (Building from Source):** When building ORT from source to use in your Rust project, you will need to enable the OpenVINO EP during the CMake configuration. This typically involves passing a flag like `--use_openvino`. You will also need to have the OpenVINO toolkit installed on your system so the build process can find its headers and libraries.
 
-  Use Cases:
-  1. Browser-based code intelligence - Monaco Editor, CodeMirror extensions
-  2. VS Code extensions - Pure TypeScript/WASM implementation
-  3. Node.js/Bun/Deno projects - Server-side code analysis without Rust
-  4. Documentation generators - Extract symbols for API docs
-  5. Code visualization tools - Dependency graphs, call hierarchies
-  6. Teaching/Learning - Understand AST traversal and symbol extraction
+  * **In your Code:** When creating your session, you'll need to tell ORT to use the OpenVINO provider and target the GPU.
 
-  What Makes This Valuable:
+      * In Rust (using the `ort` crate), it would look something like this, making sure to specify the GPU device type:
 
-  1. Solves the ABI hell problem - Pre-compiled with consistent ABI 14
-  2. Complete solution - Not just parsers, but extraction logic too
-  3. Cross-platform WASM - Works in browser, Node.js, Deno, Bun
-  4. Reproducible builds - Documented process for maintaining/updating
-  5. Complements Julie - Julie for native performance, this for portability
+    <!-- end list -->
 
+    ```rust
+    // Example conceptual code for Rust
+    use ort::{Environment, Session, tensor::OrtOwnedTensor};
 
+    let environment = Environment::builder().build()?;
 
-   Effort Required
+    let session = environment
+        .builder()?
+        .with_optimization_level(ort::GraphOptimizationLevel::Level3)?
+        // Tell ORT to use the OpenVINO provider
+        .with_execution_providers([
+            ort::ExecutionProvider::openvino()
+                .with_device_type("GPU") // Crucial step! "CPU" is often the default
+                .build(),
+        ])?
+        .with_model_from_file("your_model.onnx")?;
 
-  Minimal (2-3 hours):
-  1. Create new repo with proper package.json
-  2. Copy WASM files + extractors + scripts
-  3. Update imports/exports for standalone use
-  4. Write comprehensive README with examples
-  5. Publish to npm as @your-org/tree-sitter-extractors
+    // ... proceed with your inference ...
+    ```
 
-  Optional (additional time):
-  - Add TypeScript type definitions
-  - Create example projects (browser demo, CLI tool)
-  - Set up automated WASM rebuilds (GitHub Actions)
-  - Add benchmarks vs other solutions
+-----
 
-  Should You Do This?
+## AMD GPUs (ROCm Execution Provider)
 
-  Pros:
-  - ✅ Preserves significant work (Miller's crown jewels)
-  - ✅ Fills a gap in the ecosystem (WASM + extractors together)
-  - ✅ Helps others avoid ABI compatibility hell
-  - ✅ Positions you as expert in tree-sitter WASM domain
-  - ✅ Could gain traction (people struggle with this!)
+For AMD GPUs, acceleration on Linux is provided by the **ROCm Execution Provider**. (You may also see references to the **MIGraphX EP**, which is built on top of ROCm).
 
-  Cons:
-  - ⚠️ Maintenance burden (updating parsers when grammars change)
-  - ⚠️ Large package size (~41MB WASM files)
-  - ⚠️ Might not get much adoption (niche use case)
+  * **What it is:** ROCm is AMD's open-source software platform for GPU computing, analogous to NVIDIA's CUDA.
 
-  My Recommendation: Yes, do it! The investment is minimal (few hours), but the potential impact is high. Browser-based code editors are growing (GitHub Codespaces,
-   StackBlitz, CodeSandbox), and they all need WASM parsers. Having extractors included is unique - most projects only provide parsers.
+  * **How to get it:** This is generally more involved, as you've found with CUDA.
 
-  Would you like me to help scaffold this new project? I can create the package structure, update the imports, and draft a comprehensive README showing how to use
-  it.
+    1.  **Install ROCm:** You must first install the AMD ROCm drivers and libraries on your Linux system. This process is highly dependent on your distribution and GPU model. This is the most complex step.
+    2.  **Get the ORT Package:**
+          * **Python:** There is a PyPI package: `pip install onnxruntime-rocm`.
+          * **For Rust (Building from Source):** This is the more likely path for your server. You will need to build ORT from source, passing the `--use_rocm` flag to CMake. The build script must be able to locate your ROCm installation.
 
+  * **In your Code:** Similar to the others, you explicitly request the ROCm provider.
+
+      * In Rust, this would be:
+
+    <!-- end list -->
+
+    ```rust
+    // Example conceptual code for Rust
+    use ort::{Environment, Session};
+
+    let environment = Environment::builder().build()?;
+
+    let session = environment
+        .builder()?
+        .with_optimization_level(ort::GraphOptimizationLevel::Level3)?
+        // Tell ORT to use the ROCm provider
+        .with_execution_providers([
+            ort::ExecutionProvider::rocm().build(),
+        ])?
+        .with_model_from_file("your_model.onnx")?;
+
+    // ... proceed with your inference ...
+    ```
 ---
 
 **Last Updated:** 2025-10-28 (Evening)

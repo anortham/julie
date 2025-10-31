@@ -1,7 +1,6 @@
 // HTML Extractor
 //
-// Port of Miller's HTML extractor to idiomatic Rust
-// Original: /Users/murphy/Source/miller/src/extractors/html-extractor.ts
+// Implementation of HTML extractor to idiomatic Rust
 
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
@@ -34,7 +33,7 @@ impl HTMLExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
 
-        // Check if tree is valid and has a root node - start from actual root like Miller
+        // Check if tree is valid and has a root node - start from actual root standard format
         let root_node = tree.root_node();
         if root_node.child_count() > 0 {
             self.visit_node(root_node, &mut symbols, None);

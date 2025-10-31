@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Extract assignment expressions - direct port of Miller's extractAssignment
+    /// Extract assignment expressions - direct Implementation of extractAssignment
     pub(super) fn extract_assignment(
         &mut self,
         node: Node,
@@ -19,7 +19,7 @@ impl super::JavaScriptExtractor {
         let right_node = node.child_by_field_name("right");
 
         if let Some(left) = left_node {
-            // Handle member expression assignments like: Constructor.prototype.method = function() {} (Miller's logic)
+            // Handle member expression assignments like: Constructor.prototype.method = function() {} (reference logic)
             if left.kind() == "member_expression" {
                 let object_node = left.child_by_field_name("object");
                 let property_node = left.child_by_field_name("property");
@@ -29,7 +29,7 @@ impl super::JavaScriptExtractor {
                     let property_name = self.base.get_node_text(&property);
                     let signature = self.base.get_node_text(&node);
 
-                    // Check if this is a prototype assignment (Miller's logic)
+                    // Check if this is a prototype assignment (reference logic)
                     if object_text.contains(".prototype") {
                         let mut metadata = HashMap::new();
                         metadata.insert("isPrototypeMethod".to_string(), json!(true));
@@ -57,7 +57,7 @@ impl super::JavaScriptExtractor {
                             },
                         ));
                     }
-                    // Check if this is a static method assignment (Miller's logic)
+                    // Check if this is a static method assignment (reference logic)
                     else if let Some(right) = right_node {
                         if right.kind() == "function_expression" || right.kind() == "arrow_function"
                         {

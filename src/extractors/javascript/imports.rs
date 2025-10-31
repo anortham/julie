@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Create import symbol - direct port of Miller's createImportSymbol
+    /// Create import symbol - direct Implementation of createImportSymbol
     pub(super) fn create_import_symbol(
         &mut self,
         node: Node,
@@ -53,11 +53,11 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract import specifiers - direct port of Miller's extractImportSpecifiers
+    /// Extract import specifiers - implementation's extractImportSpecifiers
     pub(super) fn extract_import_specifiers(&self, node: &Node) -> Vec<String> {
         let mut specifiers = Vec::new();
 
-        // Look for import clause which contains the specifiers (Miller's logic)
+        // Look for import clause which contains the specifiers (reference logic)
         let import_clause = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "import_clause");
@@ -65,7 +65,7 @@ impl super::JavaScriptExtractor {
             for child in clause.children(&mut clause.walk()) {
                 match child.kind() {
                     "import_specifier" => {
-                        // For named imports like { debounce, throttle } (Miller's logic)
+                        // For named imports like { debounce, throttle } (reference logic)
                         if let Some(name_node) = child.child_by_field_name("name") {
                             specifiers.push(self.base.get_node_text(&name_node));
                         }
@@ -74,15 +74,15 @@ impl super::JavaScriptExtractor {
                         }
                     }
                     "identifier" => {
-                        // For default imports like React (Miller's logic)
+                        // For default imports like React (reference logic)
                         specifiers.push(self.base.get_node_text(&child));
                     }
                     "namespace_import" => {
-                        // For namespace imports like * as name (Miller's logic)
+                        // For namespace imports like * as name (reference logic)
                         specifiers.push(self.base.get_node_text(&child));
                     }
                     "named_imports" => {
-                        // Look inside named_imports for specifiers (Miller's logic)
+                        // Look inside named_imports for specifiers (reference logic)
                         for named_child in child.children(&mut child.walk()) {
                             if named_child.kind() == "import_specifier" {
                                 if let Some(name_node) = named_child.child_by_field_name("name") {

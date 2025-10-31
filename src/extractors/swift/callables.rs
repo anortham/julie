@@ -7,7 +7,7 @@ use super::SwiftExtractor;
 
 /// Extracts Swift callable members: functions, methods, initializers, and deinitializers
 impl SwiftExtractor {
-    /// Port of Miller's extractFunction method
+    /// Implementation of extractFunction method
     pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name_node = node
             .children(&mut node.walk())
@@ -83,7 +83,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractInitializer method
+    /// Implementation of extractInitializer method
     pub(super) fn extract_initializer(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "init".to_string();
         let modifiers = self.extract_modifiers(node);
@@ -128,7 +128,7 @@ impl SwiftExtractor {
         )
     }
 
-    /// Port of Miller's extractDeinitializer method
+    /// Implementation of extractDeinitializer method
     pub(super) fn extract_deinitializer(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "deinit".to_string();
         let signature = "deinit".to_string();

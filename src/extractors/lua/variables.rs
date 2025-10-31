@@ -105,7 +105,7 @@ pub(super) fn extract_local_variable_declaration(
 
             let mut symbol = base.create_symbol(&name_node, name, kind, options);
 
-            // Set dataType as direct property for tests (matching Miller's pattern)
+            // Set dataType as direct property for tests (matching pattern)
             if let Some(ref mut metadata) = symbol.metadata {
                 metadata.insert("dataType".to_string(), data_type.into());
             } else {

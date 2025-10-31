@@ -1,4 +1,4 @@
-// Port of Miller's comprehensive Ruby extractor tests
+// Implementation of comprehensive Ruby extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
 // Submodule declarations

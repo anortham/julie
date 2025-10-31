@@ -396,70 +396,15 @@ pub(super) fn extract_conditional(
     ))
 }
 
-/// Extract an atomic group symbol
-pub(super) fn extract_atomic_group(
-    base: &mut BaseExtractor,
-    node: Node,
-    parent_id: Option<String>,
-) -> Option<Symbol> {
-    let atomic_text = base.get_node_text(&node);
-    let signature = signatures::build_atomic_group_signature(&atomic_text);
+// REMOVED (2025-10-31): extract_atomic_group() - Unreachable dead code
+// Tree-sitter regex parser does NOT generate "atomic_group" nodes for (?> ...) syntax
+// These are parsed as ERROR nodes instead, making this function unreachable
+// See: src/tests/extractors/regex/advanced_features.rs for ERROR node handling tests
 
-    let metadata = create_metadata(&[
-        ("type", "atomic-group"),
-        ("pattern", &atomic_text),
-        ("possessive", "true"),
-    ]);
-
-    let doc_comment = base.find_doc_comment(&node);
-
-    Some(base.create_symbol(
-        &node,
-        atomic_text,
-        SymbolKind::Class,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(Visibility::Public),
-            parent_id,
-            metadata: Some(metadata),
-            doc_comment,
-        },
-    ))
-}
-
-/// Extract a comment symbol
-pub(super) fn extract_comment(
-    base: &mut BaseExtractor,
-    node: Node,
-    parent_id: Option<String>,
-) -> Option<Symbol> {
-    let comment_text = base.get_node_text(&node);
-    let clean_comment = comment_text
-        .strip_prefix("(?#")
-        .or_else(|| comment_text.strip_prefix("#"))
-        .unwrap_or(&comment_text)
-        .strip_suffix(")")
-        .unwrap_or(&comment_text)
-        .trim()
-        .to_string();
-
-    let metadata = create_metadata(&[("type", "comment"), ("content", &clean_comment)]);
-
-    let doc_comment = base.find_doc_comment(&node);
-
-    Some(base.create_symbol(
-        &node,
-        comment_text.clone(),
-        SymbolKind::Property,
-        SymbolOptions {
-            signature: Some(comment_text),
-            visibility: Some(Visibility::Public),
-            parent_id,
-            metadata: Some(metadata),
-            doc_comment,
-        },
-    ))
-}
+// REMOVED (2025-10-31): extract_comment() - Unreachable dead code
+// Tree-sitter regex parser does NOT generate "comment" nodes for (?# ...) syntax
+// These are parsed as ERROR nodes + individual pattern_character nodes instead
+// See: src/tests/extractors/regex/advanced_features.rs for ERROR node handling tests
 
 /// Extract a literal symbol
 pub(super) fn extract_literal(

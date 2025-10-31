@@ -6,7 +6,9 @@
 // - Built-in annotations (@Override, @Deprecated)
 // - Custom annotations with parameters
 
-use super::*;
+use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::java::JavaExtractor;
+use crate::tests::test_utils::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -34,8 +36,7 @@ public @interface RequestMapping {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -94,8 +95,7 @@ public class UserController {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -175,8 +175,7 @@ public class Example {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

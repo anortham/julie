@@ -170,7 +170,7 @@ impl super::GoExtractor {
                     ))
                 }
                 "definition" => {
-                    // For type definition (no equals sign) - Miller formats these like aliases
+                    // For type definition (no equals sign) - formats these like aliases
                     let aliased_type = self.extract_type_from_node(type_node);
                     let signature = format!("type {}{} = {}", name, type_params, aliased_type);
                     Some(self.base.create_symbol(

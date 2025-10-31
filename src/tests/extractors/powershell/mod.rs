@@ -1,4 +1,4 @@
-// Port of Miller's comprehensive PowerShell extractor tests
+// Implementation of comprehensive PowerShell extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
 use crate::extractors::base::{SymbolKind, Visibility};

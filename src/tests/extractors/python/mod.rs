@@ -1,4 +1,4 @@
-// Port of Miller's comprehensive Python extractor tests
+// Implementation of comprehensive Python extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
 // Submodule declarations

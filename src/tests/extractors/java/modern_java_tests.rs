@@ -7,7 +7,9 @@
 // - Records (Java 14+)
 // - Text blocks (Java 13+)
 
-use super::*;
+use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::java::JavaExtractor;
+use crate::tests::test_utils::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -44,8 +46,7 @@ public class LambdaExample {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -89,8 +90,7 @@ record Point(int x, int y) implements Comparable<Point> {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -160,8 +160,7 @@ public class TextBlockExample {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -203,8 +202,7 @@ public class StreamExample {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

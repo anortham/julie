@@ -1,7 +1,6 @@
 // Kotlin Extractor Tests
 //
-// Direct port of Miller's Kotlin extractor tests (TDD RED phase)
-// Original: /Users/murphy/Source/miller/src/__tests__/parser/kotlin-extractor.test.ts
+// Direct Implementation of Kotlin extractor tests (TDD RED phase)
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::kotlin::KotlinExtractor;

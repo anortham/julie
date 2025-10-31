@@ -1,7 +1,6 @@
 //! Kotlin Extractor
 //!
-//! Port of Miller's Kotlin extractor to idiomatic Rust.
-//! Original: /Users/murphy/Source/miller/src/extractors/kotlin-extractor.ts
+//! Implementation of Kotlin extractor to idiomatic Rust.
 //!
 //! This extractor handles comprehensive Kotlin symbol extraction including:
 //! - Classes, data classes, sealed classes, enums

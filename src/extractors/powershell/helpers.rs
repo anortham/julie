@@ -141,7 +141,7 @@ pub(super) fn extract_parameter_attributes(base: &BaseExtractor, node: Node) -> 
         .unwrap()
         .captures(&node_text)
     {
-        captures.get(0).unwrap().as_str().to_string()
+        captures.get(0).map_or(String::new(), |m| m.as_str().to_string())
     } else {
         String::new()
     }
@@ -153,7 +153,7 @@ pub(super) fn extract_inheritance(base: &BaseExtractor, node: Node) -> Option<St
     regex::Regex::new(r":\s*(\w+)")
         .unwrap()
         .captures(&node_text)
-        .map(|captures| captures.get(1).unwrap().as_str().to_string())
+        .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
 /// Extract return type annotation from a method definition
@@ -162,7 +162,7 @@ pub(super) fn extract_return_type(base: &BaseExtractor, node: Node) -> Option<St
     regex::Regex::new(r"\[(\w+)\]")
         .unwrap()
         .captures(&node_text)
-        .map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
+        .and_then(|captures| captures.get(1).map(|m| format!("[{}]", m.as_str())))
 }
 
 /// Extract property type annotation from a property definition
@@ -171,7 +171,7 @@ pub(super) fn extract_property_type(base: &BaseExtractor, node: Node) -> Option<
     regex::Regex::new(r"\[(\w+)\]")
         .unwrap()
         .captures(&node_text)
-        .map(|captures| format!("[{}]", captures.get(1).unwrap().as_str()))
+        .and_then(|captures| captures.get(1).map(|m| format!("[{}]", m.as_str())))
 }
 
 /// Recursively find all nodes of a given type
@@ -218,7 +218,9 @@ pub(super) fn extract_function_name_from_param_block(
                 let text = base.get_node_text(&child);
                 // Extract function name from text like "\nfunction Set-CustomProperty {"
                 if let Some(captures) = function_name_re.captures(&text) {
-                    return Some(captures.get(1).unwrap().as_str().to_string());
+                    if let Some(func_name) = captures.get(1) {
+                        return Some(func_name.as_str().to_string());
+                    }
                 }
             }
         }
@@ -230,7 +232,9 @@ pub(super) fn extract_function_name_from_param_block(
         if n.kind() == "ERROR" {
             let text = base.get_node_text(&n);
             if let Some(captures) = function_name_re.captures(&text) {
-                return Some(captures.get(1).unwrap().as_str().to_string());
+                if let Some(func_name) = captures.get(1) {
+                    return Some(func_name.as_str().to_string());
+                }
             }
         }
         current = n.parent();

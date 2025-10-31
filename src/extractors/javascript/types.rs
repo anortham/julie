@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Extract class declarations - direct port of Miller's extractClass
+    /// Extract class declarations - direct Implementation of extractClass
     pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name_node = node.child_by_field_name("name");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
             .unwrap_or_else(|| "Anonymous".to_string());
 
-        // Extract extends clause (Miller's logic)
+        // Extract extends clause (reference logic)
         let heritage = node.child_by_field_name("heritage").or_else(|| {
             node.children(&mut node.walk())
                 .find(|c| c.kind() == "class_heritage")
@@ -57,7 +57,7 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract property definitions - direct port of Miller's extractProperty
+    /// Extract property definitions - implementation's extractProperty
     pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let name_node = node
             .child_by_field_name("key")
@@ -70,7 +70,7 @@ impl super::JavaScriptExtractor {
         let value_node = node.child_by_field_name("value");
         let signature = self.build_property_signature(&node, &name);
 
-        // If the value is a function, treat it as a method (Miller's logic)
+        // If the value is a function, treat it as a method (reference logic)
         if let Some(value) = &value_node {
             if value.kind() == "arrow_function"
                 || value.kind() == "function_expression"
@@ -104,7 +104,7 @@ impl super::JavaScriptExtractor {
             }
         }
 
-        // Determine if this is a class field or regular property (Miller's logic)
+        // Determine if this is a class field or regular property (reference logic)
         let symbol_kind = match node.kind() {
             "public_field_definition" | "field_definition" | "property_definition" => {
                 SymbolKind::Field
@@ -140,7 +140,7 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract export declarations - direct port of Miller's extractExport
+    /// Extract export declarations - implementation's extractExport
     pub(super) fn extract_export(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
         let exported_name = self.extract_exported_name(&node);
         let signature = self.base.get_node_text(&node);
@@ -170,9 +170,9 @@ impl super::JavaScriptExtractor {
         )
     }
 
-    /// Extract exported name - direct port of Miller's extractExportedName
+    /// Extract exported name - implementation's extractExportedName
     pub(super) fn extract_exported_name(&self, node: &Node) -> String {
-        // Handle different export patterns (Miller's logic)
+        // Handle different export patterns (reference logic)
         for child in node.children(&mut node.walk()) {
             match child.kind() {
                 // Direct exports: export const Component = ..., export function foo() {}, export class Bar {}
@@ -196,7 +196,7 @@ impl super::JavaScriptExtractor {
                     return self.base.get_node_text(&child);
                 }
                 "export_clause" => {
-                    // Handle export { default as Component } patterns (Miller's logic)
+                    // Handle export { default as Component } patterns (reference logic)
                     for clause_child in child.children(&mut child.walk()) {
                         if clause_child.kind() == "export_specifier" {
                             let children: Vec<_> =
@@ -227,7 +227,7 @@ impl super::JavaScriptExtractor {
             }
         }
 
-        // Look for default exports (Miller's logic)
+        // Look for default exports (reference logic)
         if self.is_default_export(node) {
             return "default".to_string();
         }

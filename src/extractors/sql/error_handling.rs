@@ -238,10 +238,13 @@ fn extract_triggers_from_error(
 
             let mut signature = format!("CREATE TRIGGER {}", name);
             if let Some(details_captures) = details_regex.captures(error_text) {
-                let timing = details_captures.get(1).unwrap().as_str();
-                let event = details_captures.get(2).unwrap().as_str();
-                let table = details_captures.get(3).unwrap().as_str();
-                signature = format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
+                let timing = details_captures.get(1).map_or("", |m| m.as_str());
+                let event = details_captures.get(2).map_or("", |m| m.as_str());
+                let table = details_captures.get(3).map_or("", |m| m.as_str());
+
+                if !timing.is_empty() && !event.is_empty() && !table.is_empty() {
+                    signature = format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
+                }
             }
 
             let mut metadata = HashMap::new();
@@ -277,7 +280,12 @@ fn extract_constraints_from_error(
     if let Some(captures) = constraint_regex.captures(error_text) {
         if let Some(constraint_name) = captures.get(1) {
             let name = constraint_name.as_str().to_string();
-            let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
+            let constraint_type = captures.get(2).map_or("", |m| m.as_str()).to_uppercase();
+
+            // Skip if constraint type is empty
+            if constraint_type.is_empty() {
+                return;
+            }
 
             let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
@@ -285,10 +293,10 @@ fn extract_constraints_from_error(
                 let check_regex =
                     regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
                 if let Some(check_captures) = check_regex.captures(error_text) {
-                    signature.push_str(&format!(
-                        " ({})",
-                        check_captures.get(1).unwrap().as_str().trim()
-                    ));
+                    let check_condition = check_captures.get(1).map_or("", |m| m.as_str()).trim();
+                    if !check_condition.is_empty() {
+                        signature.push_str(&format!(" ({})", check_condition));
+                    }
                 }
             } else if constraint_type.contains("FOREIGN") {
                 let fk_regex = regex::Regex::new(
@@ -296,31 +304,32 @@ fn extract_constraints_from_error(
                 )
                 .unwrap();
                 if let Some(fk_captures) = fk_regex.captures(error_text) {
-                    signature.push_str(&format!(
-                        " ({}) REFERENCES {}",
-                        fk_captures.get(1).unwrap().as_str(),
-                        fk_captures.get(2).unwrap().as_str()
-                    ));
+                    let fk_columns = fk_captures.get(1).map_or("", |m| m.as_str());
+                    let fk_ref_table = fk_captures.get(2).map_or("", |m| m.as_str());
+
+                    if !fk_columns.is_empty() && !fk_ref_table.is_empty() {
+                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_columns, fk_ref_table));
+                    }
                 }
 
                 let on_delete_regex =
                     regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_delete_captures) = on_delete_regex.captures(error_text) {
-                    signature.push_str(&format!(
-                        " ON DELETE {}",
-                        on_delete_captures.get(1).unwrap().as_str().to_uppercase()
-                    ));
+                    let on_delete_action = on_delete_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    if !on_delete_action.is_empty() {
+                        signature.push_str(&format!(" ON DELETE {}", on_delete_action));
+                    }
                 }
 
                 let on_update_regex =
                     regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_update_captures) = on_update_regex.captures(error_text) {
-                    signature.push_str(&format!(
-                        " ON UPDATE {}",
-                        on_update_captures.get(1).unwrap().as_str().to_uppercase()
-                    ));
+                    let on_update_action = on_update_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    if !on_update_action.is_empty() {
+                        signature.push_str(&format!(" ON UPDATE {}", on_update_action));
+                    }
                 }
             }
 
@@ -364,16 +373,21 @@ fn extract_domains_from_error(
     if let Some(captures) = domain_regex.captures(error_text) {
         if let Some(domain_name) = captures.get(1) {
             let name = domain_name.as_str().to_string();
-            let base_type = captures.get(2).unwrap().as_str().to_string();
+            let base_type = captures.get(2).map_or("", |m| m.as_str()).to_string();
+
+            // Skip if base type is empty
+            if base_type.is_empty() {
+                return;
+            }
 
             let mut signature = format!("CREATE DOMAIN {} AS {}", name, base_type);
 
             let check_regex = regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)").unwrap();
             if let Some(check_captures) = check_regex.captures(error_text) {
-                signature.push_str(&format!(
-                    " CHECK ({})",
-                    check_captures.get(1).unwrap().as_str().trim()
-                ));
+                let check_condition = check_captures.get(1).map_or("", |m| m.as_str()).trim();
+                if !check_condition.is_empty() {
+                    signature.push_str(&format!(" CHECK ({})", check_condition));
+                }
             }
 
             let mut metadata = HashMap::new();
@@ -412,7 +426,12 @@ fn extract_types_from_error(
     if let Some(captures) = enum_regex.captures(error_text) {
         if let Some(enum_name) = captures.get(1) {
             let name = enum_name.as_str().to_string();
-            let enum_values = captures.get(2).unwrap().as_str();
+            let enum_values = captures.get(2).map_or("", |m| m.as_str());
+
+            // Skip if enum values are empty
+            if enum_values.is_empty() {
+                return;
+            }
 
             let signature = format!("CREATE TYPE {} AS ENUM ({})", name, enum_values.trim());
 
@@ -450,7 +469,7 @@ fn extract_aggregates_from_error(
     if let Some(captures) = aggregate_regex.captures(error_text) {
         if let Some(aggregate_name) = captures.get(1) {
             let name = aggregate_name.as_str().to_string();
-            let parameters = captures.get(2).unwrap().as_str();
+            let parameters = captures.get(2).map_or("", |m| m.as_str());
 
             let signature = format!("CREATE AGGREGATE {}({})", name, parameters);
 

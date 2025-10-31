@@ -7,7 +7,7 @@
 /// - Relationships: inheritance, module inclusion
 /// - Identifier extraction for LSP-quality find_references
 ///
-/// Port of Miller's comprehensive Ruby extractor
+/// Implementation of comprehensive Ruby extractor
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, Visibility};
 use tree_sitter::{Node, Tree};
 

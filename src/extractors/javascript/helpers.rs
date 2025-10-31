@@ -7,9 +7,9 @@
 use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
-    /// Check if function is async - direct port of Miller's isAsync
+    /// Check if function is async - direct Implementation of isAsync
     pub(super) fn is_async(&self, node: &Node) -> bool {
-        // Direct check: node has async child (Miller's logic)
+        // Direct check: node has async child (reference logic)
         if node
             .children(&mut node.walk())
             .any(|c| self.base.get_node_text(&c) == "async" || c.kind() == "async")
@@ -17,7 +17,7 @@ impl super::JavaScriptExtractor {
             return true;
         }
 
-        // For arrow functions: check if first child is async (Miller's logic)
+        // For arrow functions: check if first child is async (reference logic)
         if node.kind() == "arrow_function" {
             if let Some(first_child) = node.child(0) {
                 if self.base.get_node_text(&first_child) == "async" {
@@ -26,7 +26,7 @@ impl super::JavaScriptExtractor {
             }
         }
 
-        // For function expressions and arrow functions assigned to variables, check parent (Miller's logic)
+        // For function expressions and arrow functions assigned to variables, check parent (reference logic)
         let mut current = node.parent();
         while let Some(current_node) = current {
             if current_node.kind() == "program" {
@@ -44,7 +44,7 @@ impl super::JavaScriptExtractor {
         false
     }
 
-    /// Check if function is generator - direct port of Miller's isGenerator
+    /// Check if function is generator - direct Implementation of isGenerator
     pub(super) fn is_generator(&self, node: &Node) -> bool {
         node.kind().contains("generator")
             || node.children(&mut node.walk()).any(|c| c.kind() == "*")
@@ -54,17 +54,17 @@ impl super::JavaScriptExtractor {
                 .unwrap_or(false)
     }
 
-    /// Check if declaration is const - direct port of Miller's isConstDeclaration
+    /// Check if declaration is const - direct Implementation of isConstDeclaration
     pub(super) fn is_const_declaration(&self, node: &Node) -> bool {
         self.get_declaration_type(node) == "const"
     }
 
-    /// Check if declaration is let - direct port of Miller's isLetDeclaration
+    /// Check if declaration is let - direct Implementation of isLetDeclaration
     pub(super) fn is_let_declaration(&self, node: &Node) -> bool {
         self.get_declaration_type(node) == "let"
     }
 
-    /// Check if class has private fields - direct port of Miller's hasPrivateFields
+    /// Check if class has private fields - direct Implementation of hasPrivateFields
     pub(super) fn has_private_fields(&self, node: &Node) -> bool {
         for child in node.children(&mut node.walk()) {
             if child.kind() == "class_body" {
@@ -83,39 +83,39 @@ impl super::JavaScriptExtractor {
         false
     }
 
-    /// Check if property is computed - direct port of Miller's isComputedProperty
+    /// Check if property is computed - direct Implementation of isComputedProperty
     pub(super) fn is_computed_property(&self, node: &Node) -> bool {
         node.child_by_field_name("key")
             .map(|key| key.kind() == "computed_property_name")
             .unwrap_or(false)
     }
 
-    /// Check if import has default - direct port of Miller's hasDefaultImport
+    /// Check if import has default - direct Implementation of hasDefaultImport
     pub(super) fn has_default_import(&self, node: &Node) -> bool {
         node.children(&mut node.walk())
             .any(|c| c.kind() == "import_default_specifier")
     }
 
-    /// Check if import has namespace - direct port of Miller's hasNamespaceImport
+    /// Check if import has namespace - direct Implementation of hasNamespaceImport
     pub(super) fn has_namespace_import(&self, node: &Node) -> bool {
         node.children(&mut node.walk())
             .any(|c| c.kind() == "namespace_import")
     }
 
-    /// Check if export is default - direct port of Miller's isDefaultExport
+    /// Check if export is default - direct Implementation of isDefaultExport
     pub(super) fn is_default_export(&self, node: &Node) -> bool {
         node.children(&mut node.walk())
             .any(|c| c.kind() == "default")
     }
 
-    /// Check if export is named - direct port of Miller's isNamedExport
+    /// Check if export is named - direct Implementation of isNamedExport
     pub(super) fn is_named_export(&self, node: &Node) -> bool {
         !self.is_default_export(node)
     }
 
-    /// Extract function parameters - direct port of Miller's extractParameters
+    /// Extract function parameters - direct Implementation of extractParameters
     pub(super) fn extract_parameters(&self, node: &Node) -> Vec<String> {
-        // Look for formal_parameters node (Miller's logic)
+        // Look for formal_parameters node (reference logic)
         let formal_params = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "formal_parameters");
@@ -140,21 +140,21 @@ impl super::JavaScriptExtractor {
         Vec::new()
     }
 
-    /// Get declaration type - direct port of Miller's getDeclarationType
+    /// Get declaration type - direct Implementation of getDeclarationType
     pub(super) fn get_declaration_type(&self, node: &Node) -> String {
         let mut current = node.parent();
         while let Some(current_node) = current {
             if current_node.kind() == "variable_declaration"
                 || current_node.kind() == "lexical_declaration"
             {
-                // Look for the keyword in the first child (Miller's logic)
+                // Look for the keyword in the first child (reference logic)
                 if let Some(first_child) = current_node.child(0) {
                     let text = self.base.get_node_text(&first_child);
                     if ["const", "let", "var"].contains(&text.as_str()) {
                         return text;
                     }
                 }
-                // Fallback: look through all children for keywords (Miller's logic)
+                // Fallback: look through all children for keywords (reference logic)
                 for child in current_node.children(&mut current_node.walk()) {
                     let text = self.base.get_node_text(&child);
                     if ["const", "let", "var"].contains(&text.as_str()) {
@@ -167,7 +167,7 @@ impl super::JavaScriptExtractor {
         "var".to_string()
     }
 
-    /// Check if node is require call - direct port of Miller's isRequireCall
+    /// Check if node is require call - direct Implementation of isRequireCall
     pub(super) fn is_require_call(&self, node: &Node) -> bool {
         if node.kind() == "call_expression" {
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -177,7 +177,7 @@ impl super::JavaScriptExtractor {
         false
     }
 
-    /// Extract require source - direct port of Miller's extractRequireSource
+    /// Extract require source - direct Implementation of extractRequireSource
     pub(super) fn extract_require_source(&self, node: &Node) -> String {
         if node.kind() == "call_expression" {
             if let Some(args) = node.child_by_field_name("arguments") {

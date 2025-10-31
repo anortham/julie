@@ -9,7 +9,7 @@ use crate::extractors::base::BaseExtractor;
 use crate::extractors::base::SymbolKind;
 
 /// Extract symbols from style section (CSS class names, etc.)
-/// Port of Miller's extractStyleSymbols logic
+/// Implementation of extractStyleSymbols logic
 pub(super) fn extract_style_symbols(
     base: &BaseExtractor,
     section: &VueSection,
@@ -23,7 +23,7 @@ pub(super) fn extract_style_symbols(
         // Extract doc comment for this line (look backward from current line)
         let doc_comment = find_doc_comment_before(&lines, i);
 
-        // Extract CSS class names - following Miller's pattern
+        // Extract CSS class names - following pattern
         for captures in CSS_CLASS_RE.captures_iter(line) {
             if let Some(class_name) = captures.get(1) {
                 let name = class_name.as_str();

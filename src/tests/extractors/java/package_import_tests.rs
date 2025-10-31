@@ -1,8 +1,10 @@
 // Package and Import Extraction Tests
 //
-// Direct port of Miller's Java extractor tests (TDD RED phase)
+// Direct Implementation of Java extractor tests (TDD RED phase)
 
-use super::*;
+use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::java::JavaExtractor;
+use crate::tests::test_utils::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -18,8 +20,7 @@ package com.example.app;
 package com.acme.utils;
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -58,8 +59,7 @@ import static java.lang.Math.PI;
 import static java.util.Collections.*;
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

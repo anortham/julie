@@ -402,7 +402,7 @@ Traditional tools (grep, basic search) require verification because they're unre
 1. **Pre-indexed Accuracy** - All results come from validated symbol database built by tree-sitter parsers
 2. **Graceful Failure** - Tools return explicit errors if they can't work correctly
 3. **Self-Validating** - Indexing process ensures data integrity through multiple validation passes
-4. **Comprehensive Coverage** - 26 language parsers with 100% test parity vs Miller
+4. **Comprehensive Coverage** - 26 language parsers with 100% test parity
 
 ### The Anti-Verification Rule
 

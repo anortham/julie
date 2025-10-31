@@ -7,7 +7,7 @@ use tree_sitter::Node;
 pub(super) struct MediaExtractor;
 
 impl MediaExtractor {
-    /// Extract media rule - port of Miller's extractMediaRule
+    /// Extract media rule - Implementation of extractMediaRule
     pub(super) fn extract_media_rule(
         base: &mut BaseExtractor,
         node: Node,
@@ -44,7 +44,7 @@ impl MediaExtractor {
         ))
     }
 
-    /// Extract media query - port of Miller's extractMediaQuery
+    /// Extract media query - port of extractMediaQuery
     pub(super) fn extract_media_query(base: &BaseExtractor, node: &Node) -> String {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();

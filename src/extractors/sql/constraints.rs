@@ -12,7 +12,7 @@ use tree_sitter::Node;
 
 /// Extract column constraints (PRIMARY KEY, NOT NULL, UNIQUE, etc.)
 pub(super) fn extract_column_constraints(base: &BaseExtractor, column_node: &Node) -> String {
-    // Port Miller's exact column constraints extraction logic
+    // Port exact column constraints extraction logic
     let mut constraints: Vec<String> = Vec::new();
     let mut has_primary = false;
     let mut has_key = false;
@@ -35,7 +35,7 @@ pub(super) fn extract_column_constraints(base: &BaseExtractor, column_node: &Nod
                 constraints.push("NOT NULL".to_string());
             }
             "keyword_not" => {
-                // Check if followed by keyword_null (Miller's logic)
+                // Check if followed by keyword_null (reference logic)
                 if let Some(next_sibling) = node.next_sibling() {
                     if next_sibling.kind() == "keyword_null" {
                         constraints.push("NOT NULL".to_string());
@@ -49,7 +49,7 @@ pub(super) fn extract_column_constraints(base: &BaseExtractor, column_node: &Nod
                 constraints.push("CHECK".to_string());
             }
             "keyword_default" => {
-                // Find the default value (Miller's logic)
+                // Find the default value (reference logic)
                 if let Some(next_sibling) = node.next_sibling() {
                     let default_value = base.get_node_text(&next_sibling);
                     constraints.push(format!("DEFAULT {}", default_value));
@@ -59,12 +59,12 @@ pub(super) fn extract_column_constraints(base: &BaseExtractor, column_node: &Nod
         }
     });
 
-    // Add PRIMARY KEY if both keywords found (Miller's logic)
+    // Add PRIMARY KEY if both keywords found (reference logic)
     if has_primary && has_key {
         constraints.push("PRIMARY KEY".to_string());
     }
 
-    // Return formatted string like Miller
+    // Return formatted string standard format
     if constraints.is_empty() {
         String::new()
     } else {
@@ -91,7 +91,7 @@ pub(super) fn extract_table_columns(
         if let Some(name_node) = column_name_node {
             let column_name = base.get_node_text(&name_node);
 
-            // Find SQL data type nodes (port Miller's comprehensive type search)
+            // Find SQL data type nodes (port comprehensive type search)
             let data_type_node = base
                 .find_child_by_type(&node, "data_type")
                 .or_else(|| base.find_child_by_type(&node, "type_name"))
@@ -120,7 +120,7 @@ pub(super) fn extract_table_columns(
                 "unknown".to_string()
             };
 
-            // Extract column constraints and build signature like Miller
+            // Extract column constraints and build signature standard format
             let constraints = extract_column_constraints(base, &node);
             let signature = format!("{}{}", data_type, constraints);
 
@@ -132,7 +132,7 @@ pub(super) fn extract_table_columns(
                 metadata: None,
             };
 
-            // Columns are fields within the table (Miller's strategy)
+            // Columns are fields within the table (strategy)
             let column_symbol = base.create_symbol(&node, column_name, SymbolKind::Field, options);
             symbols.push(column_symbol);
         }
@@ -153,7 +153,7 @@ pub(super) fn extract_table_constraints(
         let mut constraint_type = "unknown";
         let mut constraint_name = format!("constraint_{}", node.start_position().row);
 
-        // Determine constraint type based on child nodes (Miller's logic)
+        // Determine constraint type based on child nodes (reference logic)
         let has_check = base.find_child_by_type(&node, "keyword_check").is_some();
         let has_primary = base.find_child_by_type(&node, "keyword_primary").is_some();
         let has_foreign = base.find_child_by_type(&node, "keyword_foreign").is_some();
@@ -165,7 +165,7 @@ pub(super) fn extract_table_constraints(
             constraint_name = base.get_node_text(&name_node);
         }
 
-        // Determine constraint type (Miller's logic)
+        // Determine constraint type (reference logic)
         if has_check {
             constraint_type = "check";
         } else if has_primary {
@@ -178,7 +178,7 @@ pub(super) fn extract_table_constraints(
             constraint_type = "index";
         }
 
-        // Create constraint symbol like Miller
+        // Create constraint symbol standard format
         let constraint_symbol = create_constraint_symbol(
             base,
             &node,
@@ -198,7 +198,7 @@ fn create_constraint_symbol(
     parent_table_id: &str,
     constraint_name: &str,
 ) -> Symbol {
-    // Port Miller's createConstraintSymbol logic
+    // Port createConstraintSymbol logic
     let signature = if constraint_type == "index" {
         format!("INDEX {}", constraint_name)
     } else {
@@ -213,7 +213,7 @@ fn create_constraint_symbol(
         metadata: None,
     };
 
-    // Constraints as Interface symbols (Miller's strategy)
+    // Constraints as Interface symbols (strategy)
     base.create_symbol(
         node,
         constraint_name.to_string(),
@@ -229,7 +229,7 @@ pub(super) fn extract_constraints_from_alter_table(
     symbols: &mut Vec<Symbol>,
     parent_id: Option<&str>,
 ) {
-    // Port Miller's extractConstraintsFromAlterTable logic
+    // Port extractConstraintsFromAlterTable logic
     let node_text = base.get_node_text(&node);
 
     // Extract ADD CONSTRAINT statements
@@ -240,7 +240,12 @@ pub(super) fn extract_constraints_from_alter_table(
     if let Some(captures) = constraint_regex.captures(&node_text) {
         if let Some(constraint_name) = captures.get(1) {
             let name = constraint_name.as_str().to_string();
-            let constraint_type = captures.get(2).unwrap().as_str().to_uppercase();
+            let constraint_type = captures.get(2).map_or("", |m| m.as_str()).to_uppercase();
+
+            // Skip if constraint type is empty
+            if constraint_type.is_empty() {
+                return;
+            }
 
             let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
 
@@ -249,10 +254,10 @@ pub(super) fn extract_constraints_from_alter_table(
                 let check_regex =
                     regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
                 if let Some(check_captures) = check_regex.captures(&node_text) {
-                    signature.push_str(&format!(
-                        " ({})",
-                        check_captures.get(1).unwrap().as_str().trim()
-                    ));
+                    let check_condition = check_captures.get(1).map_or("", |m| m.as_str()).trim();
+                    if !check_condition.is_empty() {
+                        signature.push_str(&format!(" ({})", check_condition));
+                    }
                 }
             } else if constraint_type.contains("FOREIGN") {
                 let fk_regex = regex::Regex::new(
@@ -260,11 +265,12 @@ pub(super) fn extract_constraints_from_alter_table(
                 )
                 .unwrap();
                 if let Some(fk_captures) = fk_regex.captures(&node_text) {
-                    signature.push_str(&format!(
-                        " ({}) REFERENCES {}",
-                        fk_captures.get(1).unwrap().as_str(),
-                        fk_captures.get(2).unwrap().as_str()
-                    ));
+                    let fk_columns = fk_captures.get(1).map_or("", |m| m.as_str());
+                    let fk_ref_table = fk_captures.get(2).map_or("", |m| m.as_str());
+
+                    if !fk_columns.is_empty() && !fk_ref_table.is_empty() {
+                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_columns, fk_ref_table));
+                    }
                 }
 
                 // Add ON DELETE/UPDATE actions
@@ -272,20 +278,20 @@ pub(super) fn extract_constraints_from_alter_table(
                     regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_delete_captures) = on_delete_regex.captures(&node_text) {
-                    signature.push_str(&format!(
-                        " ON DELETE {}",
-                        on_delete_captures.get(1).unwrap().as_str().to_uppercase()
-                    ));
+                    let on_delete_action = on_delete_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    if !on_delete_action.is_empty() {
+                        signature.push_str(&format!(" ON DELETE {}", on_delete_action));
+                    }
                 }
 
                 let on_update_regex =
                     regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_update_captures) = on_update_regex.captures(&node_text) {
-                    signature.push_str(&format!(
-                        " ON UPDATE {}",
-                        on_update_captures.get(1).unwrap().as_str().to_uppercase()
-                    ));
+                    let on_update_action = on_update_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    if !on_update_action.is_empty() {
+                        signature.push_str(&format!(" ON UPDATE {}", on_update_action));
+                    }
                 }
             }
 

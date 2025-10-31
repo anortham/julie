@@ -7,7 +7,7 @@ use tree_sitter::Node;
 pub(super) struct AnimationExtractor;
 
 impl AnimationExtractor {
-    /// Extract keyframes rule - port of Miller's extractKeyframesRule
+    /// Extract keyframes rule - Implementation of extractKeyframesRule
     pub(super) fn extract_keyframes_rule(
         base: &mut BaseExtractor,
         node: Node,
@@ -34,7 +34,7 @@ impl AnimationExtractor {
         Some(base.create_symbol(
             &node,
             symbol_name,
-            SymbolKind::Function, // Animations as functions per Miller
+            SymbolKind::Function, // Animations as functions as designed
             SymbolOptions {
                 signature: Some(signature),
                 visibility: Some(Visibility::Public),
@@ -78,7 +78,7 @@ impl AnimationExtractor {
         ))
     }
 
-    /// Extract individual keyframes - port of Miller's extractKeyframes
+    /// Extract individual keyframes - port of extractKeyframes
     pub(super) fn extract_keyframes(
         base: &mut BaseExtractor,
         node: Node,
@@ -138,14 +138,18 @@ impl AnimationExtractor {
         }
     }
 
-    /// Extract keyframes name - port of Miller's extractKeyframesName
+    /// Extract keyframes name - port of extractKeyframesName
     pub(super) fn extract_keyframes_name(base: &BaseExtractor, node: &Node) -> String {
         let text = base.get_node_text(node);
         if let Some(captures) = regex::Regex::new(r"@keyframes\s+([^\s{]+)")
             .unwrap()
             .captures(&text)
         {
-            captures.get(1).unwrap().as_str().to_string()
+            // Safe: capture group 1 exists if regex matched (pattern has one capture group)
+            captures
+                .get(1)
+                .map_or("unknown", |m| m.as_str())
+                .to_string()
         } else {
             "unknown".to_string()
         }

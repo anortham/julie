@@ -58,7 +58,7 @@ impl ExtractorManager {
         Self {}
     }
 
-    /// Get supported languages (all 25 extractors with Miller parity)
+    /// Get supported languages (all 25 extractors complete language support)
     pub fn supported_languages(&self) -> Vec<&'static str> {
         vec![
             "rust", "typescript", "tsx", "javascript", "jsx", "python", "go", "java",

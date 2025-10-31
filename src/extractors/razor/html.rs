@@ -98,7 +98,7 @@ impl super::RazorExtractor {
     ) {
         let element_text = self.base.get_node_text(&node);
 
-        // Extract @bind-Value attributes using regex patterns (Miller approach)
+        // Extract @bind-Value attributes using regex patterns (standard approach)
         if let Ok(value_regex) = regex::Regex::new(r#"@bind-Value="([^"]+)""#) {
             for captures in value_regex.captures_iter(&element_text) {
                 if let Some(value_match) = captures.get(1) {
@@ -248,7 +248,7 @@ impl super::RazorExtractor {
         parameters
     }
 
-    /// Create external component symbols for uppercase tags (Miller's approach)
+    /// Create external component symbols for uppercase tags (standard approach)
     pub(super) fn create_external_component_symbols_if_needed(
         &mut self,
         node: Node,
@@ -256,7 +256,7 @@ impl super::RazorExtractor {
     ) {
         let node_text = self.base.get_node_text(&node);
 
-        // Use regex to find all component tags within the element (Miller's approach)
+        // Use regex to find all component tags within the element (standard approach)
         if let Ok(component_regex) = regex::Regex::new(r"<([A-Z][A-Za-z0-9]*)\b") {
             for captures in component_regex.captures_iter(&node_text) {
                 if let Some(tag_match) = captures.get(1) {
@@ -264,7 +264,7 @@ impl super::RazorExtractor {
 
                     // Check if symbol already exists
                     if !symbols.iter().any(|s| s.name == tag_name) {
-                        // Create external component symbol (Miller's approach)
+                        // Create external component symbol (standard approach)
                         let component_symbol = self.base.create_symbol(
                             &node,
                             tag_name.to_string(),

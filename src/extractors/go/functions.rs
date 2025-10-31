@@ -92,7 +92,7 @@ impl super::GoExtractor {
                         return_types = self.extract_parameter_list(child);
                     }
                 }
-                "field_identifier" => func_name = Some(self.get_node_text(child)), // Miller uses field_identifier for method names
+                "field_identifier" => func_name = Some(self.get_node_text(child)), // Uses field_identifier for method names
                 "type_parameter_list" => type_parameters = Some(self.get_node_text(child)),
                 "type_identifier" | "primitive_type" | "pointer_type" | "slice_type"
                 | "channel_type" | "interface_type" | "function_type" | "map_type"

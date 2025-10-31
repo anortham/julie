@@ -1,12 +1,11 @@
 //! JavaScript Extractor for Julie
 //!
-//! Direct port of Miller's JavaScript extractor logic ported to idiomatic Rust
-//! Original: /Users/murphy/Source/miller/src/extractors/javascript-extractor.ts
+//! Direct Implementation of JavaScript extractor logic ported to idiomatic Rust
 //!
-//! This follows the exact extraction strategy from Miller while using Rust patterns:
-//! - Uses Miller's node type switch statement logic
-//! - Preserves Miller's signature building algorithms
-//! - Maintains Miller's same edge case handling
+//! This follows the exact extraction strategy using Rust patterns:
+//! - Uses node type switch statement logic
+//! - Preserves signature building algorithms
+//! - Maintains same edge case handling
 //! - Converts to Rust Option<T>, Result<T>, iterators, ownership system
 
 mod assignments;
@@ -49,7 +48,7 @@ impl JavaScriptExtractor {
         relationships::extract_relationships(self, tree, symbols)
     }
 
-    /// Main tree traversal - ports Miller's visitNode function exactly
+    /// Main tree traversal - ports visitNode function exactly
     fn visit_node(
         &mut self,
         node: tree_sitter::Node,
@@ -58,7 +57,7 @@ impl JavaScriptExtractor {
     ) {
         let mut symbol: Option<Symbol> = None;
 
-        // Port Miller's switch statement exactly
+        // Port switch statement exactly
         match node.kind() {
             "class_declaration" => {
                 symbol = Some(self.extract_class(node, parent_id.clone()));
@@ -75,7 +74,7 @@ impl JavaScriptExtractor {
                 symbol = Some(self.extract_method(node, parent_id.clone()));
             }
             "variable_declarator" => {
-                // Handle destructuring patterns that create multiple symbols (Miller's logic)
+                // Handle destructuring patterns that create multiple symbols (reference logic)
                 let name_node = node.child_by_field_name("name");
                 if let Some(name) = name_node {
                     if name.kind() == "object_pattern" || name.kind() == "array_pattern" {
@@ -90,7 +89,7 @@ impl JavaScriptExtractor {
                 }
             }
             "import_statement" | "import_declaration" => {
-                // Handle multiple import specifiers (Miller's logic)
+                // Handle multiple import specifiers (reference logic)
                 let import_symbols = self.extract_import_specifiers(&node);
                 for specifier in import_symbols {
                     let import_symbol =
@@ -119,7 +118,7 @@ impl JavaScriptExtractor {
             parent_id
         };
 
-        // Recursively visit children (Miller's pattern)
+        // Recursively visit children (pattern)
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.visit_node(child, symbols, current_parent_id.clone());

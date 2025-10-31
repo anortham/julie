@@ -33,21 +33,21 @@ impl PhpExtractor {
         }
     }
 
-    /// Extract symbols from PHP code - Miller's main extraction method
+    /// Extract symbols from PHP code - main extraction method
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
         symbols
     }
 
-    /// Extract relationships from PHP code - Miller's relationship extraction
+    /// Extract relationships from PHP code - relationship extraction
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_relationships(tree.root_node(), symbols, &mut relationships);
         relationships
     }
 
-    /// Infer types from PHP type declarations - Miller's type inference
+    /// Infer types from PHP type declarations - type inference
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
         for symbol in symbols {
@@ -87,7 +87,7 @@ impl PhpExtractor {
         self.base.identifiers.clone()
     }
 
-    /// Recursive node visitor following Miller's visitNode pattern
+    /// Recursive node visitor following visitNode pattern
     fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<String>) {
         if node.kind().is_empty() {
             return; // Skip invalid nodes

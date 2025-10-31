@@ -100,16 +100,16 @@ src/database/
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust, rising from Miller's ashes with the right architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, true cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier single source of truth with progressive enhancement
-- **Origin**: Rebuilt from Miller (TypeScript/Bun) due to Windows compatibility issues
-- **Crown Jewels**: 25 tree-sitter extractors with comprehensive test suites (100% Miller parity)
+- **Origin**: Native Rust implementation for true cross-platform compatibility
+- **Crown Jewels**: 25 tree-sitter extractors with comprehensive test suites
 
-### 🏆 Current Language Support (25/25 - Complete Miller Parity)
+### 🏆 Current Language Support (25/25 - Complete Language Support)
 
 **All 25 extractors operational and validated against real-world GitHub code:**
 
@@ -123,11 +123,11 @@ src/database/
 - GDScript, Vue SFCs, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
 
 **Key Achievements:**
-- ✅ **Zero compromises** - All Miller extractors ported, none disabled
+- ✅ **Zero compromises** - All extractors ported, none disabled
 - ✅ **Native Rust performance** - No CGO/FFI dependencies
 - ✅ **Cross-platform ready** - Windows, macOS, Linux compatible
 - ✅ **Production validated** - Tested against real GitHub repositories
-- ✅ **Miller test parity** - 100% compatibility with proven methodology
+- ✅ **Comprehensive test coverage** - 100% compatibility with proven methodology
 
 ---
 
@@ -516,7 +516,7 @@ src/
 ## 🧪 Testing Standards
 
 ### Test Coverage Requirements
-- **Extractors**: 100% test parity with Miller's test suites
+- **Extractors**: 100% comprehensive test coverage
 - **Editing Tools**: 90% coverage with SOURCE/CONTROL methodology
 - **Core Logic**: >80% coverage on search and navigation
 - **MCP Tools**: Full integration testing
@@ -712,12 +712,12 @@ cargo test --lib -- --include-ignored
 
 ## 🎯 Performance Targets (Non-Negotiable)
 
-Julie must significantly outperform Miller:
+Julie must meet performance targets:
 
 ### Benchmarks
-- **Search Latency**: <5ms SQLite FTS5, <50ms Semantic (vs Miller's 50ms)
-- **Parsing Speed**: 5-10x faster than Miller
-- **Memory Usage**: <100MB typical (vs Miller's ~500MB)
+- **Search Latency**: <5ms SQLite FTS5, <50ms Semantic (target: 50ms)
+- **Parsing Speed**: 5-10x optimized performance
+- **Memory Usage**: <100MB typical (target: ~500MB)
 - **Startup Time**: <2s (CASCADE SQLite only), 30-60x faster than old blocking approach
 - **Background Indexing**: HNSW Semantic 20-30s (non-blocking, no intermediate layers)
 - **Indexing Speed**: Process 1000 files in <2s (SQLite with FTS5)
@@ -801,30 +801,30 @@ cargo bloat --release
 
 ### Must-Have Requirements
 1. **Windows Compatibility**: Single `cargo build` must work on Windows
-2. **Test Parity**: Every Miller test must pass in Julie
-3. **Performance**: 5-10x improvement over Miller
+2. **Test Parity**: All tests must pass in Julie
+3. **Performance**: 5-10x performance improvement
 4. **Memory Safety**: No unsafe code unless absolutely necessary
 5. **Error Handling**: Comprehensive error handling with proper error types
 
 ### Deal Breakers
 - CGO/FFI dependencies (breaks Windows compatibility)
 - External runtime requirements (breaks single binary goal)
-- Slower than Miller (defeats the purpose of rewrite)
+- Slow performance (defeats the purpose of rewrite)
 - Test failures (indicates incomplete migration)
 
 ---
 
-## 🎪 Migration Strategy from Miller
+## 🎪 Test Migration Strategy
 
 ### Extractor Porting Process
-1. **Copy Miller's tests exactly** - Don't change test logic
+1. **Copy reference tests exactly** - Don't change test logic
 2. **Create Rust extractor structure** - Following base extractor pattern
 3. **Port logic incrementally** - Function by function with tests
 4. **Verify 100% test pass rate** - No compromises
 
 ### Test Suite Validation
 ```bash
-# Miller had these test files - all must pass in Julie:
+# Reference test files - all must pass in Julie:
 typescript-extractor.test.ts -> typescript_tests.rs
 javascript-extractor.test.ts -> javascript_tests.rs
 python-extractor.test.ts -> python_tests.rs
@@ -968,7 +968,7 @@ Each phase must meet these criteria:
 
 ### Final Success Definition
 Julie is successful when:
-1. **All Miller tests pass** in Rust
+1. **All tests pass** in Rust
 2. **Performance targets exceeded** (5-10x improvement)
 3. **Windows deployment works** (single binary)
 4. **Dogfooding successful** (can analyze its own code)
@@ -982,7 +982,7 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 **Project Status**: Phase 7 - 2-Tier CASCADE Architecture (Tantivy Removed) ✅
 **Current Achievements**:
-- ✅ All 25 Language Extractors Operational (Miller Parity)
+- ✅ All 25 Language Extractors Operational (Complete)
 - ✅ **CASCADE Architecture Simplified**: SQLite FTS5 → HNSW Semantic (2-tier)
 - ✅ **Tantivy Removed**: Eliminated Arc<RwLock> deadlocks, simpler architecture
 - ✅ **Per-Workspace Isolation**: Complete workspace separation in `indexes/{workspace_id}/`

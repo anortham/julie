@@ -6,7 +6,9 @@
 // - Wildcards (? extends, ? super)
 // - Type parameters with bounds
 
-use super::*;
+use crate::extractors::base::{SymbolKind, Visibility};
+use crate::extractors::java::JavaExtractor;
+use crate::tests::test_utils::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -36,8 +38,7 @@ interface Repository<T, ID> {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -95,8 +96,7 @@ public class Utils {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),
@@ -148,8 +148,7 @@ public class Processor {
 }
 "#;
 
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).unwrap();
+        let tree = init_parser(code, "java");
 
         let mut extractor = JavaExtractor::new(
             "java".to_string(),

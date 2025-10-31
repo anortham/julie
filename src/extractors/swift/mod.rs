@@ -15,7 +15,7 @@ use crate::extractors::base::{BaseExtractor, Symbol};
 use tree_sitter::{Node, Tree};
 
 /// Swift extractor for extracting symbols and relationships from Swift source code
-/// Port of Miller's comprehensive Swift extractor with full Swift language support
+/// Implementation of comprehensive Swift extractor with full Swift language support
 pub struct SwiftExtractor {
     base: BaseExtractor,
 }
@@ -28,7 +28,7 @@ impl SwiftExtractor {
     }
 
     /// Extract all symbols from Swift source code
-    /// Port of Miller's extractSymbols method with comprehensive Swift support
+    /// Implementation of extractSymbols method with comprehensive Swift support
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);

@@ -3,7 +3,7 @@ name = "julie"
 version = "0.8.0"
 edition = "2024"
 authors = ["Alan"]
-description = "Julie - Cross-Platform Code Intelligence Server (Rising from Miller's ashes)"
+description = "Julie - Cross-Platform Code Intelligence Server"
 license = "MIT"
 
 [lib]
@@ -63,7 +63,6 @@ tree-sitter-rust = "0.24"
 tree-sitter-swift = "0.7"
 tree-sitter-typescript = "0.23"
 
-# Additional languages from Miller
 tree-sitter-gdscript = "5.0"
 # tree-sitter-qmljs = "0.2"  # Temporarily disabled due to tree-sitter version conflict
 tree-sitter-regex = "0.23"
@@ -71,7 +70,6 @@ tree-sitter-regex = "0.23"
 tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }
 tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-powershell" }
 
-# Missing languages from Miller
 harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER 0.25.6+ ⚠️
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"

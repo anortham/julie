@@ -105,7 +105,7 @@ impl PropertyHelper {
 
                 all_props.push(clean_prop.clone());
 
-                // Categorize properties following Miller's logic
+                // Categorize properties following reference logic
                 if clean_prop.starts_with("--") {
                     custom_props.push(clean_prop);
                 } else if important_properties

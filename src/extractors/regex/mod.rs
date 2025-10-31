@@ -76,10 +76,11 @@ impl RegexExtractor {
                 patterns::extract_backreference(&mut self.base, node, parent_id.clone())
             }
             "conditional" => patterns::extract_conditional(&mut self.base, node, parent_id.clone()),
-            "atomic_group" => {
-                patterns::extract_atomic_group(&mut self.base, node, parent_id.clone())
-            }
-            "comment" => patterns::extract_comment(&mut self.base, node, parent_id.clone()),
+            // NOTE: "atomic_group" and "comment" branches removed (2025-10-31)
+            // Tree-sitter regex parser doesn't generate these node types:
+            // - Atomic groups (?>...) are parsed as ERROR nodes
+            // - Inline comments (?#...) are parsed as ERROR nodes
+            // Functions extract_atomic_group() and extract_comment() were unreachable dead code
             "literal" | "character" => {
                 patterns::extract_literal(&mut self.base, node, parent_id.clone())
             }

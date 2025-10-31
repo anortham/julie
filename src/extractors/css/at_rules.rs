@@ -7,7 +7,7 @@ use tree_sitter::Node;
 pub(super) struct AtRuleExtractor;
 
 impl AtRuleExtractor {
-    /// Extract at-rule - port of Miller's extractAtRule
+    /// Extract at-rule - Implementation of extractAtRule
     pub(super) fn extract_at_rule(
         base: &mut BaseExtractor,
         node: Node,
@@ -16,7 +16,7 @@ impl AtRuleExtractor {
         let rule_name = Self::extract_at_rule_name(base, &node);
         let signature = base.get_node_text(&node);
 
-        // Determine symbol kind based on at-rule type - match Miller's logic
+        // Determine symbol kind based on at-rule type - match reference logic
         let symbol_kind = if rule_name == "@keyframes" {
             SymbolKind::Function // Animations as functions
         } else if rule_name == "@import" {
@@ -58,7 +58,7 @@ impl AtRuleExtractor {
         ))
     }
 
-    /// Extract at-rule name - port of Miller's extractAtRuleName
+    /// Extract at-rule name - port of extractAtRuleName
     pub(super) fn extract_at_rule_name(base: &BaseExtractor, node: &Node) -> String {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

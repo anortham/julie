@@ -15,7 +15,7 @@ pub(super) fn extract_stored_procedure(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Port Miller's extractStoredProcedure logic for regular nodes (not just ERROR)
+    // Port extractStoredProcedure logic for regular nodes (not just ERROR)
     // Look for function/procedure name - it may be inside an object_reference
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {
@@ -153,7 +153,7 @@ pub(super) fn extract_declare_variables(
     symbols: &mut Vec<Symbol>,
     parent_id: &str,
 ) {
-    // Port Miller's extractDeclareVariables logic
+    // Port extractDeclareVariables logic
     let function_text = base.get_node_text(&function_node);
 
     // Look for DECLARE statements within function bodies
@@ -171,14 +171,17 @@ pub(super) fn extract_declare_variables(
             let declaration_text = declaration_raw.trim();
             // Match patterns like "v_current_prefs JSONB;" or "v_score DECIMAL(10,2) DEFAULT 0.0;"
             if let Some(captures) = VAR_DECL_RE.captures(declaration_text) {
-                let variable_name = captures.get(1).unwrap().as_str();
-                let variable_type = captures
-                    .get(2)
-                    .unwrap()
-                    .as_str()
+                let variable_name = captures.get(1).map_or("", |m| m.as_str());
+                let variable_type_full = captures.get(2).map_or("", |m| m.as_str());
+                let variable_type = variable_type_full
                     .split_whitespace()
                     .next()
                     .unwrap_or("unknown"); // Get first word as type
+
+                // Skip if variable name is empty
+                if variable_name.is_empty() {
+                    continue;
+                }
 
                 let mut metadata = HashMap::new();
                 metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
@@ -212,8 +215,13 @@ pub(super) fn extract_declare_variables(
 
                 // Look for DECLARE patterns in the parent text
                 for captures in DECLARE_VAR_RE.captures_iter(&parent_text) {
-                    let variable_name = captures.get(1).unwrap().as_str();
-                    let variable_type = captures.get(2).unwrap().as_str();
+                    let variable_name = captures.get(1).map_or("", |m| m.as_str());
+                    let variable_type = captures.get(2).map_or("", |m| m.as_str());
+
+                    // Skip if variable name or type is empty
+                    if variable_name.is_empty() || variable_type.is_empty() {
+                        continue;
+                    }
 
                     let mut metadata = HashMap::new();
                     metadata.insert("isLocalVariable".to_string(), serde_json::Value::Bool(true));
@@ -245,8 +253,13 @@ pub(super) fn extract_declare_variables(
     // Also extract DECLARE variables directly from function text using regex
     let declare_regex = regex::Regex::new(r"DECLARE\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(DECIMAL\([^)]+\)|JSONB|INT|BIGINT|VARCHAR\([^)]+\)|TEXT|BOOLEAN)").unwrap();
     for captures in declare_regex.captures_iter(&function_text) {
-        let variable_name = captures.get(1).unwrap().as_str();
-        let variable_type = captures.get(2).unwrap().as_str();
+        let variable_name = captures.get(1).map_or("", |m| m.as_str());
+        let variable_type = captures.get(2).map_or("", |m| m.as_str());
+
+        // Skip if variable name or type is empty
+        if variable_name.is_empty() || variable_type.is_empty() {
+            continue;
+        }
 
         // Only add if not already added from tree traversal
         if !symbols
@@ -286,7 +299,7 @@ pub(super) fn extract_parameters_from_error_node(
     symbols: &mut Vec<Symbol>,
     parent_id: &str,
 ) {
-    // Port Miller's extractParametersFromErrorNode logic
+    // Port extractParametersFromErrorNode logic
     let error_text = base.get_node_text(&node);
 
     // Extract parameters from procedure/function definitions
@@ -295,8 +308,13 @@ pub(super) fn extract_parameters_from_error_node(
 
     for captures in param_regex.captures_iter(&error_text) {
         let direction = captures.get(1).map(|m| m.as_str()).unwrap_or("IN"); // Default to IN if not specified
-        let param_name = captures.get(2).unwrap().as_str();
-        let param_type = captures.get(3).unwrap().as_str();
+        let param_name = captures.get(2).map_or("", |m| m.as_str());
+        let param_type = captures.get(3).map_or("", |m| m.as_str());
+
+        // Skip if param name or type is empty
+        if param_name.is_empty() || param_type.is_empty() {
+            continue;
+        }
 
         // Don't extract procedure/function names as parameters
         if !error_text.contains(&format!("PROCEDURE {}", param_name))

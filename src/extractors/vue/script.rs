@@ -22,7 +22,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
         // Extract doc comment for this line (look backward from current line)
         let doc_comment = find_doc_comment_before(&lines, i);
 
-        // Extract Vue component options - following Miller's patterns
+        // Extract Vue component options - following standard patterns
         if DATA_FUNCTION_RE.is_match(line) {
             symbols.push(create_symbol_manual(
                 base,
@@ -83,7 +83,7 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
             ));
         }
 
-        // Extract function definitions - following Miller's pattern
+        // Extract function definitions - following pattern
         if let Some(captures) = FUNCTION_DEF_RE.captures(line) {
             if let Some(func_name) = captures.get(1) {
                 let name = func_name.as_str();
@@ -159,8 +159,8 @@ fn is_doc_comment_line(line: &str) -> bool {
 }
 
 /// Helper to create symbols manually (without Parser.SyntaxNode)
-/// Port of Miller's createSymbolManual logic
-#[allow(clippy::too_many_arguments)] // Matches Miller's API for compatibility
+/// Implementation of createSymbolManual logic
+#[allow(clippy::too_many_arguments)] // Matches API for compatibility
 pub(super) fn create_symbol_manual(
     base: &BaseExtractor,
     name: &str,
@@ -183,7 +183,7 @@ pub(super) fn create_symbol_manual(
         metadata,
     };
 
-    // Generate ID similar to Miller's approach
+    // Generate ID similar to standard approach
     let id = format!("{}:{}:{}", name, start_line, start_column);
 
     Symbol {

@@ -1,7 +1,6 @@
 // C# Language Extractor
 //
-// Direct port of Miller's csharp-extractor.ts (1027 lines) to idiomatic Rust
-// Original: /Users/murphy/Source/miller/src/extractors/csharp-extractor.ts
+// Direct Implementation of csharp-extractor.ts (1027 lines) to idiomatic Rust
 //
 // This extractor handles C#-specific constructs including:
 // - Namespaces and using statements (regular, static, global)
@@ -38,14 +37,14 @@ impl CSharpExtractor {
         }
     }
 
-    /// Extract symbols from C# code - port of Miller's extractSymbols method
+    /// Extract symbols from C# code - port of extractSymbols method
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.walk_tree(tree.root_node(), &mut symbols, None);
         symbols
     }
 
-    /// Walk tree and extract symbols - port of Miller's walkTree method
+    /// Walk tree and extract symbols - port of walkTree method
     fn walk_tree(
         &mut self,
         node: tree_sitter::Node,
@@ -67,7 +66,7 @@ impl CSharpExtractor {
         }
     }
 
-    /// Extract symbol from node - port of Miller's extractSymbol method
+    /// Extract symbol from node - port of extractSymbol method
     fn extract_symbol(
         &mut self,
         node: tree_sitter::Node,
@@ -104,12 +103,12 @@ impl CSharpExtractor {
         }
     }
 
-    /// Extract relationships - port of Miller's extractRelationships
+    /// Extract relationships - port of extractRelationships
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(&self.base, tree, symbols)
     }
 
-    /// Infer types - port of Miller's inferTypes
+    /// Infer types - port of inferTypes
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         type_inference::infer_types(symbols)
     }
