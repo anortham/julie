@@ -374,3 +374,120 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_get_symbols_file_not_found_error() -> Result<()> {
+    // Test that we get a clear "File not found" error vs "No symbols found"
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // Create ONE file that exists
+    let existing_file = src_dir.join("exists.rs");
+    fs::write(&existing_file, "pub fn test() -> i32 { 42 }")?;
+
+    let handler = JulieServerHandler::new().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+
+    // Index the workspace
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Test 1: Query non-existent file - should get "File not found"
+    let tool_not_found = GetSymbolsTool {
+        file_path: "src/does_not_exist.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: None,
+        workspace: None,
+    };
+
+    let result_not_found = tool_not_found.call_tool(&handler).await?;
+    let text_not_found = extract_text_from_result(&result_not_found);
+
+    // Should explicitly say "File not found"
+    assert!(
+        text_not_found.contains("File not found"),
+        "Should say 'File not found' for non-existent files, got: {}",
+        text_not_found
+    );
+    assert!(
+        text_not_found.contains("❌"),
+        "Should include error emoji for visibility"
+    );
+
+    // Test 2: Query file that exists WITH symbols - should work
+    let tool_exists = GetSymbolsTool {
+        file_path: "src/exists.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: None,
+        workspace: None,
+    };
+
+    let result_exists = tool_exists.call_tool(&handler).await?;
+    let text_exists = extract_text_from_result(&result_exists);
+
+    assert!(
+        !text_exists.contains("File not found"),
+        "Existing file should not trigger 'File not found'"
+    );
+    assert!(
+        !text_exists.contains("No symbols found"),
+        "Should find symbols in existing file"
+    );
+    assert!(
+        text_exists.contains("test"),
+        "Should find test function in symbols"
+    );
+
+    // Test 3: Create empty file (exists but has no code) - should get "No symbols found"
+    let empty_file = src_dir.join("empty.rs");
+    fs::write(&empty_file, "")?;
+
+    // Re-index to pick up new empty file
+    index_tool.call_tool(&handler).await?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    let tool_empty = GetSymbolsTool {
+        file_path: "src/empty.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: None,
+        workspace: None,
+    };
+
+    let result_empty = tool_empty.call_tool(&handler).await?;
+    let text_empty = extract_text_from_result(&result_empty);
+
+    // Empty file EXISTS, so should NOT say "File not found"
+    assert!(
+        !text_empty.contains("File not found"),
+        "Empty file exists, should not say 'File not found'"
+    );
+    // Empty file has no symbols, so SHOULD say "No symbols found"
+    assert!(
+        text_empty.contains("No symbols found"),
+        "Empty file should say 'No symbols found', got: {}",
+        text_empty
+    );
+
+    Ok(())
+}

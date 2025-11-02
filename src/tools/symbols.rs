@@ -173,6 +173,17 @@ impl GetSymbolsTool {
         );
         debug!("🔍 Workspace root: '{}'", workspace.root.display());
 
+        // Check if file exists before querying database
+        if !std::path::Path::new(&absolute_path).exists() {
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path - use relative paths from workspace root",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
+
         // Query symbols for this file using relative Unix-style path
         let symbols = {
             let db_lock = db.lock().unwrap();
@@ -632,6 +643,17 @@ impl GetSymbolsTool {
             "🔍 Path normalization: '{}' -> query='{}', absolute='{}' (ref workspace: {})",
             self.file_path, query_path, absolute_path, ref_workspace_id
         );
+
+        // Check if file exists before querying database
+        if !std::path::Path::new(&absolute_path).exists() {
+            let message = format!(
+                "❌ File not found: {}\n💡 Check the file path - use relative paths from workspace root",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                message,
+            )]));
+        }
 
         // Query symbols using relative Unix-style path
         // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
