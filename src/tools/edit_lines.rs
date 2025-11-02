@@ -174,26 +174,28 @@ impl EditLinesTool {
                 if self.content.is_none() {
                     return Err(anyhow!("'content' is required for replace operation"));
                 }
-                let end = self.end_line.unwrap();
-                if end < self.start_line {
-                    return Err(anyhow!(
-                        "end_line ({}) must be >= start_line ({})",
-                        end,
-                        self.start_line
-                    ));
+                if let Some(end) = self.end_line {
+                    if end < self.start_line {
+                        return Err(anyhow!(
+                            "end_line ({}) must be >= start_line ({})",
+                            end,
+                            self.start_line
+                        ));
+                    }
                 }
             }
             "delete" => {
                 if self.end_line.is_none() {
                     return Err(anyhow!("'end_line' is required for delete operation"));
                 }
-                let end = self.end_line.unwrap();
-                if end < self.start_line {
-                    return Err(anyhow!(
-                        "end_line ({}) must be >= start_line ({})",
-                        end,
-                        self.start_line
-                    ));
+                if let Some(end) = self.end_line {
+                    if end < self.start_line {
+                        return Err(anyhow!(
+                            "end_line ({}) must be >= start_line ({})",
+                            end,
+                            self.start_line
+                        ));
+                    }
                 }
             }
             _ => {}
@@ -204,7 +206,8 @@ impl EditLinesTool {
 
     /// Perform insert operation
     fn perform_insert(&self, lines: &mut Vec<String>) -> Result<usize> {
-        let content = self.content.as_ref().unwrap();
+        let content = self.content.as_ref()
+            .ok_or_else(|| anyhow!("Internal error: content is required for insert operation"))?;
         let idx = (self.start_line - 1) as usize;
 
         if idx > lines.len() {
@@ -231,9 +234,11 @@ impl EditLinesTool {
 
     /// Perform replace operation
     fn perform_replace(&self, lines: &mut Vec<String>) -> Result<usize> {
-        let content = self.content.as_ref().unwrap();
+        let content = self.content.as_ref()
+            .ok_or_else(|| anyhow!("Internal error: content is required for replace operation"))?;
         let start_idx = (self.start_line - 1) as usize;
-        let end_idx = self.end_line.unwrap() as usize;
+        let end_idx = self.end_line
+            .ok_or_else(|| anyhow!("Internal error: end_line is required for replace operation"))? as usize;
 
         if start_idx >= lines.len() {
             return Err(anyhow!(
@@ -274,7 +279,8 @@ impl EditLinesTool {
     /// Perform delete operation
     fn perform_delete(&self, lines: &mut Vec<String>) -> Result<usize> {
         let start_idx = (self.start_line - 1) as usize;
-        let end_idx = self.end_line.unwrap() as usize;
+        let end_idx = self.end_line
+            .ok_or_else(|| anyhow!("Internal error: end_line is required for delete operation"))? as usize;
 
         if start_idx >= lines.len() {
             return Err(anyhow!(
@@ -315,11 +321,15 @@ impl EditLinesTool {
         // Format line range differently for insert vs replace/delete
         let line_description = match self.operation.as_str() {
             "insert" => format!("at line {}", self.start_line),
-            _ => format!(
-                "lines {} - {}",
-                self.start_line,
-                self.end_line.unwrap_or(self.start_line)
-            ),
+            _ => {
+                // For replace/delete operations, end_line should always be present
+                // If it's None, this is a logic error in validation
+                let end_line = self.end_line.unwrap_or_else(|| {
+                    // Fallback for defensive programming, should never happen
+                    self.start_line
+                });
+                format!("lines {} - {}", self.start_line, end_line)
+            }
         };
 
         let message = if dry_run {

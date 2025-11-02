@@ -411,6 +411,88 @@ impl JulieWorkspace {
         self.julie_dir.join("cache")
     }
 
+    /// Get the embedding cache directory for ONNX model storage
+    ///
+    /// This directory stores downloaded ONNX embedding models and is persistent
+    /// across server restarts. Located at `.julie/cache/embeddings/`
+    pub fn get_embedding_cache_dir(&self) -> PathBuf {
+        self.julie_dir.join("cache").join("embeddings")
+    }
+
+    /// Ensure embedding cache directory exists
+    ///
+    /// Creates the `.julie/cache/embeddings/` directory if it doesn't exist.
+    /// This must be called before initializing the embedding engine.
+    ///
+    /// # Returns
+    /// The path to the embedding cache directory
+    ///
+    /// # Example
+    /// ```no_run
+    /// let workspace = JulieWorkspace::initialize(root).await?;
+    /// let cache_dir = workspace.ensure_embedding_cache_dir()?;
+    /// let engine = EmbeddingEngine::new("bge-small", cache_dir, db).await?;
+    /// ```
+    pub fn ensure_embedding_cache_dir(&self) -> Result<PathBuf> {
+        let cache_dir = self.get_embedding_cache_dir();
+        std::fs::create_dir_all(&cache_dir)
+            .context(format!(
+                "Failed to create embedding cache directory: {}",
+                cache_dir.display()
+            ))?;
+        debug!(
+            "📁 Embedding cache directory ready: {}",
+            cache_dir.display()
+        );
+        Ok(cache_dir)
+    }
+
+    /// Get all cache directories (for bulk operations like cleanup)
+    ///
+    /// Returns a list of all cache subdirectories managed by the workspace.
+    /// Useful for cleanup operations, size monitoring, or validation.
+    pub fn get_all_cache_dirs(&self) -> Vec<PathBuf> {
+        vec![
+            self.get_embedding_cache_dir(),
+            self.julie_dir.join("cache").join("parse_cache"),
+        ]
+    }
+
+    /// Clear embedding cache (idempotent)
+    ///
+    /// Removes all embedding cache files and recreates the directory.
+    /// This is useful for:
+    /// - Recovery from corrupted cache files
+    /// - Force re-downloading of embedding models
+    /// - Freeing disk space (~200MB per model)
+    ///
+    /// This operation is idempotent - calling it multiple times is safe.
+    ///
+    /// # Example
+    /// ```no_run
+    /// workspace.clear_embedding_cache()?;
+    /// // Cache is now empty but directory structure is ready for new models
+    /// ```
+    pub fn clear_embedding_cache(&self) -> Result<()> {
+        let cache_dir = self.get_embedding_cache_dir();
+        if cache_dir.exists() {
+            std::fs::remove_dir_all(&cache_dir).context(format!(
+                "Failed to remove embedding cache directory: {}",
+                cache_dir.display()
+            ))?;
+            info!("🧹 Cleared embedding cache: {}", cache_dir.display());
+        }
+
+        // Recreate directory structure for next use
+        std::fs::create_dir_all(&cache_dir).context(format!(
+            "Failed to recreate embedding cache directory: {}",
+            cache_dir.display()
+        ))?;
+        debug!("📁 Recreated embedding cache directory: {}", cache_dir.display());
+
+        Ok(())
+    }
+
     /// Initialize persistent database connection
     pub fn initialize_database(&mut self) -> Result<()> {
         if self.db.is_some() {

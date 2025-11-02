@@ -130,7 +130,9 @@ async fn main() -> SdkResult<()> {
     // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
-        .unwrap();
+        .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(
+            format!("Failed to initialize logging filter: {}", e)
+        )))?;
 
     // Ensure .julie/logs directory exists in the workspace root
     let logs_dir = workspace_root.join(".julie").join("logs");
@@ -383,10 +385,17 @@ async fn update_workspace_statistics(
 
     // Count symbols and files in database
     let (symbol_count, file_count) = if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().unwrap();
-        let symbols = db.get_symbol_count_for_workspace().unwrap_or(0) as usize;
-        let files = db.get_file_count_for_workspace().unwrap_or(0) as usize;
-        (symbols, files)
+        match db_arc.lock() {
+            Ok(db) => {
+                let symbols = db.get_symbol_count_for_workspace().unwrap_or(0) as usize;
+                let files = db.get_file_count_for_workspace().unwrap_or(0) as usize;
+                (symbols, files)
+            }
+            Err(e) => {
+                warn!("Failed to acquire database lock for statistics: {}", e);
+                (0, 0)
+            }
+        }
     } else {
         (0, 0)
     };
@@ -427,8 +436,13 @@ async fn update_workspace_statistics(
 
     // Reconcile embedding status - fix registry if embeddings exist but status is wrong
     let embedding_count = if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().unwrap();
-        db.count_embeddings().unwrap_or(0)
+        match db_arc.lock() {
+            Ok(db) => db.count_embeddings().unwrap_or(0),
+            Err(e) => {
+                warn!("Failed to acquire database lock for embedding count: {}", e);
+                0
+            }
+        }
     } else {
         0
     };

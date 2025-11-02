@@ -9,7 +9,8 @@
 
 // Test submodules
 pub mod edit_lines;
-pub mod fuzzy_replace; // FuzzyReplaceTool comprehensive tests // EditLinesTool tests
+pub mod edit_lines_validation; // EditLinesTool input validation and error handling tests
+pub mod fuzzy_replace; // FuzzyReplaceTool comprehensive tests
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 
 // Legacy EditingTransaction tests

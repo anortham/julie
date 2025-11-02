@@ -146,19 +146,26 @@ mod cross_language_tracing_tests {
         // Note: These will be mocked/stubbed for testing
         // For now, we'll use placeholders - actual mock implementations coming in GREEN phase
 
-        // Create a temporary database for testing
+        // Create a temporary workspace with proper directory structure
         let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+        let workspace = crate::workspace::JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+            .await
+            .unwrap();
+
+        // Get database from workspace
+        let db = workspace
+            .db
+            .as_ref()
+            .expect("Database should be initialized")
+            .clone();
 
         // Create a temporary search index for testing
         let index_dir = temp_dir.path().join("index");
         std::fs::create_dir_all(&index_dir).unwrap();
         let search = Arc::new(RwLock::new(SearchEngine::new(&index_dir).unwrap()));
 
-        // Create embedding engine (will need cache dir)
-        let cache_dir = temp_dir.path().join("cache");
-        std::fs::create_dir_all(&cache_dir).unwrap();
+        // Create embedding engine using workspace's persistent cache
+        let cache_dir = workspace.ensure_embedding_cache_dir().unwrap();
         let embeddings = Arc::new(EmbeddingEngine::new("bge-small", cache_dir, db.clone()).await.unwrap());
 
         CrossLanguageTracer::new(db, search, embeddings)

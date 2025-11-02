@@ -521,17 +521,20 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_model_initialization() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let model = OrtEmbeddingModel::new(
+            match OrtEmbeddingModel::new(
                 model_path,
                 tokenizer_path,
                 "bge-small-test",
                 None::<PathBuf>,
-            );
-            assert!(model.is_ok(), "Model initialization should succeed");
-
-            let model = model.unwrap();
-            assert_eq!(model.dimensions(), 384);
-            assert_eq!(model.model_name(), "bge-small-test");
+            ) {
+                Ok(model) => {
+                    assert_eq!(model.dimensions(), 384, "Dimensions should be 384");
+                    assert_eq!(model.model_name(), "bge-small-test", "Model name should match");
+                }
+                Err(e) => {
+                    panic!("Model initialization failed: {}", e);
+                }
+            }
         } else {
             println!("Skipping test - model not downloaded");
         }
@@ -541,23 +544,34 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_single_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(
+            match OrtEmbeddingModel::new(
                 model_path,
                 tokenizer_path,
                 "bge-small-test",
                 None::<PathBuf>,
-            )
-            .expect("Model initialization failed");
+            ) {
+                Ok(mut model) => {
+                    match model.encode_single("Hello, world!".to_string()) {
+                        Ok(embedding) => {
+                            assert_eq!(
+                                embedding.len(),
+                                384,
+                                "Embedding should have 384 dimensions"
+                            );
 
-            let embedding = model.encode_single("Hello, world!".to_string());
-            assert!(embedding.is_ok(), "Embedding generation should succeed");
-
-            let embedding = embedding.unwrap();
-            assert_eq!(embedding.len(), 384, "Embedding should have 384 dimensions");
-
-            // Check that embedding values are reasonable (not all zeros)
-            let sum: f32 = embedding.iter().sum();
-            assert!(sum.abs() > 0.01, "Embedding should have non-zero values");
+                            // Check that embedding values are reasonable (not all zeros)
+                            let sum: f32 = embedding.iter().sum();
+                            assert!(sum.abs() > 0.01, "Embedding should have non-zero values");
+                        }
+                        Err(e) => {
+                            panic!("Embedding generation failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    panic!("Model initialization failed: {}", e);
+                }
+            }
         } else {
             println!("Skipping test - model not downloaded");
         }
@@ -567,39 +581,46 @@ mod tests {
     #[ignore] // Requires model to be downloaded
     fn test_batch_embedding() {
         if let Some((model_path, tokenizer_path)) = get_test_model_paths() {
-            let mut model = OrtEmbeddingModel::new(
+            match OrtEmbeddingModel::new(
                 model_path,
                 tokenizer_path,
                 "bge-small-test",
                 None::<PathBuf>,
-            )
-            .expect("Model initialization failed");
+            ) {
+                Ok(mut model) => {
+                    let texts = vec![
+                        "function getUserData()".to_string(),
+                        "class UserService".to_string(),
+                        "async fn process_payment()".to_string(),
+                    ];
 
-            let texts = vec![
-                "function getUserData()".to_string(),
-                "class UserService".to_string(),
-                "async fn process_payment()".to_string(),
-            ];
+                    match model.encode_batch(texts) {
+                        Ok(embeddings) => {
+                            assert_eq!(embeddings.len(), 3, "Should have 3 embeddings");
 
-            let embeddings = model.encode_batch(texts);
-            assert!(embeddings.is_ok(), "Batch embedding should succeed");
-
-            let embeddings = embeddings.unwrap();
-            assert_eq!(embeddings.len(), 3, "Should have 3 embeddings");
-
-            for (i, embedding) in embeddings.iter().enumerate() {
-                assert_eq!(
-                    embedding.len(),
-                    384,
-                    "Embedding {} should have 384 dimensions",
-                    i
-                );
-                let sum: f32 = embedding.iter().sum();
-                assert!(
-                    sum.abs() > 0.01,
-                    "Embedding {} should have non-zero values",
-                    i
-                );
+                            for (i, embedding) in embeddings.iter().enumerate() {
+                                assert_eq!(
+                                    embedding.len(),
+                                    384,
+                                    "Embedding {} should have 384 dimensions",
+                                    i
+                                );
+                                let sum: f32 = embedding.iter().sum();
+                                assert!(
+                                    sum.abs() > 0.01,
+                                    "Embedding {} should have non-zero values",
+                                    i
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            panic!("Batch embedding failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    panic!("Model initialization failed: {}", e);
+                }
             }
         } else {
             println!("Skipping test - model not downloaded");

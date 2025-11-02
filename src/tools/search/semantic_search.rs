@@ -2,6 +2,18 @@
 //!
 //! Provides semantic similarity search powered by ONNX embeddings and HNSW indexing.
 //! Falls back to text search if embeddings are unavailable.
+//!
+//! # Error Handling
+//!
+//! This module implements robust error handling throughout:
+//! - **Mutex Lock Failures**: Database locks that fail (poisoned mutex) return `Result` errors
+//!   instead of panicking. Failures are logged and gracefully fall back to text search.
+//! - **NaN Handling in Sorting**: Float comparisons that encounter NaN values are treated as
+//!   equal ordering instead of panicking. This prevents crashes when embedding scores are invalid.
+//! - **Vector Store Operations**: All vector store operations fail gracefully and fall back to
+//!   text search if semantic search is unavailable.
+//! - **Database Operations**: Database failures are wrapped in Result types and propagated to
+//!   the caller, which decides how to handle (fallback, error reporting, etc.).
 
 use anyhow::Result;
 use tracing::{debug, warn};
@@ -365,7 +377,7 @@ pub async fn semantic_search_impl(
     // CASCADE Architecture: Fetch vectors from SQLite on-demand during HNSW search
     // We need to access the database within the async context, so use tokio::task::block_in_place
     let semantic_results = match tokio::task::block_in_place(|| {
-        let db_lock = db.lock().unwrap();
+        let db_lock = db.lock().map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let model_name = "bge-small"; // Match the embedding model
         store_guard.search_similar_hnsw(
             &db_lock,
@@ -427,7 +439,9 @@ pub async fn semantic_search_impl(
     // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
     // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
     let symbols = tokio::task::block_in_place(|| {
-        let db_lock = db.lock().unwrap();
+        let db_lock = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         db_lock.get_symbols_by_ids(&symbol_ids)
     })?;
 
@@ -448,7 +462,8 @@ pub async fn semantic_search_impl(
         .collect();
 
     // Re-sort by adjusted scores (higher is better)
-    scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    // Use unwrap_or(Equal) to gracefully handle NaN values instead of panicking
+    scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     // Extract symbols after re-ranking
     let symbols: Vec<Symbol> = scored_symbols

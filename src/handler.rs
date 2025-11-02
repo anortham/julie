@@ -194,11 +194,8 @@ impl JulieServerHandler {
                 .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
                 .clone();
 
-            // Create model cache directory
-            let cache_dir = std::env::temp_dir().join("julie_cache").join("embeddings");
-            std::fs::create_dir_all(&cache_dir).map_err(|e| {
-                anyhow::anyhow!("Failed to create embedding cache directory: {}", e)
-            })?;
+            // Use workspace's persistent embedding cache (.julie/cache/embeddings/)
+            let cache_dir = workspace.ensure_embedding_cache_dir()?;
 
             let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
                 .await

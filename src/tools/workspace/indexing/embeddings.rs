@@ -303,15 +303,23 @@ async fn initialize_embedding_engine(
     if write_guard.is_none() {
         info!("🔧 Initializing embedding engine for background generation...");
 
-        // 🔧 FIX: Use workspace .julie/cache directory instead of polluting CWD
+        // Use workspace .julie/cache directory for persistent embedding storage
         let cache_dir = if let Some(root) = workspace_root {
-            root.join(".julie").join("cache").join("embeddings")
+            let cache = root.join(".julie").join("cache").join("embeddings");
+            std::fs::create_dir_all(&cache)?;
+            cache
         } else {
             // Fallback to temp directory if workspace root not available
-            std::env::temp_dir().join("julie_cache").join("embeddings")
+            // (This should rarely happen as workspace_root is always set)
+            let cache = std::env::temp_dir().join("julie_cache").join("embeddings");
+            std::fs::create_dir_all(&cache)?;
+            warn!(
+                "⚠️  Using temporary cache (workspace_root unavailable): {}",
+                cache.display()
+            );
+            cache
         };
 
-        std::fs::create_dir_all(&cache_dir)?;
         info!(
             "📁 Using embedding cache directory: {}",
             cache_dir.display()
