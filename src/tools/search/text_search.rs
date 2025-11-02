@@ -76,13 +76,25 @@ pub async fn text_search_impl(
                 )
                 .await
             } else {
-                debug!("🔍 Symbol search across all workspaces");
+                debug!("🔍 Symbol search in primary workspace (no workspace filter)");
+                // Get primary workspace ID and use it for filtering
+                let workspace = handler
+                    .get_workspace()
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                let registry_service =
+                    crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+                let primary_workspace_id = registry_service
+                    .get_primary_workspace_id()
+                    .await?
+                    .unwrap_or_else(|| "primary".to_string());
+
                 database_search_with_workspace_filter(
                     fts5_query,
                     language,
                     file_pattern,
                     limit,
-                    vec![], // Empty vec means search primary workspace
+                    vec![primary_workspace_id],
                     handler,
                 )
                 .await
@@ -133,7 +145,7 @@ async fn database_search_with_workspace_filter(
 
     let target_workspace_id = workspace_ids
         .first()
-        .ok_or_else(|| anyhow::anyhow!("No workspace ID provided"))?;
+        .expect("workspace_ids Vec should never be empty - this is a bug");
 
     let is_primary = target_workspace_id == &primary_workspace_id;
 

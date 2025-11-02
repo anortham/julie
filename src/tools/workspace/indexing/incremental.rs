@@ -338,14 +338,25 @@ impl ManageWorkspaceTool {
             }
         };
 
-        // Delete orphaned entries
+        // 🔥 FTS5 CRITICAL FIX: Batch all deletions in ONE transaction, rebuild FTS5 ONCE
+        // OLD BUG: Loop deleted files one-by-one, each triggering FTS5 rebuild (100 files = 200 rebuilds!)
+        // This caused rowid desynchronization: "fts5: missing row X from content table"
+        // NEW: Transaction wraps ALL deletions, single FTS5 rebuild after commit
         let mut cleaned_count = 0;
         {
-            let db_lock = db.lock().unwrap();
+            let mut db_lock = db.lock().unwrap();
+
+            // Begin transaction for ALL deletions
+            db_lock.begin_transaction()?;
 
             for file_path in &orphaned_files {
                 // Delete relationships first (referential integrity)
-                if let Err(e) = db_lock.delete_relationships_for_file(file_path) {
+                let relationships_result = db_lock.conn.execute(
+                    "DELETE FROM relationships WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
+                     OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+                    rusqlite::params![file_path],
+                );
+                if let Err(e) = relationships_result {
                     warn!(
                         "Failed to delete relationships for orphaned file {}: {}",
                         file_path, e
@@ -353,8 +364,12 @@ impl ManageWorkspaceTool {
                     continue;
                 }
 
-                // Delete symbols
-                if let Err(e) = db_lock.delete_symbols_for_file_in_workspace(file_path) {
+                // Delete symbols (no FTS5 rebuild - happens in batch after transaction)
+                let symbols_result = db_lock.conn.execute(
+                    "DELETE FROM symbols WHERE file_path = ?1",
+                    rusqlite::params![file_path],
+                );
+                if let Err(e) = symbols_result {
                     warn!(
                         "Failed to delete symbols for orphaned file {}: {}",
                         file_path, e
@@ -362,8 +377,12 @@ impl ManageWorkspaceTool {
                     continue;
                 }
 
-                // Delete file record
-                if let Err(e) = db_lock.delete_file_record_in_workspace(file_path) {
+                // Delete file record (CASCADE will handle any remaining symbols)
+                let file_result = db_lock.conn.execute(
+                    "DELETE FROM files WHERE path = ?1",
+                    rusqlite::params![file_path],
+                );
+                if let Err(e) = file_result {
                     warn!(
                         "Failed to delete file record for orphaned file {}: {}",
                         file_path, e
@@ -374,6 +393,21 @@ impl ManageWorkspaceTool {
                 cleaned_count += 1;
                 trace!("Cleaned up orphaned file: {}", file_path);
             }
+
+            // Commit all deletions atomically
+            db_lock.commit_transaction()?;
+
+            // 🔥 FTS5 REBUILD: Now rebuild indexes ONCE for all deletions
+            debug!("🔄 Rebuilding FTS5 indexes after batch deletion of {} files", cleaned_count);
+            if let Err(e) = db_lock.rebuild_symbols_fts() {
+                warn!("Failed to rebuild symbols_fts after orphan cleanup: {}", e);
+                return Err(e);
+            }
+            if let Err(e) = db_lock.rebuild_files_fts() {
+                warn!("Failed to rebuild files_fts after orphan cleanup: {}", e);
+                return Err(e);
+            }
+            debug!("✅ FTS5 indexes rebuilt successfully after orphan cleanup");
         }
 
         if cleaned_count > 0 && !is_primary {

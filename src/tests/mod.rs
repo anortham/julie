@@ -102,6 +102,7 @@ pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod fts5_integrity; // FTS5 integrity check and auto-rebuild tests (TDD)
     pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
+    pub mod fts5_orphan_cleanup_bug; // FTS5 corruption from clean_orphaned_files loop (TDD)
     pub mod fts5_rowid_corruption; // FTS5 rowid corruption from unnecessary rebuild (TDD)
     pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests

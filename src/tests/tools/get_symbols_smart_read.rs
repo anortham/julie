@@ -437,12 +437,12 @@ async fn test_file_read_error_handling() -> Result<()> {
 
     let result = tool.call_tool(&handler).await;
 
-    // Should either return error or "No symbols found" - not panic
+    // Should either return error or "File not found" message - not panic
     match result {
         Ok(call_result) => {
             let text = extract_text_from_result(&call_result);
             assert!(
-                text.contains("No symbols found") || text.is_empty(),
+                text.contains("File not found") || text.contains("No symbols found") || text.is_empty(),
                 "Should gracefully handle missing file, got: {}",
                 text
             );

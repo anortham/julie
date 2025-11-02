@@ -34,7 +34,7 @@ jobs:
             target: aarch64-apple-darwin
             binary_name: julie-server
 
-          # Linux (CUDA + TensorRT)
+          # Linux (CUDA only - TensorRT disabled due to version compatibility)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: julie-server
@@ -129,7 +129,7 @@ jobs:
           - **Windows** (x86_64): DirectML GPU acceleration (NVIDIA, AMD, Intel)
           - **macOS Intel** (x86_64): CoreML acceleration
           - **macOS Apple Silicon** (aarch64): CoreML + Neural Engine acceleration
-          - **Linux** (x86_64): CUDA + TensorRT GPU acceleration
+          - **Linux** (x86_64): CUDA GPU acceleration
 
           ### Quick Start
           ```bash
@@ -145,7 +145,7 @@ jobs:
           - ⚡ CASCADE architecture (SQLite FTS5 → HNSW Semantic)
           - 🛡️ Comprehensive safety mechanisms (all tools default to preview mode)
           - 🎯 GPU acceleration on all platforms
-          - ✅ 1,150 tests passing
+          - ✅ 1,400+ tests passing
           EOF
 
           # Create release
@@ -177,6 +177,6 @@ jobs:
           echo "  - Windows (x86_64-pc-windows-msvc) - DirectML"
           echo "  - macOS Intel (x86_64-apple-darwin) - CoreML"
           echo "  - macOS Apple Silicon (aarch64-apple-darwin) - CoreML + Neural Engine"
-          echo "  - Linux (x86_64-unknown-linux-gnu) - CUDA + TensorRT"
+          echo "  - Linux (x86_64-unknown-linux-gnu) - CUDA"
           echo ""
           echo "View release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}"

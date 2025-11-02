@@ -1,12 +1,14 @@
 //! Tests for the file watcher module extracted from the implementation file to keep it lean.
 
+use crate::watcher::filtering;
+use crate::watcher::language;
 use crate::watcher::IncrementalIndexer;
 use std::fs;
 use tempfile::TempDir;
 
 #[test]
 fn test_supported_extensions() {
-    let extensions = IncrementalIndexer::build_supported_extensions();
+    let extensions = filtering::build_supported_extensions();
 
     // Test some key extensions
     assert!(extensions.contains("rs"));
@@ -21,7 +23,7 @@ fn test_supported_extensions() {
 
 #[test]
 fn test_ignore_patterns() {
-    let patterns = IncrementalIndexer::build_ignore_patterns().unwrap();
+    let patterns = filtering::build_ignore_patterns().unwrap();
 
     // Test that patterns are created successfully
     assert!(!patterns.is_empty());
@@ -54,7 +56,7 @@ fn test_language_detection_by_extension() {
         let file_path = workspace_root.join(filename);
         fs::write(&file_path, "// test content").unwrap();
 
-        let result = IncrementalIndexer::detect_language_by_extension(&file_path);
+        let result = language::detect_language(&file_path);
         if let Ok(lang) = result {
             assert_eq!(lang, expected_lang);
         }

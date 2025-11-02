@@ -280,7 +280,7 @@ fixtures/            # Test data (SOURCE/CONTROL files, real-world samples)
 
 ## License
 
-[To be determined]
+MIT License - see [LICENSE](LICENSE) file for details
 
 ## Contributing
 

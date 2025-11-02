@@ -316,7 +316,10 @@ Rectangle {
     fn test_parse_real_cool_retro_term_file() {
         // Real-world validation: cool-retro-term main.qml (4.6KB production code)
         // Source: https://github.com/Swordfish90/cool-retro-term
-        let qml_code = std::fs::read_to_string("fixtures/qml/real-world/cool-retro-term-main.qml")
+        // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
+        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/qml/real-world/cool-retro-term-main.qml");
+        let qml_code = std::fs::read_to_string(&fixture_path)
             .expect("Failed to read cool-retro-term fixture");
 
         let symbols = extract_symbols(&qml_code);
@@ -358,7 +361,10 @@ Rectangle {
     fn test_parse_real_kde_plasma_file() {
         // Real-world validation: KDE Plasma desktop main.qml (17KB production code)
         // Source: https://github.com/KDE/plasma-desktop
-        let qml_code = std::fs::read_to_string("fixtures/qml/real-world/kde-plasma-desktop-main.qml")
+        // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
+        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/qml/real-world/kde-plasma-desktop-main.qml");
+        let qml_code = std::fs::read_to_string(&fixture_path)
             .expect("Failed to read KDE Plasma fixture");
 
         let symbols = extract_symbols(&qml_code);

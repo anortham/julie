@@ -70,16 +70,10 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
                 // ✅ NEW: Check for new files not in database
                 let indexed_files_raw: Vec<String> = db.get_all_indexed_files()?;
 
-                // Normalize indexed files to relative paths (database stores absolute paths)
+                // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
+                // No normalization needed - indexed_files are already relative
                 let indexed_files: HashSet<String> = indexed_files_raw
                     .into_iter()
-                    .filter_map(|abs_path| {
-                        // Convert absolute path to relative path
-                        let path = std::path::Path::new(&abs_path);
-                        path.strip_prefix(&workspace.root)
-                            .ok()
-                            .map(|rel| rel.to_string_lossy().to_string())
-                    })
                     .collect();
 
                 let workspace_files = scan_workspace_files(&workspace.root)?;

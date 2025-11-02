@@ -19,8 +19,10 @@ mod tests {
     #[test]
     fn test_bug_reproduction_real_r_file_not_extracting() {
         // Step 1: Read the actual R file that's failing in production
-        let r_file_path = "fixtures/r/real-world/ggplot2-geom-point.R";
-        let content = fs::read_to_string(r_file_path)
+        // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
+        let r_file_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/r/real-world/ggplot2-geom-point.R");
+        let content = fs::read_to_string(&r_file_path)
             .expect("Failed to read R file - file should exist");
 
         println!("📄 Read R file: {} bytes", content.len());
@@ -48,7 +50,7 @@ mod tests {
         let workspace_root = Path::new(".");
         let mut extractor = RExtractor::new(
             "r".to_string(),
-            r_file_path.to_string(),
+            r_file_path.to_string_lossy().to_string(),
             content.clone(),
             workspace_root,
         );
