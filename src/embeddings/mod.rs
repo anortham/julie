@@ -14,9 +14,13 @@ use self::model_manager::ModelManager;
 use self::ort_model::OrtEmbeddingModel;
 
 pub mod cross_language;
+pub mod loaded_index; // Safe wrapper for loaded HNSW indexes
 pub mod model_manager; // Model downloading from HuggingFace
 pub mod ort_model;
 pub mod vector_store; // ONNX Runtime embeddings with GPU acceleration
+
+// Re-export LoadedHnswIndex for use in other modules
+pub use loaded_index::LoadedHnswIndex;
 
 /// Context information for generating richer embeddings
 #[derive(Debug, Clone)]

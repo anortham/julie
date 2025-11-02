@@ -4,15 +4,13 @@
 // using HNSW (Hierarchical Navigable Small World) algorithm for fast nearest neighbor search.
 
 use super::SimilarityResult;
+use crate::embeddings::LoadedHnswIndex;
 use anyhow::Result;
 use hnsw_rs::prelude::*; // Includes Hnsw, DistCosine, and other distance metrics
-                         // use hnsw_rs::hnswio::*;  // For HnswIo persistence (TODO: fix lifetime issues)
 use std::collections::HashMap;
 use std::path::Path;
 
 const HNSW_MAX_LAYERS: usize = 16; // hnsw_rs NB_LAYER_MAX; required for dump persistence
-
-use hnsw_rs::hnswio::{HnswIo, ReloadOptions};
 
 /// HNSW Index Manager (SQLite is the single source of truth)
 ///
@@ -20,19 +18,19 @@ use hnsw_rs::hnswio::{HnswIo, ReloadOptions};
 /// All embedding vectors are stored in SQLite. This structure only manages:
 /// - The HNSW graph structure for fast approximate nearest neighbor search
 /// - ID mapping between HNSW numeric IDs and symbol_id strings
+/// - Safe lifecycle management of loaded indexes via LoadedHnswIndex
 ///
 /// During search, vectors are fetched from SQLite on-demand for re-ranking.
+///
+/// # Lifetime Safety
+///
+/// This implementation previously used an unsafe transmute to extend lifetimes.
+/// Now we use LoadedHnswIndex, which safely encapsulates the HNSW-HnswIo relationship.
 pub struct VectorStore {
     dimensions: usize,
-    /// HNSW index for fast approximate nearest neighbor search
-    /// Stored alongside HnswIo to satisfy lifetime requirements for disk-loaded indexes
-    hnsw_index: Option<Hnsw<'static, f32, DistCosine>>,
-    /// HnswIo instance for loading from disk - kept alive to satisfy Hnsw lifetime when using mmap
-    /// In non-mmap mode (default), this is None since data is copied into Hnsw
-    _hnsw_io: Option<Box<HnswIo>>,
-    /// Mapping from HNSW numeric IDs to symbol IDs
-    /// Needed because HNSW uses usize indices but we use String symbol IDs
-    id_mapping: Vec<String>,
+    /// Loaded HNSW index with its IO wrapper (safe lifecycle management)
+    /// LoadedHnswIndex keeps HnswIo alive alongside Hnsw to satisfy lifetime requirements
+    loaded_index: Option<LoadedHnswIndex>,
 }
 
 impl VectorStore {
@@ -40,9 +38,7 @@ impl VectorStore {
     pub fn new(dimensions: usize) -> Result<Self> {
         Ok(Self {
             dimensions,
-            hnsw_index: None,
-            _hnsw_io: None,
-            id_mapping: Vec::new(),
+            loaded_index: None,
         })
     }
 
@@ -56,11 +52,13 @@ impl VectorStore {
     // HNSW Index Methods (TDD Implementation - Start with stubs that fail)
     // ========================================================================
 
-    /// Build HNSW index from provided embeddings (loaded from SQLite)
+    /// Build HNSW index from provided embeddings (in-memory)
     ///
-    /// This is the NEW architecture where SQLite is the single source of truth.
-    /// No in-memory HashMap needed - embeddings are loaded from SQLite, HNSW is built,
-    /// and then the embeddings can be discarded from memory.
+    /// This is used during initial indexing to build HNSW from embeddings loaded from SQLite.
+    /// After building, the index can be saved to disk using save_hnsw_index().
+    ///
+    /// The HNSW is built in-memory using a direct builder pattern (not using HnswIo),
+    /// so there's no lifetime issue - the built HNSW owns all its data.
     pub fn build_hnsw_index(&mut self, embeddings: &HashMap<String, Vec<f32>>) -> Result<()> {
         if embeddings.is_empty() {
             return Err(anyhow::anyhow!(
@@ -96,8 +94,7 @@ impl VectorStore {
         // Build ID mapping and prepare data for insertion
         // IMPORTANT: Sort by symbol ID for deterministic index building
         // HashMap iteration order is non-deterministic!
-        self.id_mapping.clear();
-        self.id_mapping.reserve(nb_elem);
+        let mut id_mapping = Vec::with_capacity(nb_elem);
 
         let mut sorted_vectors: Vec<_> = embeddings.iter().collect();
         sorted_vectors.sort_by(|a, b| a.0.cmp(b.0)); // Sort by symbol ID
@@ -105,7 +102,7 @@ impl VectorStore {
         let mut data_for_insertion = Vec::with_capacity(nb_elem);
 
         for (idx, (symbol_id, vector)) in sorted_vectors.iter().enumerate() {
-            self.id_mapping.push((*symbol_id).clone());
+            id_mapping.push((*symbol_id).clone());
             data_for_insertion.push((*vector, idx));
         }
 
@@ -115,8 +112,10 @@ impl VectorStore {
         // Set to search mode (required before searching)
         hnsw.set_searching_mode(true);
 
-        // Store the built index
-        self.hnsw_index = Some(hnsw);
+        // Wrap the built HNSW in a temporary LoadedHnswIndex-like structure
+        // Since we built it in-memory, we don't have HnswIo, so we create a minimal wrapper
+        // Note: This is a temporary in-memory index used until it's saved to disk
+        self.loaded_index = Some(LoadedHnswIndex::from_built_hnsw(hnsw, id_mapping)?);
 
         tracing::info!(
             "✅ HNSW index built successfully: {} vectors indexed",
@@ -125,9 +124,9 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Check if HNSW index is built
+    /// Check if HNSW index is built/loaded
     pub fn has_hnsw_index(&self) -> bool {
-        self.hnsw_index.is_some()
+        self.loaded_index.is_some()
     }
 
     /// Search for similar vectors using HNSW index (fast approximate search)
@@ -151,67 +150,22 @@ impl VectorStore {
             ));
         }
 
-        let hnsw = self.hnsw_index.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("HNSW index not built. Call build_hnsw_index() first")
+        let index = self.loaded_index.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("HNSW index not loaded. Call load_hnsw_index() first")
         })?;
 
-        // Perform k-NN search
-        // ef_search controls search quality (higher = better but slower)
-        let ef_search = (limit * 2).max(50); // Search wider than limit for better quality
-
-        let neighbors = hnsw.search(query_vector, limit, ef_search);
-
-        // Convert HNSW results to SimilarityResults
-        let mut results = Vec::new();
-
-        for neighbor in neighbors {
-            let idx = neighbor.d_id;
-
-            // Map HNSW ID back to symbol ID
-            if idx >= self.id_mapping.len() {
-                tracing::warn!("HNSW returned invalid ID: {}", idx);
-                continue;
-            }
-
-            let symbol_id = &self.id_mapping[idx];
-
-            // 🔧 REFACTOR: Fetch vector from SQLite instead of HashMap
-            // This is the key change - SQLite is now the single source of truth
-            let vector = match db.get_embedding_for_symbol(symbol_id, model_name)? {
-                Some(v) => v,
-                None => {
-                    tracing::warn!("Symbol ID {} not found in database", symbol_id);
-                    continue;
-                }
-            };
-
-            // Calculate actual cosine similarity
-            let similarity = super::cosine_similarity(query_vector, &vector);
-
-            // Apply threshold filter
-            if similarity >= threshold {
-                results.push(SimilarityResult {
-                    symbol_id: symbol_id.clone(),
-                    similarity_score: similarity,
-                    embedding: vector.clone(),
-                });
-            }
-        }
-
-        // Results should already be sorted by HNSW, but re-sort to be sure
-        results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
-
-        Ok(results)
+        // Delegate to LoadedHnswIndex for the actual search
+        index.search_similar(db, query_vector, limit, threshold, model_name)
     }
 
     /// Save HNSW index to disk using hnsw_rs file_dump
     /// Creates three files:
     /// - {path}/hnsw_index.hnsw.graph
     /// - {path}/hnsw_index.hnsw.data
-    /// - {path}/hnsw_index.id_mapping.json (NEW: symbol_id array)
+    /// - {path}/hnsw_index.id_mapping.json (symbol_id array)
     pub fn save_hnsw_index(&mut self, path: &Path) -> Result<()> {
-        let hnsw = self.hnsw_index.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("Cannot save: HNSW index not built. Call build_hnsw_index() first")
+        let index = self.loaded_index.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("Cannot save: HNSW index not loaded. Call load_hnsw_index() first")
         })?;
 
         // Ensure the directory exists
@@ -223,9 +177,11 @@ impl VectorStore {
         tracing::info!("💾 Saving HNSW index to {}", path.display());
         tracing::debug!(
             "Index has {} vectors, dimensions: {}",
-            self.id_mapping.len(),
+            index.len(),
             self.dimensions
         );
+
+        let hnsw = index.hnsw_mut();
 
         // CRITICAL: Disable search mode before dumping to allow write operations
         // The searching flag prevents internal write operations
@@ -245,7 +201,10 @@ impl VectorStore {
                 tracing::info!("✅ HNSW index saved successfully: {}", dumped_file);
 
                 // Save id_mapping alongside HNSW files
-                self.save_id_mapping(path)?;
+                let mapping_file = path.join(format!("{}.id_mapping.json", filename));
+                let json = serde_json::to_string(index.id_mapping())?;
+                std::fs::write(&mapping_file, json)?;
+                tracing::debug!("💾 Saved id_mapping with {} entries", index.len());
 
                 Ok(())
             }
@@ -256,91 +215,17 @@ impl VectorStore {
         }
     }
 
-    /// Save id_mapping to JSON file alongside HNSW index
-    /// Creates {path}/hnsw_index.id_mapping.json
-    fn save_id_mapping(&self, path: &Path) -> Result<()> {
-        let mapping_file = path.join("hnsw_index.id_mapping.json");
-        let json = serde_json::to_string(&self.id_mapping)?;
-        std::fs::write(&mapping_file, json)?;
-        tracing::debug!("💾 Saved id_mapping with {} entries", self.id_mapping.len());
-        Ok(())
-    }
-
-    /// Load id_mapping from JSON file
-    /// Expects {path}/hnsw_index.id_mapping.json
-    fn load_id_mapping(&mut self, path: &Path) -> Result<()> {
-        let mapping_file = path.join("hnsw_index.id_mapping.json");
-
-        if !mapping_file.exists() {
-            return Err(anyhow::anyhow!(
-                "ID mapping file not found at {}",
-                mapping_file.display()
-            ));
-        }
-
-        let json = std::fs::read_to_string(&mapping_file)?;
-        self.id_mapping = serde_json::from_str(&json)?;
-        tracing::debug!(
-            "📂 Loaded id_mapping with {} entries",
-            self.id_mapping.len()
-        );
-        Ok(())
-    }
-
-    /// Load HNSW index from disk using hnsw_rs HnswIo
-    /// Expects files: {path}/hnsw_index.hnsw.graph and {path}/hnsw_index.hnsw.data
+    /// Load HNSW index from disk
+    /// Expects files: {path}/hnsw_index.hnsw.graph, {path}/hnsw_index.hnsw.data,
+    /// and {path}/hnsw_index.id_mapping.json
     ///
-    /// SAFETY: Uses unsafe transmute to extend lifetime to 'static. This is safe because:
-    /// 1. We use ReloadOptions::default() which has datamap: false (no mmap)
-    /// 2. With datamap: false, all vector data is copied into Hnsw during load
-    /// 3. After load_hnsw returns, Hnsw owns all its data with no references to HnswIo
-    /// 4. The lifetime constraint 'b: 'a in load_hnsw is overly conservative for non-mmap case
+    /// Uses LoadedHnswIndex for safe lifetime management. The LoadedHnswIndex
+    /// keeps HnswIo alive alongside the Hnsw to satisfy any lifetime requirements
+    /// and safely encapsulates the unsafe transmute needed for disk-loaded indexes.
     pub fn load_hnsw_index(&mut self, path: &Path) -> Result<()> {
         let filename = "hnsw_index";
-        let graph_file = path.join(format!("{}.hnsw.graph", filename));
-        let data_file = path.join(format!("{}.hnsw.data", filename));
-
-        // Check if persisted index files exist
-        if !graph_file.exists() || !data_file.exists() {
-            return Err(anyhow::anyhow!(
-                "HNSW index files not found at {}. Expected {}.hnsw.graph and {}.hnsw.data",
-                path.display(),
-                filename,
-                filename
-            ));
-        }
-
-        tracing::info!("📂 Loading HNSW index from disk: {}", path.display());
-
-        // Create HnswIo for loading (with default options = no mmap, data is copied)
-        let mut hnsw_io = HnswIo::new(path, filename);
-        let reload_options = ReloadOptions::default(); // datamap: false - copies data
-        hnsw_io.set_options(reload_options);
-
-        // Load the index - returns Hnsw<'a, ...> where 'a is tied to hnsw_io lifetime
-        let loaded_hnsw: Hnsw<'_, f32, DistCosine> = hnsw_io
-            .load_hnsw::<f32, DistCosine>()
-            .map_err(|e| anyhow::anyhow!("Failed to load HNSW from disk: {}", e))?;
-
-        // SAFETY: With datamap: false, all data is copied into Hnsw.
-        // The lifetime 'a -> 'b constraint is overly conservative.
-        // We can safely transmute to 'static because Hnsw owns its data.
-        let static_hnsw: Hnsw<'static, f32, DistCosine> =
-            unsafe { std::mem::transmute(loaded_hnsw) };
-
-        // Load the ID mapping from persisted JSON file
-        self.load_id_mapping(path)?;
-
-        tracing::info!(
-            "✅ HNSW index loaded from disk with {} symbol mappings",
-            self.id_mapping.len()
-        );
-
-        // Store the loaded index
-        self.hnsw_index = Some(static_hnsw);
-
-        // Note: hnsw_io is dropped here, but that's safe because data was copied
-
+        let index = LoadedHnswIndex::load(path, filename)?;
+        self.loaded_index = Some(index);
         Ok(())
     }
 
@@ -352,8 +237,8 @@ impl VectorStore {
             return Ok(());
         }
 
-        let hnsw = self.hnsw_index.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("HNSW index not built. Call build_hnsw_index() first")
+        let index = self.loaded_index.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("HNSW index not loaded. Call load_hnsw_index() first")
         })?;
 
         tracing::debug!(
@@ -361,31 +246,13 @@ impl VectorStore {
             embeddings.len()
         );
 
-        for (symbol_id, vector) in embeddings {
-            // Validate dimensions
-            if vector.len() != self.dimensions {
-                tracing::warn!(
-                    "Skipping symbol {} - vector dimensions {} don't match expected {}",
-                    symbol_id,
-                    vector.len(),
-                    self.dimensions
-                );
-                continue;
-            }
-
-            // Get next index and append to mapping
-            let idx = self.id_mapping.len();
-            self.id_mapping.push(symbol_id.clone());
-
-            // Insert into HNSW with the new index
-            // Note: HNSW insert() takes (&[f32], usize) format
-            hnsw.insert((vector.as_slice(), idx));
-        }
+        // Use insert_batch method on LoadedHnswIndex to avoid borrow checker issues
+        index.insert_batch(&embeddings, self.dimensions)?;
 
         tracing::debug!(
             "✅ Successfully inserted {} vectors into HNSW index (total: {})",
             embeddings.len(),
-            self.id_mapping.len()
+            index.len()
         );
 
         Ok(())
@@ -411,8 +278,7 @@ impl VectorStore {
     /// This is used when HNSW index rebuild fails or needs to be invalidated.
     /// After calling this, the HNSW index must be rebuilt from SQLite before searching.
     pub fn clear_hnsw_index(&mut self) {
-        self.hnsw_index = None;
-        self.id_mapping.clear();
+        self.loaded_index = None;
         tracing::warn!("⚠️  HNSW index cleared. Must rebuild from SQLite before searching.");
     }
 
@@ -428,16 +294,14 @@ impl VectorStore {
     pub fn clear(&mut self) {
         tracing::info!("🧹 Clearing VectorStore in-memory index data...");
 
-        let mapping_count = self.id_mapping.len();
+        if let Some(index) = self.loaded_index.as_ref() {
+            let mapping_count = index.len();
+            tracing::info!(
+                "✅ Cleared HNSW index ({} symbol mappings) from memory",
+                mapping_count
+            );
+        }
 
-        self.hnsw_index = None; // Drop the HNSW graph
-
-        self.id_mapping.clear();
-        self.id_mapping.shrink_to_fit();
-
-        tracing::info!(
-            "✅ Cleared HNSW index ({} symbol mappings) from memory",
-            mapping_count
-        );
+        self.loaded_index = None; // Drop the loaded index
     }
 }
