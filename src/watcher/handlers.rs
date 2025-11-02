@@ -32,11 +32,22 @@ pub async fn handle_file_created_or_modified_static(
         .context("Failed to read file content")?;
     let new_hash = blake3::hash(&content);
 
-    // 2. Check if file actually changed using Blake3
-    let path_str = path.to_string_lossy();
+    // 2. Normalize path to relative Unix-style for database operations
+    // CRITICAL FIX: Watcher provides absolute paths, but database stores relative paths
+    // This caused hash lookups to fail, triggering unnecessary re-indexing on every save
+    let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
+        .context("Failed to convert path to relative")?;
+
+    // 3. Check if file actually changed using Blake3
     {
-        let db_lock = db.lock().unwrap();
-        if let Some(old_hash_str) = db_lock.get_file_hash(&path_str)? {
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during file hash check, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
+        if let Some(old_hash_str) = db_lock.get_file_hash(&relative_path)? {
             let new_hash_str = hex::encode(new_hash.as_bytes());
             if new_hash_str == old_hash_str {
                 debug!(
@@ -48,16 +59,16 @@ pub async fn handle_file_created_or_modified_static(
         }
     }
 
-    // 3. Detect language and extract symbols
+    // 4. Detect language and extract symbols
     let language = language::detect_language(&path)
         .ok()
         .unwrap_or_else(|| "unknown".to_string());
     let content_str = String::from_utf8_lossy(&content);
 
-    let symbols = match extractor_manager.extract_symbols(&path_str, &content_str, workspace_root) {
+    let symbols = match extractor_manager.extract_symbols(&relative_path, &content_str, workspace_root) {
         Ok(symbols) => symbols,
         Err(e) => {
-            error!("❌ Symbol extraction failed for {}: {}", path_str, e);
+            error!("❌ Symbol extraction failed for {}: {}", relative_path, e);
             return Ok(()); // Skip update to preserve existing data
         }
     };
@@ -69,17 +80,23 @@ pub async fn handle_file_created_or_modified_static(
         language
     );
 
-    // 4. Update SQLite database
+    // 5. Update SQLite database
     {
-        let mut db_lock = db.lock().unwrap();
-        let existing_symbols = db_lock.get_symbols_for_file(&path_str)?;
+        let mut db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during file update, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
+        let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
 
         // Safeguard against data loss
         if symbols.is_empty() && !existing_symbols.is_empty() {
             warn!(
                 "⚠️  SAFEGUARD: Refusing to delete {} existing symbols from {}",
                 existing_symbols.len(),
-                path_str
+                relative_path
             );
             return Ok(());
         }
@@ -95,14 +112,14 @@ pub async fn handle_file_created_or_modified_static(
         }
 
         // Delete old symbols for this file
-        db_lock.delete_symbols_for_file(&path_str)?;
+        db_lock.delete_symbols_for_file(&relative_path)?;
 
         // Insert new symbols (within the transaction)
         db_lock.store_symbols(&symbols)?;
 
         // Update file hash
         let new_hash_str = hex::encode(new_hash.as_bytes());
-        db_lock.update_file_hash(&path_str, &new_hash_str)?;
+        db_lock.update_file_hash(&relative_path, &new_hash_str)?;
 
         db_lock.commit_transaction()?;
     }
@@ -151,16 +168,25 @@ pub async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+    workspace_root: &Path,
 ) -> Result<()> {
     info!("Processing file deletion: {}", path.display());
 
-    let path_str = path.to_string_lossy();
-    let db_lock = db.lock().unwrap();
+    // CRITICAL FIX: Convert absolute path to relative for database operations
+    let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
+        .context("Failed to convert path to relative")?;
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("Database mutex poisoned during file deletion, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
 
     // Handle transient DELETE events gracefully (e.g., editor save operations)
     // Editors often delete-then-recreate files, causing DELETE events before the file
     // was ever indexed. "no such table" errors are harmless in this case.
-    match db_lock.delete_symbols_for_file(&path_str) {
+    match db_lock.delete_symbols_for_file(&relative_path) {
         Ok(_) => {}
         Err(e) => {
             let err_msg = e.to_string();
@@ -175,7 +201,7 @@ pub async fn handle_file_deleted_static(
         }
     }
 
-    match db_lock.delete_file_record(&path_str) {
+    match db_lock.delete_file_record(&relative_path) {
         Ok(_) => {}
         Err(e) => {
             let err_msg = e.to_string();
@@ -214,7 +240,7 @@ pub async fn handle_file_renamed_static(
     );
 
     // Delete + create
-    handle_file_deleted_static(from, db, vector_store).await?;
+    handle_file_deleted_static(from, db, vector_store, workspace_root).await?;
     handle_file_created_or_modified_static(
         to,
         db,

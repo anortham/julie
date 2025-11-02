@@ -117,9 +117,10 @@ pub mod integration {
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
     pub mod stale_index_detection; // Stale index detection tests
     pub mod watcher; // File watcher tests
+    pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
-                                       // pub mod tracing;                 // Tracing integration tests - DISABLED
-                                       // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
+    pub mod tracing; // Tracing integration tests (dogfooding tests)
+                     // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }
 
 #[cfg(test)]

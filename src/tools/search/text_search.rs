@@ -4,7 +4,7 @@
 //! This is the primary search method for fast, reliable results.
 
 use anyhow::Result;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
@@ -165,7 +165,13 @@ async fn database_search_with_workspace_filter(
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
 
         tokio::task::block_in_place(|| {
-            let db_lock = db.lock().unwrap();
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             db_lock.find_symbols_by_pattern(query)  // Use already-sanitized query
         })?
     } else {
@@ -459,7 +465,13 @@ async fn sqlite_fts_search(
     // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
     // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
     let file_results = tokio::task::block_in_place(|| {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         db_lock.search_file_content_fts(
             &content_query, // Use phrase-wrapped query for content search
             language,
@@ -473,7 +485,13 @@ async fn sqlite_fts_search(
     let mut symbols = Vec::new();
     for result in file_results {
         // Get file content to find the actual line number of the match
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
             // 🔥 FIX: Extract the actual matched term from <mark> tags instead of trying to match entire snippet
             // FTS5 snippets can be multi-line, but we search line-by-line, so matching entire snippet fails.

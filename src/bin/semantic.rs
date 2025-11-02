@@ -288,7 +288,13 @@ async fn generate_embeddings(
         let db_write_start = Instant::now();
 
         // Get database connection back from Arc<Mutex<>>
-        let mut db = db_arc.lock().unwrap();
+        let mut db = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Warning: Database mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
 
         // 🔧 REFACTOR: Use all_embeddings HashMap directly instead of VectorStore
         let embeddings_vec: Vec<(String, Vec<f32>)> = all_embeddings
@@ -424,7 +430,13 @@ async fn update_file_embeddings(
         let db_write_start = Instant::now();
 
         // Get database connection (Arc is cloned, so engine still has its reference)
-        let mut db = db_arc.lock().unwrap();
+        let mut db = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Warning: Database mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
 
         // Store only the new embeddings for this file
         db.bulk_store_embeddings(&new_embeddings, engine.dimensions(), model)?;
@@ -441,7 +453,13 @@ async fn update_file_embeddings(
     // 6. 🔧 REFACTOR: Load ALL embeddings from SQLite for HNSW rebuild
     eprintln!("📖 Loading all embeddings from database for HNSW rebuild...");
     let load_all_start = Instant::now();
-    let db = db_arc.lock().unwrap();
+    let db = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Warning: Database mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
     let all_embeddings = db.load_all_embeddings(model)?;
     drop(db); // Release lock
     eprintln!(

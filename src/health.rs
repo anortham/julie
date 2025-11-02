@@ -5,7 +5,7 @@
 
 use crate::handler::JulieServerHandler;
 use anyhow::{anyhow, Result};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// System readiness levels for graceful degradation
 #[derive(Debug, Clone)]
@@ -160,7 +160,13 @@ impl HealthChecker {
 
         // Database status
         if let Some(db) = &workspace.db {
-            let db_lock = db.lock().unwrap();
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during health report, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             match db_lock.get_stats() {
                 Ok(stats) => {
                     report.push_str(&format!(

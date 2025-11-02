@@ -62,7 +62,13 @@ pub async fn generate_embeddings_from_sqlite(
     // This fixes the performance problem where ALL symbols were reprocessed every startup
     info!("🐛 About to acquire database lock for reading symbols without embeddings...");
     let symbols = {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during embeddings read, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         info!("🐛 Database lock acquired successfully!");
         db_lock
             .get_symbols_without_embeddings()
@@ -178,7 +184,13 @@ pub async fn generate_embeddings_from_sqlite(
                 // 🔥 MEMORY OPTIMIZATION: Write to DB immediately (incremental persistence)
                 // This avoids accumulating embeddings in memory
                 {
-                    let mut db_guard = db.lock().unwrap();
+                    let mut db_guard = match db.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned during embeddings batch storage, recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
 
                     // Use bulk insert for this batch
                     if let Err(e) =
@@ -361,7 +373,13 @@ async fn build_and_save_hnsw_index(
 
     // Load all embeddings from database for HNSW building
     let embeddings_result = {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during HNSW embeddings load, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         db_lock.load_all_embeddings(model_name)
     }; // Drop lock before HNSW build
 

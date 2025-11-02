@@ -11,7 +11,7 @@ use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
@@ -75,6 +75,7 @@ pub struct FastRefsTool {
     /// Examples: "primary", "project-b_a3f2b8c1"
     /// Default: "primary" - search the primary workspace
     /// To search a reference workspace, provide its workspace ID
+    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }
@@ -213,7 +214,13 @@ impl FastRefsTool {
                 let db_arc = db.clone();
 
                 definitions = tokio::task::spawn_blocking(move || {
-                    let db_lock = db_arc.lock().unwrap();
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned in fast_refs (line 217), recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
                     db_lock.get_symbols_by_name(&symbol)
                 })
                 .await
@@ -235,7 +242,13 @@ impl FastRefsTool {
                 let db_arc = db.clone();
 
                 let variant_matches = tokio::task::spawn_blocking(move || {
-                    let db_lock = db_arc.lock().unwrap();
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned in fast_refs (line 239), recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
                     let mut matches = Vec::new();
 
                     for variant in variants {
@@ -285,7 +298,13 @@ impl FastRefsTool {
                 let db_arc = db.clone();
 
                 let symbol_references = tokio::task::spawn_blocking(move || {
-                    let db_lock = db_arc.lock().unwrap();
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned in fast_refs (line 289), recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
                     // Single batch query instead of N individual queries
                     db_lock.get_relationships_to_symbols(&definition_ids)
                 })

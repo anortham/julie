@@ -223,7 +223,13 @@ impl ManageWorkspaceTool {
                     all_file_infos.len()
                 );
 
-                let mut db_lock = db.lock().unwrap();
+                let mut db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during atomic incremental update, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
 
                 if let Err(e) = db_lock.incremental_update_atomic(
                     &files_to_clean,
@@ -247,7 +253,13 @@ impl ManageWorkspaceTool {
                     all_file_infos.len()
                 );
 
-                let mut db_lock = db.lock().unwrap();
+                let mut db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during fresh bulk storage, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
 
                 // Bulk store files
                 if let Err(e) = db_lock.bulk_store_files(&all_file_infos) {

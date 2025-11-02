@@ -102,7 +102,13 @@ impl ManageWorkspaceTool {
 
             // Query the correct database
             if let Some(db) = db_to_query {
-                let db_lock = db.lock().unwrap();
+                let db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during file hash query, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
 
                 // 🔥 CRITICAL FIX: Check if THIS workspace's database has 0 symbols
                 // If so, bypass incremental logic and re-index all files
@@ -185,7 +191,13 @@ impl ManageWorkspaceTool {
                         // Check if it has symbols (should be 0 for files without parsers)
                         if let Some(workspace) = handler.get_workspace().await? {
                             if let Some(db) = &workspace.db {
-                                let db_lock = db.lock().unwrap();
+                                let db_lock = match db.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => {
+                                        warn!("Database mutex poisoned during symbol count check, recovering: {}", poisoned);
+                                        poisoned.into_inner()
+                                    }
+                                };
                                 let symbol_count =
                                     db_lock.get_file_symbol_count(&file_path_str).unwrap_or(0);
                                 drop(db_lock);
@@ -344,7 +356,13 @@ impl ManageWorkspaceTool {
         // NEW: Transaction wraps ALL deletions, single FTS5 rebuild after commit
         let mut cleaned_count = 0;
         {
-            let mut db_lock = db.lock().unwrap();
+            let mut db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during orphan cleanup, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
 
             // Begin transaction for ALL deletions
             db_lock.begin_transaction()?;

@@ -9,8 +9,8 @@ use tracing::{debug, warn};
 use tree_sitter::Node;
 
 use super::types::{
-    ContextConfig, ExtractionResults, Identifier, RelationshipKind, Symbol, SymbolKind,
-    SymbolOptions, TypeInfo, Visibility, Relationship, IdentifierKind,
+    ContextConfig, Identifier, Symbol,
+    TypeInfo, Relationship,
 };
 
 /// Base implementation for language extractors

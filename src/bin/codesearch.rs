@@ -430,8 +430,20 @@ fn scan_directory(
         }
     });
 
-    let proc_count = *processed.lock().unwrap();
-    let skip_count = *skipped.lock().unwrap();
+    let proc_count = *match processed.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Warning: Processed count mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
+    let skip_count = *match skipped.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Warning: Skipped count mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
 
     // Extract results
     let results = Arc::try_unwrap(all_results)

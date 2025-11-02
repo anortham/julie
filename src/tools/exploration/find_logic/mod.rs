@@ -2,7 +2,7 @@ use anyhow::Result;
 use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::extractors::base::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
@@ -302,7 +302,13 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned in get_business_relationships, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
 
         let business_symbol_ids: std::collections::HashSet<String> =
             business_symbols.iter().map(|s| s.id.clone()).collect();

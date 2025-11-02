@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::extractors::base::Symbol;
 use crate::extractors::SymbolKind;
@@ -20,7 +20,13 @@ impl FindLogicTool {
         debug!("🔍 Using SQLite FTS5 keyword search");
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                let db_lock = db.lock().unwrap();
+                let db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
 
                 // Search by each keyword using indexed database queries
                 for keyword in &domain_keywords {
@@ -58,7 +64,13 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
 
         // Pattern 1: Find Service/Controller/Handler classes
         let architectural_patterns = vec![
@@ -279,7 +291,13 @@ impl FindLogicTool {
         let similarity_threshold = 0.2; // Lower threshold for business logic discovery
 
         let semantic_results = match tokio::task::block_in_place(|| {
-            let db_lock = db.lock().unwrap();
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             let model_name = "bge-small";
             store_guard.search_similar_hnsw(
                 &db_lock,
@@ -303,7 +321,13 @@ impl FindLogicTool {
         );
 
         // Fetch actual symbols from database
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         for result in semantic_results {
             if let Ok(Some(mut symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
                 // Score based on semantic similarity
@@ -333,7 +357,13 @@ impl FindLogicTool {
             .db
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
 
         // Build a reference count map for all symbols
         let mut reference_counts: std::collections::HashMap<String, usize> =

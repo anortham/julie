@@ -70,7 +70,13 @@ pub async fn semantic_neighbors(
 
     // Use new architecture with SQLite on-demand fetching
     let semantic_results = match tokio::task::block_in_place(|| {
-        let db_lock = db_arc.lock().unwrap();
+        let db_lock = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned in semantic_neighbors search, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         let model_name = "bge-small";
         store_guard.search_similar_hnsw(
             &db_lock,
@@ -94,7 +100,13 @@ pub async fn semantic_neighbors(
     );
 
     let mut matches = Vec::new();
-    let db_lock = db_arc.lock().unwrap();
+    let db_lock = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("Database mutex poisoned in semantic_neighbors fetch, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
     for result in semantic_results {
         if let Ok(Some(candidate)) = db_lock.get_symbol_by_id(&result.symbol_id) {
             if candidate.id != symbol.id {
@@ -144,7 +156,13 @@ pub async fn trace_upstream(
 
     // Build callers list - wrap in block to ensure mutex guard is dropped before .await
     let callers = {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned in trace_upstream callers, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
         // Filter to call relationships and collect symbol IDs
@@ -316,7 +334,13 @@ pub async fn trace_downstream(
 
     // Build callees list - wrap in block to ensure mutex guard is dropped before .await
     let callees = {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Database mutex poisoned in trace_downstream callees, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
         // Filter to call relationships and collect symbol IDs

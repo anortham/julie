@@ -13,7 +13,7 @@
 
 mod events;
 pub mod filtering;  // Public for tests
-mod handlers;
+pub mod handlers;   // Public for tests
 pub mod language;   // Public for tests
 pub mod types;
 
@@ -218,7 +218,7 @@ impl IncrementalIndexer {
                             .await
                         }
                         FileChangeType::Deleted => {
-                            handlers::handle_file_deleted_static(event.path, &db, vector_store.as_ref())
+                            handlers::handle_file_deleted_static(event.path, &db, vector_store.as_ref(), &workspace_root)
                                 .await
                         }
                         FileChangeType::Renamed { from, to } => {
@@ -264,7 +264,7 @@ impl IncrementalIndexer {
                     .await
                 }
                 FileChangeType::Deleted => {
-                    handlers::handle_file_deleted_static(event.path, &self.db, self.vector_store.as_ref())
+                    handlers::handle_file_deleted_static(event.path, &self.db, self.vector_store.as_ref(), &self.workspace_root)
                         .await
                 }
                 FileChangeType::Renamed { from, to } => {

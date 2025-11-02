@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::handler::JulieServerHandler;
 
@@ -73,7 +73,13 @@ pub async fn line_mode_search(
     let all_line_matches: Vec<LineMatch> = if target_workspace_id == primary_workspace_id {
         // Search primary workspace using shared connection
         tokio::task::block_in_place(|| -> Result<Vec<LineMatch>> {
-            let db_lock = db.lock().unwrap();
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             let file_results = db_lock.search_file_content_fts(&processed_query, &None, &None, fetch_limit)?;
 
             let mut matches = Vec::new();

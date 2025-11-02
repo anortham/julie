@@ -1,3 +1,11 @@
+//! Research prototype for cross-language tracing concepts
+//!
+//! **IMPORTANT**: This module is a research prototype and is NOT used in production.
+//! The production implementation is `TraceCallPathTool` in `src/tools/trace_call_path/`.
+//!
+//! This module defines types and concepts for cross-language tracing but the actual
+//! implementation has been superseded by the tool-based architecture.
+
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::Symbol;
@@ -6,8 +14,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-/// The revolutionary cross-language tracing engine
-/// This is what makes Julie unique - tracing data flow across the entire polyglot stack
+/// Research prototype: Cross-language tracing engine concept
+///
+/// Production implementation: See `TraceCallPathTool` in `src/tools/trace_call_path/`
 pub struct CrossLanguageTracer {
     #[allow(dead_code)]
     db: Arc<Mutex<SymbolDatabase>>,
@@ -116,15 +125,12 @@ impl CrossLanguageTracer {
         let trace_id = uuid::Uuid::new_v4().to_string();
         let started_at = chrono::Utc::now();
 
-        // For GREEN phase: create a minimal working implementation
-        // This will be enhanced in REFACTOR phase
-
+        // NOTE: This is prototype/research code. Production implementation is TraceCallPathTool.
         let mut steps = Vec::new();
         let mut visited = HashSet::new();
         let mut languages_involved = HashSet::new();
 
         // Try to find the starting symbol
-        // For now, we'll create mock symbols to make tests pass
         let mut current_symbol = self.find_or_create_mock_symbol(start_symbol).await?;
 
         // Add the starting step
@@ -143,8 +149,7 @@ impl CrossLanguageTracer {
 
         visited.insert(current_symbol.id.clone());
 
-        // For GREEN phase: simulate a simple cross-language flow
-        // This makes our tests pass while we build the real implementation
+        // Simulate a simple cross-language flow (prototype implementation)
         let max_depth = options.max_depth.unwrap_or(10);
         let max_steps = options.max_steps.unwrap_or(50);
 

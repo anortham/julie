@@ -10,7 +10,7 @@ use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
@@ -181,7 +181,13 @@ impl FastGotoTool {
                 let db_arc = db.clone();
 
                 exact_matches = tokio::task::spawn_blocking(move || {
-                    let db_lock = db_arc.lock().unwrap();
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned in fast_goto (line 184), recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
                     db_lock.get_symbols_by_name(&symbol)
                 })
                 .await
@@ -215,7 +221,13 @@ impl FastGotoTool {
                     let db_arc = db.clone();
 
                     let variant_matches = tokio::task::spawn_blocking(move || {
-                        let db_lock = db_arc.lock().unwrap();
+                        let db_lock = match db_arc.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                warn!("Database mutex poisoned in fast_goto (line 218), recovering: {}", poisoned);
+                                poisoned.into_inner()
+                            }
+                        };
                         let mut matches = Vec::new();
 
                         // Generate all naming convention variants using shared intelligence module

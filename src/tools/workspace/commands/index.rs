@@ -87,7 +87,13 @@ impl ManageWorkspaceTool {
             .unwrap_or_else(|_| workspace_path.clone());
 
         let index_lock = {
-            let mut locks = indexing_lock_cache().lock().unwrap();
+            let mut locks = match indexing_lock_cache().lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Indexing lock cache mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             locks
                 .entry(canonical_path.clone())
                 .or_insert_with(|| Arc::new(AsyncMutex::new(())))
@@ -166,13 +172,25 @@ impl ManageWorkspaceTool {
                             WorkspaceRegistryService::new(workspace.root.clone());
                         match registry_service.get_primary_workspace_id().await {
                             Ok(Some(_workspace_id)) => {
-                                let db_lock = db.lock().unwrap();
+                                let db_lock = match db.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => {
+                                        warn!("Database mutex poisoned during symbol count, recovering: {}", poisoned);
+                                        poisoned.into_inner()
+                                    }
+                                };
                                 // OPTIMIZED: Use SQL COUNT(*) instead of loading all symbols
                                 db_lock.count_symbols_for_workspace().unwrap_or(0)
                             }
                             _ => {
                                 // Fallback: if no workspace ID, count all symbols
-                                let db_lock = db.lock().unwrap();
+                                let db_lock = match db.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => {
+                                        warn!("Database mutex poisoned during symbol count, recovering: {}", poisoned);
+                                        poisoned.into_inner()
+                                    }
+                                };
                                 db_lock.get_all_symbols().unwrap_or_default().len()
                             }
                         }

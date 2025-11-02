@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::database::SymbolDatabase;
 use crate::embeddings::vector_store::VectorStore;
@@ -149,7 +149,13 @@ pub async fn find_semantic_references(
 
                         let semantic_results = if let Some(db_arc) = db {
                             match tokio::task::block_in_place(|| {
-                                let db_lock = db_arc.lock().unwrap();
+                                let db_lock = match db_arc.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => {
+                                        warn!("Database mutex poisoned in semantic_matching (line 152), recovering: {}", poisoned);
+                                        poisoned.into_inner()
+                                    }
+                                };
                                 let model_name = "bge-small";
                                 store_guard.search_similar_hnsw(
                                     &db_lock,
@@ -185,7 +191,13 @@ pub async fn find_semantic_references(
                                 let db_arc = db.clone();
 
                                 let symbols = tokio::task::spawn_blocking(move || {
-                                    let db_lock = db_arc.lock().unwrap();
+                                    let db_lock = match db_arc.lock() {
+                                        Ok(guard) => guard,
+                                        Err(poisoned) => {
+                                            warn!("Database mutex poisoned in semantic_matching (line 188), recovering: {}", poisoned);
+                                            poisoned.into_inner()
+                                        }
+                                    };
                                     db_lock.get_symbols_by_ids(&symbol_ids)
                                 })
                                 .await
@@ -291,7 +303,13 @@ pub async fn find_semantic_definitions(
 
                         let similar_symbols = if let Some(db_arc) = db {
                             match tokio::task::block_in_place(|| {
-                                let db_lock = db_arc.lock().unwrap();
+                                let db_lock = match db_arc.lock() {
+                                    Ok(guard) => guard,
+                                    Err(poisoned) => {
+                                        warn!("Database mutex poisoned in semantic_matching (line 294), recovering: {}", poisoned);
+                                        poisoned.into_inner()
+                                    }
+                                };
                                 let model_name = "bge-small";
                                 store_guard.search_similar_hnsw(
                                     &db_lock,
@@ -327,7 +345,13 @@ pub async fn find_semantic_definitions(
                                 let db_clone = db_arc.clone();
 
                                 let symbols = tokio::task::spawn_blocking(move || {
-                                    let db = db_clone.lock().unwrap();
+                                    let db = match db_clone.lock() {
+                                        Ok(guard) => guard,
+                                        Err(poisoned) => {
+                                            warn!("Database mutex poisoned in semantic_matching (line 330), recovering: {}", poisoned);
+                                            poisoned.into_inner()
+                                        }
+                                    };
                                     db.get_symbols_by_ids(&symbol_ids)
                                 })
                                 .await

@@ -8,6 +8,7 @@ use crate::extractors::base::Symbol;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tracing::warn;
 
 // GPU-accelerated embeddings infrastructure
 use self::model_manager::ModelManager;
@@ -341,7 +342,13 @@ impl EmbeddingEngine {
         // Generate embeddings for all symbols in one GPU-accelerated batch call
         match self.model.encode_batch(batch_texts) {
             Ok(batch_embeddings) => {
-                let db_guard = self.db.lock().unwrap();
+                let db_guard = match self.db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during batch embedding storage, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
 
                 // Persist all embeddings directly to database
                 for (embedding, (symbol, _context)) in
@@ -386,7 +393,13 @@ impl EmbeddingEngine {
                     let context = CodeContext::from_symbol(symbol);
                     match self.embed_symbol(symbol, &context) {
                         Ok(embedding) => {
-                            let db_guard = self.db.lock().unwrap();
+                            let db_guard = match self.db.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => {
+                                    warn!("Database mutex poisoned during individual embedding storage, recovering: {}", poisoned);
+                                    poisoned.into_inner()
+                                }
+                            };
                             let vector_id = &symbol.id;
 
                             if let Err(e) = db_guard.store_embedding_vector(
@@ -434,7 +447,13 @@ impl EmbeddingEngine {
             return Ok(());
         }
 
-        let db_guard = self.db.lock().unwrap();
+        let db_guard = match self.db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during embedding removal, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
 
         for symbol_id in symbol_ids {
             if let Err(e) = db_guard.delete_embeddings_for_symbol(symbol_id) {
@@ -448,7 +467,13 @@ impl EmbeddingEngine {
 
     /// Retrieve an embedding vector from the database
     pub async fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
-        let db_guard = self.db.lock().unwrap();
+        let db_guard = match self.db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during embedding retrieval, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         db_guard.get_embedding_for_symbol(symbol_id, &self.model_name)
     }
 

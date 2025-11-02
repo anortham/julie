@@ -90,7 +90,13 @@ pub async fn get_symbols_from_primary(
 
     // Query symbols for this file using relative Unix-style path
     let symbols = {
-        let db_lock = db.lock().unwrap();
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned in get_symbols_from_primary, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
         db_lock
             .get_symbols_for_file(&query_path)
             .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?

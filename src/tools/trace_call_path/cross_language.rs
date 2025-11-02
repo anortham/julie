@@ -24,7 +24,13 @@ pub async fn find_cross_language_callers(
     );
 
     let mut cross_lang_symbols = Vec::new();
-    let db_lock = db.lock().unwrap();
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("Database mutex poisoned in find_cross_language_callers, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
 
     for variant in variants {
         if variant == symbol.name {
@@ -66,7 +72,13 @@ pub async fn find_cross_language_callees(
     );
 
     let mut cross_lang_symbols = Vec::new();
-    let db_lock = db.lock().unwrap();
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("Database mutex poisoned in find_cross_language_callees, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
 
     for variant in variants {
         if variant == symbol.name {
@@ -111,7 +123,13 @@ pub async fn find_semantic_cross_language_callers(
     }
 
     let mut matches = Vec::new();
-    let db_lock = db.lock().unwrap();
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("Database mutex poisoned in find_semantic_cross_language_callers, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
 
     for (candidate, similarity) in candidates {
         // Only match cross-language symbols (that's the whole point!)
@@ -165,7 +183,13 @@ pub async fn find_semantic_cross_language_callees(
     }
 
     let mut matches = Vec::new();
-    let db_lock = db.lock().unwrap();
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("Database mutex poisoned in find_semantic_cross_language_callees, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
 
     for (candidate, similarity) in candidates {
         // Only match cross-language symbols (that's the whole point!)

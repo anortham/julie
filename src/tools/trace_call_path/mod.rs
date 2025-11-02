@@ -238,7 +238,13 @@ impl TraceCallPathTool {
 
         // Find the starting symbol(s) - wrap in block to ensure mutex guard is dropped
         let mut starting_symbols = {
-            let db_lock = db.lock().unwrap();
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    ::tracing::warn!("Database mutex poisoned in trace_call_path symbol lookup, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             db_lock.get_symbols_by_name(&self.symbol)?
         }; // Guard dropped here automatically
 

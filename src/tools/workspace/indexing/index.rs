@@ -5,7 +5,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::path::Path;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::embeddings::generate_embeddings_from_sqlite;
 
@@ -206,7 +206,13 @@ impl ManageWorkspaceTool {
 
             // Query the correct database
             if let Some(db_arc) = db_to_query {
-                let db = db_arc.lock().unwrap();
+                let db = match db_arc.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during final count query, recovering: {}", poisoned);
+                        poisoned.into_inner()
+                    }
+                };
                 let symbols_count = db.get_symbol_count_for_workspace().unwrap_or(0);
                 let stats = db.get_stats().unwrap_or_default();
                 (symbols_count as usize, stats.total_relationships as usize)
@@ -239,7 +245,13 @@ impl ManageWorkspaceTool {
                 None
             }
         } {
-            let db_lock = db_arc.lock().unwrap();
+            let db_lock = match db_arc.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during staleness check, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
             db_lock
                 .get_symbols_without_embeddings()
                 .unwrap_or_default()

@@ -7,12 +7,17 @@ use rusqlite::params;
 use std::path::Path;
 use tracing::{debug, info, warn};
 
+/// Get current Unix timestamp in seconds, with proper error handling
+fn get_unix_timestamp() -> Result<i64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .map_err(|e| anyhow!("System time error: {}", e))
+}
+
 impl SymbolDatabase {
     pub fn store_file_info(&self, file_info: &FileInfo) -> Result<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
@@ -74,10 +79,7 @@ impl SymbolDatabase {
         // the caller's previous synchronous level afterwards (see finalizer below).
         self.conn.pragma_update(None, "synchronous", 1)?;
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         let mut result: Result<()> = (|| -> Result<()> {
             // 🔥 CRITICAL FIX: Wrap ENTIRE bulk operation in outer transaction for atomicity
@@ -260,10 +262,7 @@ impl SymbolDatabase {
         content: &str,
         _workspace_id: &str,
     ) -> Result<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
@@ -316,10 +315,7 @@ impl SymbolDatabase {
 
     /// Get recently modified files (last N days)
     pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
 
