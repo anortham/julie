@@ -99,8 +99,8 @@
 - **Status**: Clean codebase, no technical debt markers
 
 ### File Organization
-- **26 language extractors** (all operational)
-- **26 test directories** (matching 1:1 with extractors)
+- **27 language extractors** (all operational)
+- **27 test directories** (matching 1:1 with extractors)
 - **Comprehensive structure** with symbols, identifiers, relationships sub-modules
 
 ---

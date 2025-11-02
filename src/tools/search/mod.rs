@@ -74,7 +74,7 @@ pub struct FastSearchTool {
     #[serde(default = "default_search_method")]
     pub search_method: String,
     /// Programming language filter (optional).
-    /// Valid: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
+    /// Valid: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     /// Example: "typescript" to search only .ts/.tsx files
     #[serde(default)]
     pub language: Option<String>,

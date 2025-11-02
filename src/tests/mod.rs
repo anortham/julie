@@ -235,7 +235,7 @@ pub mod test_utils;
 pub mod helpers;
 
 // ============================================================================
-// EXTRACTOR TESTS - All 26 language extractors (Complete language support)
+// EXTRACTOR TESTS - All 27 language extractors (Complete language support)
 // ============================================================================
 pub mod extractors {
     pub mod base; // BaseExtractor tests
@@ -290,6 +290,9 @@ pub mod extractors {
 
     // QML extractor tests (single mod.rs file)
     pub mod qml;
+
+    // R extractor tests (multiple submodules)
+    pub mod r;
 
     // Razor extractor tests (single mod.rs file)
     pub mod razor;

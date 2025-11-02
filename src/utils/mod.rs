@@ -39,6 +39,8 @@ pub mod file_utils {
                     | "sql"
                     | "sh"
                     | "bash"
+                    | "r"
+                    | "R"
             )
         } else {
             false
@@ -206,6 +208,7 @@ pub mod language {
                 "sql" => Some("sql"),
                 "sh" | "bash" => Some("bash"),
                 "qml" => Some("qml"),
+                "r" | "R" => Some("r"),
                 _ => None,
             })
     }

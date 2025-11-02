@@ -48,6 +48,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         // Scripting languages
         "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
         "qml" => Ok(tree_sitter_qmljs::LANGUAGE.into()),
+        "r" => Ok(tree_sitter_r::LANGUAGE.into()),
         "bash" => Ok(tree_sitter_bash::LANGUAGE.into()),
         "powershell" => Ok(tree_sitter_powershell::LANGUAGE.into()),
 
@@ -58,7 +59,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
 
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
             language
         )),
     }
@@ -87,6 +88,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "gd" => Some("gdscript"),
         "lua" => Some("lua"),
         "qml" => Some("qml"),
+        "r" | "R" => Some("r"),
         "vue" => Some("vue"),
         "razor" | "cshtml" => Some("razor"),
         "sql" => Some("sql"),

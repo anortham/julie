@@ -100,18 +100,18 @@ src/database/
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 26 programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 27 programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, true cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier single source of truth with progressive enhancement
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 26 tree-sitter extractors with comprehensive test suites
+- **Crown Jewels**: 27 tree-sitter extractors with comprehensive test suites
 
-### 🏆 Current Language Support (26/26 - Complete Language Support)
+### 🏆 Current Language Support (27/27 - Complete Language Support)
 
-**All 26 extractors operational and validated against real-world GitHub code:**
+**All 27 extractors operational and validated against real-world GitHub code:**
 
 **Core Languages:**
 - Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
@@ -120,7 +120,7 @@ src/database/
 - C, C++, Go, Lua
 
 **Specialized Languages:**
-- GDScript, Vue SFCs, Razor, QML, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
+- GDScript, Vue SFCs, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
 
 **Key Achievements:**
 - ✅ **Zero compromises** - All extractors ported, none disabled
@@ -495,7 +495,7 @@ src/
 │   ├── mod.rs          # Extractor management
 │   ├── base.rs         # BaseExtractor trait and common types
 │   ├── typescript.rs   # TypeScript/JavaScript extractor
-│   └── ...             # All other language extractors (25 total)
+│   └── ...             # All other language extractors (27 total)
 ├── embeddings/          # ONNX-based semantic search
 ├── database/            # SQLite symbol storage (includes FTS5 search)
 ├── tools/               # MCP tool implementations
@@ -544,7 +544,7 @@ src/tests/                           # Central test infrastructure
 │   ├── mod.rs                     # Extractor test management
 │   ├── typescript_tests.rs       # TypeScript/JavaScript tests
 │   ├── python_tests.rs           # Python tests
-│   └── ...                       # All 25 language extractors
+│   └── ...                       # All 27 language extractors
 │
 ├── tools/                          # Tool-specific tests
 │   ├── fuzzy_replace_tests.rs     # FuzzyReplaceTool tests (18 tests, all passing)
@@ -982,7 +982,7 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 
 **Project Status**: Phase 7 - 2-Tier CASCADE Architecture (Tantivy Removed) ✅
 **Current Achievements**:
-- ✅ All 25 Language Extractors Operational (Complete)
+- ✅ All 27 Language Extractors Operational (Complete)
 - ✅ **CASCADE Architecture Simplified**: SQLite FTS5 → HNSW Semantic (2-tier)
 - ✅ **Tantivy Removed**: Eliminated Arc<RwLock> deadlocks, simpler architecture
 - ✅ **Per-Workspace Isolation**: Complete workspace separation in `indexes/{workspace_id}/`

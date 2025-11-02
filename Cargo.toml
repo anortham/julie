@@ -58,6 +58,7 @@ tree-sitter-kotlin-ng = "1.1.0"  # ⚠️ DO NOT CHANGE - USES MODERN API ⚠️
 tree-sitter-lua = "0.2"
 tree-sitter-php = "0.24"
 tree-sitter-python = "0.23"
+tree-sitter-r = "1.2.0"
 tree-sitter-ruby = "0.23"
 tree-sitter-rust = "0.24"
 tree-sitter-swift = "0.7"

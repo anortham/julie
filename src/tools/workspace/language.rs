@@ -101,6 +101,9 @@ impl ManageWorkspaceTool {
             // QML
             "qml" => "qml".to_string(),
 
+            // R (Statistical Computing)
+            "r" | "R" => "r".to_string(),
+
             // Regex patterns (special handling)
             "regex" | "regexp" => "regex".to_string(),
 

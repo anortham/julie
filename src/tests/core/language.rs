@@ -1,13 +1,13 @@
 //! Inline tests extracted from src/language.rs
 //!
 //! This module contains all test cases for language support functionality.
-//! Tests verify that all 26 supported languages are properly configured and
+//! Tests verify that all 27 supported languages are properly configured and
 //! that language detection and AST node lookups work correctly.
 
 use crate::language::*;
 
 #[test]
-fn test_all_26_languages_supported() {
+fn test_all_27_languages_supported() {
     let languages = vec![
         "rust",
         "c",
@@ -21,6 +21,7 @@ fn test_all_26_languages_supported() {
         "vue",
         "qml",
         "python",
+        "r",
         "java",
         "csharp",
         "php",
@@ -45,7 +46,7 @@ fn test_all_26_languages_supported() {
         );
     }
 
-    assert_eq!(languages.len(), 26, "Should have exactly 26 languages");
+    assert_eq!(languages.len(), 27, "Should have exactly 27 languages");
 }
 
 #[test]

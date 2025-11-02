@@ -104,6 +104,11 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
                 .set_language(&tree_sitter_qmljs::LANGUAGE.into())
                 .expect("Error loading QML grammar");
         }
+        "r" => {
+            parser
+                .set_language(&tree_sitter_r::LANGUAGE.into())
+                .expect("Error loading R grammar");
+        }
         "bash" => {
             parser
                 .set_language(&tree_sitter_bash::LANGUAGE.into())

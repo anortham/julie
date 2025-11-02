@@ -62,6 +62,7 @@ impl SmartRefactorTool {
             Some("zig") => "zig".to_string(),
             Some("dart") => "dart".to_string(),
             Some("qml") => "qml".to_string(),
+            Some("r") | Some("R") => "r".to_string(),
             _ => "unknown".to_string(),
         }
     }
