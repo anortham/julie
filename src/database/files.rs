@@ -365,7 +365,7 @@ impl SymbolDatabase {
         );
 
         // Build WHERE clause dynamically based on filters
-        let mut where_clauses = vec!["files_fts MATCH ?1".to_string()];
+        let mut where_clauses = vec!["f MATCH ?1".to_string()];
         let mut param_index = 2;
 
         if language.is_some() {
@@ -464,56 +464,77 @@ impl SymbolDatabase {
             where_clause, param_index
         );
 
-        let mut stmt = self.conn.prepare(&query_sql)?;
+        // Helper to execute the query and collect results; returns Err on SQL/FTS error
+        let exec_query = |conn: &rusqlite::Connection| -> Result<Vec<FileSearchResult>> {
+            let mut stmt = conn.prepare(&query_sql)?;
 
-        // Bind parameters dynamically based on filters and collect results
-        let mut results = Vec::new();
+            // Bind parameters dynamically based on filters and collect results
+            let mut results = Vec::new();
 
-        // Use normalized_pattern for parameter binding (handles relative path conversion)
-        match (language, normalized_pattern.as_ref()) {
-            (Some(lang), Some(pattern)) => {
-                let mut rows = stmt.query(params![sanitized_query, lang, pattern, limit])?;
-                while let Some(row) = rows.next()? {
-                    results.push(FileSearchResult {
-                        path: row.get(0)?,
-                        snippet: row.get(1)?,
-                        rank: row.get::<_, f64>(2)? as f32,
-                    });
+            // Use normalized_pattern for parameter binding (handles relative path conversion)
+            match (language, normalized_pattern.as_ref()) {
+                (Some(lang), Some(pattern)) => {
+                    let mut rows = stmt.query(params![sanitized_query, lang, pattern, limit])?;
+                    while let Some(row) = rows.next()? {
+                        results.push(FileSearchResult {
+                            path: row.get(0)?,
+                            snippet: row.get(1)?,
+                            rank: row.get::<_, f64>(2)? as f32,
+                        });
+                    }
+                }
+                (Some(lang), None) => {
+                    let mut rows = stmt.query(params![sanitized_query, lang, limit])?;
+                    while let Some(row) = rows.next()? {
+                        results.push(FileSearchResult {
+                            path: row.get(0)?,
+                            snippet: row.get(1)?,
+                            rank: row.get::<_, f64>(2)? as f32,
+                        });
+                    }
+                }
+                (None, Some(pattern)) => {
+                    let mut rows = stmt.query(params![sanitized_query, pattern, limit])?;
+                    while let Some(row) = rows.next()? {
+                        results.push(FileSearchResult {
+                            path: row.get(0)?,
+                            snippet: row.get(1)?,
+                            rank: row.get::<_, f64>(2)? as f32,
+                        });
+                    }
+                }
+                (None, None) => {
+                    let mut rows = stmt.query(params![sanitized_query, limit])?;
+                    while let Some(row) = rows.next()? {
+                        results.push(FileSearchResult {
+                            path: row.get(0)?,
+                            snippet: row.get(1)?,
+                            rank: row.get::<_, f64>(2)? as f32,
+                        });
+                    }
                 }
             }
-            (Some(lang), None) => {
-                let mut rows = stmt.query(params![sanitized_query, lang, limit])?;
-                while let Some(row) = rows.next()? {
-                    results.push(FileSearchResult {
-                        path: row.get(0)?,
-                        snippet: row.get(1)?,
-                        rank: row.get::<_, f64>(2)? as f32,
-                    });
-                }
-            }
-            (None, Some(pattern)) => {
-                let mut rows = stmt.query(params![sanitized_query, pattern, limit])?;
-                while let Some(row) = rows.next()? {
-                    results.push(FileSearchResult {
-                        path: row.get(0)?,
-                        snippet: row.get(1)?,
-                        rank: row.get::<_, f64>(2)? as f32,
-                    });
-                }
-            }
-            (None, None) => {
-                let mut rows = stmt.query(params![sanitized_query, limit])?;
-                while let Some(row) = rows.next()? {
-                    results.push(FileSearchResult {
-                        path: row.get(0)?,
-                        snippet: row.get(1)?,
-                        rank: row.get::<_, f64>(2)? as f32,
-                    });
+
+            Ok(results)
+        };
+
+        // First attempt
+        match exec_query(&self.conn) {
+            Ok(results) => Ok(results),
+            Err(e) => {
+                let es = e.to_string();
+                // If the FTS index is desynced (common message: missing row from content table), rebuild and retry once
+                if es.contains("fts5: missing row") || es.contains("invalid fts5 file format") {
+                    warn!("⚠️ FTS5 query error detected ({}). Rebuilding files_fts and retrying once...", es);
+                    // Attempt rebuild and retry
+                    // Ignore rebuild error; if rebuild fails, return original error
+                    let _ = self.rebuild_files_fts();
+                    exec_query(&self.conn)
+                } else {
+                    Err(e)
                 }
             }
         }
-
-        Ok(results)
     }
 
     /// Get file hash for change detection

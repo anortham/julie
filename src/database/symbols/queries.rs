@@ -216,49 +216,72 @@ impl SymbolDatabase {
             pattern, sanitized_pattern
         );
 
-        // 🔥 FTS5 MATCH with BM25 ranking + SymbolKind boost - no workspace filter needed
-        // Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
-        // SymbolKind boost: Definitions (class/struct/interface) rank higher than imports/exports
-        let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
-                           s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
-                           s.parent_id, s.metadata, s.semantic_group, s.confidence
-                     FROM symbols s
-                     INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
-                     WHERE symbols_fts MATCH ?1
-                     ORDER BY
-                       bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0) *
-                       CASE s.kind
-                         WHEN 'class' THEN 2.5
-                         WHEN 'struct' THEN 2.5
-                         WHEN 'interface' THEN 2.5
-                         WHEN 'function' THEN 2.0
-                         WHEN 'method' THEN 2.0
-                         WHEN 'enum' THEN 1.8
-                         WHEN 'module' THEN 1.8
-                         WHEN 'namespace' THEN 1.8
-                         WHEN 'property' THEN 1.2
-                         WHEN 'field' THEN 1.2
-                         WHEN 'variable' THEN 0.8
-                         WHEN 'constant' THEN 0.8
-                         WHEN 'import' THEN 0.1
-                         WHEN 'export' THEN 0.1
-                         ELSE 0.3
-                       END";
+        // Helper to execute the query and collect results; returns Err on SQL/FTS error
+        let exec_query = |conn: &rusqlite::Connection| -> Result<Vec<Symbol>> {
+            // 🔥 FTS5 MATCH with BM25 ranking + SymbolKind boost - no workspace filter needed
+            // Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
+            // SymbolKind boost: Definitions (class/struct/interface) rank higher than imports/exports
+            let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
+                               s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
+                               s.parent_id, s.metadata, s.semantic_group, s.confidence
+                         FROM symbols s
+                         INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
+                         WHERE symbols_fts MATCH ?1
+                         ORDER BY
+                           bm25(symbols_fts, 10.0, 5.0, 2.0, 1.0) *
+                           CASE s.kind
+                             WHEN 'class' THEN 2.5
+                             WHEN 'struct' THEN 2.5
+                             WHEN 'interface' THEN 2.5
+                             WHEN 'function' THEN 2.0
+                             WHEN 'method' THEN 2.0
+                             WHEN 'enum' THEN 1.8
+                             WHEN 'module' THEN 1.8
+                             WHEN 'namespace' THEN 1.8
+                             WHEN 'property' THEN 1.2
+                             WHEN 'field' THEN 1.2
+                             WHEN 'variable' THEN 0.8
+                             WHEN 'constant' THEN 0.8
+                             WHEN 'import' THEN 0.1
+                             WHEN 'export' THEN 0.1
+                             ELSE 0.3
+                           END";
 
-        let mut stmt = self.conn.prepare(query)?;
-        let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
+            let mut stmt = conn.prepare(query)?;
+            let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
 
-        let mut symbols = Vec::new();
-        for symbol_result in symbol_iter {
-            symbols.push(symbol_result?);
+            let mut symbols = Vec::new();
+            for symbol_result in symbol_iter {
+                symbols.push(symbol_result?);
+            }
+
+            Ok(symbols)
+        };
+
+        // First attempt
+        match exec_query(&self.conn) {
+            Ok(symbols) => {
+                debug!(
+                    "🔍 FTS5: Found {} symbols matching '{}' (BM25 ranked)",
+                    symbols.len(),
+                    pattern
+                );
+                Ok(symbols)
+            }
+            Err(e) => {
+                let es = e.to_string();
+                // If the FTS index is desynced (common message: missing row from content table), rebuild and retry once
+                if es.contains("fts5: missing row") || es.contains("invalid fts5 file format") {
+                    warn!("⚠️ FTS5 query error detected ({}). Rebuilding symbols_fts and retrying once...", es);
+                    // Attempt rebuild and retry
+                    // Ignore rebuild error; if rebuild fails, return original error
+                    let _ = self.rebuild_symbols_fts();
+                    exec_query(&self.conn)
+                } else {
+                    Err(e)
+                }
+            }
         }
-
-        debug!(
-            "🔍 FTS5: Found {} symbols matching '{}' (BM25 ranked)",
-            symbols.len(),
-            pattern
-        );
-        Ok(symbols)
     }
 
     /// Get symbols for a specific file
