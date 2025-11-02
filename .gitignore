@@ -19,6 +19,7 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 
 # Julie specific
 julie-server
