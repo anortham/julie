@@ -64,7 +64,7 @@ tree-sitter-swift = "0.7"
 tree-sitter-typescript = "0.23"
 
 tree-sitter-gdscript = "5.0"
-# tree-sitter-qmljs = "0.2"  # Temporarily disabled due to tree-sitter version conflict
+tree-sitter-qmljs = { git = "https://github.com/yuja/tree-sitter-qmljs" }  # Git version for tree-sitter 0.25 compatibility
 tree-sitter-regex = "0.23"
 # tree-sitter-vue removed - we parse SFC sections manually
 tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }

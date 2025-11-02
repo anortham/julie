@@ -14,7 +14,7 @@ use anyhow::Result;
 /// # Supported Languages (26 total)
 ///
 /// **Systems**: Rust, C, C++, Go, Zig
-/// **Web**: TypeScript, JavaScript, HTML, CSS, Vue
+/// **Web**: TypeScript, JavaScript, HTML, CSS, Vue, QML
 /// **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
 /// **Scripting**: Lua, Bash, PowerShell
 /// **Specialized**: GDScript, Razor, SQL, Regex
@@ -47,6 +47,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
 
         // Scripting languages
         "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
+        "qml" => Ok(tree_sitter_qmljs::LANGUAGE.into()),
         "bash" => Ok(tree_sitter_bash::LANGUAGE.into()),
         "powershell" => Ok(tree_sitter_powershell::LANGUAGE.into()),
 
@@ -57,7 +58,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
 
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
             language
         )),
     }
@@ -85,6 +86,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "dart" => Some("dart"),
         "gd" => Some("gdscript"),
         "lua" => Some("lua"),
+        "qml" => Some("qml"),
         "vue" => Some("vue"),
         "razor" | "cshtml" => Some("razor"),
         "sql" => Some("sql"),

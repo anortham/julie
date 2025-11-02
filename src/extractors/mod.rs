@@ -32,6 +32,7 @@ pub mod gdscript; // GDScript extractor (Phase 1 SUCCESS - FIXED)
 pub mod html; // HTML extractor - FIXING metadata access patterns
 pub mod lua; // Lua extractor - FIXING metadata access patterns
 pub mod powershell; // PowerShell extractor (Phase 1 SUCCESS)
+pub mod qml; // QML (Qt) extractor - NEW - Extractor #26
 pub mod razor; // Razor extractor - FIXING metadata access patterns
 pub mod regex; // Regex extractor - FIXING metadata access patterns
 pub mod sql; // SQL extractor - FIXING metadata access patterns
@@ -58,12 +59,12 @@ impl ExtractorManager {
         Self {}
     }
 
-    /// Get supported languages (all 25 extractors complete language support)
+    /// Get supported languages (all 26 extractors complete language support)
     pub fn supported_languages(&self) -> Vec<&'static str> {
         vec![
             "rust", "typescript", "tsx", "javascript", "jsx", "python", "go", "java",
             "c", "cpp", "csharp", "ruby", "php", "swift", "kotlin", "dart",
-            "gdscript", "lua", "vue", "razor", "sql", "html", "css", "bash",
+            "gdscript", "lua", "qml", "vue", "razor", "sql", "html", "css", "bash",
             "powershell", "zig", "regex",
         ]
     }
@@ -299,6 +300,15 @@ impl ExtractorManager {
             }
             "lua" => {
                 let mut extractor = crate::extractors::lua::LuaExtractor::new(
+                    language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                    workspace_root,
+                );
+                Ok(extractor.extract_symbols(tree))
+            }
+            "qml" => {
+                let mut extractor = crate::extractors::qml::QmlExtractor::new(
                     language.to_string(),
                     file_path.to_string(),
                     content.to_string(),

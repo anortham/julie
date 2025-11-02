@@ -99,6 +99,11 @@ pub fn init_parser(code: &str, language: &str) -> Tree {
             // TODO: Fix tree-sitter-php integration - crate doesn't expose expected API
             panic!("PHP parser not yet integrated - need to investigate tree-sitter-php crate API");
         }
+        "qml" => {
+            parser
+                .set_language(&tree_sitter_qmljs::LANGUAGE.into())
+                .expect("Error loading QML grammar");
+        }
         "bash" => {
             parser
                 .set_language(&tree_sitter_bash::LANGUAGE.into())

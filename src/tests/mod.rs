@@ -288,6 +288,9 @@ pub mod extractors {
     // Python extractor tests (multiple submodules - declarations in python/mod.rs)
     pub mod python;
 
+    // QML extractor tests (single mod.rs file)
+    pub mod qml;
+
     // Razor extractor tests (single mod.rs file)
     pub mod razor;
 
