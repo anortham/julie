@@ -7,7 +7,7 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - **Fast symbol search** with text and semantic modes
 - **Cross-language code navigation** (go-to-definition, find-references)
 - **Intelligent code editing** with fuzzy matching and AST-aware refactoring
-- **Multi-workspace support** for searching across related codebases
+- **Multi-workspace support** for indexing and searching related codebases (one workspace at a time)
 - **Call path tracing** across language boundaries
 
 ### Performance Characteristics
@@ -268,7 +268,7 @@ cargo tarpaulin
 
 ```
 src/
-├── extractors/      # Language-specific symbol extraction (25 languages)
+├── extractors/      # Language-specific symbol extraction (27 languages)
 ├── database/        # SQLite storage with FTS5 search
 ├── embeddings/      # ONNX semantic search
 ├── tools/           # MCP tool implementations

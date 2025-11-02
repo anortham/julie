@@ -87,7 +87,7 @@ User Query → MCP Tool → Workspace Filter → Search Mode Router → Tier Sel
 - `mode`: "text", "semantic", or "hybrid"
 - `language`: Optional language filter
 - `file_pattern`: Optional glob filter
-- `workspace`: "primary", "all", or workspace ID
+- `workspace`: "primary" (default) or specific workspace ID
 - `limit`: Max results (default 50)
 
 ---
