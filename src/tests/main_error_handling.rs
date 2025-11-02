@@ -39,12 +39,12 @@ mod tests {
         use tracing_subscriber::EnvFilter;
 
         // Even if we use an invalid env var, fallback should work
-        std::env::set_var("RUST_LOG", "invalid!@#$filter");
+        unsafe { std::env::set_var("RUST_LOG", "invalid!@#$filter") };
         let result = EnvFilter::try_from_default_env()
             .or_else(|_| EnvFilter::try_new("julie=info"));
 
         assert!(result.is_ok(), "Should fall back to default filter");
-        std::env::remove_var("RUST_LOG");
+        unsafe { std::env::remove_var("RUST_LOG") };
     }
 
     /// Test that mutex lock failures are handled gracefully

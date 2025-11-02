@@ -16,6 +16,11 @@
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 
 // ============================================================================
+// MAIN SERVER TESTS - Entry point error handling
+// ============================================================================
+pub mod main_error_handling; // MCP server initialization and runtime error handling
+
+// ============================================================================
 // CLI TESTS - Command-line interface integration tests
 // ============================================================================
 pub mod cli {
