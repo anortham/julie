@@ -98,6 +98,9 @@ impl ManageWorkspaceTool {
             // Dart
             "dart" => "dart".to_string(),
 
+            // QML
+            "qml" => "qml".to_string(),
+
             // Regex patterns (special handling)
             "regex" | "regexp" => "regex".to_string(),
 

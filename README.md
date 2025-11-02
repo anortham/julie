@@ -1,6 +1,6 @@
 # Julie
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 25 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 26 programming languages via the Model Context Protocol (MCP).
 
 ## Features
 
@@ -248,7 +248,7 @@ cargo build --release
 
 Julie uses a comprehensive testing methodology:
 
-- **Unit tests** for all 25 language extractors
+- **Unit tests** for all 26 language extractors
 - **Real-world validation** against GitHub repositories
 - **SOURCE/CONTROL methodology** for editing tools (original files vs expected results)
 - **Coverage targets**: 80% general, 90% for editing tools

@@ -100,18 +100,18 @@ src/database/
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 20+ programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 26 programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, true cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier single source of truth with progressive enhancement
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 25 tree-sitter extractors with comprehensive test suites
+- **Crown Jewels**: 26 tree-sitter extractors with comprehensive test suites
 
-### 🏆 Current Language Support (25/25 - Complete Language Support)
+### 🏆 Current Language Support (26/26 - Complete Language Support)
 
-**All 25 extractors operational and validated against real-world GitHub code:**
+**All 26 extractors operational and validated against real-world GitHub code:**
 
 **Core Languages:**
 - Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
@@ -120,7 +120,7 @@ src/database/
 - C, C++, Go, Lua
 
 **Specialized Languages:**
-- GDScript, Vue SFCs, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
+- GDScript, Vue SFCs, Razor, QML, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
 
 **Key Achievements:**
 - ✅ **Zero compromises** - All extractors ported, none disabled

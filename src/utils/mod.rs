@@ -205,6 +205,7 @@ pub mod language {
                 "css" => Some("css"),
                 "sql" => Some("sql"),
                 "sh" | "bash" => Some("bash"),
+                "qml" => Some("qml"),
                 _ => None,
             })
     }

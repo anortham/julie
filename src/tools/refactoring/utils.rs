@@ -61,6 +61,7 @@ impl SmartRefactorTool {
             Some("ps1") => "powershell".to_string(),
             Some("zig") => "zig".to_string(),
             Some("dart") => "dart".to_string(),
+            Some("qml") => "qml".to_string(),
             _ => "unknown".to_string(),
         }
     }
