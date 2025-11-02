@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::SystemTime;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Check if the workspace needs indexing by examining database state
 ///
@@ -29,7 +29,13 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
     // Check if database exists and has symbols
     if let Some(db_arc) = &workspace.db {
-        let db = db_arc.lock().unwrap();
+        let db = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during startup check, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
 
         // Check if we have any symbols for the actual primary workspace
         let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
@@ -187,8 +193,11 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
 /// Scan workspace and return a set of all code file paths (relative to workspace root)
 ///
 /// This is used to detect new files that aren't in the database yet
-fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
+pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
     let mut files = HashSet::new();
+
+    // Load custom ignore patterns from .julieignore if present
+    let custom_ignores = crate::utils::ignore::load_julieignore(workspace_root)?;
 
     // IMPORTANT: Don't filter the workspace root itself, even if it's hidden
     let workspace_root_canonical = workspace_root.canonicalize()?;
@@ -213,14 +222,23 @@ fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
             continue;
         }
 
+        // Check against custom .julieignore patterns
+        if crate::utils::ignore::is_ignored_by_pattern(path, &custom_ignores) {
+            continue;
+        }
+
         // Only include supported code files
         if !is_code_file(path) {
             continue;
         }
 
-        // Get relative path from workspace root
-        if let Ok(relative_path) = path.strip_prefix(workspace_root) {
-            files.insert(relative_path.to_string_lossy().to_string());
+        // Get relative path from workspace root in Unix-style format
+        // CRITICAL: Use to_relative_unix_style() to ensure cross-platform compatibility
+        // On Windows, strip_prefix() returns paths with backslashes (src\file.rs)
+        // But database stores paths with forward slashes (src/file.rs)
+        // This mismatch breaks staleness detection on Windows
+        if let Ok(relative_path) = crate::utils::paths::to_relative_unix_style(path, workspace_root) {
+            files.insert(relative_path);
         }
     }
 
@@ -318,5 +336,7 @@ fn is_code_file(path: &Path) -> bool {
             | "gd"
             | "dart"
             | "zig"
+            | "qml"  // QML (Qt Modeling Language)
+            | "r"    // R (Statistical Computing)
     )
 }

@@ -174,6 +174,9 @@ pub mod string_similarity;
 /// Path conversion utilities (absolute ↔ relative Unix-style)
 pub mod paths;
 
+/// File ignore pattern utilities (.julieignore support)
+pub mod ignore;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;

@@ -1,0 +1,160 @@
+//! Utilities for handling .julieignore file patterns
+//!
+//! This module provides shared functionality for loading and matching .julieignore patterns,
+//! ensuring consistent ignore behavior across discovery and startup scanning.
+
+use anyhow::Result;
+use std::fs;
+use std::path::Path;
+use tracing::debug;
+
+/// Load custom ignore patterns from .julieignore file in workspace root
+///
+/// Returns a vector of patterns to ignore. Empty lines and comments (lines starting with #) are skipped.
+///
+/// # Examples
+///
+/// ```text
+/// # .julieignore file content
+/// generated/
+/// *.min.js
+/// temp_files/
+/// ```
+pub fn load_julieignore(workspace_path: &Path) -> Result<Vec<String>> {
+    let ignore_file = workspace_path.join(".julieignore");
+
+    if !ignore_file.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&ignore_file)
+        .map_err(|e| anyhow::anyhow!("Failed to read .julieignore: {}", e))?;
+
+    let patterns: Vec<String> = content
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| line.to_string())
+        .collect();
+
+    if !patterns.is_empty() {
+        debug!(
+            "📋 Loaded {} custom ignore patterns from .julieignore",
+            patterns.len()
+        );
+    }
+
+    Ok(patterns)
+}
+
+/// Check if a path matches any of the custom ignore patterns
+///
+/// Supports three pattern types:
+/// - Directory patterns (ending with /): matches anywhere in path
+/// - Wildcard extension patterns (starting with *.): matches file extension
+/// - Substring patterns: matches anywhere in path
+///
+/// # Examples
+///
+/// ```rust
+/// use std::path::Path;
+/// use julie::utils::ignore::is_ignored_by_pattern;
+///
+/// let patterns = vec!["generated/".to_string(), "*.min.js".to_string(), "temp".to_string()];
+/// let path1 = Path::new("/project/generated/schema.rs");
+/// let path2 = Path::new("/project/src/app.min.js");
+/// let path3 = Path::new("/project/temp_files/data.txt");
+///
+/// assert!(is_ignored_by_pattern(path1, &patterns));
+/// assert!(is_ignored_by_pattern(path2, &patterns));
+/// assert!(is_ignored_by_pattern(path3, &patterns));
+/// ```
+pub fn is_ignored_by_pattern(path: &Path, patterns: &[String]) -> bool {
+    if patterns.is_empty() {
+        return false;
+    }
+
+    let path_str = path.to_str().unwrap_or("");
+
+    for pattern in patterns {
+        // Directory pattern (ends with /)
+        if pattern.ends_with('/') {
+            if path_str.contains(pattern) {
+                return true;
+            }
+        }
+        // Wildcard extension pattern (e.g., *.min.js)
+        else if pattern.starts_with("*.") {
+            let ext_pattern = &pattern[1..]; // Remove the *
+            if path_str.ends_with(ext_pattern) {
+                return true;
+            }
+        }
+        // Substring match (matches anywhere in path)
+        else if path_str.contains(pattern) {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_empty_julieignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let patterns = load_julieignore(temp_dir.path()).unwrap();
+        assert!(patterns.is_empty(), "Should return empty vector if .julieignore doesn't exist");
+    }
+
+    #[test]
+    fn test_load_julieignore_with_patterns() {
+        let temp_dir = TempDir::new().unwrap();
+        let julieignore_path = temp_dir.path().join(".julieignore");
+
+        fs::write(
+            &julieignore_path,
+            "# Comment line\ngenerated/\n*.min.js\n\ntemp_files/\n# Another comment\n",
+        )
+        .unwrap();
+
+        let patterns = load_julieignore(temp_dir.path()).unwrap();
+        assert_eq!(patterns.len(), 3, "Should load 3 patterns (ignoring comments and empty lines)");
+        assert!(patterns.contains(&"generated/".to_string()));
+        assert!(patterns.contains(&"*.min.js".to_string()));
+        assert!(patterns.contains(&"temp_files/".to_string()));
+    }
+
+    #[test]
+    fn test_is_ignored_directory_pattern() {
+        let patterns = vec!["generated/".to_string()];
+        let path = PathBuf::from("/project/generated/schema.rs");
+        assert!(is_ignored_by_pattern(&path, &patterns), "Should match directory pattern");
+    }
+
+    #[test]
+    fn test_is_ignored_wildcard_extension() {
+        let patterns = vec!["*.min.js".to_string()];
+        let path = PathBuf::from("/project/src/app.min.js");
+        assert!(is_ignored_by_pattern(&path, &patterns), "Should match wildcard extension");
+    }
+
+    #[test]
+    fn test_is_ignored_substring_match() {
+        let patterns = vec!["temp".to_string()];
+        let path = PathBuf::from("/project/temp_files/data.txt");
+        assert!(is_ignored_by_pattern(&path, &patterns), "Should match substring");
+    }
+
+    #[test]
+    fn test_not_ignored_when_no_match() {
+        let patterns = vec!["generated/".to_string(), "*.min.js".to_string()];
+        let path = PathBuf::from("/project/src/normal.rs");
+        assert!(!is_ignored_by_pattern(&path, &patterns), "Should NOT match when no pattern matches");
+    }
+}
