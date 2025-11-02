@@ -1,5 +1,9 @@
 //! Symbol extraction from parsed ASTs
-//! Handles language-specific symbol extraction using all 26 tree-sitter extractors
+//! Handles language-specific symbol extraction using all 27 tree-sitter extractors
+//!
+//! 🔥 REFACTORED 2025-11-02: This file now uses the centralized factory function
+//! `crate::extractors::extract_symbols_and_relationships()` to eliminate duplicate
+//! match statements that caused the R/QML/PHP bug.
 
 use crate::extractors::{Relationship, Symbol};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
@@ -14,13 +18,19 @@ impl ManageWorkspaceTool {
     ///
     /// # Phase 2: Relative Unix-Style Path Storage
     /// Now requires workspace_root_path parameter to enable relative path storage in extractors
+    ///
+    /// # Refactoring Note
+    /// This function now delegates to `crate::extractors::extract_symbols_and_relationships()`,
+    /// which is the single source of truth for all 27 language extractors. This eliminates
+    /// the duplicate match statement that caused bugs when languages were added to one location
+    /// but not the other.
     pub(crate) fn extract_symbols_with_existing_tree(
         &self,
         tree: &Tree,
         file_path: &str,
         content: &str,
         language: &str,
-        workspace_root_path: &std::path::Path, // NEW: Phase 2 - workspace root for relative paths
+        workspace_root_path: &std::path::Path,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         debug!(
             "Extracting symbols: language={}, file={}",
@@ -29,290 +39,23 @@ impl ManageWorkspaceTool {
         debug!("    Tree root node: {:?}", tree.root_node().kind());
         debug!("    Content length: {} chars", content.len());
 
-        // Extract symbols and relationships using language-specific extractor (all 26 extractors)
-        let (symbols, relationships) = match language {
-            "rust" => {
-                debug!("    Creating RustExtractor...");
-                let mut extractor = crate::extractors::rust::RustExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                debug!("    Calling extract_symbols...");
-                let symbols = extractor.extract_symbols(tree);
-                debug!("    ✅ RustExtractor returned {} symbols", symbols.len());
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "typescript" => {
-                debug!("    Creating TypeScriptExtractor...");
-                let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                debug!("    Calling extract_symbols...");
-                let symbols = extractor.extract_symbols(tree);
-                debug!(
-                    "    ✅ TypeScriptExtractor returned {} symbols",
-                    symbols.len()
-                );
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "javascript" => {
-                let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "python" => {
-                let mut extractor = crate::extractors::python::PythonExtractor::new(
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "java" => {
-                let mut extractor = crate::extractors::java::JavaExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "csharp" => {
-                let mut extractor = crate::extractors::csharp::CSharpExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "ruby" => {
-                let mut extractor = crate::extractors::ruby::RubyExtractor::new(
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "swift" => {
-                let mut extractor = crate::extractors::swift::SwiftExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "kotlin" => {
-                let mut extractor = crate::extractors::kotlin::KotlinExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "go" => {
-                let mut extractor = crate::extractors::go::GoExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "c" => {
-                let mut extractor = crate::extractors::c::CExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "cpp" => {
-                let mut extractor = crate::extractors::cpp::CppExtractor::new(
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "lua" => {
-                let mut extractor = crate::extractors::lua::LuaExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "sql" => {
-                let mut extractor = crate::extractors::sql::SqlExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "html" => {
-                let mut extractor = crate::extractors::html::HTMLExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "css" => {
-                let mut extractor = crate::extractors::css::CSSExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = Vec::new(); // CSS extractor doesn't have relationships
-                (symbols, relationships)
-            }
-            "vue" => {
-                let mut extractor = crate::extractors::vue::VueExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(Some(tree));
-                let relationships = extractor.extract_relationships(Some(tree), &symbols);
-                (symbols, relationships)
-            }
-            "razor" => {
-                let mut extractor = crate::extractors::razor::RazorExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "bash" => {
-                let mut extractor = crate::extractors::bash::BashExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "powershell" => {
-                let mut extractor = crate::extractors::powershell::PowerShellExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "gdscript" => {
-                let mut extractor = crate::extractors::gdscript::GDScriptExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "zig" => {
-                let mut extractor = crate::extractors::zig::ZigExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "dart" => {
-                let mut extractor = crate::extractors::dart::DartExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            "regex" => {
-                let mut extractor = crate::extractors::regex::RegexExtractor::new(
-                    language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root_path,
-                );
-                let symbols = extractor.extract_symbols(tree);
-                let relationships = extractor.extract_relationships(tree, &symbols);
-                (symbols, relationships)
-            }
-            _ => {
-                // For truly unsupported languages, return empty results
-                debug!(
-                    "No extractor available for language: {} (file: {})",
-                    language, file_path
-                );
-                (Vec::new(), Vec::new())
-            }
-        };
+        // 🔥 REFACTORED: Use centralized factory function (single source of truth)
+        // This eliminates the duplicate match statement that caused the R/QML/PHP bug
+        //
+        // OLD: 300+ lines of duplicate match statement (lines 33-345)
+        // NEW: Single function call to shared factory
+        let (symbols, relationships) = crate::extractors::extract_symbols_and_relationships(
+            tree,
+            file_path,
+            content,
+            language,
+            workspace_root_path,
+        )?;
 
-        debug!("🎯 extract_symbols_with_existing_tree returning: {} symbols, {} relationships for {} file: {}",
-               symbols.len(), relationships.len(), language, file_path);
+        debug!(
+            "🎯 extract_symbols_with_existing_tree returning: {} symbols, {} relationships for {} file: {}",
+            symbols.len(), relationships.len(), language, file_path
+        );
 
         Ok((symbols, relationships))
     }

@@ -87,6 +87,13 @@ impl ExtractorManager {
         let path = Path::new(file_path);
         let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
+        // 🔍 DEBUG: Log extension detection for R files
+        if file_path.ends_with(".R") || file_path.ends_with(".r") {
+            tracing::warn!("🔍 DEBUG ExtractorManager: R file detected!");
+            tracing::warn!("  - File path: {}", file_path);
+            tracing::warn!("  - Extracted extension: '{}'", extension);
+        }
+
         let language = match extension {
             "rs" => "rust",
             "ts" => "typescript",
@@ -122,6 +129,11 @@ impl ExtractorManager {
                 return Ok(Vec::new());
             }
         };
+
+        // 🔍 DEBUG: Log language mapping for R files
+        if file_path.ends_with(".R") || file_path.ends_with(".r") {
+            tracing::warn!("  - Mapped to language: '{}'", language);
+        }
 
         // Create parser for the language
         let mut parser = Parser::new();
@@ -1080,5 +1092,446 @@ impl ExtractorManager {
                 Ok(Vec::new())
             }
         }
+    }
+}
+
+// ============================================================================
+// SHARED EXTRACTOR FACTORY - SINGLE SOURCE OF TRUTH FOR ALL 27 LANGUAGES
+// ============================================================================
+//
+// 🚨 CRITICAL: This is the ONLY place where extractor routing should exist!
+//
+// Both `extractors/mod.rs::extract_symbols_for_language()` and
+// `tools/workspace/indexing/extractor.rs::extract_symbols_with_existing_tree()`
+// MUST call this function to avoid duplicate match statements.
+//
+// Adding a new language? Update ONLY this function (and the tests).
+// ============================================================================
+
+/// Extract symbols and relationships for ANY supported language
+///
+/// This is the centralized factory function for all 27 language extractors.
+/// It ensures consistency across the codebase and prevents bugs from missing
+/// languages in different code paths.
+///
+/// # Parameters
+/// - `tree`: Pre-parsed tree-sitter AST
+/// - `file_path`: Relative Unix-style file path (for symbol storage)
+/// - `content`: Source code content
+/// - `language`: Language identifier (lowercase, e.g., "rust", "r", "qml")
+/// - `workspace_root`: Workspace root path for relative path calculations
+///
+/// # Returns
+/// `Ok((symbols, relationships))` on success, or error if extraction fails
+///
+/// # Example
+/// ```rust
+/// let (symbols, rels) = extract_symbols_and_relationships(
+///     &tree, "src/main.rs", &content, "rust", workspace_root
+/// )?;
+/// ```
+pub fn extract_symbols_and_relationships(
+    tree: &tree_sitter::Tree,
+    file_path: &str,
+    content: &str,
+    language: &str,
+    workspace_root: &std::path::Path,
+) -> Result<(Vec<Symbol>, Vec<Relationship>), anyhow::Error> {
+    use anyhow::anyhow;
+
+    // Single match statement for ALL 27 languages
+    let (symbols, relationships) = match language {
+        "rust" => {
+            let mut extractor = rust::RustExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "typescript" | "tsx" => {
+            let mut extractor = typescript::TypeScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "javascript" | "jsx" => {
+            let mut extractor = javascript::JavaScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "python" => {
+            let mut extractor = python::PythonExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "java" => {
+            let mut extractor = java::JavaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "csharp" => {
+            let mut extractor = csharp::CSharpExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "php" => {
+            let mut extractor = php::PhpExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "ruby" => {
+            let mut extractor = ruby::RubyExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "swift" => {
+            let mut extractor = swift::SwiftExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "kotlin" => {
+            let mut extractor = kotlin::KotlinExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "dart" => {
+            let mut extractor = dart::DartExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "go" => {
+            let mut extractor = go::GoExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "c" => {
+            let mut extractor = c::CExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "cpp" => {
+            let mut extractor = cpp::CppExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "lua" => {
+            let mut extractor = lua::LuaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "qml" => {
+            let mut extractor = qml::QmlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "r" => {
+            let mut extractor = r::RExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "sql" => {
+            let mut extractor = sql::SqlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "html" => {
+            let mut extractor = html::HTMLExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "css" => {
+            let mut extractor = css::CSSExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            // CSSExtractor doesn't have extract_relationships method yet
+            (symbols, Vec::new())
+        }
+        "vue" => {
+            let mut extractor = vue::VueExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(Some(tree));
+            let relationships = extractor.extract_relationships(Some(tree), &symbols);
+            (symbols, relationships)
+        }
+        "razor" => {
+            let mut extractor = razor::RazorExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "bash" => {
+            let mut extractor = bash::BashExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "powershell" => {
+            let mut extractor = powershell::PowerShellExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "gdscript" => {
+            let mut extractor = gdscript::GDScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "zig" => {
+            let mut extractor = zig::ZigExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        "regex" => {
+            let mut extractor = regex::RegexExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships)
+        }
+        _ => {
+            return Err(anyhow!(
+                "No extractor available for language '{}' (file: {})",
+                language,
+                file_path
+            ));
+        }
+    };
+
+    Ok((symbols, relationships))
+}
+
+// ============================================================================
+// COMPILE-TIME CONSISTENCY TESTS - PREVENT FUTURE BUGS
+// ============================================================================
+
+#[cfg(test)]
+mod factory_consistency_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tree_sitter::Parser;
+
+    /// Test that ALL 27 supported languages work with the factory function
+    ///
+    /// This test prevents the R/QML/PHP bug from happening again by ensuring
+    /// every language in supported_languages() can be extracted via the factory.
+    #[test]
+    fn test_all_languages_in_factory() {
+        let manager = ExtractorManager::new();
+        let supported = manager.supported_languages();
+
+        // Verify we have all 27 languages
+        assert_eq!(supported.len(), 29, "Expected 29 language entries (27 languages, 2 with aliases)");
+
+        let workspace_root = PathBuf::from("/tmp/test");
+
+        // Test each language can be handled by the factory
+        // Note: Some will fail to parse invalid code, but they should NOT return
+        // "No extractor available" error
+        for language in &supported {
+            let test_content = "// test";
+
+            // Create a minimal valid tree for testing
+            let mut parser = Parser::new();
+            let ts_lang = match crate::language::get_tree_sitter_language(language) {
+                Ok(lang) => lang,
+                Err(_) => continue, // Skip if language not available
+            };
+
+            parser.set_language(&ts_lang).unwrap();
+            let tree = parser.parse(test_content, None).unwrap();
+
+            // The factory should handle this language (even if it extracts 0 symbols)
+            let result = extract_symbols_and_relationships(
+                &tree,
+                "test.rs",
+                test_content,
+                language,
+                &workspace_root,
+            );
+
+            // Should succeed OR fail for parsing reasons, but NEVER "No extractor available"
+            if let Err(e) = result {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.contains("No extractor available"),
+                    "Language '{}' is missing from factory function! Error: {}",
+                    language,
+                    error_msg
+                );
+            }
+        }
+    }
+
+    /// Test that the factory function rejects unknown languages
+    #[test]
+    fn test_factory_rejects_unknown_language() {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = Parser::new();
+
+        // Use Rust parser for a fake language
+        let ts_lang = crate::language::get_tree_sitter_language("rust").unwrap();
+        parser.set_language(&ts_lang).unwrap();
+        let tree = parser.parse("// test", None).unwrap();
+
+        let result = extract_symbols_and_relationships(
+            &tree,
+            "test.unknown",
+            "// test",
+            "unknown_language_xyz",
+            &workspace_root,
+        );
+
+        assert!(result.is_err(), "Should reject unknown language");
+        assert!(
+            format!("{}", result.unwrap_err()).contains("No extractor available"),
+            "Error should mention no extractor available"
+        );
     }
 }

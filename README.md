@@ -53,13 +53,13 @@ The fallback happens once at runtime with clear logging - no manual intervention
 
 **Manual CPU Override**: Set the environment variable `JULIE_FORCE_CPU=1` to skip GPU entirely and use CPU-only mode from startup.
 
-## Supported Languages (25)
+## Supported Languages (27)
 
 **Core:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
 
-**Systems:** C, C++, Go, Lua
+**Systems:** C, C++, Go, Lua, Zig
 
-**Specialized:** GDScript, Vue, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart
+**Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
 
 ## Installation
 

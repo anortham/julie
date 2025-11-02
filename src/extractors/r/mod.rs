@@ -8,7 +8,6 @@ use tree_sitter::Tree;
 pub struct RExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
-    relationships: Vec<Relationship>,
 }
 
 impl RExtractor {
@@ -21,7 +20,6 @@ impl RExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
-            relationships: Vec::new(),
         }
     }
 
@@ -110,21 +108,13 @@ impl RExtractor {
         }
     }
 
-    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
         // TODO: Implement R relationship extraction
         Vec::new()
     }
 
-    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+    pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
         // TODO: Implement R identifier extraction
         Vec::new()
-    }
-
-    pub(crate) fn base(&self) -> &BaseExtractor {
-        &self.base
-    }
-
-    pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
-        &mut self.base
     }
 }

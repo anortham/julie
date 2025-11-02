@@ -1,6 +1,6 @@
 //! Language Support - Shared tree-sitter language configuration
 //!
-//! This module provides centralized language support for Julie's 26 supported languages.
+//! This module provides centralized language support for Julie's 27 supported languages.
 //! ALL language-specific tree-sitter configuration should go here to avoid duplication.
 
 use anyhow::Result;
@@ -11,12 +11,12 @@ use anyhow::Result;
 /// Used by both ExtractorManager (for symbol extraction) and SmartRefactorTool
 /// (for AST-aware refactoring).
 ///
-/// # Supported Languages (26 total)
+/// # Supported Languages (27 total)
 ///
 /// **Systems**: Rust, C, C++, Go, Zig
 /// **Web**: TypeScript, JavaScript, HTML, CSS, Vue, QML
 /// **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
-/// **Scripting**: Lua, Bash, PowerShell
+/// **Scripting**: Lua, R, Bash, PowerShell
 /// **Specialized**: GDScript, Razor, SQL, Regex
 pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
     match language {

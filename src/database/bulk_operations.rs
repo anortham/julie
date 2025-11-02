@@ -460,21 +460,29 @@ impl SymbolDatabase {
             if !files_to_clean.is_empty() {
                 debug!("🧹 Cleaning up old data for {} files", files_to_clean.len());
 
+                let mut total_symbols_deleted = 0;
+                let mut total_rels_deleted = 0;
+
                 for file_path in files_to_clean {
                     // Delete relationships first
                     debug!("Deleting relationships for file: {}", file_path);
-                    outer_tx.execute(
+                    let rels_deleted = outer_tx.execute(
                         "DELETE FROM relationships WHERE file_path = ?1",
                         params![file_path],
                     )?;
+                    total_rels_deleted += rels_deleted;
 
                     // Delete symbols
                     debug!("Deleting symbols for file: {}", file_path);
-                    outer_tx.execute(
+                    let symbols_deleted = outer_tx.execute(
                         "DELETE FROM symbols WHERE file_path = ?1",
                         params![file_path],
                     )?;
+                    total_symbols_deleted += symbols_deleted;
                 }
+
+                debug!("🧹 Total cleanup: deleted {} symbols and {} relationships from {} files",
+                      total_symbols_deleted, total_rels_deleted, files_to_clean.len());
             }
 
             // STEP 2: Bulk insert new files (if any)

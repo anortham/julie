@@ -30,6 +30,7 @@ impl ManageWorkspaceTool {
 
         for file_path in files_to_index {
             let language = self.detect_language(&file_path);
+
             files_by_language
                 .entry(language)
                 .or_default()

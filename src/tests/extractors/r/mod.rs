@@ -48,3 +48,4 @@ pub mod classes;          // S3, S4, R6 class systems
 pub mod control_flow;     // if/else, loops, vectorized operations
 pub mod modern;           // Modern R patterns (tidyverse, data.table)
 pub mod real_world;       // Real-world validation (ggplot2, dplyr)
+pub mod file_integration_bug;  // BUG HUNT: Reproduction test for file extraction failure
