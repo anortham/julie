@@ -48,14 +48,35 @@ pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<
         }
     };
 
+    // 🔥 Windows UNC prefix handling: Strip \\?\ prefix for comparison
+    // Canonicalized Windows paths get \\?\ prefix, but non-canonical paths don't
+    // This causes strip_prefix to fail even when paths are actually nested
+    #[cfg(windows)]
+    fn strip_unc_prefix(path: &Path) -> std::path::PathBuf {
+        let path_str = path.to_string_lossy();
+        if path_str.starts_with(r"\\?\") {
+            std::path::PathBuf::from(&path_str[4..])
+        } else {
+            path.to_path_buf()
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn strip_unc_prefix(path: &Path) -> std::path::PathBuf {
+        path.to_path_buf()
+    }
+
+    let normalized_path = strip_unc_prefix(&path_to_use);
+    let normalized_root = strip_unc_prefix(&root_to_use);
+
     // Strip workspace prefix
-    let relative = path_to_use
-        .strip_prefix(&root_to_use)
+    let relative = normalized_path
+        .strip_prefix(&normalized_root)
         .with_context(|| {
             format!(
                 "File path '{}' is not within workspace root '{}'",
-                path_to_use.display(),
-                root_to_use.display()
+                normalized_path.display(),
+                normalized_root.display()
             )
         })?;
 

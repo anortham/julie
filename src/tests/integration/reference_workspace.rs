@@ -243,9 +243,8 @@ mod reference_workspace_tests {
             cross_response
         );
 
-        // CLEANUP: Atomic cleanup AFTER test
-        atomic_cleanup_julie_dir(&primary_path)?;
-        atomic_cleanup_julie_dir(&reference_path)?;
+        // NOTE: No cleanup needed at end - next test cleans up at beginning
+        // This avoids Windows file locking issues (OS error 32)
 
         Ok(())
     }
@@ -296,8 +295,8 @@ mod reference_workspace_tests {
             error_message
         );
 
-        // CLEANUP: Atomic cleanup AFTER test
-        atomic_cleanup_julie_dir(&workspace_path)?;
+        // NOTE: No cleanup needed at end - next test cleans up at beginning
+        // This avoids Windows file locking issues (OS error 32)
 
         Ok(())
     }

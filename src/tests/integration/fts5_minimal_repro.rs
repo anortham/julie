@@ -104,8 +104,8 @@ mod fts5_minimal_tests {
 
         println!("✅ TEST PASSED: FTS5 works immediately after indexing");
 
-        // CRITICAL: Atomic cleanup after test
-        atomic_cleanup_julie_dir(&primary_path)?;
+        // NOTE: No cleanup needed at end - next test cleans up at beginning
+        // This avoids Windows file locking issues (OS error 32)
 
         Ok(())
     }
@@ -201,8 +201,8 @@ mod fts5_minimal_tests {
 
         println!("✅ TEST PASSED: FTS5 still works after adding reference workspace");
 
-        // CRITICAL: Atomic cleanup after test
-        atomic_cleanup_julie_dir(&primary_path)?;
+        // NOTE: No cleanup needed at end - next test cleans up at beginning
+        // This avoids Windows file locking issues (OS error 32)
 
         Ok(())
     }

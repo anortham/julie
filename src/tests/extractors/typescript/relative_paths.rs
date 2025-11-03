@@ -22,11 +22,9 @@ mod relative_path_tests {
 
     #[test]
     fn test_typescript_extractor_stores_relative_unix_paths() {
-        // TDD RED: This test WILL FAIL because TypeScriptExtractor::new()
-        // doesn't accept workspace_root parameter yet
-
-        let workspace_root = PathBuf::from("/Users/murphy/source/julie");
-        let file_path = workspace_root.join("src/tools/search.rs");
+        // Use current working directory as workspace root (cross-platform)
+        let workspace_root = std::env::current_dir().expect("Failed to get current directory");
+        let file_path = workspace_root.join("src").join("tools").join("search.rs");
 
         let code = r#"
         function getUserData(id) {
@@ -109,7 +107,7 @@ mod relative_path_tests {
     #[test]
     fn test_root_level_file_has_no_directory_separator() {
         // Test file at workspace root (e.g., README.md)
-        let workspace_root = PathBuf::from("/Users/murphy/source/julie");
+        let workspace_root = std::env::current_dir().expect("Failed to get current directory");
         let file_path = workspace_root.join("index.ts");
 
         let code = "export const VERSION = '1.0.0';";
@@ -141,8 +139,8 @@ mod relative_path_tests {
     #[test]
     fn test_nested_directory_uses_unix_separators() {
         // Test deeply nested file
-        let workspace_root = PathBuf::from("/Users/murphy/source/julie");
-        let file_path = workspace_root.join("src/extractors/typescript/symbols.ts");
+        let workspace_root = std::env::current_dir().expect("Failed to get current directory");
+        let file_path = workspace_root.join("src").join("extractors").join("typescript").join("symbols.ts");
 
         let code = "export function extractSymbols() {}";
 
