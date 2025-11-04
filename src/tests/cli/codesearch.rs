@@ -7,6 +7,7 @@
 #![allow(unused_variables)]
 
 use anyhow::Result;
+use crate::tests::test_helpers::open_test_connection;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
@@ -78,7 +79,7 @@ mod scan_tests {
         assert!(db_path.exists(), "Database file was not created");
 
         // Verify database has content
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
         let symbol_count: i32 =
             conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
@@ -116,7 +117,7 @@ pub fn create_user(name: &str) -> User {
         assert!(output.status.success());
 
         // Verify symbols were extracted
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
 
         // Should have extracted: User struct, create_user function, and likely the struct fields
         let symbol_count: i32 = conn.query_row(
@@ -147,7 +148,7 @@ pub fn create_user(name: &str) -> User {
         );
 
         // Database should exist but be empty
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
         let file_count: i32 = conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
         assert_eq!(file_count, 0, "Empty directory should have no files");
@@ -169,7 +170,7 @@ pub fn create_user(name: &str) -> User {
         assert!(output.status.success());
 
         // Verify file content is stored
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
         let stored_content: String = conn.query_row(
             "SELECT content FROM files WHERE path LIKE '%test.rs'",
             [],
@@ -197,7 +198,7 @@ pub fn create_user(name: &str) -> User {
         assert!(output.status.success());
 
         // Verify hash is stored and non-empty
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
         let hash: String = conn.query_row(
             "SELECT hash FROM files WHERE path LIKE '%test.rs'",
             [],
@@ -237,7 +238,7 @@ mod update_tests {
         );
 
         // Verify file was added
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM files WHERE path LIKE '%new.rs')",
             [],
@@ -289,7 +290,7 @@ mod update_tests {
 
         // Get initial symbol count
         let initial_symbols: Vec<String> = {
-            let conn = rusqlite::Connection::open(&db_path)?;
+            let conn = open_test_connection(&db_path)?;
             let symbols: Vec<String> = conn
                 .prepare("SELECT name FROM symbols")?
                 .query_map([], |row| row.get(0))?
@@ -312,7 +313,7 @@ mod update_tests {
 
         // Verify symbols were updated
         let updated_symbols: Vec<String> = {
-            let conn = rusqlite::Connection::open(&db_path)?;
+            let conn = open_test_connection(&db_path)?;
             let symbols: Vec<String> = conn
                 .prepare("SELECT name FROM symbols")?
                 .query_map([], |row| row.get(0))?
@@ -440,7 +441,7 @@ mod error_handling_tests {
         );
 
         // Verify database
-        let conn = rusqlite::Connection::open(&db_path)?;
+        let conn = open_test_connection(&db_path)?;
 
         // Should have 5 files (code.cs, script.js, config.json, README.md, data.xml)
         // Excludes binary.exe

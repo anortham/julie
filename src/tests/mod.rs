@@ -146,6 +146,42 @@ pub mod test_helpers {
         Ok(file_path)
     }
 
+    /// Open a SQLite database connection with proper configuration for tests
+    ///
+    /// **CRITICAL**: Always use this helper instead of `Connection::open()` directly!
+    ///
+    /// This ensures proper concurrent access configuration:
+    /// - `busy_timeout`: 5 seconds (waits for locks instead of failing immediately)
+    /// - `wal_autocheckpoint`: 2000 pages (~8MB) to prevent WAL corruption
+    ///
+    /// Without these settings, tests can corrupt databases when run concurrently
+    /// with MCP server operations or other tests.
+    ///
+    /// # Example
+    /// ```rust
+    /// use crate::tests::test_helpers::open_test_connection;
+    ///
+    /// let conn = open_test_connection(&db_path)?;
+    /// // Connection is properly configured for concurrent access
+    /// ```
+    pub fn open_test_connection<P: AsRef<Path>>(
+        db_path: P,
+    ) -> Result<rusqlite::Connection> {
+        use rusqlite::Connection;
+
+        let conn = Connection::open(db_path.as_ref())?;
+
+        // Set busy timeout - wait up to 5 seconds for locks
+        // This prevents immediate failures when another connection holds a lock
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+
+        // Configure WAL autocheckpoint to prevent large WAL files
+        // This prevents "database malformed" errors from WAL corruption
+        conn.pragma_update(None, "wal_autocheckpoint", 2000)?;
+
+        Ok(conn)
+    }
+
     /// Common test code snippets for various languages
     pub mod test_code {
         /// TypeScript test code

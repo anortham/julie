@@ -2,6 +2,7 @@
 //! Eliminates 60s reindexing per test, loads in <100ms
 
 use anyhow::{bail, Result};
+use crate::tests::test_helpers::open_test_connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -103,6 +104,18 @@ impl JulieTestFixture {
 
         if !source_db.exists() {
             bail!("Database not found at: {}", source_db.display());
+        }
+
+        // Checkpoint WAL before copying to ensure single-file database
+        // This consolidates WAL changes into the main DB file
+        println!("⏳ Checkpointing WAL before copy...");
+        {
+            let conn = open_test_connection(&source_db)?;
+            // PRAGMA wal_checkpoint returns (busy, log, checkpointed) as results
+            let _: (i64, i64, i64) = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?;
+            println!("✅ WAL checkpointed and truncated");
         }
 
         // Copy database to fixture location

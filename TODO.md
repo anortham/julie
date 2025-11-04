@@ -171,13 +171,54 @@ Comprehensive session documentation in TODO.md creates invaluable audit trail. E
 **Files Modified:** List of files
 ```
 
+### 2025-11-04 - Database Corruption Under Concurrent Test/MCP Usage - ✅ RESOLVED
+**Symptom:** `Error: database disk image is malformed` when running MCP fast_search while tests were executing
+**Root Cause:** **14 test files** opened SQLite connections without configuring `busy_timeout` or `wal_autocheckpoint`, causing immediate lock failures and WAL corruption under concurrent access.
+**Impact:** **HIGH** - Production blocker. Users cannot reliably use Julie MCP tools while tests run, and similar conflicts could occur in production under heavy concurrent load.
+**Current Status:** ✅ **RESOLVED** (2025-11-04)
+
+**Fix Applied:**
+1. **Created helper function** `open_test_connection()` in `src/tests/mod.rs:167-183`
+   - Sets `busy_timeout(5000ms)` - waits 5s for locks instead of failing immediately
+   - Sets `wal_autocheckpoint(2000)` - prevents WAL from growing unbounded
+   - Properly documents why these settings are critical
+
+2. **Replaced 14 unconfigured connections** across 3 test files:
+   - `src/tests/cli/codesearch.rs` (9 fixes)
+   - `src/tests/core/database.rs` (4 fixes)
+   - `src/tests/fixtures/julie_db.rs` (1 fix)
+
+3. **Added comprehensive stress tests** in `src/tests/core/database.rs:1416-1691`:
+   - `test_concurrent_read_access_no_corruption` - 10 threads × 50 reads = 500 operations ✅
+   - `test_concurrent_mixed_access_no_corruption` - 5 readers + 3 writers = 130 operations ✅
+   - `test_extreme_concurrent_stress` - 20 threads hammering for 10s (ignored, manual run)
+
+4. **Fixed fixture corruption** in `src/tests/fixtures/julie_db.rs:108-119`:
+   - WAL checkpoint before database copy prevents partial/corrupted fixtures
+   - Eliminates random FTS5 corruption in dogfood tests
+
+**Test Results:**
+- All 5 concurrent access tests pass ✅
+- No database corruption under 500+ concurrent operations ✅
+- All existing tests continue to pass ✅
+
+**Files Modified:**
+- `src/tests/mod.rs` - Added `open_test_connection()` helper
+- `src/tests/cli/codesearch.rs` - 9 connection fixes
+- `src/tests/core/database.rs` - 4 connection fixes + 3 new stress tests
+- `src/tests/fixtures/julie_db.rs` - 1 connection fix + WAL checkpoint
+- `src/tests/tools/search_quality/helpers.rs` - Already had proper configuration ✅
+
 ---
 
 ## 🔍 Current Focus Areas
 
 *Update this section with what you're actively working on.*
 
-**None** - Ready for production use and dogfooding. New findings will be captured above.
+**Search Quality Improvements (2025-11-04)**
+- Optimizing dogfooding test performance (FTS5 rebuild overhead)
+- Expanding search quality test coverage (ranking, cross-language, edge cases)
+- Investigating concurrent database access bug discovered during dogfooding
 
 ---
 

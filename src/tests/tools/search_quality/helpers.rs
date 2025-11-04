@@ -285,18 +285,40 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
 
     println!("✓ Fixture database opened directly with {} symbols", symbol_count);
 
-    // Rebuild FTS5 indexes if needed (sometimes copying causes corruption)
-    // This is safe to do on existing data and will repair any issues
-    println!("⏳ Rebuilding FTS5 indexes for search reliability...");
-    if let Err(e) = conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", []) {
-        println!("⚠️  symbols_fts rebuild: {}", e);
-        // This might fail if table doesn't exist or is locked, but that's OK
+    // Check if FTS5 indexes are healthy before rebuilding (optimization)
+    // Only rebuild if indexes are corrupted or non-functional
+    let symbols_fts_ok = conn.query_row(
+        "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test'",
+        [],
+        |row| row.get::<_, i64>(0)
+    ).is_ok();
+
+    let files_fts_ok = conn.query_row(
+        "SELECT COUNT(*) FROM files_fts WHERE content MATCH 'test'",
+        [],
+        |row| row.get::<_, i64>(0)
+    ).is_ok();
+
+    if !symbols_fts_ok || !files_fts_ok {
+        // Rebuild FTS5 indexes if corrupted (sometimes copying causes corruption)
+        println!("⏳ FTS5 indexes need rebuild, fixing...");
+        if !symbols_fts_ok {
+            if let Err(e) = conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", []) {
+                println!("⚠️  symbols_fts rebuild failed: {}", e);
+            } else {
+                println!("✓ symbols_fts rebuilt");
+            }
+        }
+        if !files_fts_ok {
+            if let Err(e) = conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", []) {
+                println!("⚠️  files_fts rebuild failed: {}", e);
+            } else {
+                println!("✓ files_fts rebuilt");
+            }
+        }
+    } else {
+        println!("✓ FTS5 indexes are healthy, skipping rebuild");
     }
-    if let Err(e) = conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", []) {
-        println!("⚠️  files_fts rebuild: {}", e);
-        // This might fail if table doesn't exist or is locked, but that's OK
-    }
-    println!("✓ FTS5 indexes rebuilt");
 
     // Wrap the connection in the database struct
     let db_struct = SymbolDatabase {
