@@ -298,6 +298,20 @@ fn sanitize_pattern_for_fts5(query: &str) -> String {
         // Quote to preserve operators as literal search
         result = format!("\"{}\"", result.replace('"', ""));
     } else {
+        // 🔥 FIX: Handle : (colon) specially - it's FTS5 column filter syntax
+        // FTS5 treats : as column specification syntax (e.g., "name:term")
+        // So "class Foo : Bar" is interpreted as "column Foo, term Bar" → syntax error
+        // Split on : and convert to AND query for precise matching
+        // Example: "class CmsService : ICmsService" → "class CmsService AND ICmsService"
+        // This finds classes where BOTH names appear (implements/extends relationship)
+        // BUT: Don't split :: (scope resolution) - that's already handled by should_quote above
+        if result.contains(':') && !result.contains("::") {
+            let parts: Vec<&str> = result.split(':').filter(|s| !s.is_empty()).collect();
+            if parts.len() > 1 {
+                result = parts.join(" AND ");
+            }
+        }
+
         // Only remove dots and question marks if NOT quoting (no code operators)
         // Remove standalone dots (FTS5 column separator / operator)
         // "string.method" → "string method"
@@ -472,5 +486,32 @@ mod tests {
     fn test_sanitization_integration() {
         assert_eq!(sanitize_query("*something"), "something");
         assert_eq!(sanitize_query("User*"), "User*");
+    }
+
+    #[test]
+    fn test_colon_handling_in_patterns() {
+        // Bug reproduction: "class CmsService : ICmsService" → Pattern query → FTS5 syntax error
+        // FTS5 treats single : as column filter syntax (like "column:term")
+
+        // Question: Should this be AND or OR?
+        // - OR: Matches if EITHER name appears (broad, finds more results)
+        // - AND: Matches if BOTH names appear (precise, finds exact inheritance)
+        //
+        // Decision: Use AND for precise matching of inheritance/implements relationships
+        // User searching "class Foo : Bar" wants to find where Foo implements Bar,
+        // which means BOTH names must be present in the symbol definition.
+
+        // Single colon (inheritance/implements syntax)
+        let result = preprocess_query("class CmsService : ICmsService").unwrap();
+        assert_eq!(result.query_type, QueryType::Pattern);
+        // Should NOT contain bare colon - should be quoted or converted to AND/OR
+        assert!(!result.fts5_query.contains(" : ") &&
+                (result.fts5_query.contains(" AND ") || result.fts5_query.contains(" OR ") || result.fts5_query.contains("\":")));
+
+        // Double colon (scope resolution) - already handled
+        let result = preprocess_query("std::vector").unwrap();
+        assert_eq!(result.query_type, QueryType::Pattern);
+        // Should be quoted to preserve ::
+        assert!(result.fts5_query.contains("::") || result.fts5_query.contains("\""));
     }
 }
