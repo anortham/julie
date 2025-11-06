@@ -24,6 +24,12 @@ impl SymbolDatabase {
         self.create_relationships_table()?;
         self.create_embeddings_table()?;
 
+        // RAG: Knowledge embeddings for documentation, tests, ADRs, etc.
+        self.create_knowledge_embeddings_table()?;
+        self.create_knowledge_relationships_table()?;
+        self.create_knowledge_fts_table()?;
+        self.create_knowledge_fts_triggers()?;
+
         debug!("Database schema created successfully");
         Ok(())
     }

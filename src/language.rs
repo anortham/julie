@@ -58,8 +58,13 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "sql" => Ok(tree_sitter_sequel::LANGUAGE.into()),
         "regex" => Ok(tree_sitter_regex::LANGUAGE.into()),
 
+        // Documentation and configuration languages
+        "markdown" => Ok(tree_sitter_md::LANGUAGE.into()),
+        "json" => Ok(tree_sitter_json::LANGUAGE.into()),
+        "toml" => Ok(tree_sitter_toml_ng::LANGUAGE.into()),
+
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml",
             language
         )),
     }
@@ -98,6 +103,9 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "ps1" => Some("powershell"),
         "zig" => Some("zig"),
         "regex" => Some("regex"),
+        "md" | "markdown" => Some("markdown"),
+        "json" => Some("json"),
+        "toml" => Some("toml"),
         _ => None,
     }
 }

@@ -8,6 +8,7 @@ pub mod embeddings;
 pub mod extractors;
 pub mod handler;
 pub mod health;
+pub mod knowledge; // RAG documentation embeddings and semantic search
 pub mod language; // Shared language support (tree-sitter configuration)
 pub mod startup; // Startup utilities (indexing checks, staleness detection)
 pub mod tools;

@@ -107,6 +107,11 @@ impl ManageWorkspaceTool {
             // Regex patterns (special handling)
             "regex" | "regexp" => "regex".to_string(),
 
+            // Documentation and config files (RAG POC - extractors #28-30)
+            "md" | "markdown" => "markdown".to_string(),
+            "json" => "json".to_string(),
+            "toml" => "toml".to_string(),
+
             // Default case - check filename
             _ => {
                 // Handle files without extensions or special cases

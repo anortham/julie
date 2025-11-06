@@ -333,6 +333,39 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             (symbols, relationships)
         }
+        "markdown" => {
+            let mut extractor = crate::extractors::markdown::MarkdownExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            // Markdown is documentation - no code relationships
+            (symbols, Vec::new())
+        }
+        "json" => {
+            let mut extractor = crate::extractors::json::JsonExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            // JSON is configuration data - no code relationships
+            (symbols, Vec::new())
+        }
+        "toml" => {
+            let mut extractor = crate::extractors::toml::TomlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            // TOML is configuration data - no code relationships
+            (symbols, Vec::new())
+        }
         _ => {
             return Err(anyhow!(
                 "No extractor available for language '{}' (file: {})",

@@ -15,6 +15,7 @@ mod bulk_operations;
 mod embeddings;
 mod files;
 mod helpers;
+mod knowledge;
 mod migrations;
 mod relationships;
 mod schema;

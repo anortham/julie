@@ -30,6 +30,9 @@ const MAX_TOTAL_FAILURE_RATE: f64 = 0.5;
 ///
 /// This runs asynchronously to provide fast indexing response times.
 /// Processes symbols in batches with incremental database persistence.
+///
+/// # Parameters
+/// - `force_reindex`: If true, clears all existing embeddings and regenerates from scratch
 pub async fn generate_embeddings_from_sqlite(
     embedding_engine: Arc<tokio::sync::RwLock<Option<crate::embeddings::EmbeddingEngine>>>,
     embedding_engine_last_used: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
@@ -37,6 +40,7 @@ pub async fn generate_embeddings_from_sqlite(
     workspace_root: Option<PathBuf>,
     workspace_id: String,
     indexing_status: Arc<IndexingStatus>,
+    force_reindex: bool,
 ) -> Result<()> {
     info!(
         "🐛 generate_embeddings_from_sqlite() called for workspace: {}",
@@ -58,6 +62,27 @@ pub async fn generate_embeddings_from_sqlite(
         }
     };
 
+    // 🔥 FORCE REINDEX: Clear all embeddings if requested
+    if force_reindex {
+        info!("🔥 Force reindex requested - clearing all embeddings to regenerate from scratch");
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during embeddings clear, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
+
+        // Clear both embeddings mapping table and vector storage table
+        // CRITICAL: Must clear embeddings table (not just embedding_vectors) because
+        // get_symbols_without_embeddings() queries the embeddings table with LEFT JOIN
+        db_lock.conn.execute("DELETE FROM embeddings", [])
+            .context("Failed to clear embeddings mapping table")?;
+        db_lock.conn.execute("DELETE FROM embedding_vectors", [])
+            .context("Failed to clear embedding_vectors storage table")?;
+        info!("✅ Cleared all embeddings and vectors - will regenerate for all symbols");
+    }
+
     // 🚀 INCREMENTAL UPDATES: Only process symbols that don't have embeddings yet
     // This fixes the performance problem where ALL symbols were reprocessed every startup
     info!("🐛 About to acquire database lock for reading symbols without embeddings...");
@@ -75,8 +100,9 @@ pub async fn generate_embeddings_from_sqlite(
             .context("Failed to read symbols without embeddings from database")?
     };
     info!(
-        "🐛 Read {} symbols WITHOUT embeddings (incremental update)",
-        symbols.len()
+        "🐛 Read {} symbols WITHOUT embeddings (incremental update{})",
+        symbols.len(),
+        if force_reindex { " - FORCE MODE" } else { "" }
     );
 
     if symbols.is_empty() {
@@ -103,14 +129,32 @@ pub async fn generate_embeddings_from_sqlite(
         }
     };
 
-    // Adaptive batch sizing based on ACTUAL execution provider
-    let batch_size = if is_using_gpu {
-        BATCH_SIZE_GPU
-    } else {
-        BATCH_SIZE_CPU
+    // Dynamic batch sizing based on detected GPU memory
+    // Falls back to conservative defaults if GPU detection fails
+    let batch_size = {
+        let read_guard = embedding_engine.read().await;
+        if let Some(ref engine) = read_guard.as_ref() {
+            engine.calculate_optimal_batch_size()
+        } else {
+            // Engine not initialized - use fallback
+            if is_using_gpu {
+                BATCH_SIZE_GPU
+            } else {
+                BATCH_SIZE_CPU
+            }
+        }
     };
 
     let total_batches = symbols.len().div_ceil(batch_size);
+
+    info!(
+        "📦 Using {} batch size: {} symbols/batch ({} batches for {} symbols)",
+        if is_using_gpu { "GPU-adaptive" } else { "CPU" },
+        batch_size,
+        total_batches,
+        symbols.len()
+    );
+
     let mut consecutive_failures = 0;
     let mut total_failures = 0;
     let mut successful_batches = 0;

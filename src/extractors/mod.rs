@@ -22,7 +22,7 @@ pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod factory;
 
-// Language extractors (27 total)
+// Language extractors (30 total - including documentation/config languages)
 pub mod bash;
 pub mod c;
 pub mod cpp;
@@ -33,9 +33,11 @@ pub mod gdscript;
 pub mod go;
 pub mod html;
 pub mod java;
+pub mod json;
 pub mod javascript;
 pub mod kotlin;
 pub mod lua;
+pub mod markdown;
 pub mod php;
 pub mod powershell;
 pub mod python;
@@ -47,6 +49,7 @@ pub mod ruby;
 pub mod rust;
 pub mod sql;
 pub mod swift;
+pub mod toml;
 pub mod typescript;
 pub mod vue;
 pub mod zig;

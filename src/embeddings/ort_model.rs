@@ -487,6 +487,86 @@ impl OrtEmbeddingModel {
     pub fn max_length(&self) -> usize {
         self.max_length
     }
+
+    /// Detect total GPU memory in bytes (platform-specific)
+    /// Returns None if GPU is not available or detection fails
+    pub fn get_gpu_memory_bytes(&self) -> Option<usize> {
+        if !self.is_using_gpu() {
+            return None;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Self::get_directml_memory()
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Self::get_cuda_memory()
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        {
+            None // macOS uses CPU mode
+        }
+    }
+
+    /// Get DirectML GPU memory (Windows only)
+    #[cfg(target_os = "windows")]
+    fn get_directml_memory() -> Option<usize> {
+        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
+
+        unsafe {
+            match CreateDXGIFactory1::<IDXGIFactory1>() {
+                Ok(factory) => {
+                    let mut max_vram: usize = 0;
+
+                    // Enumerate all adapters to find GPU with most VRAM
+                    for index in 0..16 {
+                        match factory.EnumAdapters1(index) {
+                            Ok(adapter) => {
+                                if let Ok(desc) = adapter.GetDesc1() {
+                                    let vram = desc.DedicatedVideoMemory;
+                                    if vram > max_vram {
+                                        max_vram = vram;
+                                    }
+                                }
+                            }
+                            Err(e) if e.code() == DXGI_ERROR_NOT_FOUND => {
+                                break; // No more adapters
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    if max_vram > 0 {
+                        Some(max_vram)
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        }
+    }
+
+    /// Get CUDA GPU memory (Linux only)
+    #[cfg(target_os = "linux")]
+    fn get_cuda_memory() -> Option<usize> {
+        // CUDA memory detection via ONNX Runtime device info
+        // The ort crate doesn't expose cudaMemGetInfo directly,
+        // so we use a conservative heuristic based on common GPU configs
+
+        // TODO: If we need precise detection, we could:
+        // 1. Use cuda-sys crate to call cudaMemGetInfo directly
+        // 2. Parse nvidia-smi output
+        // 3. Read /proc/driver/nvidia/gpus/*/information
+
+        // For now, return None to use fallback logic
+        // This is safe - we'll use conservative batch sizes
+        warn!("CUDA GPU memory detection not yet implemented - using fallback batch size");
+        None
+    }
 }
 
 #[cfg(test)]

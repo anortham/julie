@@ -180,6 +180,85 @@ impl EmbeddingEngine {
         self.model.is_using_gpu()
     }
 
+    /// Calculate optimal batch size based on available GPU memory
+    /// Uses conservative heuristics validated against real-world GPU testing
+    ///
+    /// # Real-World Data Points:
+    /// - 6GB NVIDIA A1000: batch_size=50 works, batch_size=100 crashes
+    /// - Conclusion: Use ~8-10% of GPU memory for batching (safe margin)
+    ///
+    /// # Returns
+    /// Optimal batch size for this GPU, or fallback constants if detection fails
+    pub fn calculate_optimal_batch_size(&self) -> usize {
+        // Try to detect GPU memory
+        if let Some(vram_bytes) = self.model.get_gpu_memory_bytes() {
+            Self::batch_size_from_vram(vram_bytes)
+        } else {
+            // Fallback to conservative defaults
+            if self.is_using_gpu() {
+                50 // Conservative GPU default
+            } else {
+                100 // CPU mode
+            }
+        }
+    }
+
+    /// Calculate batch size from GPU VRAM using empirical formula
+    /// Based on real-world testing: 6GB GPU → batch_size=50
+    ///
+    /// # Performance Characteristics (Important!)
+    ///
+    /// **When Larger Batches Help:**
+    /// - Memory-bound workloads (overhead dominates)
+    /// - Larger embedding models (e.g., bge-large with 1024 dims)
+    /// - Future models with more complex architectures
+    ///
+    /// **When Larger Batches DON'T Help (Empirically Validated):**
+    /// - BGE-small (384 dims) on modern RTX GPUs is **compute-bound**
+    /// - Test: 12GB RTX GPU showed NO speedup from batch_size 50→97
+    /// - Reason: GPU cores are 100% utilized at batch_size=50 already
+    /// - Larger batches just take proportionally longer per batch
+    ///
+    /// **Why We Still Use Dynamic Batch Sizing:**
+    /// 1. Prevents OOM crashes on smaller GPUs (6GB crashes at batch_size=100)
+    /// 2. Safe scaling for users with different GPU memory (4GB→24GB)
+    /// 3. Future-proof for larger models that may benefit from batching
+    /// 4. No performance regression (same speed on compute-bound workloads)
+    ///
+    /// # Real-World Test Data:
+    /// - 6GB NVIDIA A1000: batch_size=50 ✓ safe, batch_size=100 ✗ OOM crash
+    /// - 12GB RTX GPU: batch_size=50 → 23.3s, batch_size=97 → 23.9s (no speedup)
+    /// - Conclusion: Formula prevents crashes without sacrificing performance
+    fn batch_size_from_vram(vram_bytes: usize) -> usize {
+        let vram_gb = vram_bytes as f64 / 1_073_741_824.0;
+
+        // Empirical formula: batch_size = (VRAM_GB / 6.0) * 50
+        // This is conservative and validated against 6GB A1000 testing
+        //
+        // Examples:
+        // - 4GB:  (4/6)  * 50 = 33  → clamp to 50 (minimum)
+        // - 6GB:  (6/6)  * 50 = 50  ✓ (validated safe)
+        // - 8GB:  (8/6)  * 50 = 67  ✓
+        // - 12GB: (12/6) * 50 = 100 ✓ (safe but no speedup vs 50 on BGE-small)
+        // - 16GB: (16/6) * 50 = 133 ✓
+        // - 24GB: (24/6) * 50 = 200 ✓
+
+        let calculated = ((vram_gb / 6.0) * 50.0) as usize;
+
+        // Clamp to safe range: [50, 250]
+        // - Minimum 50: Validated safe on 6GB GPU
+        // - Maximum 250: Avoid timeout issues and excessive failure blast radius
+        let batch_size = calculated.clamp(50, 250);
+
+        tracing::info!(
+            "📊 GPU Memory: {:.2} GB → Dynamic batch size: {}",
+            vram_gb,
+            batch_size
+        );
+
+        batch_size
+    }
+
     /// PERFORMANCE OPTIMIZATION: Generate embeddings for a batch of symbols using batched ML inference
     /// This dramatically reduces ML model overhead compared to individual embedding calls
     /// Now GPU-accelerated for 10-100x speedup!

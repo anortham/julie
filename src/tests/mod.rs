@@ -46,6 +46,11 @@ pub mod core {
 }
 
 // ============================================================================
+// KNOWLEDGE/RAG TESTS - Documentation embeddings and semantic search
+// ============================================================================
+pub mod knowledge; // Knowledge base and RAG documentation indexing tests
+
+// ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod tools {
@@ -105,6 +110,7 @@ pub mod utils {
 // ============================================================================
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod fts5_integrity; // FTS5 integrity check and auto-rebuild tests (TDD)
     pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
     pub mod fts5_orphan_cleanup_bug; // FTS5 corruption from clean_orphaned_files loop (TDD)
@@ -313,6 +319,9 @@ pub mod extractors {
     // Java extractor tests
     pub mod java;
 
+    // JSON extractor tests (single mod.rs file)
+    pub mod json;
+
     // JavaScript extractor tests
     pub mod javascript;
 
@@ -321,6 +330,9 @@ pub mod extractors {
 
     // Lua extractor tests (multiple submodules)
     pub mod lua;
+
+    // Markdown extractor tests (single mod.rs file)
+    pub mod markdown;
 
     // PHP extractor tests (single mod.rs file)
     pub mod php;
@@ -357,6 +369,9 @@ pub mod extractors {
 
     // TypeScript extractor tests (multiple submodules - declarations in typescript/mod.rs)
     pub mod typescript;
+
+    // TOML extractor tests (single mod.rs file)
+    pub mod toml;
 
     // Vue extractor tests
     pub mod vue;

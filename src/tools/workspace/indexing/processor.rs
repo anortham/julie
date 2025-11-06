@@ -242,6 +242,38 @@ impl ManageWorkspaceTool {
                     return Err(e);
                 }
 
+                // Store documentation embeddings for RAG (knowledge_embeddings table)
+                let doc_count = all_symbols
+                    .iter()
+                    .filter(|s| crate::knowledge::doc_indexer::DocumentationIndexer::is_documentation_symbol(s))
+                    .count();
+
+                if doc_count > 0 {
+                    debug!("📚 Storing {} documentation symbols for RAG (incremental)...", doc_count);
+                    let mut docs_stored = 0;
+                    let mut docs_failed = 0;
+
+                    for symbol in &all_symbols {
+                        if let Err(e) = crate::knowledge::doc_indexer::DocumentationIndexer::store_documentation_embedding(
+                            &db_lock,
+                            symbol,
+                            "bge-small-en",
+                        ) {
+                            docs_failed += 1;
+                            warn!("Failed to store documentation embedding for {}: {}", symbol.name, e);
+                        } else {
+                            docs_stored += 1;
+                        }
+                    }
+
+                    info!(
+                        "✅ Documentation storage complete (incremental): {} docs stored, {} failed",
+                        docs_stored, docs_failed
+                    );
+                } else {
+                    debug!("No documentation symbols to store for RAG");
+                }
+
                 drop(db_lock);
             } else {
                 // Fresh indexing (no files to clean) - use standard bulk operations
@@ -274,6 +306,38 @@ impl ManageWorkspaceTool {
                 // Bulk store relationships
                 if let Err(e) = db_lock.bulk_store_relationships(&all_relationships) {
                     warn!("Failed to bulk store relationships: {}", e);
+                }
+
+                // Store documentation embeddings for RAG (knowledge_embeddings table)
+                let doc_count = all_symbols
+                    .iter()
+                    .filter(|s| crate::knowledge::doc_indexer::DocumentationIndexer::is_documentation_symbol(s))
+                    .count();
+
+                if doc_count > 0 {
+                    debug!("📚 Storing {} documentation symbols for RAG...", doc_count);
+                    let mut docs_stored = 0;
+                    let mut docs_failed = 0;
+
+                    for symbol in &all_symbols {
+                        if let Err(e) = crate::knowledge::doc_indexer::DocumentationIndexer::store_documentation_embedding(
+                            &db_lock,
+                            symbol,
+                            "bge-small-en",
+                        ) {
+                            docs_failed += 1;
+                            warn!("Failed to store documentation embedding for {}: {}", symbol.name, e);
+                        } else {
+                            docs_stored += 1;
+                        }
+                    }
+
+                    info!(
+                        "✅ Documentation storage complete: {} docs stored, {} failed",
+                        docs_stored, docs_failed
+                    );
+                } else {
+                    debug!("No documentation symbols to store for RAG");
                 }
 
                 drop(db_lock);

@@ -252,6 +252,33 @@ pub(crate) fn extract_symbols_for_language(
             );
             Ok(extractor.extract_symbols(tree))
         }
+        "markdown" => {
+            let mut extractor = crate::extractors::markdown::MarkdownExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
+        "json" => {
+            let mut extractor = crate::extractors::json::JsonExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
+        "toml" => {
+            let mut extractor = crate::extractors::toml::TomlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
         _ => {
             tracing::debug!(
                 "No extractor available for language: {} (file: {})",

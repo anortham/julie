@@ -228,7 +228,11 @@ impl ManageWorkspaceTool {
 
         // 🔥 STALENESS CHECK: Only generate embeddings for symbols that don't have them yet
         // This fixes the bug where embeddings were regenerated on EVERY startup
-        let symbols_needing_embeddings = if let Some(db_arc) = if is_primary_workspace {
+        // EXCEPT when force_reindex=true, then we always regenerate all embeddings
+        let symbols_needing_embeddings = if force_reindex {
+            // Force mode: assume all symbols need embeddings (will be cleared and regenerated)
+            total_symbols
+        } else if let Some(db_arc) = if is_primary_workspace {
             workspace.db.clone()
         } else {
             let ref_db_path = workspace.workspace_db_path(&workspace_id);
@@ -318,10 +322,12 @@ impl ManageWorkspaceTool {
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();
 
+            let force_flag = force_reindex;
             tokio::spawn(async move {
                 info!(
-                    "🐛 Background embedding task started for workspace: {}",
-                    workspace_id_clone
+                    "🐛 Background embedding task started for workspace: {}{}",
+                    workspace_id_clone,
+                    if force_flag { " (FORCE MODE)" } else { "" }
                 );
                 let task_start = std::time::Instant::now();
 
@@ -334,6 +340,7 @@ impl ManageWorkspaceTool {
                     workspace_root,
                     workspace_id_clone.clone(),
                     indexing_status_clone,
+                    force_flag,
                 )
                 .await
                 {
