@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use rusqlite::{Connection, Row};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
@@ -140,5 +140,37 @@ impl SymbolDatabase {
         }
 
         Ok(())
+    }
+
+    /// Checkpoint the WAL (Write-Ahead Log) to merge changes into main database
+    ///
+    /// This executes `PRAGMA wal_checkpoint(TRUNCATE)` which:
+    /// - Merges all WAL frames into the main database file
+    /// - Truncates the WAL file to 0 bytes after checkpoint
+    ///
+    /// Returns: (busy, log, checkpointed) tuple
+    /// - busy: Number of frames that couldn't be checkpointed (should be 0)
+    /// - log: Total frames in WAL before checkpoint
+    /// - checkpointed: Frames successfully checkpointed
+    ///
+    /// This should be called periodically or on shutdown to prevent unbounded WAL growth
+    pub fn checkpoint_wal(&mut self) -> Result<(i32, i32, i32)> {
+        debug!("Checkpointing WAL to prevent unbounded growth");
+
+        // Execute PRAGMA wal_checkpoint(TRUNCATE)
+        // Returns: (busy, log, checkpointed)
+        let mut stmt = self.conn.prepare("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        let result = stmt.query_row([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+
+        let (busy, log, checkpointed) = result;
+
+        debug!(
+            "WAL checkpoint complete: busy={}, log={}, checkpointed={}",
+            busy, log, checkpointed
+        );
+
+        Ok((busy, log, checkpointed))
     }
 }

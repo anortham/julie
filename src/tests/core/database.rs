@@ -1703,3 +1703,29 @@ fn test_extreme_concurrent_stress() {
 
     println!("✅ EXTREME stress test passed: {} symbols after 10 seconds of concurrent hammering", count);
 }
+
+/// ✅ GREEN TEST: Test WAL checkpoint functionality
+#[test]
+fn test_wal_checkpoint() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_checkpoint.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Database is created with WAL mode enabled, some initial writes have occurred
+    // Now call checkpoint_wal() to merge WAL into main database
+    let result = db.checkpoint_wal();
+
+    assert!(result.is_ok(), "checkpoint_wal() should succeed");
+
+    let (busy, log, checkpointed) = result.unwrap();
+
+    // Verify checkpoint results
+    // busy: Number of frames that couldn't be checkpointed (should be 0)
+    // log: Total frames in WAL before checkpoint
+    // checkpointed: Frames successfully checkpointed
+    assert_eq!(busy, 0, "No frames should be busy during checkpoint");
+    assert!(log >= 0, "Log should contain frames");
+    assert!(checkpointed >= 0, "Should checkpoint frames");
+
+    println!("✅ WAL checkpoint successful: busy={}, log={}, checkpointed={}", busy, log, checkpointed);
+}

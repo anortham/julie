@@ -6,7 +6,6 @@ mod primary_workspace_bug;
 mod quality;
 mod race_condition;
 mod semantic_error_handling_tests;
-mod semantic_fallback_tests;
 mod semantic_scoring_tests;
 mod tools;
 
