@@ -40,6 +40,10 @@ pub fn detect_language(path: &Path) -> Result<String> {
         "r" | "R" => "r",
         "zig" => "zig",
         "dart" => "dart",
+        // Documentation and configuration languages (extractors #28-30)
+        "md" => "markdown",
+        "json" => "json",
+        "toml" => "toml",
         _ => return Err(anyhow::anyhow!("Unsupported file extension: {}", ext)),
     };
 
@@ -58,12 +62,21 @@ mod tests {
         let workspace_root = temp_dir.path().to_path_buf();
 
         let test_files = vec![
+            // Core languages
             ("test.rs", "rust"),
             ("app.ts", "typescript"),
             ("script.js", "javascript"),
             ("main.py", "python"),
             ("App.java", "java"),
             ("Program.cs", "csharp"),
+            // Documentation and configuration languages (extractors #28-30)
+            ("README.md", "markdown"),
+            ("package.json", "json"),
+            ("Cargo.toml", "toml"),
+            // Other supported languages
+            ("main.go", "go"),
+            ("styles.css", "css"),
+            ("index.html", "html"),
         ];
 
         for (filename, expected_lang) in test_files {
@@ -71,9 +84,29 @@ mod tests {
             fs::write(&file_path, "// test content").unwrap();
 
             let result = detect_language(&file_path);
+            assert!(
+                result.is_ok(),
+                "Failed to detect language for {}: {:?}",
+                filename,
+                result
+            );
             if let Ok(lang) = result {
-                assert_eq!(lang, expected_lang);
+                assert_eq!(
+                    lang, expected_lang,
+                    "Wrong language for {}: expected {}, got {}",
+                    filename, expected_lang, lang
+                );
             }
         }
+    }
+
+    #[test]
+    fn test_unsupported_extension() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("unknown.xyz");
+        fs::write(&file_path, "test").unwrap();
+
+        let result = detect_language(&file_path);
+        assert!(result.is_err(), "Should fail for unsupported extension");
     }
 }
