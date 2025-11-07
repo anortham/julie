@@ -187,41 +187,9 @@ impl ExtractorManager {
             tracing::warn!("  - Extracted extension: '{}'", extension);
         }
 
-        let language = match extension {
-            "rs" => "rust",
-            "ts" => "typescript",
-            "tsx" => "tsx",
-            "js" => "javascript",
-            "jsx" => "jsx",
-            "py" => "python",
-            "go" => "go",
-            "java" => "java",
-            "c" => "c",
-            "cpp" | "cc" | "cxx" => "cpp",
-            "cs" => "csharp",
-            "rb" => "ruby",
-            "php" => "php",
-            "swift" => "swift",
-            "kt" => "kotlin",
-            "dart" => "dart",
-            "gd" => "gdscript",
-            "lua" => "lua",
-            "qml" => "qml",
-            "r" | "R" => "r",
-            "vue" => "vue",
-            "razor" => "razor",
-            "sql" => "sql",
-            "html" => "html",
-            "css" => "css",
-            "sh" | "bash" => "bash",
-            "ps1" => "powershell",
-            "zig" => "zig",
-            "regex" => "regex",
-            _ => {
-                // Unsupported file type - return empty results
-                return Ok(String::new());
-            }
-        };
+        // Use centralized language detection from src/language.rs
+        let language = crate::language::detect_language_from_extension(extension)
+            .ok_or_else(|| anyhow::anyhow!("Unsupported file extension: {}", extension))?;
 
         // 🔍 DEBUG: Log language mapping for R files
         if file_path.ends_with(".R") || file_path.ends_with(".r") {

@@ -292,6 +292,6 @@ Should we add a semantic fallback results for text search results that return 0 
 Should we add a new tool specifically for semantic searching instead of it being a "mode" in fast_search? What other tools we already have could benefit from a semantic search "layer"?
 
 
-we should add YAML treesitter support next
+we should add YAML treesitter support next **
 
 
