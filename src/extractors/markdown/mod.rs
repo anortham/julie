@@ -75,13 +75,14 @@ impl MarkdownExtractor {
         for child in node.children(&mut cursor) {
             if child.kind() == "atx_heading" || child.kind() == "heading" {
                 heading_node = Some(child);
-            } else if child.kind() == "paragraph" {
-                // Collect paragraph content for doc_comment
-                let para_text = self.base.get_node_text(&child);
+            } else if self.is_content_node(&child) {
+                // Collect ALL content nodes (not just paragraphs) for RAG embedding
+                // This includes: paragraphs, lists, code blocks, block quotes, tables, etc.
+                let content_text = self.base.get_node_text(&child);
                 if !section_content.is_empty() {
                     section_content.push_str("\n\n");
                 }
-                section_content.push_str(&para_text);
+                section_content.push_str(&content_text);
             }
         }
 
@@ -90,6 +91,23 @@ impl MarkdownExtractor {
         }
 
         None
+    }
+
+    /// Check if a node contains content that should be included in section body
+    /// This captures all markdown content types for comprehensive RAG embeddings
+    fn is_content_node(&self, node: &tree_sitter::Node) -> bool {
+        matches!(
+            node.kind(),
+            "paragraph"
+                | "list"              // Unordered/ordered lists
+                | "list_item"
+                | "fenced_code_block" // ```code blocks```
+                | "indented_code_block"
+                | "block_quote"       // > quotes
+                | "table"             // Tables
+                | "thematic_break"    // ---
+                | "html_block"        // Raw HTML
+        )
     }
 
     /// Extract heading text and create symbol

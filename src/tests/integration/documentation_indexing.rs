@@ -46,7 +46,7 @@ async fn test_documentation_indexing_basic() -> Result<()> {
         "# User Guide\n\nThis guide explains how to use the system.",
     )?;
 
-    // Also create some non-documentation files (should NOT be in knowledge_embeddings)
+    // Also create some non-documentation files (regular code symbols)
     fs::write(workspace_path.join("main.rs"), "fn main() {}")?;
     fs::write(workspace_path.join("config.json"), r#"{"version": "1.0"}"#)?;
 

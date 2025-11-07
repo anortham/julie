@@ -332,7 +332,7 @@ impl ManageWorkspaceTool {
                         }
                     };
 
-                    // Clear embeddings, vectors, AND documentation (knowledge_embeddings) tables
+                    // Clear embeddings and vectors tables
                     // CRITICAL: Must clear embeddings table (not just embedding_vectors) because
                     // get_symbols_without_embeddings() queries the embeddings table with LEFT JOIN
                     if let Err(e) = db_lock.conn.execute("DELETE FROM embeddings", []) {
@@ -341,15 +341,7 @@ impl ManageWorkspaceTool {
                     if let Err(e) = db_lock.conn.execute("DELETE FROM embedding_vectors", []) {
                         warn!("Failed to clear embedding_vectors storage table: {}", e);
                     }
-                    // CRITICAL: Also clear knowledge_embeddings (documentation RAG table)
-                    // This table is populated by DocumentationIndexer during incremental/fresh indexing
-                    if let Err(e) = db_lock.conn.execute("DELETE FROM knowledge_embeddings", []) {
-                        warn!("Failed to clear knowledge_embeddings table: {}", e);
-                    }
-                    if let Err(e) = db_lock.conn.execute("DELETE FROM knowledge_relationships", []) {
-                        warn!("Failed to clear knowledge_relationships table: {}", e);
-                    }
-                    info!("✅ Cleared all embeddings, vectors, and documentation tables synchronously - will regenerate");
+                    info!("✅ Cleared all embeddings and vectors synchronously - will regenerate");
                 }
             }
 
