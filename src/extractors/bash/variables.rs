@@ -75,7 +75,7 @@ impl super::BashExtractor {
                 },
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: self.base.find_doc_comment(&node),
-                ..Default::default()
+            ..Default::default()
             };
 
             let symbol_kind = if is_readonly {

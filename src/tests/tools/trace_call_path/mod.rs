@@ -32,6 +32,7 @@ fn make_symbol(id: &str, name: &str, language: &str, file_path: &str) -> Symbol 
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     }
 }
 

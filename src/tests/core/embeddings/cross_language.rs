@@ -102,6 +102,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         let user_dto = Symbol {
@@ -124,6 +125,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         let product_class = Symbol {
@@ -146,6 +148,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         // Similar names should return true
@@ -185,6 +188,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         let user_cs = Symbol {
@@ -207,6 +211,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         let symbols = vec![&user_ts, &user_cs];
@@ -243,6 +248,7 @@ mod tests {
                 semantic_group: None,
                 confidence: None,
                 code_context: None,
+        content_type: None,
             },
             Symbol {
                 id: "2".to_string(),
@@ -264,6 +270,7 @@ mod tests {
                 semantic_group: None,
                 confidence: None,
                 code_context: None,
+        content_type: None,
             },
             Symbol {
                 id: "3".to_string(),
@@ -285,6 +292,7 @@ mod tests {
                 semantic_group: None,
                 confidence: None,
                 code_context: None,
+        content_type: None,
             },
         ];
 
@@ -340,6 +348,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         let symbol_without_sig = Symbol {
@@ -362,6 +371,7 @@ mod tests {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         };
 
         // All symbols with signatures

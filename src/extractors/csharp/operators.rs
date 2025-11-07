@@ -82,7 +82,7 @@ pub fn extract_operator(
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -142,7 +142,7 @@ pub fn extract_conversion_operator(
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -183,7 +183,7 @@ pub fn extract_indexer(
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Property, options))

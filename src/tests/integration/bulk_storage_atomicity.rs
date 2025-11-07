@@ -39,6 +39,7 @@ fn create_test_symbol(name: &str, file_path: &str) -> Symbol {
         language: "rust".to_string(),
         visibility: Some(Visibility::Public),
         code_context: None,
+        content_type: None,
         metadata: None,
         semantic_group: None,
         confidence: None,

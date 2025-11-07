@@ -20,7 +20,7 @@ pub(super) fn extract_package(
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(
@@ -81,7 +81,7 @@ pub(super) fn extract_import(
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(

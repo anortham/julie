@@ -65,7 +65,7 @@ impl RExtractor {
 
                                 let options = SymbolOptions {
                                     parent_id: parent_id.clone(),
-                                    ..Default::default()
+            ..Default::default()
                                 };
                                 let symbol =
                                     self.base.create_symbol(&node, name, symbol_kind, options);
@@ -82,7 +82,7 @@ impl RExtractor {
 
                                 let options = SymbolOptions {
                                     parent_id: parent_id.clone(),
-                                    ..Default::default()
+            ..Default::default()
                                 };
                                 let symbol = self.base.create_symbol(
                                     &node,

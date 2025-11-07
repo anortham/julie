@@ -33,6 +33,7 @@ mod test_fixtures {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         }
     }
 
@@ -58,6 +59,7 @@ mod test_fixtures {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         }
     }
 
@@ -83,6 +85,7 @@ mod test_fixtures {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         }
     }
 
@@ -108,6 +111,7 @@ mod test_fixtures {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         }
     }
 
@@ -133,6 +137,7 @@ mod test_fixtures {
             semantic_group: None,
             confidence: None,
             code_context: None,
+        content_type: None,
         }
     }
 }

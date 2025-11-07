@@ -84,7 +84,7 @@ pub(super) fn extract_field(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(

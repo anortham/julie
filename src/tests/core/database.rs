@@ -82,6 +82,7 @@ async fn test_debug_foreign_key_constraint() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     // This should work without foreign key constraint error
@@ -188,6 +189,7 @@ async fn test_symbol_storage_and_retrieval() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     // Following foreign key contract: store file record first
@@ -289,6 +291,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         semantic_group: Some("user-data-access".to_string()),
         confidence: Some(0.95),
         code_context: None,
+        content_type: None,
     };
 
     // First, store the file record (required due to foreign key constraint)
@@ -369,6 +372,7 @@ async fn test_relationship_with_id_field() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     let called_symbol = Symbol {
@@ -391,6 +395,7 @@ async fn test_relationship_with_id_field() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     db.store_symbols_transactional(&[caller_symbol, called_symbol])
@@ -449,6 +454,7 @@ async fn test_cross_language_semantic_grouping() {
         semantic_group: Some("user-entity".to_string()),
         confidence: Some(1.0),
         code_context: None,
+        content_type: None,
     };
 
     let rust_struct = Symbol {
@@ -471,6 +477,7 @@ async fn test_cross_language_semantic_grouping() {
         semantic_group: Some("user-entity".to_string()),
         confidence: Some(0.98),
         code_context: None,
+        content_type: None,
     };
 
     // Following foreign key contract: store file records first
@@ -568,6 +575,7 @@ async fn test_extractor_database_integration() {
         semantic_group: None, // Will be populated during cross-language analysis
         confidence: None,     // Will be calculated based on parsing context
         code_context: None,
+        content_type: None,
     };
 
     // Following foreign key contract: store file record first
@@ -637,6 +645,7 @@ async fn test_complete_symbol_field_persistence() {
         code_context: Some(
             "  // line before\n  fn complete_function() {\n  // line after".to_string(),
         ),
+        content_type: None,
         // Regular fields that work:
         signature: Some("fn complete_function() -> Result<()>".to_string()),
         parent_id: None,
@@ -1446,6 +1455,7 @@ fn test_concurrent_read_access_no_corruption() {
                 visibility: Some(crate::extractors::base::types::Visibility::Public),
                 metadata: Default::default(),
                 code_context: None,
+        content_type: None,
                 confidence: None,
                 semantic_group: None,
             },

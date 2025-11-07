@@ -34,6 +34,7 @@ fn create_symbol_with_doc(doc_comment: Option<&str>) -> Symbol {
         metadata: Some(HashMap::new()),
         confidence: None,
         code_context: None,
+        content_type: None,
     }
 }
 
@@ -58,6 +59,7 @@ fn create_symbol(name: &str, doc_comment: Option<&str>) -> Symbol {
         metadata: Some(HashMap::new()),
         confidence: None,
         code_context: None,
+        content_type: None,
     }
 }
 
@@ -88,6 +90,7 @@ fn create_html_element_symbol(name: &str) -> Symbol {
         metadata: Some(metadata),
         confidence: None,
         code_context: None,
+        content_type: None,
     }
 }
 
@@ -280,6 +283,7 @@ fn test_documented_class_beats_generic_html() {
         metadata: Some(HashMap::new()),
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     // Razor Template tag (HTML element, no docs)

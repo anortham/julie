@@ -3,9 +3,9 @@
 //! These tests verify that markdown documentation files flow through the complete pipeline:
 //! 1. File discovery (markdown files found)
 //! 2. Symbol extraction (markdown extractor processes files)
-//! 3. Documentation storage (knowledge_embeddings table populated)
-//! 4. FTS5 sync (knowledge_fts table auto-updated via triggers)
-//! 5. Deduplication (content hashes prevent duplicate processing)
+//! 3. Documentation storage (symbols table with content_type='documentation')
+//! 4. FTS5 sync (symbols_fts table auto-updated via triggers)
+//! 5. Deduplication (file_hash prevents duplicate processing)
 
 use anyhow::Result;
 use std::fs;
@@ -17,14 +17,8 @@ use crate::tools::workspace::ManageWorkspaceTool;
 /// Test 1: Basic documentation indexing
 /// Given: Workspace with markdown files
 /// When: Indexing is performed
-/// Expected: Documentation symbols appear in knowledge_embeddings table
-///
-/// NOTE: This test is currently ignored due to a database connection issue.
-/// The indexing process and the test use different database connections from
-/// handler.get_workspace(), causing the test to not see the indexed data.
-/// See issue tracked in checkpoint 2025-11-07.
+/// Expected: Documentation symbols appear in symbols table WHERE content_type='documentation'
 #[tokio::test]
-#[ignore = "Database connection mismatch - indexing uses different connection than test"]
 async fn test_documentation_indexing_basic() -> Result<()> {
     // Skip embedding generation for faster test execution
     unsafe {
@@ -56,22 +50,51 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     fs::write(workspace_path.join("main.rs"), "fn main() {}")?;
     fs::write(workspace_path.join("config.json"), r#"{"version": "1.0"}"#)?;
 
+    // Debug: List all files created
+    println!("DEBUG: Created test files:");
+    for entry in fs::read_dir(workspace_path)? {
+        let entry = entry?;
+        println!("  - {}", entry.path().display());
+    }
+    for entry in fs::read_dir(&docs_dir)? {
+        let entry = entry?;
+        println!("  - {}", entry.path().display());
+    }
+
     // Initialize and index workspace
     let handler = create_test_handler(workspace_path).await?;
 
     // Enable debug logging for this test
     unsafe {
-        std::env::set_var("RUST_LOG", "julie::knowledge=debug,julie::tools::workspace=debug");
+        std::env::set_var("RUST_LOG", "julie=debug");
     }
 
+    println!("DEBUG: Starting indexing...");
     index_workspace(&handler, workspace_path).await?;
+    println!("DEBUG: Indexing complete");
 
-    // IMPORTANT: The workspace needs to be re-fetched after indexing
-    // to ensure we get the database connection that has the indexed data.
-    // This is a workaround for the fact that indexing might use a different
-    // database connection internally.
+    // Debug: Check ALL symbols in database
+    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
+    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let db = db_arc.lock().unwrap();
 
-    // Verify: Documentation symbols are in knowledge_embeddings table
+    let total_symbols: i64 = db.conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0)).unwrap_or(0);
+    println!("DEBUG: Total symbols in database: {}", total_symbols);
+
+    if total_symbols > 0 {
+        // Show some sample symbols
+        let mut stmt = db.conn.prepare("SELECT name, language, content_type FROM symbols LIMIT 5")?;
+        let symbols: Vec<(String, String, Option<String>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        println!("DEBUG: Sample symbols:");
+        for (name, lang, ct) in symbols {
+            println!("  - name={}, language={}, content_type={:?}", name, lang, ct);
+        }
+    }
+    drop(db);
+
+    // Verify: Documentation symbols are in symbols table with content_type='documentation'
     let workspace = handler
         .get_workspace()
         .await?
@@ -84,7 +107,7 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     let doc_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE entity_type = 'doc_section'",
+            "SELECT COUNT(*) FROM symbols WHERE content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -100,7 +123,7 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     let readme_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%README.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%README.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -111,7 +134,7 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     let arch_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%ARCHITECTURE.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%ARCHITECTURE.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -122,11 +145,11 @@ async fn test_documentation_indexing_basic() -> Result<()> {
         "Should find 1 ARCHITECTURE.md documentation entry"
     );
 
-    // Verify: Non-documentation files are NOT in knowledge_embeddings
+    // Verify: Non-documentation files are NOT marked as documentation
     let code_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%main.rs'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%main.rs' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -134,13 +157,13 @@ async fn test_documentation_indexing_basic() -> Result<()> {
 
     assert_eq!(
         code_count, 0,
-        "main.rs should NOT be in knowledge_embeddings (it's code, not documentation)"
+        "main.rs should NOT have content_type='documentation' (it's code, not documentation)"
     );
 
     let json_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%config.json'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%config.json' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -148,18 +171,17 @@ async fn test_documentation_indexing_basic() -> Result<()> {
 
     assert_eq!(
         json_count, 0,
-        "config.json should NOT be in knowledge_embeddings (it's configuration, not documentation)"
+        "config.json should NOT have content_type='documentation' (it's configuration, not documentation)"
     );
 
     Ok(())
 }
 
 /// Test 2: FTS5 full-text search sync
-/// Given: Documentation indexed into knowledge_embeddings
-/// When: Querying knowledge_fts (FTS5 virtual table)
+/// Given: Documentation indexed into symbols table with content_type='documentation'
+/// When: Querying symbols_fts (FTS5 virtual table)
 /// Expected: Documentation is searchable via full-text search (triggers auto-synced)
 #[tokio::test]
-#[ignore = "Database connection mismatch - same issue as test_documentation_indexing_basic"]
 async fn test_documentation_fts5_sync() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -181,51 +203,53 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     let db_arc = workspace.db.as_ref().expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
-    // Debug: Check if data exists in knowledge_embeddings
-    let embeddings_count: i64 = db
+    // Debug: Check if data exists in symbols table
+    let symbols_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE entity_type = 'doc_section'",
+            "SELECT COUNT(*) FROM symbols WHERE content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to count knowledge_embeddings");
+        .expect("Failed to count symbols");
 
-    println!("DEBUG: knowledge_embeddings has {} doc entries", embeddings_count);
+    println!("DEBUG: symbols table has {} documentation entries", symbols_count);
 
-    // Debug: Check if FTS5 table has any data at all
+    // Debug: Check if FTS5 table has any documentation data
     let fts_total: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_fts",
+            "SELECT COUNT(*) FROM symbols_fts WHERE rowid IN (SELECT rowid FROM symbols WHERE content_type = 'documentation')",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to count knowledge_fts");
+        .expect("Failed to count symbols_fts");
 
-    println!("DEBUG: knowledge_fts has {} total entries", fts_total);
+    println!("DEBUG: symbols_fts has {} documentation entries", fts_total);
 
     // Debug: Check what content is actually in FTS5
     let actual_content: String = db
         .conn
         .query_row(
-            "SELECT content FROM knowledge_fts LIMIT 1",
+            "SELECT doc_comment FROM symbols_fts LIMIT 1",
             [],
             |row| row.get(0),
         )
         .expect("Failed to get FTS5 content");
 
-    println!("DEBUG: FTS5 content = '{}'", actual_content);
+    println!("DEBUG: FTS5 doc_comment = '{}'", actual_content);
 
     // Verify: FTS5 search finds documentation by keyword
     let docker_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_fts WHERE content MATCH 'docker'",
+            "SELECT COUNT(*) FROM symbols s
+             JOIN symbols_fts fts ON s.rowid = fts.rowid
+             WHERE fts.doc_comment MATCH 'docker' AND s.content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to search knowledge_fts");
+        .expect("Failed to search symbols_fts");
 
     assert_eq!(
         docker_count, 1,
@@ -235,11 +259,13 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     let production_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_fts WHERE content MATCH 'production'",
+            "SELECT COUNT(*) FROM symbols s
+             JOIN symbols_fts fts ON s.rowid = fts.rowid
+             WHERE fts.doc_comment MATCH 'production' AND s.content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to search knowledge_fts");
+        .expect("Failed to search symbols_fts");
 
     assert_eq!(
         production_count, 1,
@@ -250,11 +276,13 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     let nonexistent_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_fts WHERE content MATCH 'nonexistent_keyword_xyz'",
+            "SELECT COUNT(*) FROM symbols s
+             JOIN symbols_fts fts ON s.rowid = fts.rowid
+             WHERE fts.doc_comment MATCH 'nonexistent_keyword_xyz' AND s.content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to search knowledge_fts");
+        .expect("Failed to search symbols_fts");
 
     assert_eq!(
         nonexistent_count, 0,
@@ -264,12 +292,11 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     Ok(())
 }
 
-/// Test 3: Content hash deduplication
+/// Test 3: File hash deduplication
 /// Given: Documentation indexed, then re-indexed without changes
 /// When: Second indexing occurs
-/// Expected: Duplicate prevention via content hash (INSERT OR REPLACE with same hash)
+/// Expected: Duplicate prevention via file_hash (INSERT OR REPLACE with same hash)
 #[tokio::test]
-#[ignore = "Database connection mismatch - same issue as test_documentation_indexing_basic"]
 async fn test_documentation_deduplication() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -297,7 +324,7 @@ async fn test_documentation_deduplication() -> Result<()> {
     let count_after_first: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%CHANGELOG.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%CHANGELOG.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -316,7 +343,7 @@ async fn test_documentation_deduplication() -> Result<()> {
     let count_after_second: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%CHANGELOG.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%CHANGELOG.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -333,9 +360,8 @@ async fn test_documentation_deduplication() -> Result<()> {
 /// Test 4: Modified documentation updates existing entry
 /// Given: Documentation indexed, then content modified
 /// When: Re-indexing occurs
-/// Expected: Existing entry updated (not duplicated) due to content hash change
+/// Expected: Existing entry updated (not duplicated) and doc_comment reflects new content
 #[tokio::test]
-#[ignore = "Database connection mismatch - same issue as test_documentation_indexing_basic"]
 async fn test_documentation_update_on_change() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -356,15 +382,20 @@ async fn test_documentation_update_on_change() -> Result<()> {
     let db_arc = workspace.db.as_ref().expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
-    // Get initial content hash
-    let initial_hash: String = db
+    // Get initial doc_comment content
+    let initial_content: String = db
         .conn
         .query_row(
-            "SELECT content_hash FROM knowledge_embeddings WHERE source_file LIKE '%API.md'",
+            "SELECT doc_comment FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to get initial hash");
+        .expect("Failed to get initial content");
+
+    assert!(
+        initial_content.contains("Version 1.0 API"),
+        "Initial content should contain 'Version 1.0 API'"
+    );
 
     drop(db); // Release lock
 
@@ -377,27 +408,32 @@ async fn test_documentation_update_on_change() -> Result<()> {
 
     let db = db_arc.lock().unwrap();
 
-    // Get updated content hash
-    let updated_hash: String = db
+    // Get updated doc_comment content
+    let updated_content: String = db
         .conn
         .query_row(
-            "SELECT content_hash FROM knowledge_embeddings WHERE source_file LIKE '%API.md'",
+            "SELECT doc_comment FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
-        .expect("Failed to get updated hash");
+        .expect("Failed to get updated content");
 
-    // Verify: Content hash changed (reflecting modified content)
+    // Verify: Content changed (reflecting modified file)
     assert_ne!(
-        initial_hash, updated_hash,
-        "Content hash should change when documentation is modified"
+        initial_content, updated_content,
+        "Content should change when documentation is modified"
+    );
+
+    assert!(
+        updated_content.contains("Version 2.0 API"),
+        "Updated content should contain 'Version 2.0 API'"
     );
 
     // Verify: Still only one entry (replaced, not duplicated)
     let count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%API.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%API.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )
@@ -411,9 +447,8 @@ async fn test_documentation_update_on_change() -> Result<()> {
 /// Test 5: Multiple markdown sections from single file
 /// Given: Markdown file with multiple heading sections
 /// When: Indexing occurs
-/// Expected: Multiple symbol entries, one per section (markdown extractor behavior)
+/// Expected: Multiple symbol entries in symbols table, one per section (markdown extractor behavior)
 #[tokio::test]
-#[ignore = "Database connection mismatch - same issue as test_documentation_indexing_basic"]
 async fn test_multiple_sections_from_single_file() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -439,7 +474,7 @@ async fn test_multiple_sections_from_single_file() -> Result<()> {
     let section_count: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM knowledge_embeddings WHERE source_file LIKE '%MULTIPART.md'",
+            "SELECT COUNT(*) FROM symbols WHERE file_path LIKE '%MULTIPART.md' AND content_type = 'documentation'",
             [],
             |row| row.get(0),
         )

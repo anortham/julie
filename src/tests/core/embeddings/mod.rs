@@ -68,6 +68,7 @@ async fn test_symbol_embedding_generation() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     let context = CodeContext::from_symbol(&symbol);
@@ -196,6 +197,7 @@ fn test_code_context_creation() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     let context = CodeContext::from_symbol(&symbol);
@@ -236,6 +238,7 @@ async fn test_build_embedding_text() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     let mut context = CodeContext::from_symbol(&symbol);

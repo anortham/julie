@@ -31,6 +31,7 @@ mod tests {
             confidence: Some(0.95),
             metadata: Some(HashMap::new()),
             code_context: None,
+        content_type: None,
         }
     }
 

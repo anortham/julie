@@ -42,6 +42,7 @@ mod navigation_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: None, // FastRefsTool doesn't use code context currently
+                content_type: None,
             };
             symbols.push(symbol);
 
@@ -104,6 +105,7 @@ mod navigation_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: None,
+        content_type: None,
             };
             symbols.push(symbol);
 
@@ -165,6 +167,7 @@ mod navigation_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: None,
+        content_type: None,
             };
             symbols.push(symbol);
 
@@ -229,6 +232,7 @@ mod navigation_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.95),
                 code_context: None,
+        content_type: None,
             };
             symbols.push(symbol);
         }
@@ -279,6 +283,7 @@ mod navigation_tools_tests {
                 semantic_group: Some(format!("utility_group_{}", i % 20)),
                 confidence: Some(0.98),
                 code_context: Some(large_context.clone()),
+        content_type: None,
             };
             symbols.push(symbol);
         }
@@ -324,6 +329,7 @@ mod navigation_tools_tests {
                 semantic_group: Some(format!("processor_interfaces_{}", i % 10)),
                 confidence: Some(0.99),
                 code_context: None,
+        content_type: None,
             };
             symbols.push(symbol);
         }
@@ -376,6 +382,7 @@ mod navigation_tools_tests {
             semantic_group: None,
             confidence: Some(0.85),
             code_context: None,
+        content_type: None,
         };
 
         symbols.push(similar_symbol);
@@ -470,6 +477,7 @@ mod navigation_tools_tests {
             semantic_group: None,
             confidence: Some(0.78), // Semantic similarity score
             code_context: None,
+        content_type: None,
         };
 
         // Step 3: Verify the semantic result has properties indicating it came from semantic search
@@ -550,6 +558,7 @@ mod navigation_tools_tests {
             semantic_group: None,
             confidence: Some(0.76), // Semantic similarity score
             code_context: None,
+        content_type: None,
         };
 
         // Step 3: After finding semantic definition, find references to it

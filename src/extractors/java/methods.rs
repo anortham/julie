@@ -78,7 +78,7 @@ pub(super) fn extract_method(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(
@@ -126,7 +126,7 @@ pub(super) fn extract_constructor(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(

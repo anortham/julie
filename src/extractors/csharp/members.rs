@@ -67,7 +67,7 @@ pub fn extract_method(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -106,7 +106,7 @@ pub fn extract_constructor(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Constructor, options))
@@ -140,7 +140,7 @@ pub fn extract_destructor(
         visibility: Some(Visibility::Protected),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -197,7 +197,7 @@ pub fn extract_property(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Property, options))
@@ -279,7 +279,7 @@ pub fn extract_field(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, symbol_kind, options))
@@ -328,7 +328,7 @@ pub fn extract_event(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Event, options))
@@ -400,7 +400,7 @@ pub fn extract_delegate(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Delegate, options))

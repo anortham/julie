@@ -46,7 +46,7 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&type_name);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-                        ..Default::default()
+            ..Default::default()
                     };
                     let symbol = self.base.create_symbol(&node, name, SymbolKind::Class, options);
                     self.symbols.push(symbol.clone());
@@ -60,7 +60,7 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-                        ..Default::default()
+            ..Default::default()
                     };
                     let symbol = self.base.create_symbol(&node, name, SymbolKind::Property, options);
                     self.symbols.push(symbol);
@@ -73,7 +73,7 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-                        ..Default::default()
+            ..Default::default()
                     };
                     let symbol = self.base.create_symbol(&node, name, SymbolKind::Event, options);
                     self.symbols.push(symbol);
@@ -86,7 +86,7 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-                        ..Default::default()
+            ..Default::default()
                     };
                     let symbol = self.base.create_symbol(&node, name, SymbolKind::Function, options);
                     self.symbols.push(symbol);

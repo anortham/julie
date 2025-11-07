@@ -288,7 +288,7 @@ pub(super) fn extract_variable(
                         }),
                         parent_id: parent_id.map(|id| id.to_string()),
                         metadata: Some(HashMap::new()),
-                        ..Default::default()
+            ..Default::default()
                     },
                 );
 

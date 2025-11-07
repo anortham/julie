@@ -107,6 +107,7 @@ mod workspace_isolation {
                 semantic_group: None,
                 confidence: None,
                 code_context: None,
+        content_type: None,
             };
             ref_db.bulk_store_symbols(&[test_symbol], &reference_id)?;
         }

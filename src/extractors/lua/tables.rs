@@ -69,7 +69,7 @@ fn extract_table_field_symbol(
         parent_id: parent_id.map(|s| s.to_string()),
         visibility: Some(Visibility::Public),
         metadata: Some(metadata),
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(base.create_symbol(&name_node, name, kind, options))

@@ -34,6 +34,7 @@ mod search_quality_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: None,
+        content_type: None,
         });
 
         // Test file symbol (should rank lower when not searching "test")
@@ -57,6 +58,7 @@ mod search_quality_tests {
             semantic_group: None,
             confidence: Some(0.85),
             code_context: None,
+        content_type: None,
         });
 
         // Test directory symbol (should rank lowest)
@@ -80,6 +82,7 @@ mod search_quality_tests {
             semantic_group: None,
             confidence: Some(0.80),
             code_context: None,
+        content_type: None,
         });
 
         symbols
@@ -386,6 +389,7 @@ mod multi_word_query_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: None,
+        content_type: None,
         };
 
         // The search query "user service" should match "UserService"
@@ -427,6 +431,7 @@ mod multi_word_query_tests {
             semantic_group: None,
             confidence: Some(0.90),
             code_context: None,
+        content_type: None,
         };
 
         let query = "user service";
@@ -518,6 +523,7 @@ mod search_integration_tests {
                 semantic_group: None,
                 confidence: Some(0.95),
                 code_context: None,
+        content_type: None,
             },
             // snake_case function
             Symbol {
@@ -540,6 +546,7 @@ mod search_integration_tests {
                 semantic_group: None,
                 confidence: Some(0.90),
                 code_context: None,
+        content_type: None,
             },
             // camelCase method
             Symbol {
@@ -562,6 +569,7 @@ mod search_integration_tests {
                 semantic_group: None,
                 confidence: Some(0.88),
                 code_context: None,
+        content_type: None,
             },
         ]
     }

@@ -65,7 +65,7 @@ pub(super) fn extract_class(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(
@@ -118,7 +118,7 @@ pub(super) fn extract_interface(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(
@@ -163,7 +163,7 @@ pub(super) fn extract_enum(
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(
@@ -202,7 +202,7 @@ pub(super) fn extract_enum_constant(
         visibility: Some(Visibility::Public), // Enum constants are always public in Java
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
-        ..Default::default()
+            ..Default::default()
     };
 
     Some(

@@ -34,6 +34,7 @@ fn create_test_symbol(id: &str, name: &str, similarity_score: f32) -> (Symbol, f
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
     (symbol, similarity_score)
 }

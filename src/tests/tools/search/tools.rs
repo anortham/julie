@@ -43,6 +43,7 @@ mod search_tools_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: Some("fn testFunction() -> bool {\n    true\n}".to_string()),
+        content_type: None,
         }];
 
         let optimized = OptimizedResponse {
@@ -110,6 +111,7 @@ mod search_tools_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: Some(long_context),
+        content_type: None,
         }];
 
         let optimized = OptimizedResponse {
@@ -179,6 +181,7 @@ mod search_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: Some(large_context.clone()),
+        content_type: None,
             });
         }
 
@@ -253,6 +256,7 @@ mod search_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: Some(large_context.clone()),
+        content_type: None,
             });
         }
 

@@ -1,5 +1,6 @@
 // Symbol query operations
 
+use super::super::helpers::SYMBOL_COLUMNS;
 use super::super::*;
 use anyhow::Result;
 use rusqlite::params;
@@ -7,12 +8,8 @@ use tracing::debug;
 
 impl SymbolDatabase {
     pub fn get_symbol_by_id(&self, id: &str) -> Result<Option<Symbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
-             FROM symbols WHERE id = ?1",
-        )?;
+        let query = format!("SELECT {} FROM symbols WHERE id = ?1", SYMBOL_COLUMNS);
+        let mut stmt = self.conn.prepare(&query)?;
 
         let result = stmt.query_row(params![id], |row| self.row_to_symbol(row));
 
@@ -32,10 +29,8 @@ impl SymbolDatabase {
         // Build parameterized query with IN clause for batch fetch
         let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
         let query = format!(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
-             FROM symbols WHERE id IN ({})",
+            "SELECT {} FROM symbols WHERE id IN ({})",
+            SYMBOL_COLUMNS,
             placeholders.join(", ")
         );
 
@@ -57,14 +52,8 @@ impl SymbolDatabase {
 
     /// Find symbols by name with optional language filter
     pub fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
-             FROM symbols
-             WHERE name = ?1
-             ORDER BY language, file_path",
-        )?;
+        let query = format!("SELECT {} FROM symbols WHERE name = ?1 ORDER BY language, file_path", SYMBOL_COLUMNS);
+        let mut stmt = self.conn.prepare(&query)?;
 
         let symbol_iter = stmt.query_map(params![name], |row| self.row_to_symbol(row))?;
 
@@ -221,9 +210,14 @@ impl SymbolDatabase {
             // 🔥 FTS5 MATCH with BM25 ranking + SymbolKind boost - no workspace filter needed
             // Column weights: name (10x), signature (5x), doc_comment (2x), code_context (1x)
             // SymbolKind boost: Definitions (class/struct/interface) rank higher than imports/exports
-            let query = "SELECT s.id, s.name, s.kind, s.language, s.file_path, s.signature, s.start_line, s.start_col,
-                               s.end_line, s.end_col, s.start_byte, s.end_byte, s.doc_comment, s.visibility, s.code_context,
-                               s.parent_id, s.metadata, s.semantic_group, s.confidence
+
+            // Build column list with "s." prefix for JOIN query
+            let columns_with_prefix = SYMBOL_COLUMNS.split(", ")
+                .map(|col| format!("s.{}", col))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let query = format!("SELECT {}
                          FROM symbols s
                          INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
                          WHERE symbols_fts MATCH ?1
@@ -245,9 +239,9 @@ impl SymbolDatabase {
                              WHEN 'import' THEN 0.1
                              WHEN 'export' THEN 0.1
                              ELSE 0.3
-                           END";
+                           END", columns_with_prefix);
 
-            let mut stmt = conn.prepare(query)?;
+            let mut stmt = conn.prepare(&query)?;
             let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
 
             let mut symbols = Vec::new();
@@ -289,7 +283,7 @@ impl SymbolDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
                     end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
+                    parent_id, metadata, semantic_group, confidence, content_type
              FROM symbols
              WHERE file_path = ?1
              ORDER BY start_line, start_col",

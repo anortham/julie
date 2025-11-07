@@ -3,6 +3,17 @@
 use super::*;
 use anyhow::Result;
 
+/// Standard SELECT column list for Symbol queries
+/// CRITICAL: This must stay in sync with row_to_symbol() expectations
+/// When adding a new column to Symbol struct, update BOTH:
+/// 1. This constant (add column to SELECT list)
+/// 2. row_to_symbol() (add row.get() call)
+pub(crate) const SYMBOL_COLUMNS: &str =
+    "id, name, kind, language, file_path, signature, \
+     start_line, start_col, end_line, end_col, start_byte, end_byte, \
+     doc_comment, visibility, code_context, parent_id, \
+     metadata, semantic_group, confidence, content_type";
+
 impl SymbolDatabase {
     pub fn begin_transaction(&mut self) -> Result<()> {
         self.conn.execute("BEGIN TRANSACTION", [])?;

@@ -30,6 +30,7 @@ fn test_json_output() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     }];
 
     let mut writer = OutputWriter::new(OutputFormat::Json).unwrap();
@@ -58,6 +59,7 @@ fn test_ndjson_streaming() {
         semantic_group: None,
         confidence: None,
         code_context: None,
+        content_type: None,
     };
 
     let mut writer = OutputWriter::new(OutputFormat::Ndjson).unwrap();

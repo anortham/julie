@@ -282,3 +282,7 @@ when this keeps happening the agent just gives up and falls back to search like:
 
   we should look at fixing this: ⏺ julie - fast_search (MCP)(query: "mod knowledge tests/mod.rs", search_method: "text", limit: 10, search_target: "content", file_pattern: "src/tests/mod.rs")
   ⎿  Error: Tool execution failed: fts5: syntax error near "/"
+
+  The TOP TIER GOAL of the RAG updates has got to be token reduction. We need the agent to be able to find code with better accuracy and fewer tokens. The agent needs to be able to consume documentation with fewer tokens used. This project has grown and so has the documentation. It's become difficult to get any decent sized chunk of work done without running our of context because of all the code that needs to be understood and documenation that needs to be read. This has to be prioritiy one for the RAG changes.
+
+  

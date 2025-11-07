@@ -61,7 +61,7 @@ impl super::BashExtractor {
                             visibility: Some(Visibility::Public),
                             parent_id: Some(parent_id.to_string()),
                             doc_comment: self.base.find_doc_comment(&node),
-                            ..Default::default()
+            ..Default::default()
                         };
 
                         let param_symbol = self.base.create_symbol(

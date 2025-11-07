@@ -26,6 +26,13 @@ impl BaseExtractor {
         // Extract code context around the symbol
         let code_context = self.extract_code_context(start_pos.row, end_pos.row);
 
+        // Mark markdown symbols as documentation
+        let content_type = if self.language == "markdown" {
+            Some("documentation".to_string())
+        } else {
+            None
+        };
+
         let symbol = Symbol {
             id: id.clone(),
             name,
@@ -46,12 +53,7 @@ impl BaseExtractor {
             semantic_group: None, // Will be populated during cross-language analysis
             confidence: None,     // Will be calculated based on parsing context
             code_context,
-            // Mark markdown symbols as documentation
-            content_type: if self.language == "markdown" {
-                Some("documentation".to_string())
-            } else {
-                None
-            },
+            content_type,
         };
 
         self.symbol_map.insert(id, symbol.clone());
