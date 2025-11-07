@@ -6,7 +6,7 @@
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
-use crate::watcher::language;
+use crate::language; // Centralized language support
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -60,8 +60,11 @@ pub async fn handle_file_created_or_modified_static(
     }
 
     // 4. Detect language and extract symbols
-    let language = language::detect_language(&path)
-        .ok()
+    let language = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .and_then(|ext| language::detect_language_from_extension(ext))
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "unknown".to_string());
     let content_str = String::from_utf8_lossy(&content);
 

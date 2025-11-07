@@ -1,7 +1,7 @@
 //! Tests for the file watcher module extracted from the implementation file to keep it lean.
 
+use crate::language; // Centralized language support
 use crate::watcher::filtering;
-use crate::watcher::language;
 use crate::watcher::IncrementalIndexer;
 use std::fs;
 use tempfile::TempDir;
@@ -40,9 +40,6 @@ fn test_ignore_patterns() {
 
 #[test]
 fn test_language_detection_by_extension() {
-    let temp_dir = TempDir::new().unwrap();
-    let workspace_root = temp_dir.path().to_path_buf();
-
     let test_files = vec![
         ("test.rs", "rust"),
         ("app.ts", "typescript"),
@@ -50,16 +47,26 @@ fn test_language_detection_by_extension() {
         ("main.py", "python"),
         ("App.java", "java"),
         ("Program.cs", "csharp"),
+        // Documentation and configuration languages (extractors #28-30)
+        ("README.md", "markdown"),
+        ("package.json", "json"),
+        ("Cargo.toml", "toml"),
     ];
 
     for (filename, expected_lang) in test_files {
-        let file_path = workspace_root.join(filename);
-        fs::write(&file_path, "// test content").unwrap();
+        // Extract extension from filename
+        let ext = std::path::Path::new(filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .expect("Test file should have extension");
 
-        let result = language::detect_language(&file_path);
-        if let Ok(lang) = result {
-            assert_eq!(lang, expected_lang);
-        }
+        let detected_lang = language::detect_language_from_extension(ext);
+        assert_eq!(
+            detected_lang,
+            Some(expected_lang),
+            "Failed to detect language for {}",
+            filename
+        );
     }
 }
 

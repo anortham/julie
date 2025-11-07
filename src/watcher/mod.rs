@@ -14,7 +14,6 @@
 mod events;
 pub mod filtering;  // Public for tests
 pub mod handlers;   // Public for tests
-pub mod language;   // Public for tests
 pub mod types;
 
 use anyhow::{Context, Result};
