@@ -62,26 +62,9 @@ pub async fn generate_embeddings_from_sqlite(
         }
     };
 
-    // 🔥 FORCE REINDEX: Clear all embeddings if requested
-    if force_reindex {
-        info!("🔥 Force reindex requested - clearing all embeddings to regenerate from scratch");
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Database mutex poisoned during embeddings clear, recovering: {}", poisoned);
-                poisoned.into_inner()
-            }
-        };
-
-        // Clear both embeddings mapping table and vector storage table
-        // CRITICAL: Must clear embeddings table (not just embedding_vectors) because
-        // get_symbols_without_embeddings() queries the embeddings table with LEFT JOIN
-        db_lock.conn.execute("DELETE FROM embeddings", [])
-            .context("Failed to clear embeddings mapping table")?;
-        db_lock.conn.execute("DELETE FROM embedding_vectors", [])
-            .context("Failed to clear embedding_vectors storage table")?;
-        info!("✅ Cleared all embeddings and vectors - will regenerate for all symbols");
-    }
+    // 🚀 RACE CONDITION FIX: Embeddings are now cleared SYNCHRONOUSLY in index.rs BEFORE this task spawns
+    // This prevents the race where main thread writes data, then this background task deletes it
+    // The force_reindex flag is still passed to this function but clearing is done earlier
 
     // 🚀 INCREMENTAL UPDATES: Only process symbols that don't have embeddings yet
     // This fixes the performance problem where ALL symbols were reprocessed every startup

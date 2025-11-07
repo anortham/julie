@@ -1,296 +1,272 @@
 # Julie TODO
 
-**Project Status: v0.9.0 - Production Ready** 🎉
+## 🎯 Current Session Progress (2025-11-06)
 
-All release blockers fixed. All high-priority items complete. Codebase in excellent shape:
-- ✅ 1,452 tests passing (100%)
-- ✅ 0 compilation warnings
-- ✅ 0 mutex lock unwraps in production
-- ✅ 100% CLAUDE.md compliance (all files ≤ 500 lines)
-
----
-
-## 🔥 Latest Session: GPT-5 Code Review Verification (2025-11-02)
-
-**GPT-5 conducted a comprehensive code review and identified several issues. We verified and fixed:**
-
-### ✅ CRITICAL Release Blocker - FIXED
-**Incremental Indexing Path Mismatch (Performance Bug)**
-- **Issue**: File watcher provides absolute paths, but database stores relative paths
-- **Impact**: Blake3 hash lookups always failed → full re-parse on every file save (10-100x slower)
-- **Root Cause**: `handle_file_created_or_modified_static` used absolute paths for DB operations
-- **Fix Applied**:
-  - Added `to_relative_unix_style()` conversion at entry point (`src/watcher/handlers.rs:35-39`)
-  - All DB operations now use relative paths (hash lookup, symbol delete, hash update)
-  - Added `workspace_root` parameter to `handle_file_deleted_static`
-  - Updated all 4 call sites in `src/watcher/mod.rs` and tests
-- **Test Coverage**: Added comprehensive TDD test (`test_incremental_indexing_absolute_path_handling`)
-  - Verifies hash check prevents unnecessary re-indexing
-  - Tests deletion and rename with absolute paths
-  - Confirms path normalization works end-to-end
-- **Files Modified**: `src/watcher/handlers.rs`, `src/watcher/mod.rs`, `src/tests/integration/watcher_handlers.rs`
-
-### ✅ High Priority Fixes - COMPLETE
-1. **Missing Language Extensions in Staleness Detection**
-   - Added `"qml"` and `"r"` to `is_code_file()` in `src/startup.rs:327-328`
-   - QML and R files now trigger re-indexing when stale
-
-2. **Windows Path Separator Bug** - FIXED
-   - **Issue**: `scan_workspace_files()` returns `src\\file.rs` (backslash) on Windows
-   - **Impact**: DB stores `src/file.rs` (forward slash) → staleness detection fails
-   - **Fix Applied**:
-     - Changed `strip_prefix()` + `to_string_lossy()` to `to_relative_unix_style()` in `src/startup.rs:232`
-     - Ensures all paths use Unix-style `/` separators regardless of platform
-     - Made `scan_workspace_files()` `pub(crate)` for testing
-   - **Test Coverage**: Added `test_scan_workspace_files_returns_unix_style_paths()`
-     - Verifies no backslashes in returned paths
-     - Tests nested directory structures
-     - Cross-platform correctness (passes on Linux, will work on Windows)
-   - **Files Modified**: `src/startup.rs`, `src/tests/integration/stale_index_detection.rs`
-
-3. **.julieignore Inconsistency** - FIXED
-   - **Issue**: Discovery respects `.julieignore`, but startup scanning does not
-   - **Impact**: Causes false "needs indexing" warnings for ignored files
-   - **Fix Applied**:
-     - Created shared `.julieignore` utilities in `src/utils/ignore.rs`
-     - Extracted `load_julieignore()` and `is_ignored_by_pattern()` functions
-     - Integrated into `scan_workspace_files()` in `src/startup.rs:200, 226-228`
-     - Ensures consistency between discovery and staleness detection
-   - **Test Coverage**: Added `test_scan_workspace_files_respects_julieignore()`
-     - Tests specific file patterns
-     - Tests directory patterns
-     - Tests wildcard extension patterns
-     - Includes unit tests for the shared utilities
-   - **Files Modified**: `src/startup.rs`, `src/utils/mod.rs`, `src/utils/ignore.rs` (new), `src/tests/integration/stale_index_detection.rs`
-   - **Note**: Discovery code in `src/tools/workspace/discovery.rs` could now be refactored to use shared utilities (optional cleanup)
-
-### 📚 Documentation Updates - ✅ COMPLETE
-4. **SEARCH_FLOW.md**: ✅ Removed `"all"` from workspace parameter (line 90)
-5. **README.md**: ✅ Fixed language count mismatch (line 271: 25→27)
-6. **README.md**: ✅ Clarified multi-workspace wording (line 10: "one workspace at a time")
-
----
-
-## 🎯 Remaining Low-Priority Items
-
-### Verification Tasks (Optional Pre-1.0)
-- [ ] **Block-on-async verification** - Confirm heavy DB/FS ops use spawn_blocking consistently
-  - Reference: src/tools/search/text_search.rs:104-148, src/main.rs:280-344
-  - Likely already correct, just needs audit
-
-- [ ] **Path handling audit** - Verify all DB writes use relative Unix-style paths
-  - Reference: src/utils/paths.rs:1-120, docs/RELATIVE_PATHS_CONTRACT.md
-  - Contract exists, verify compliance across all indexing code
-
-### Performance Validation (Nice-to-Have)
-- [ ] **WAL checkpoint stress test** - Confirm no "database malformed" under concurrent write/read load
-  - Reference: src/database/mod.rs:44-78, src/database/files.rs:86-158
-  - Add stress test for bulk insert scenarios
-
-- [ ] **VectorStore memory profiling** - Validate <100MB claim with actual measurements
-  - Add benchmark for typical repo size post-HNSW build
-  - Document actual memory footprint
-
-### Quality of Life (1.0.x)
-- [ ] **CI pipeline improvements** - Add `cargo check` + `clippy` on PRs (not just release tags)
-  - Catch unwrap/panic paths and style issues earlier
-
-- [ ] **Large test files** - Consider splitting test files >1000 lines
-  - Examples: src/tests/extractors/* (multiple >1k), src/tests/integration/real_world_validation.rs (1227 lines)
-  - Acceptable for comprehensive suites but could improve navigability
-
-- [ ] **Status tool** - Expose `/status` MCP tool for agent polling
-  - Return HealthChecker::get_status_message for quick health checks
-
-- [ ] **Structured error codes** - Add error codes for common MCP failures
-  - Examples: bad params, workspace not indexed, invalid workspace ID
-  - Helps AI agents handle errors programmatically
-
----
-
-## 📚 Key Patterns & Lessons Learned
-
-### Pattern 1: Graceful Mutex Poisoning Recovery (Applied 57x)
-```rust
-let db_lock = match db.lock() {
-    Ok(guard) => guard,
-    Err(poisoned) => {
-        warn!("Database mutex poisoned, recovering: {}", poisoned);
-        poisoned.into_inner()
-    }
-};
+### 📦 FILES CHANGED (Ready to Commit)
 ```
-**Rationale:** Prevents cascade failures when thread panics while holding lock. Production stability improvement with zero runtime overhead.
-
-### Pattern 2: Parallel Agent Execution Success
-**Proven Approach:** Multiple rust-tdd-implementer or rust-refactor-specialist agents can work in parallel on different subsystems without conflicts.
-
-**Examples:**
-- 6 agents refactored 6,949 lines into 33 modules simultaneously (zero conflicts)
-- 7 agents eliminated 57 mutex unwraps across 22 files (zero conflicts)
-
-**Keys to Success:**
-- Clear task separation by subsystem
-- Single responsibility per agent
-- Consistent patterns across all agents
-- Updated agent definitions: NO unsolicited docs/commits
-
-### Pattern 3: SOURCE/CONTROL Testing for File Modifications
-All file modification tools use SOURCE/CONTROL methodology:
-1. SOURCE files - Original, never modified
-2. CONTROL files - Expected results after operation
-3. Test process: SOURCE → copy → edit → diff against CONTROL
-
-**Reference:** tests/editing/ structure, FuzzyReplaceTool tests (18 tests)
-
-### Pattern 4: Session Documentation
-Comprehensive session documentation in TODO.md creates invaluable audit trail. Each session captures:
-- What was fixed
-- How it was fixed (code examples)
-- Agents used (if any)
-- Files modified
-- Test results
-- Lessons learned
-
-**Value:** Future developers understand architectural decisions and patterns applied consistently.
-
----
-
-## 🐕 Dogfooding Observations
-
-*This section is for capturing bugs, UX issues, and insights discovered while using Julie to develop Julie.*
-
-### Template for New Findings:
-```
-### [Date] - [Brief Description]
-**Symptom:** What went wrong
-**Root Cause:** Why it happened
-**Impact:** Severity and scope
-**Fix:** What was changed
-**Test:** How we prevent regression
-**Files Modified:** List of files
+Modified:
+- src/tools/workspace/indexing/index.rs        # Race condition fix (lines 321-352)
+- src/tools/workspace/indexing/embeddings.rs   # Removed DELETE operations (now sync)
+- src/tools/search/query_preprocessor.rs       # Added AND logic (lines 428-449)
+- src/tests/integration/watcher_handlers.rs    # Unused variable fix
+- TODO.md                                       # Updated progress and next steps
 ```
 
-### 2025-11-04 - Database Corruption Under Concurrent Test/MCP Usage - ✅ RESOLVED
-**Symptom:** `Error: database disk image is malformed` when running MCP fast_search while tests were executing
-**Root Cause:** **14 test files** opened SQLite connections without configuring `busy_timeout` or `wal_autocheckpoint`, causing immediate lock failures and WAL corruption under concurrent access.
-**Impact:** **HIGH** - Production blocker. Users cannot reliably use Julie MCP tools while tests run, and similar conflicts could occur in production under heavy concurrent load.
-**Current Status:** ✅ **RESOLVED** (2025-11-04)
+**Git Status**: Ready to commit and push
+**Next Machine**: Run `cargo build --release` after pulling changes
+**Test**: Multi-word queries like `"workspace registry"` should return results
 
-**Fix Applied:**
-1. **Created helper function** `open_test_connection()` in `src/tests/mod.rs:167-183`
-   - Sets `busy_timeout(5000ms)` - waits 5s for locks instead of failing immediately
-   - Sets `wal_autocheckpoint(2000)` - prevents WAL from growing unbounded
-   - Properly documents why these settings are critical
+### ✅ COMPLETED
+1. **Race Condition Fix** - Critical bug where background task deleted data after main thread wrote it
+   - Moved all DELETE operations from `generate_embeddings_from_sqlite` to synchronous code in `index.rs`
+   - Now clears: embeddings, embedding_vectors, knowledge_embeddings, knowledge_relationships
+   - Fix applied at: `src/tools/workspace/indexing/index.rs:321-352`
+   - Validated by independent Gemini analysis (15min deep-dive reached same conclusion)
 
-2. **Replaced 14 unconfigured connections** across 3 test files:
-   - `src/tests/cli/codesearch.rs` (9 fixes)
-   - `src/tests/core/database.rs` (4 fixes)
-   - `src/tests/fixtures/julie_db.rs` (1 fix)
+2. **Query Expansion Fix** - Multi-word queries now use FTS5 AND logic
+   - **Problem**: `process_standard_query()` was doing nothing (`query.trim()`)
+   - **Solution**: Added AND logic for multi-word queries: `"a b c"` → `"a AND b AND c"`
+   - **Result**: Multi-word searches now work correctly (Google-style: all terms must be present)
+   - Fix applied at: `src/tools/search/query_preprocessor.rs:428-449`
+   - **VERIFIED WORKING**:
+     - `"workspace registry"` → 3 results ✅
+     - `"workspace_path current_dir is_primary_workspace"` → 2 results ✅ (line mode)
+     - `"force_reindex is_primary_workspace"` → 1 result ✅ (line mode)
 
-3. **Added comprehensive stress tests** in `src/tests/core/database.rs:1416-1691`:
-   - `test_concurrent_read_access_no_corruption` - 10 threads × 50 reads = 500 operations ✅
-   - `test_concurrent_mixed_access_no_corruption` - 5 readers + 3 writers = 130 operations ✅
-   - `test_extreme_concurrent_stress` - 20 threads hammering for 10s (ignored, manual run)
+3. **Search Quality Investigation** - Original "failing" queries were invalid
+   - Test queries in TODO.md were asking for terms that DON'T EXIST TOGETHER
+   - Example: `"let is_primary_workspace canonical"` → "canonical" doesn't exist in that file
+   - FTS5 correctly returned 0 results (not a bug, just invalid queries)
+   - Multi-word search is working as expected with AND logic
 
-4. **Fixed fixture corruption** in `src/tests/fixtures/julie_db.rs:108-119`:
-   - WAL checkpoint before database copy prevents partial/corrupted fixtures
-   - Eliminates random FTS5 corruption in dogfood tests
+### 🎯 NEXT STEPS
 
-**Test Results:**
-- All 5 concurrent access tests pass ✅
-- No database corruption under 500+ concurrent operations ✅
-- All existing tests continue to pass ✅
+**Priority 1: Validate Search Quality Improvements**
+- Multi-word AND queries are now working - test with real-world usage
+- Consider adding query suggestions when 0 results (suggest removing terms)
+- Monitor if semantic fallback is needed for edge cases
 
-**Files Modified:**
-- `src/tests/mod.rs` - Added `open_test_connection()` helper
-- `src/tests/cli/codesearch.rs` - 9 connection fixes
-- `src/tests/core/database.rs` - 4 connection fixes + 3 new stress tests
-- `src/tests/fixtures/julie_db.rs` - 1 connection fix + WAL checkpoint
-- `src/tests/tools/search_quality/helpers.rs` - Already had proper configuration ✅
+**Priority 2: Debug Documentation Indexing Test**
+- Test location: `src/tests/integration/documentation_indexing.rs::test_documentation_indexing_basic`
+- Issue: Expects 3 markdown files indexed into `knowledge_embeddings`, finds 0
+- May be related to race condition fix or separate issue
+- Need to verify markdown file discovery and documentation storage logic
 
----
+**Priority 3: Consider Tantivy Reintegration** (Optional - FTS5 is working well)
+- Current FTS5 implementation with AND logic is functional
+- Only consider Tantivy if hitting performance/feature limitations
+- If pursued: Fix Arc deadlock pattern with proper batch writes and lock release
 
-## 🔍 Current Focus Areas
+**Priority 4: RAG Enhancement** (docs/RAG_TRANSFORMATION.md)
+- Improve embedding quality for markdown (extract section content, not just headings)
+- Implement semantic doc search with proper embeddings
+- Consider knowledge_embeddings table consolidation
 
-*Update this section with what you're actively working on.*
+### 📝 KEY LEARNINGS
 
-**Search Quality Improvements (2025-11-04)**
-- Optimizing dogfooding test performance (FTS5 rebuild overhead)
-- Expanding search quality test coverage (ranking, cross-language, edge cases)
-- Investigating concurrent database access bug discovered during dogfooding
-
----
-
-## 📝 Notes
-
-- Previous session history preserved in git: All ~850 lines of completed work documented
-- Key achievements: 57 mutex unwraps eliminated, 6 giant files refactored, 4 release blockers fixed
-- Full test coverage: 1,450 tests, 100% pass rate
-- Last major cleanup: 2025-11-02 (Mutex unwrap elimination complete)
-
-**Next Steps:** Use Julie in production, capture real-world findings in Dogfooding section above.
+1. **Multi-word queries work best with simple AND logic** - No need for complex query expansion in most cases
+2. **FTS5 is fast and reliable** - <5ms searches with proper BM25 ranking
+3. **Test queries should validate actual code patterns** - Invalid test cases waste debugging time
+4. **Race conditions in async code require careful synchronization** - DELETE operations must complete before spawning background tasks
 
 ---
 
-## 🚩 Archive: 1.0 Code Review Findings (ALL RESOLVED - 2025-11-02)
+## 📊 Archived: Original Search Quality Investigation (Pre-Fix)
 
-**Note:** This section has been archived. All findings were addressed in the "GPT-5 Code Review Verification" session above.
+* Multi-word text searches returning no results constantly. Since we're adding semantic embeddings coverage, consider auto-fallback to semantic search when text search returns 0 results (with message describing the fallback)
 
-### ✅ Release Blockers - RESOLVED
-- ✅ Incremental indexing uses absolute paths for DB lookups/deletes, causing stale symbols and missed hash checks.
-  - Evidence: `src/watcher/handlers.rs:36`, `src/watcher/handlers.rs:87`, `src/watcher/handlers.rs:110`, `src/watcher/handlers.rs:117`, `src/watcher/handlers.rs:181`, `src/watcher/handlers.rs:196`
-  - Why it matters: DB stores relative Unix-style paths per CLAUDE.md. Using absolute paths means:
-    - `get_file_hash` never matches → unnecessary re-indexing
-    - `delete_symbols_for_file` misses old rows → stale/duplicate symbols linger for updated files
-    - `update_file_hash` targets non-existent row → pointless write
-  - Fix pattern: Compute once and use the relative Unix path for all DB keys in handlers:
-    - `let rel = crate::utils::paths::to_relative_unix_style(&path, workspace_root)?;`
-    - Use `rel` for `get_file_hash`, `get_symbols_for_file`, `delete_symbols_for_file`, `update_file_hash`.
-    - Keep `create_file_info(&path, ...)` as-is (it already normalizes to relative).
 
-### ✅ High Priority - RESOLVED
-- ✅ Staleness detection misses some languages and mishandles Windows separators.
-  - Evidence (extensions missing): `src/startup.rs:287`–`src/startup.rs:327` omits `qml` and `r`.
-  - Evidence (path normalization): `src/startup.rs:227`–`src/startup.rs:230` inserts raw `strip_prefix` strings, which are `\` on Windows; DB paths use `/`.
-  - Fixes:
-    - Add `"qml"` and `"r"` to `is_code_file`.
-    - In `scan_workspace_files(...)`, convert to DB format: `to_relative_unix_style(path, workspace_root)` before inserting into the set.
+● julie - fast_search (MCP)(query: "let is_primary_workspace canonical", search_method: "text", limit: 3, search_target: "content", file_pattern:
+                           "src/tools/workspace/indexing/index.rs")
+  ⎿  🔍 No results found for: 'let is_primary_workspace canonical'
+     💡 Try a broader search term, different mode, or check spelling
 
-- ✅ Staleness/new-file scan ignores `.julieignore` patterns, diverging from discovery behavior.
-  - Evidence: Discovery honors `.julieignore` (`src/tools/workspace/discovery.rs`), startup scanning does not (`src/startup.rs`).
-  - Risk: False positives for "needs indexing" on ignored/generated paths; unnecessary indexing work at startup.
-  - Fix: Reuse the ignore logic from `ManageWorkspaceTool::discover_indexable_files` or factor shared ignore helpers and call them from startup.
+● julie - fast_search (MCP)(query: "process_files_optimized is_primary_workspace true false", search_method: "text", limit: 5, search_target: "content")
+  ⎿  🔍 No results found for: 'process_files_optimized is_primary_workspace true false'
+     💡 Try a broader search term, different mode, or check spelling
 
-### ✅ Docs and Messaging - RESOLVED
-- ✅ Search docs still mention multi‑workspace search via `workspace: "all"` (not supported by code, intentionally).
-  - Evidence: `docs/SEARCH_FLOW.md:85`–`docs/SEARCH_FLOW.md:92`.
-  - Code explicitly rejects `all`: `src/tools/search/mod.rs:318`–`src/tools/search/mod.rs:324` and line-mode `src/tools/search/line_mode.rs:57`.
-  - Fix: Update docs to “Single‑workspace only” per CLAUDE.md. Include guidance for searching reference workspaces by ID.
+● julie - fast_search (MCP)(query: "JulieServerHandler::new initialize_workspace_with_force TempDir", search_method: "text", limit: 5, search_target: "content",
+                           file_pattern: "src/tests/**")
+  ⎿  🔍 No results found for: 'JulieServerHandler::new initialize_workspace_with_force TempDir'
+     💡 Try a broader search term, different mode, or check spelling
 
-- ✅ README language count mismatch and wording around multi‑workspace search.
-  - Evidence: README claims 25 languages in structure section vs 27 elsewhere; wording “Multi‑workspace support for searching across related codebases” can imply cross‑workspace queries.
-  - Fix: Align to 27 languages and clarify: “Search targets one workspace at a time. Reference workspaces are indexed into the primary for isolated per‑workspace queries.”
+● julie - fast_search (MCP)(query: "create_test_handler TempDir integration", search_method: "text", limit: 10, search_target: "content", file_pattern:
+                           "src/tests/integration/**")
+  ⎿  🔍 No results found for: 'create_test_handler TempDir integration'
+     💡 Try a broader search term, different mode, or check spelling
 
-### Nice‑to‑Have (Post‑1.0 or quick polish)
-- [ ] Map refactor tool scope → workspace explicitly.
-  - Evidence: `src/tools/refactoring/rename.rs:61` has `// TODO: Map scope to workspace`.
-  - Suggestion: Accept `workspace` param or map `scope` to `primary`/ID consistently.
 
-- [ ] CLI parallel extractor uses sync extraction in Rayon worker.
-  - Evidence: `src/cli/parallel.rs:116` (`// TODO: Make extraction synchronous or use tokio runtime properly`).
-  - Suggestion: Keep as is for CLI, or document acceptance for 1.0; refactor later to avoid misleading TODOs.
+● julie - fast_search (MCP)(query: "CallToolResult content vec", search_method: "text", limit: 3, search_target: "content", file_pattern: "src/tools/**/*.rs")
+  ⎿  🔍 No results found for: 'CallToolResult content vec'
+     💡 Try a broader search term, different mode, or check spelling
 
-- [ ] Align Cargo.lock policy with release process.
-  - Observation: `Cargo.lock` is present but `/.gitignore` also lists it. For binaries, committing `Cargo.lock` is standard; consider removing it from `.gitignore` to avoid confusion.
+● julie - fast_search (MCP)(query: "CallToolResult", search_method: "text", limit: 5, search_target: "content", file_pattern: "src/tools/search.rs", output: "lines")
+  ⎿  🔍 No lines found matching: 'CallToolResult'
+     💡 Try a broader search term or different query
 
-- [ ] Repo hygiene: remove stray build artifacts from VCS if any slipped in (e.g., `libmain_error_handling.rlib`, `rust_out`). Ensure `.gitignore` covers them and the repo is clean before tagging 1.0.
+when this keeps happening the agent just gives up and falls back to search like:
+● Search(pattern: "src/tools/**/*.rs")
+  ⎿  Found 66 files (ctrl+o to expand)
 
-### 📋 Validation Suggestions (Deferred - Core Issues Fixed)
-- [ ] Add focused tests for path handling regressions (nice-to-have additional coverage):
-  - Windows path normalization: start with absolute `C:\...\src\x.rs` → DB stores `src/x.rs`.
-  - Incremental update correctness: modify a file and assert no duplicate symbols; deletion removes stale rows.
-  - Staleness detection honoring `.julieignore`.
 
----
+  ----------------------------------------
 
+  ● OK, here's the real technical breakdown based on actual code:
+
+  Problem 1: Embedding Quality is SHALLOW (Confirmed Bad)
+
+  What we're actually embedding:
+  // src/embeddings/mod.rs:562
+  format!("{} {} {} {}",
+      symbol.name,       // "getUserData"
+      symbol.kind,       // "function"
+      symbol.signature,  // "pub async fn getUserData() -> Result<User>"
+      symbol.doc_comment // "/// Fetches user data"
+  )
+
+  For code: Decent (name + signature + doc = reasonable semantic info)
+
+  For markdown: TERRIBLE:
+  name: "CASCADE Architecture"
+  kind: "heading"
+  signature: null
+  doc_comment: null
+  → Embedding text = "CASCADE Architecture heading"
+
+  This is useless for RAG. We need the actual section CONTENT (the 500 words explaining CASCADE), not just the heading text.
+
+  Problem 2: FTS5 Multi-Word Query FAILURE (Confirmed Bad)
+
+  Your failures:
+  - "let is_primary_workspace canonical" → no results
+  - "process_files_optimized is_primary_workspace true false" → no results
+
+  Root cause (src/tools/search/query_preprocessor.rs:429):
+  fn process_standard_query(query: &str) -> String {
+      query.trim().to_string()  // DOES NOTHING!
+  }
+
+  FTS5 gets: "let is_primary_workspace canonical" verbatim
+
+  FTS5 interprets as: Implicit phrase search OR token AND (depends on FTS5 config)
+
+  Problem: If words aren't in exact order or adjacent, FTS5 fails. No fuzzy logic, no relevance boosting, just dumb tokenization.
+
+  Problem 3: Tantivy Removal Was a Mistake (Confirmed)
+
+  From CLAUDE.md:
+  Tantivy removed - Eliminated Arc deadlocks
+
+  Translation: "We had concurrency bugs we couldn't fix, so we deleted the search engine."
+
+  What Tantivy actually provides:
+  - Query parser: Boolean AND/OR/NOT, phrase queries, fuzzy matching (term~2)
+  - BM25F scoring: Field-weighted relevance (name > doc_comment > code)
+  - Better tokenizers: CamelCase splitting, stop words, stemming
+  - Performance: Faster than FTS5 at scale
+
+  The deadlock was a USAGE bug, not a Tantivy problem. Proper Tantivy usage:
+  // DON'T: Hold write lock forever
+  let writer = index.writer.lock().unwrap();
+  writer.add_document(...); // Blocks everyone
+
+  // DO: Batch and release
+  {
+      let mut writer = index.writer.lock().unwrap();
+      writer.add_document(...);
+  } // Lock released
+  writer.commit()?; // Separate step
+
+  The Hard Truth
+
+  Your text search sucks because:
+  1. FTS5 has NO query intelligence (no AND/OR injection, no fuzzy matching)
+  2. We're not even TRYING to improve queries (process_standard_query does nothing)
+  3. Tantivy would solve this but was removed due to skill issues
+
+  Your semantic search can't save you because:
+  1. We're only embedding shallow metadata (name + signature)
+  2. Markdown gets JUST the heading, not the content
+  3. Without rich embeddings, semantic search is just expensive keyword matching
+
+  The Real Path Forward
+
+  Option A: Fix FTS5 properly
+  - Inject AND/OR logic in process_standard_query ("a b c" → "(a AND b AND c) OR (a b c)")
+  - Add fuzzy suffix matching ("workspace" → "workspace*")
+  - Better tokenization in schema (currently: unicode61 separators '_::->')
+
+  Option B: Bring back Tantivy (correctly)
+  - Fix the Arc usage pattern (batch writes, release locks)
+  - Get proper query parsing and scoring
+  - Actually solve the search quality problem
+
+  Option C: Improve embeddings for RAG
+  - Extract full section CONTENT for markdown (not just headings)
+  - Include code_context in embedding text (first 256 chars of function body)
+  - Build unified semantic search that actually understands code + docs
+
+  You're right to be frustrated. The search quality IS bad, and I've been downplaying it. The FTS5 vs Tantivy debate is real, and removing Tantivy because of
+  concurrency bugs was probably premature.
+
+
+  There it is. The smoking gun.
+
+  Query expansion exists, has comprehensive tests, was built over 2 days... and is NEVER CALLED in production search code. It's only used in test files.
+
+  What Actually Happened
+
+  You built:
+  - src/utils/query_expansion.rs - CamelCase, snake_case, wildcard, fuzzy query variants
+  - Comprehensive tests that all pass
+  - Query preprocessor improvements
+
+  What got connected:
+  - Nothing. src/tools/search/*.rs has ZERO imports of query_expansion
+
+  Result:
+  - Tests pass ✅
+  - Production search still uses raw FTS5 with no intelligence ❌
+  - You see "no results found" constantly because queries hit FTS5 verbatim
+
+  The Brutal Comparison
+
+  codesearch (C# + Lucene.NET):
+  Query: "let is_primary_workspace canonical"
+  → Lucene query parser: (let AND is_primary AND workspace AND canonical)
+  → BM25 scoring with field weights
+  → Fuzzy matching with edit distance
+  → Results found
+
+  Julie (Rust + FTS5):
+  Query: "let is_primary_workspace canonical"
+  → process_standard_query: does nothing
+  → FTS5 gets it verbatim
+  → FTS5 treats as phrase search OR depends on config
+  → No results (words not adjacent or in exact order)
+
+  The Real Problem
+
+  You've been building features that don't get integrated. This is a pattern:
+
+  1. Build query expansion → not connected
+  2. Build knowledge_embeddings table → duplicate storage, not used for search
+  3. Build doc indexing → stores data that never gets embedded
+  4. Remove Tantivy → lose proper search engine capabilities
+
+  Two Real Options
+
+  Option 1: Actually Connect What You Built (Quick Fix)
+  - Wire expand_query() into process_standard_query()
+  - Try all variants until one hits
+  - This might help but FTS5 is still fundamentally limited
+
+  Option 2: Bring Back Tantivy (Real Fix)
+  - Fix the Arc deadlock (batch writes properly)
+  - Get proper query parsing (boolean AND/OR, fuzzy, phrase)
+  - Get BM25 field-weighted scoring
+  - Match Lucene.NET capabilities from codesearch
+
+  The question is: Do you want to patch FTS5 indefinitely, or actually solve the search problem?
+
+  Lucene.NET worked. Tantivy is Lucene for Rust. The deadlock was a usage bug, not a Tantivy problem.

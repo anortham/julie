@@ -318,6 +318,41 @@ impl ManageWorkspaceTool {
                 }
             };
 
+            // 🔥 RACE CONDITION FIX: Clear embeddings SYNCHRONOUSLY before spawning background task
+            // Previously, this was done inside the background task, causing a race where data written
+            // by the main thread could be deleted milliseconds later by the background task
+            if force_reindex {
+                if let Some(ref db_arc) = workspace_db {
+                    info!("🔥 Force reindex - clearing all embeddings BEFORE background task (race condition fix)");
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned during embeddings clear, recovering: {}", poisoned);
+                            poisoned.into_inner()
+                        }
+                    };
+
+                    // Clear embeddings, vectors, AND documentation (knowledge_embeddings) tables
+                    // CRITICAL: Must clear embeddings table (not just embedding_vectors) because
+                    // get_symbols_without_embeddings() queries the embeddings table with LEFT JOIN
+                    if let Err(e) = db_lock.conn.execute("DELETE FROM embeddings", []) {
+                        warn!("Failed to clear embeddings mapping table: {}", e);
+                    }
+                    if let Err(e) = db_lock.conn.execute("DELETE FROM embedding_vectors", []) {
+                        warn!("Failed to clear embedding_vectors storage table: {}", e);
+                    }
+                    // CRITICAL: Also clear knowledge_embeddings (documentation RAG table)
+                    // This table is populated by DocumentationIndexer during incremental/fresh indexing
+                    if let Err(e) = db_lock.conn.execute("DELETE FROM knowledge_embeddings", []) {
+                        warn!("Failed to clear knowledge_embeddings table: {}", e);
+                    }
+                    if let Err(e) = db_lock.conn.execute("DELETE FROM knowledge_relationships", []) {
+                        warn!("Failed to clear knowledge_relationships table: {}", e);
+                    }
+                    info!("✅ Cleared all embeddings, vectors, and documentation tables synchronously - will regenerate");
+                }
+            }
+
             let workspace_root = Some(workspace.root.clone());
             let workspace_id_clone = workspace_id.clone();
             let indexing_status_clone = handler.indexing_status.clone();

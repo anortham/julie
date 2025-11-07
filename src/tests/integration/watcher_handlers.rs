@@ -248,7 +248,7 @@ fn third_function() {
     fs::write(&test_file, third_content).unwrap();
 
     // Add instrumentation to check if file was actually re-parsed
-    let parse_count_before = {
+    let _parse_count_before = {
         let db_lock = db.lock().unwrap();
         db_lock.count_symbols_for_workspace().unwrap()
     };

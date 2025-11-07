@@ -425,9 +425,27 @@ fn process_glob_query(query: &str) -> String {
     query.to_string()
 }
 
-/// Process standard queries - basic cleanup
+/// Process standard queries - convert multi-word queries to FTS5 AND logic
 fn process_standard_query(query: &str) -> String {
-    query.trim().to_string()
+    let trimmed = query.trim();
+
+    // For single-word queries, return as-is
+    if !trimmed.contains(' ') {
+        return trimmed.to_string();
+    }
+
+    // For multi-word queries, use FTS5 AND logic: "a b c" → "a AND b AND c"
+    // This finds documents containing ALL terms (Google-style search)
+    // FTS5's tokenizer will handle CamelCase/snake_case splitting automatically
+    // Example: "getUserData service" → "getUserData AND service"
+    //   FTS5 tokenizes "getUserData" → ["get", "User", "Data"] at index time
+    //   Query matches documents containing both "getUserData" AND "service"
+    let and_query = trimmed
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" AND ");
+
+    and_query
 }
 
 /// Full preprocessing pipeline
