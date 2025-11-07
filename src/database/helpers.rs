@@ -105,6 +105,7 @@ impl SymbolDatabase {
             semantic_group: row.get("semantic_group")?,
             confidence: row.get("confidence")?,
             code_context: row.get("code_context")?,
+            content_type: row.get("content_type")?,
         })
     }
 

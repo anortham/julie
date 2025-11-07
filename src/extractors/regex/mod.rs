@@ -164,6 +164,7 @@ impl RegexExtractor {
                     semantic_group: None, // Regex patterns don't have cross-language groups
                     confidence: None,     // Will be set during validation
                     code_context: None,   // Will be populated during context extraction
+                    content_type: None,
                 };
                 symbols.push(symbol);
             }

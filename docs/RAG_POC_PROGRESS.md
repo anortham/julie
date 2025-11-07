@@ -1,19 +1,19 @@
 # RAG POC Progress Tracker
 
-**Last Updated:** 2025-11-06
-**Current Phase:** POC - Documentation Embeddings
-**Overall Status:** 🟢 On Track
+**Last Updated:** 2025-11-07
+**Current Phase:** POC - Architecture Simplification
+**Overall Status:** 🟡 Pivoting to Simpler Architecture
 
 ---
 
 ## Quick Status
 
-**Completed:** ✅ Research, Schema Design, Database Implementation, Tree-sitter Extractors, Documentation Indexing Pipeline
-**In Progress:** 🔨 Semantic Doc Search Tool
-**Next Up:** POC Validation
-**Blocked:** None
+**Completed:** ✅ Research, Schema Design, Tree-sitter Extractors, Root Cause Analysis
+**In Progress:** 🔨 Architecture Simplification (removing knowledge_embeddings complexity)
+**Next Up:** Simplified Storage Implementation
+**Blocked:** SQLite FTS5 + Foreign Keys + Triggers incompatibility
 
-**Progress:** 71% complete (5 of 7 POC tasks done)
+**Progress:** 60% complete (pivoting approach based on technical constraints)
 
 ---
 
@@ -67,13 +67,23 @@
 ### 5. Documentation Indexing Pipeline (2025-11-06)
 - ✅ Created `src/knowledge/doc_indexer.rs` - Documentation indexing logic
 - ✅ Implemented `DocumentationIndexer::is_documentation_symbol()` - Identifies markdown files
-- ✅ Implemented `store_documentation_embedding()` - Stores doc sections in knowledge_embeddings table
-- ✅ Integrated into main indexing pipeline (`processor.rs:257`)
-- ✅ All 5 unit tests passing (`doc_indexer_tests.rs`)
-- ✅ Handles markdown files (.md, .markdown) as documentation
-- ✅ JSON/TOML files correctly classified as configuration (not documentation)
+- ⚠️  Attempted `store_documentation_embedding()` - Hit SQLite limitations
+- ❌ Integration blocked by FTS5 + foreign key constraints causing "unsafe use of virtual table" errors
+- ✅ Root cause identified: SQLite FTS5 virtual tables incompatible with foreign keys and triggers
 
-**Architecture:** Documentation symbols are automatically detected during normal indexing, extracted by markdown parser, and stored in `knowledge_embeddings` table with `entity_type='doc_section'`. Leverages existing embedding generation infrastructure - no custom pipeline needed!
+**Key Finding:** SQLite FTS5 virtual tables have fundamental limitations when combined with foreign key constraints and triggers. This causes "unsafe use of virtual table" errors and prevents data storage.
+
+### 6. Root Cause Analysis (2025-11-07)
+- ✅ Investigated why documentation indexing tests fail
+- ✅ Discovered it's NOT a database connection issue (Arc<Mutex> correctly shared)
+- ✅ Real issue: Complex interaction between FTS5, foreign keys, and triggers
+- ✅ Identified pragmatic solution: Use existing `symbols` table infrastructure
+
+**Technical Details:**
+- `knowledge_embeddings` table has FOREIGN KEY to `embedding_vectors`
+- `knowledge_fts` FTS5 virtual table content-synced to `knowledge_embeddings`
+- Triggers automatically sync between tables
+- This combination causes SQLite errors that prevent storage
 
 **Implementation Highlights:**
 - Reuses existing symbol extraction pipeline (markdown extractor from task #4)
@@ -85,30 +95,30 @@
 
 ## In Progress 🔨
 
-### 6. Semantic Doc Search Tool
-**Status:** Next task
-**Estimated:** 2-3 hours
+### 7. Architecture Simplification
+**Status:** Active (2025-11-07)
+**Reason:** SQLite FTS5 limitations make knowledge_embeddings approach unworkable
 
-**Requirements:**
-- MCP tool: `semantic_doc_search`
-- Parameters: query, limit, min_similarity, entity_types filter
-- Query embedding generation
-- HNSW semantic search over knowledge_embeddings
-- FTS5 hybrid search option
-- MMR diversity ranking
-- Token optimization for results
+**Solution:** Use existing `symbols` table infrastructure
+- Markdown extractor already works (504 symbols stored successfully)
+- FTS5 search already works on symbols table
+- No complex foreign keys or triggers needed
+- Simpler is better
 
-**Files to Create:**
-- `src/tools/knowledge/semantic_doc_search.rs`
-- Tests in `src/tests/tools/knowledge/doc_search_tests.rs`
+**Tasks:**
+1. ✅ Identify root cause of failures
+2. 🔨 Remove knowledge_embeddings complexity
+3. ⏳ Enhance symbols table for documentation
+4. ⏳ Update indexing to use symbols table
+5. ⏳ Test simplified approach
 
 ---
 
 ## Pending Tasks 📋
 
-### 7. POC Validation
+### 8. POC Validation (Revised)
 **Status:** Pending
-**Blocked By:** Semantic Doc Search Tool (task #6)
+**Blocked By:** Architecture simplification (task #7)
 **Estimated:** 2-3 hours
 
 **Requirements:**
@@ -140,10 +150,22 @@
 
 ## Technical Decisions Made
 
-### Schema Design
+### Architecture Pivot (2025-11-07)
+- **Decision:** Abandon `knowledge_embeddings` table, use existing `symbols` table
+  - **Rationale:** SQLite FTS5 virtual tables incompatible with foreign keys and triggers
+  - **Evidence:** "unsafe use of virtual table" errors prevent data storage
+  - **Solution:** Leverage existing, working infrastructure
+  - **Benefits:**
+    - Simpler architecture (no new tables needed)
+    - Proven infrastructure (symbols table already handles 9000+ symbols)
+    - Working FTS5 search (already implemented and tested)
+    - No foreign key complications
+    - Markdown extractor already stores docs as symbols
+
+### Original Schema Design (Abandoned)
 - **Unified table** for all entity types (vs separate tables per type)
   - Rationale: Enables cross-domain search, simpler HNSW index
-  - Trade-off: Slightly more complex queries, but much more powerful
+  - Trade-off: Would have been powerful, but SQLite limitations prevent implementation
 
 - **Reuse existing embedding_vectors** (vs separate vector storage)
   - Rationale: Leverage existing infrastructure, no duplication
@@ -266,6 +288,36 @@ A: MCP server doesn't need it - we're not a REST API. Break things to make progr
 
 ---
 
+## Lessons Learned 📚
+
+### SQLite FTS5 Virtual Table Limitations (2025-11-07)
+
+**The Problem:**
+We attempted to create a sophisticated `knowledge_embeddings` table with:
+- Foreign key to `embedding_vectors` table
+- FTS5 virtual table (`knowledge_fts`) for full-text search
+- Triggers to sync between regular and virtual tables
+
+**What Failed:**
+- SQLite throws "unsafe use of virtual table" errors
+- FTS5 virtual tables don't support foreign key constraints properly
+- Complex trigger + FTS5 + foreign key interactions cause silent failures
+- Data appears to store but isn't actually persisted
+
+**The Learning:**
+- Keep SQLite schemas simple
+- FTS5 virtual tables should be standalone (no foreign keys)
+- Test with actual data storage, not just schema creation
+- When in doubt, use proven infrastructure over new complexity
+
+**The Solution:**
+- Use existing `symbols` table (already works with 9000+ symbols)
+- Leverage existing FTS5 index on symbols
+- Documentation is just another type of symbol
+- Simpler architecture = fewer bugs
+
+---
+
 ## Session Notes
 
 ### 2025-11-05 - POC Kickoff
@@ -308,6 +360,20 @@ A: MCP server doesn't need it - we're not a REST API. Break things to make progr
 - **Key Insight:** Documentation indexing happens automatically during normal file indexing. No separate pipeline needed - markdown extractor handles structure, doc_indexer handles storage.
 - **Architecture Decision:** Store documentation as `entity_type='doc_section'` in unified `knowledge_embeddings` table, enabling cross-domain semantic search (code + docs + config).
 - **Next:** Semantic Doc Search Tool (task #6) - MCP interface for querying documentation
+
+### 2025-11-07 - Architecture Simplification
+- **Duration:** ~1.5 hours
+- **Focus:** Root cause analysis and architecture pivot
+- **Highlights:**
+  - Discovered the real issue: NOT multiple database connections
+  - Found SQLite FTS5 + foreign keys + triggers incompatibility
+  - Decided to use existing `symbols` table instead of `knowledge_embeddings`
+  - Simpler solution leverages proven infrastructure
+- **Challenges:**
+  - Spent time investigating wrong theory (connection issue)
+  - SQLite limitations more severe than expected
+- **Key Insight:** The markdown extractor already stores docs as symbols successfully. We were overengineering a solution when a simpler one already exists and works.
+- **Next:** Remove knowledge_embeddings complexity and enhance symbols table
 
 ---
 

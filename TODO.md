@@ -41,16 +41,25 @@ Modified:
 
 ### 🎯 NEXT STEPS
 
-**Priority 1: Validate Search Quality Improvements**
+**Priority 1: Architecture Simplification (2025-11-07)** 🔥
+- **Root Cause Found**: SQLite FTS5 virtual tables + foreign keys + triggers = "unsafe use of virtual table" errors
+- **Solution**: Use existing `symbols` table for documentation (simpler, proven, working)
+- **Evidence**: Markdown extractor already stores 504 symbols successfully
+- **Next Actions**:
+  1. Remove `knowledge_embeddings` table and related code
+  2. Add `content_type` field to symbols table to distinguish docs/code
+  3. Update indexing to route docs through symbols pipeline
+  4. Test with existing FTS5 search infrastructure
+
+**Priority 2: Validate Search Quality Improvements** ✅
 - Multi-word AND queries are now working - test with real-world usage
 - Consider adding query suggestions when 0 results (suggest removing terms)
 - Monitor if semantic fallback is needed for edge cases
 
-**Priority 2: Debug Documentation Indexing Test**
+**Priority 3: Fix Documentation Indexing Test**
 - Test location: `src/tests/integration/documentation_indexing.rs::test_documentation_indexing_basic`
-- Issue: Expects 3 markdown files indexed into `knowledge_embeddings`, finds 0
-- May be related to race condition fix or separate issue
-- Need to verify markdown file discovery and documentation storage logic
+- Issue: Expects `knowledge_embeddings` table which has SQLite issues
+- **Solution**: Update test to use symbols table instead
 
 **Priority 3: Consider Tantivy Reintegration** (Optional - FTS5 is working well)
 - Current FTS5 implementation with AND logic is functional
@@ -270,3 +279,6 @@ when this keeps happening the agent just gives up and falls back to search like:
   The question is: Do you want to patch FTS5 indefinitely, or actually solve the search problem?
 
   Lucene.NET worked. Tantivy is Lucene for Rust. The deadlock was a usage bug, not a Tantivy problem.
+
+  we should look at fixing this: ⏺ julie - fast_search (MCP)(query: "mod knowledge tests/mod.rs", search_method: "text", limit: 10, search_target: "content", file_pattern: "src/tests/mod.rs")
+  ⎿  Error: Tool execution failed: fts5: syntax error near "/"

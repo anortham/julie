@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 3;
+pub const LATEST_SCHEMA_VERSION: i32 = 4;
 
 impl SymbolDatabase {
     // ============================================================
@@ -92,6 +92,7 @@ impl SymbolDatabase {
             1 => self.migration_001_initial_schema()?,
             2 => self.migration_002_add_content_column()?,
             3 => self.migration_003_add_relationship_location()?,
+            4 => self.migration_004_add_content_type()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -103,6 +104,7 @@ impl SymbolDatabase {
             1 => "Initial schema",
             2 => "Add content column for CASCADE FTS5",
             3 => "Add file_path and line_number to relationships",
+            4 => "Add content_type field to symbols for documentation",
             _ => "Unknown migration",
         };
 
@@ -229,6 +231,52 @@ impl SymbolDatabase {
         )?;
 
         info!("✅ file_path and line_number columns added to relationships table");
+
+        Ok(())
+    }
+
+    /// Migration 004: Add content_type field to symbols table for documentation
+    /// This allows distinguishing documentation (markdown) from code symbols
+    fn migration_004_add_content_type(&mut self) -> Result<()> {
+        info!("Migration 004: Adding content_type field to symbols table");
+
+        // Check if symbols table exists (should always exist)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name='symbols'",
+            [],
+            |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            },
+        )?;
+
+        if !table_exists {
+            debug!("Symbols table doesn't exist yet (fresh database), skipping migration");
+            return Ok(());
+        }
+
+        // Check if content_type column already exists (idempotency)
+        if self.has_column("symbols", "content_type")? {
+            warn!("content_type column already exists in symbols table, skipping migration");
+            return Ok(());
+        }
+
+        // Add content_type column (TEXT, NULL default for existing code symbols)
+        // NULL = code (default), 'documentation' = markdown docs
+        self.conn.execute(
+            "ALTER TABLE symbols ADD COLUMN content_type TEXT DEFAULT NULL",
+            [],
+        )?;
+
+        // Update existing markdown symbols to have content_type = 'documentation'
+        self.conn.execute(
+            "UPDATE symbols SET content_type = 'documentation' WHERE language = 'markdown'",
+            [],
+        )?;
+
+        let updated_count = self.conn.changes();
+        info!("✅ content_type column added to symbols table, {} markdown symbols marked as documentation", updated_count);
 
         Ok(())
     }

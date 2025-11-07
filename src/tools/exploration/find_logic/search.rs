@@ -268,6 +268,7 @@ impl FindLogicTool {
                 semantic_group: Some("business".to_string()),
                 confidence: None,
                 code_context: None,
+                content_type: None,
             };
 
             let context = crate::embeddings::CodeContext {

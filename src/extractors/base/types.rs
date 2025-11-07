@@ -73,6 +73,9 @@ pub struct Symbol {
     pub confidence: Option<f32>,
     /// Code context lines around the symbol (3 lines before + match + 3 lines after)
     pub code_context: Option<String>,
+    /// Content type to distinguish documentation from code
+    /// None = code (default), Some("documentation") = markdown docs
+    pub content_type: Option<String>,
 }
 
 /// An identifier (reference/usage) extracted from source code

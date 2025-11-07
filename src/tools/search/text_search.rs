@@ -593,6 +593,7 @@ async fn sqlite_fts_search(
                     semantic_group: Some("fts_match".to_string()),
                     confidence: Some(result.rank),
                     code_context: Some(code_context_text),
+                    content_type: None,
                 };
                 symbols.push(symbol);
             } else {
@@ -627,6 +628,7 @@ async fn sqlite_fts_search(
                     semantic_group: Some("file_content".to_string()),
                     confidence: Some(result.rank),
                     code_context: Some(result.snippet),
+                    content_type: None,
                 };
                 symbols.push(symbol);
             }

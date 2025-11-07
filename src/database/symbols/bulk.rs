@@ -100,8 +100,8 @@ impl SymbolDatabase {
                 "INSERT OR REPLACE INTO symbols
                  (id, name, kind, language, file_path, signature, start_line, start_col,
                   end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                  parent_id, metadata, semantic_group, confidence)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                  parent_id, metadata, semantic_group, confidence, content_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             )?;
 
             // STEP 5.5: Sort symbols in parent-first order to avoid foreign key violations
@@ -221,7 +221,8 @@ impl SymbolDatabase {
                         symbol.parent_id,
                         metadata_json,
                         symbol.semantic_group,
-                        symbol.confidence
+                        symbol.confidence,
+                        symbol.content_type
                     ]) {
                         Ok(_) => {}
                         Err(e) => {

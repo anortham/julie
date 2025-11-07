@@ -46,6 +46,12 @@ impl BaseExtractor {
             semantic_group: None, // Will be populated during cross-language analysis
             confidence: None,     // Will be calculated based on parsing context
             code_context,
+            // Mark markdown symbols as documentation
+            content_type: if self.language == "markdown" {
+                Some("documentation".to_string())
+            } else {
+                None
+            },
         };
 
         self.symbol_map.insert(id, symbol.clone());

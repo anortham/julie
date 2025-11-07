@@ -289,11 +289,30 @@ impl DualEmbeddingEngine {
 
 ## Database Schema Design
 
-### Unified vs Separated Schema
+### UPDATE (2025-11-07): Architecture Simplification
 
-**Decision: Unified Schema** ✅
+**Critical Finding:** SQLite FTS5 virtual tables are incompatible with foreign key constraints and triggers, causing "unsafe use of virtual table" errors. The `knowledge_embeddings` approach is unworkable.
+
+**New Decision: Use Existing Symbols Table** ✅
 
 **Rationale:**
+1. **Proven Infrastructure**: Symbols table already handles 9000+ symbols successfully
+2. **Working FTS5 Search**: Already implemented and tested
+3. **No SQLite Complications**: No virtual table + foreign key issues
+4. **Already Implemented**: Markdown extractor stores docs as symbols (504 working)
+5. **Simpler is Better**: Leverage what works instead of fighting SQLite limitations
+
+**Implementation:**
+- Documentation stored as symbols with special `kind` values (e.g., "heading", "section")
+- Add `content_type` field to distinguish documentation from code
+- Use existing FTS5 index on symbols table
+- Remove `knowledge_embeddings` complexity entirely
+
+### Original Design (Abandoned Due to SQLite Limitations)
+
+**Decision: Unified Schema** ~~✅~~ ❌
+
+**Rationale (still valid conceptually):**
 1. **Cross-domain semantic search**: "How do I implement auth?" returns:
    - Documentation sections about authentication
    - Code implementations (existing auth functions)
@@ -308,9 +327,12 @@ impl DualEmbeddingEngine {
 
 3. **Simpler maintenance**: One index, one embedding pipeline, one search API
 
-### Proposed Schema
+### Proposed Schema (ABANDONED - SQLite Limitations)
 
 ```sql
+-- This approach failed due to FTS5 + foreign key incompatibility
+-- Keeping for reference of what was attempted
+
 -- Unified knowledge embeddings table
 CREATE TABLE knowledge_embeddings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -365,24 +387,23 @@ CREATE INDEX idx_relationships_to ON knowledge_relationships(to_id);
 CREATE INDEX idx_relationship_type ON knowledge_relationships(relationship_type);
 ```
 
-### Migration Strategy
+### Revised Migration Strategy (2025-11-07)
 
-**Phase 1: Additive (No Breaking Changes)**
-1. Add `knowledge_embeddings` table
-2. Keep existing `symbols` and `embeddings` tables
-3. Dual-write to both schemas initially
-4. Validate data consistency
+**Phase 1: Enhance Existing Infrastructure**
+1. Add `content_type` field to `symbols` table (nullable, backward compatible)
+2. Keep using existing FTS5 index
+3. Documentation already stored as symbols via markdown extractor
+4. No new tables needed
 
-**Phase 2: Unified (After Validation)**
-1. Migrate all code symbol embeddings to `knowledge_embeddings`
-2. Add documentation embeddings
-3. Build relationship graph
-4. Deprecate old tables (keep for rollback)
+**Phase 2: Improve Documentation Extraction**
+1. Enhance markdown extractor to include section content (not just headings)
+2. Store richer embeddings for documentation symbols
+3. Use symbol `kind` field to identify documentation (e.g., "heading", "section")
 
-**Phase 3: Cleanup (Production)**
-1. Drop old `embeddings` table
-2. Consolidate queries
-3. Update tools to use unified schema
+**Phase 3: Semantic Search Enhancement**
+1. Update embedding generation to handle documentation symbols better
+2. Improve search ranking for documentation vs code
+3. Add cross-reference capabilities using existing infrastructure
 
 ---
 

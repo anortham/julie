@@ -46,11 +46,6 @@ pub mod core {
 }
 
 // ============================================================================
-// KNOWLEDGE/RAG TESTS - Documentation embeddings and semantic search
-// ============================================================================
-pub mod knowledge; // Knowledge base and RAG documentation indexing tests
-
-// ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod tools {

@@ -206,5 +206,6 @@ pub(super) fn create_symbol_manual(
         semantic_group: None, // Vue components don't have cross-language groups yet
         confidence: None,     // Will be set during validation
         code_context: None,   // Will be populated during context extraction
+        content_type: None,
     }
 }

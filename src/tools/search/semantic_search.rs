@@ -340,6 +340,7 @@ pub async fn semantic_search_impl(
             semantic_group: None,
             confidence: None,
             code_context: None,
+            content_type: None,
         };
 
         let context = crate::embeddings::CodeContext {
