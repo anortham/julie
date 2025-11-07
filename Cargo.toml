@@ -76,7 +76,7 @@ tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
 # Documentation and configuration languages (extractors #28-30)
-tree-sitter-md = "0.3.2"         # Markdown documentation
+tree-sitter-md = "0.5.1"         # Markdown documentation (updated for tree-sitter 0.25+)
 tree-sitter-json = "0.24.8"      # JSON configuration
 tree-sitter-toml-ng = "0.7.0"    # TOML configuration (modern version)
 
