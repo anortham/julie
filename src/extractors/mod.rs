@@ -22,7 +22,7 @@ pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod factory;
 
-// Language extractors (30 total - including documentation/config languages)
+// Language extractors (31 total - including documentation/config languages)
 pub mod bash;
 pub mod c;
 pub mod cpp;
@@ -52,6 +52,7 @@ pub mod swift;
 pub mod toml;
 pub mod typescript;
 pub mod vue;
+pub mod yaml;
 pub mod zig;
 
 // Re-export the public API

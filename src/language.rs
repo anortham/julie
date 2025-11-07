@@ -1,6 +1,6 @@
 //! Language Support - Shared tree-sitter language configuration
 //!
-//! This module provides centralized language support for Julie's 27 supported languages.
+//! This module provides centralized language support for Julie's 31 supported languages.
 //! ALL language-specific tree-sitter configuration should go here to avoid duplication.
 
 use anyhow::Result;
@@ -11,13 +11,14 @@ use anyhow::Result;
 /// Used by both ExtractorManager (for symbol extraction) and SmartRefactorTool
 /// (for AST-aware refactoring).
 ///
-/// # Supported Languages (27 total)
+/// # Supported Languages (31 total)
 ///
 /// **Systems**: Rust, C, C++, Go, Zig
 /// **Web**: TypeScript, JavaScript, HTML, CSS, Vue, QML
 /// **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
 /// **Scripting**: Lua, R, Bash, PowerShell
 /// **Specialized**: GDScript, Razor, SQL, Regex
+/// **Documentation**: Markdown, JSON, TOML, YAML
 pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
     match language {
         // Systems languages
@@ -62,9 +63,10 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "markdown" => Ok(tree_sitter_md::LANGUAGE.into()),
         "json" => Ok(tree_sitter_json::LANGUAGE.into()),
         "toml" => Ok(tree_sitter_toml_ng::LANGUAGE.into()),
+        "yaml" => Ok(tree_sitter_yaml::LANGUAGE.into()),
 
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml, yaml",
             language
         )),
     }
@@ -106,6 +108,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "md" | "markdown" => Some("markdown"),
         "json" => Some("json"),
         "toml" => Some("toml"),
+        "yml" | "yaml" => Some("yaml"),
         _ => None,
     }
 }

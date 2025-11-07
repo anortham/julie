@@ -368,6 +368,9 @@ pub mod extractors {
     // TOML extractor tests (single mod.rs file)
     pub mod toml;
 
+    // YAML extractor tests (single mod.rs file)
+    pub mod yaml;
+
     // Vue extractor tests
     pub mod vue;
 

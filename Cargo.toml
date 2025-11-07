@@ -75,10 +75,11 @@ harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
-# Documentation and configuration languages (extractors #28-30)
+# Documentation and configuration languages (extractors #28-31)
 tree-sitter-md = "0.5.1"         # Markdown documentation (updated for tree-sitter 0.25+)
 tree-sitter-json = "0.24.8"      # JSON configuration
 tree-sitter-toml-ng = "0.7.0"    # TOML configuration (modern version)
+tree-sitter-yaml = "0.7"         # YAML configuration (CI/CD, Kubernetes, etc.)
 
 # Embeddings - Direct ONNX Runtime with GPU acceleration
 # Platform-specific dependencies added below for GPU support

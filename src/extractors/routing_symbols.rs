@@ -279,6 +279,15 @@ pub(crate) fn extract_symbols_for_language(
             );
             Ok(extractor.extract_symbols(tree))
         }
+        "yaml" => {
+            let mut extractor = crate::extractors::yaml::YamlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
         _ => {
             tracing::debug!(
                 "No extractor available for language: {} (file: {})",
