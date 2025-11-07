@@ -230,6 +230,14 @@ async fn main() -> SdkResult<()> {
         }
     }
 
+    // STEP 3.9: 🗂️ Capture database reference for shutdown checkpoint
+    // We need this before moving handler into create_server()
+    let db_for_shutdown = if let Ok(Some(workspace)) = handler.get_workspace().await {
+        workspace.db.clone()
+    } else {
+        None
+    };
+
     // STEP 4: Create MCP server
     let server: Arc<ServerRuntime> =
         server_runtime::create_server(server_details, transport, handler);
@@ -250,6 +258,33 @@ async fn main() -> SdkResult<()> {
     }
 
     info!("🏁 Julie server stopped");
+
+    // 🧹 SHUTDOWN CLEANUP: Checkpoint WAL before exit
+    // This prevents unbounded WAL growth in long-running MCP server sessions
+    info!("🧹 Performing shutdown cleanup...");
+    if let Some(db_arc) = db_for_shutdown {
+        match db_arc.lock() {
+            Ok(mut db) => {
+                match db.checkpoint_wal() {
+                    Ok((busy, log, checkpointed)) => {
+                        info!(
+                            "✅ WAL checkpoint complete: busy={}, log={}, checkpointed={}",
+                            busy, log, checkpointed
+                        );
+                    }
+                    Err(e) => {
+                        warn!("⚠️ WAL checkpoint failed: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("⚠️ Could not acquire database lock for checkpoint: {}", e);
+            }
+        }
+    } else {
+        debug!("No database available for shutdown checkpoint (workspace not initialized)");
+    }
+
     Ok(())
 }
 
