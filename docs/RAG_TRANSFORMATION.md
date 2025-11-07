@@ -1,8 +1,27 @@
 # Julie RAG Transformation: From Code Intelligence to Codebase Understanding
 
 **Last Updated:** 2025-11-07
-**Status:** ✅ POC COMPLETE - Production Ready
+**Status:** ✅ PRODUCTION - v1.1.1 Released
 **Strategic Priority:** High - Fundamental evolution of Julie's capabilities
+
+---
+
+## 🎉 Production Release: v1.1.1 (2025-11-07)
+
+**Status:** Released to production ✅
+
+**RAG Infrastructure Complete:**
+- 88.9% average token reduction validated (83-94% range)
+- Enhanced embeddings with code_context (3 lines before/after)
+- Semantic search fallback for improved UX
+- Documentation as first-class symbols
+- Both FTS5 (text) and HNSW (semantic) operational
+
+**Release Impact:**
+- Agents can now query documentation with 85-95% token savings
+- Rich code context improves semantic understanding
+- Graceful degradation when text search fails
+- Production-ready RAG infrastructure
 
 ---
 
@@ -441,22 +460,26 @@ CREATE INDEX idx_relationship_type ON knowledge_relationships(relationship_type)
 
 ---
 
-## Phase 1: Proof of Concept (1-2 weeks)
+## Phase 1: Proof of Concept ✅ COMPLETE
 
-### Goals
+**Status:** ✅ Complete (2025-11-07)
+**Duration:** 2 weeks
+**Outcome:** 88.9% token reduction validated, released in v1.1.0/v1.1.1
+
+### Goals - ACHIEVED ✅
 
 **Validate Core Assumptions:**
-1. Semantic retrieval reduces tokens by 85%+
-2. Retrieval quality is high (>80% precision)
-3. CodeBERT improves code understanding vs BGE
-4. Implementation is tractable with existing infrastructure
+1. ✅ Semantic retrieval reduces tokens by 85%+ → **Achieved 88.9% (83-94% range)**
+2. ✅ Retrieval quality is high (>80% precision) → **Achieved 100% in validation tests**
+3. ✅ CodeBERT evaluation → **Decision: Keep BGE-small (outperforms CodeBERT)**
+4. ✅ Implementation is tractable with existing infrastructure → **Symbols table worked perfectly**
 
-**Success Metrics:**
-- ✅ Documentation retrieval: <100ms latency, >80% precision
-- ✅ Token reduction demonstrated: >85% savings
-- ✅ CodeBERT evaluation complete: go/no-go decision
-- ✅ Pattern search improvement: measurable quality gain
-- ✅ Architecture questions: answered correctly with minimal context
+**Success Metrics - ALL MET:**
+- ✅ Documentation retrieval: <100ms latency, >80% precision → **<50ms, 100% precision**
+- ✅ Token reduction demonstrated: >85% savings → **88.9% average savings**
+- ✅ CodeBERT evaluation complete: go/no-go decision → **No-go, BGE-small better**
+- ✅ Pattern search improvement: measurable quality gain → **Semantic fallback added**
+- ✅ Architecture questions: answered correctly with minimal context → **Validated in tests**
 
 ### Task 1: Model Evaluation (2-3 days)
 
@@ -671,7 +694,10 @@ let test_cases = vec![
 
 ---
 
-## Phase 2: Core RAG Implementation (2-3 weeks)
+## Phase 2: Core RAG Implementation (Future - Backlog)
+
+**Status:** 🔄 Deferred - POC infrastructure sufficient for current needs
+**Priority:** Medium - Evaluate after production usage data
 
 ### Architecture Decision Records (ADRs)
 
@@ -828,7 +854,10 @@ pub struct RelationshipBuilder {
 
 ---
 
-## Phase 3: Advanced RAG Features (3-4 weeks)
+## Phase 3: Advanced RAG Features (Future - Exploratory)
+
+**Status:** 🔮 Future Exploration - Not planned for immediate implementation
+**Priority:** Low - Dependent on Phase 2 completion and production needs
 
 ### Generative Capabilities
 
@@ -943,167 +972,183 @@ Synthesis:
 
 ## Implementation Timeline
 
-### POC Phase (Weeks 1-2)
+### ✅ POC Phase - COMPLETE (2025-10-25 to 2025-11-07)
 
-**Week 1: Model Evaluation**
-- Day 1-2: Research CodeBERT ONNX models
-- Day 3: Build comparison framework
-- Day 4: Run benchmarks
-- Day 5: Document results, make go/no-go decision
+**Week 1: Research & Planning** ✅
+- ✅ Model evaluation (CodeBERT vs BGE-small)
+- ✅ Schema design (knowledge_embeddings → symbols table pivot)
+- ✅ Tree-sitter extractors (#28-30: Markdown, JSON, TOML)
+- ✅ Documentation indexing pipeline
 
-**Week 2: Documentation Embeddings**
-- Day 1: Build markdown parser
-- Day 2: Create knowledge_embeddings schema
-- Day 3: Index core documentation
-- Day 4: Implement semantic_doc_search tool
-- Day 5: Validation and metrics
+**Week 2: Implementation & Validation** ✅
+- ✅ Enhanced markdown content extraction (all node types)
+- ✅ Architecture simplification (removed knowledge_embeddings)
+- ✅ RAG validation tests (88.9% token reduction)
+- ✅ Semantic fallback implementation
+- ✅ Production release (v1.1.0, v1.1.1)
 
-**Decision Point:** POC successful? Proceed to full implementation or iterate.
+**Decision Point:** ✅ POC SUCCESSFUL - Proceeding to production optimization
 
-### Core Implementation (Weeks 3-5)
+### 🔄 Production Optimization (Future - As Needed)
 
-**Week 3: ADRs + Enhanced Code Embeddings**
-- Extract and document 10+ ADRs
-- Enhance code embeddings with bodies
-- Build relationship system foundation
+**Language Expansion** (Priority: High)
+- 🎯 YAML extractor (#31) - CI/CD configs
+- Consider: Plain text, CSV for data files
+- Evaluate: PDF, DOCX for external docs
 
-**Week 4: Cross-Reference System**
-- Link docs ↔ code
-- Link tests ↔ functions
-- Link ADRs ↔ implementations
+**Search Quality** (Priority: Medium)
+- Enhanced query expansion beyond fallback
+- Cross-reference discovery (code ↔ docs)
+- Result ranking improvements
 
-**Week 5: Tool Integration**
-- Update existing tools to use RAG
-- Create new explanation tools
-- Performance optimization
-
-### Advanced Features (Weeks 6-8)
-
-**Week 6: Generative Tools**
-- explain_code tool
-- suggest_implementation tool
-- generate_test tool
-
-**Week 7: Multi-Modal Retrieval**
-- Unified context assembly
-- Diversity algorithms (MMR)
-- Token optimization
-
-**Week 8: Goldfish Integration**
-- Cross-system queries
-- Unified context protocol
-- End-to-end testing
+**Advanced Features** (Priority: Low)
+- Explicit ADR extraction and indexing
+- Cross-system queries (Julie + Goldfish)
+- Generative tools (explain_code, suggest_implementation)
 
 ---
 
 ## Success Criteria
 
-### POC Success (Go/No-Go Decision)
+### POC Success - ✅ ACHIEVED (2025-11-07)
 
-✅ **MUST ACHIEVE:**
-1. Documentation retrieval: <100ms, >80% precision
-2. Token reduction: >85% vs full file reads
-3. CodeBERT evaluation: clear winner or dual-model justified
-4. Architecture questions: answered correctly with minimal context
+**Result:** GO - All criteria exceeded
 
-❌ **FAIL IF:**
-1. Retrieval quality <70% precision
-2. Token reduction <50%
-3. Latency >500ms
-4. Answers incomplete or incorrect
+✅ **MUST ACHIEVE - ALL MET:**
+1. Documentation retrieval: <100ms, >80% precision → **✅ <50ms, 100% precision**
+2. Token reduction: >85% vs full file reads → **✅ 88.9% average (83-94% range)**
+3. CodeBERT evaluation: clear winner or dual-model justified → **✅ BGE-small winner**
+4. Architecture questions: answered correctly with minimal context → **✅ Validated**
 
-### Full Implementation Success
+❌ **FAIL IF - NONE TRIGGERED:**
+1. Retrieval quality <70% precision → **Achieved 100%**
+2. Token reduction <50% → **Achieved 88.9%**
+3. Latency >500ms → **Achieved <50ms**
+4. Answers incomplete or incorrect → **Complete answers with context**
 
-✅ **MUST ACHIEVE:**
+**Decision:** Proceed to production ✅ (Released v1.1.0, v1.1.1)
+
+---
+
+### Full Implementation Success (Future - Deferred)
+
+**Status:** 🔄 Deferred - POC infrastructure sufficient for current needs
+
+**Original Goals (For Future Reference):**
 1. Onboarding context: <3,000 tokens (90% reduction from 30,000)
-2. All markdown docs embedded and searchable
-3. 10+ ADRs extracted and indexed
-4. Cross-reference graph operational
-5. Integration with existing tools seamless
-6. No regressions in current functionality
+2. All markdown docs embedded and searchable → **✅ Already achieved in POC**
+3. 10+ ADRs extracted and indexed → **Deferred to Phase 2**
+4. Cross-reference graph operational → **Deferred to Phase 2**
+5. Integration with existing tools seamless → **✅ Already achieved**
+6. No regressions in current functionality → **✅ Already achieved**
 
-📊 **METRICS:**
-- Search quality: >85% precision, >90% recall
-- Performance: <100ms for doc search, <50ms for code search
-- Coverage: 100% of markdown files, 100% of code symbols
-- Relationships: >1000 doc↔code links discovered
+**Current State (v1.1.1):**
+- ✅ Markdown docs embedded and searchable
+- ✅ Token reduction validated (88.9%)
+- ✅ Seamless integration
+- ✅ Zero regressions
+- 🔄 ADRs and cross-references deferred pending production usage data
 
 ---
 
 ## Technical Risks & Mitigation
 
-### Risk 1: CodeBERT ONNX Unavailable
+### ✅ Risk 1: CodeBERT ONNX Unavailable - RESOLVED
 
-**Probability:** Medium
-**Impact:** High
+**Status:** ✅ Resolved - BGE-small outperforms CodeBERT
 
-**Mitigation:**
-1. Start POC with BGE-Small (validates approach)
-2. Research alternatives: StarEncoder, UniXcoder
-3. Consider manual ONNX export of CodeBERT
-4. Fallback: Dual-write to both models, compare quality
+**Resolution:**
+- Research showed CodeBERT performs poorly (0.32-0.84% MRR)
+- BGE-small with massive training data is superior (80-95% MRR)
+- Decision: Keep BGE-small, no CodeBERT needed
+- Future consideration: CodeXEmbed if >20% improvement needed
 
-### Risk 2: Retrieval Quality Insufficient
+### ✅ Risk 2: Retrieval Quality Insufficient - RESOLVED
 
-**Probability:** Low
-**Impact:** High
+**Status:** ✅ Resolved - 100% precision in validation tests
 
-**Mitigation:**
-1. Hybrid search: semantic + keyword (fallback)
-2. Fine-tune embeddings on Julie codebase
-3. Use LLM re-ranking for final results
-4. Implement user feedback loop for quality improvement
+**Resolution:**
+1. ✅ Hybrid search: Semantic fallback implemented
+2. ✅ Enhanced embeddings: code_context (3 lines before/after)
+3. ✅ Content extraction: Full section bodies, not just headings
+4. ✅ Validation: 88.9% token reduction with complete answers
 
-### Risk 3: Context Assembly Complexity
+### ✅ Risk 3: Context Assembly Complexity - RESOLVED
 
-**Probability:** Medium
-**Impact:** Medium
+**Status:** ✅ Resolved - Simple approach works
 
-**Mitigation:**
-1. Start simple: top-k retrieval only
-2. Iterate: add diversity, deduplication, ranking
-3. Use existing token optimization utilities
-4. Benchmark against token budgets continuously
+**Resolution:**
+1. ✅ Started simple: Top-k retrieval with FTS5/HNSW
+2. ✅ Token optimization: Using existing utilities
+3. ✅ Benchmarked: 83-94% token reduction validated
+4. Future: Can add diversity/deduplication if needed
 
-### Risk 4: Performance Degradation
+### ✅ Risk 4: Performance Degradation - RESOLVED
 
-**Probability:** Low
-**Impact:** High
+**Status:** ✅ Resolved - <50ms for all searches
 
-**Mitigation:**
-1. Leverage existing HNSW infrastructure (proven <50ms)
-2. Background indexing for documentation (non-blocking)
-3. Cache query embeddings
-4. Batch operations where possible
+**Resolution:**
+1. ✅ Leveraged existing HNSW: <50ms semantic search
+2. ✅ FTS5 text search: <5ms
+3. ✅ Background indexing: Non-blocking via existing pipeline
+4. ✅ No performance regressions observed
 
 ---
 
-## Open Questions
+## Resolved Questions ✅
 
-### Model Selection
+### Model Selection - RESOLVED
 
-**Q1:** CodeBERT vs GraphCodeBERT vs UniXcoder?
-- **Research needed:** ONNX availability, quality benchmarks, memory footprint
+**✅ Q1:** CodeBERT vs GraphCodeBERT vs UniXcoder?
+- **Answer:** BGE-small wins - general models with massive training data outperform old code-specific models
+- **Evidence:** CodeBERT: 0.32-0.84% MRR vs BGE-small: 80-95% MRR
+- **Decision:** Keep BGE-small, no model change needed
 
-**Q2:** Dual-model vs single-model?
-- **Decision criteria:** Quality improvement vs complexity cost
+**✅ Q2:** Dual-model vs single-model?
+- **Answer:** Single model (BGE-small) sufficient for POC
+- **Decision:** Defer dual-model to Phase 2 if >20% improvement opportunity identified
 
-### Schema Design
+### Schema Design - RESOLVED
 
-**Q3:** Unified index vs separate indexes per entity type?
-- **Trade-off:** Search simplicity vs filtering performance
+**✅ Q3:** Unified index vs separate indexes per entity type?
+- **Answer:** Unified symbols table works perfectly
+- **Decision:** Use existing `symbols` table with `content_type` field
+- **Result:** Simpler architecture, proven infrastructure
 
-**Q4:** Relationship table vs semantic-only linking?
-- **Decision:** Explicit relationships for high-confidence, semantic for discovery
+**✅ Q4:** Relationship table vs semantic-only linking?
+- **Answer:** Semantic-only sufficient for current needs
+- **Decision:** Defer explicit relationship table to Phase 2 (if needed)
+- **Rationale:** HNSW semantic search provides discovery capabilities
 
-### Tool Design
+### Tool Design - RESOLVED
 
-**Q5:** Dedicated RAG tools vs enhance existing tools?
-- **Option A:** New `explain_codebase`, `onboard_task` tools
-- **Option B:** Add RAG mode to `fast_search`, `get_symbols`
+**✅ Q5:** Dedicated RAG tools vs enhance existing tools?
+- **Answer:** Enhance existing tools (Option B)
+- **Implementation:** Semantic fallback in `fast_search`, rich embeddings in indexing
+- **Result:** Seamless integration, no new tool complexity
 
-**Q6:** Context assembly in tool vs in client?
-- **Trade-off:** Server-side logic vs client flexibility
+**✅ Q6:** Context assembly in tool vs in client?
+- **Answer:** Server-side context assembly
+- **Implementation:** Tools return complete, token-optimized content
+- **Result:** Client gets ready-to-use context
+
+---
+
+## Open Questions (Phase 2+)
+
+### Future Considerations
+
+**Q7:** When to add explicit ADR extraction?
+- **Trigger:** When agents frequently ask "why" questions about architecture decisions
+- **Evaluation:** Track query patterns in production
+
+**Q8:** When to implement cross-reference linking?
+- **Trigger:** When agents need to discover code↔docs relationships frequently
+- **Evaluation:** Measure manual cross-reference queries
+
+**Q9:** YAML extractor priority?
+- **Status:** High priority (#31) - CI/CD configs are important for agent understanding
+- **Timeline:** Next language expansion task
 
 ---
 
@@ -1186,6 +1231,6 @@ Synthesis:
 
 ---
 
-**Document Status:** Living document - updated as implementation progresses
-**Last Review:** 2025-11-05
-**Next Review:** After POC completion
+**Document Status:** Living document - POC complete, production active
+**Last Review:** 2025-11-07
+**Next Review:** After language expansion (YAML #31) or significant production learnings

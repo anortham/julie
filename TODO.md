@@ -2,64 +2,73 @@
 
 ## 🎯 Current Status (2025-11-07)
 
-### 🏆 RAG POC COMPLETE - v1.1.0 Release
+### 🏆 RAG POC COMPLETE - v1.1.1 Released ✅
 
-**Status**: ✅ Production Ready
+**Status**: ✅ Production - RAG Infrastructure Complete
 **Achievement**: 88.9% average token reduction (83-94% range)
+**Latest Release**: v1.1.1 (2025-11-07)
 **Tests**: All 20 markdown extractor tests passing
 
-### 📦 FILES CHANGED (Ready to Commit)
-```
-Modified:
-- src/extractors/markdown/mod.rs               # Enhanced content extraction (all types)
-- src/tests/extractors/markdown/mod.rs         # Added RAG validation tests
-- src/tools/workspace/indexing/index.rs        # Removed knowledge_embeddings refs
-- src/tests/integration/documentation_indexing.rs # Updated comments
-- docs/RAG_POC_PROGRESS.md                     # Marked 100% complete
-- docs/RAG_TRANSFORMATION.md                   # Updated with results
-- TODO.md                                       # This file (cleaned up)
-```
+### 📦 RELEASES
 
-### ✅ COMPLETED THIS SESSION
+**v1.1.1 (2025-11-07)** - Database Robustness and RAG Quality
+- ✅ WAL checkpoint on shutdown for clean state
+- ✅ WAL checkpoint method prevents unbounded growth
+- ✅ Enhanced RAG embeddings with code_context (3 lines before/after)
+- ✅ Semantic search fallback when text search returns 0 results
+- ✅ Documentation token reduction (77% in CLAUDE.md)
 
-1. **Architecture Cleanup** - Removed knowledge_embeddings complexity
-   - Removed all 3 references to knowledge_embeddings tables
-   - Verified content_type field already in symbols table
-   - Simplified to proven infrastructure
-   - Zero breaking changes
+**v1.1.0 (2025-11-07)** - RAG POC Complete
+- ✅ 88.9% token reduction validated (83-94% range)
+- ✅ Enhanced markdown content extraction (all node types)
+- ✅ Simplified architecture (symbols table, no knowledge_embeddings)
+- ✅ Both FTS5 (text) and HNSW (semantic) search operational
 
-2. **Markdown Enhancement** - Capture full section bodies for RAG
-   - **Before**: Only captured paragraph nodes (~50 chars)
-   - **After**: Captures ALL content (lists, code, blockquotes, tables) (~280+ chars)
-   - Added `is_content_node()` helper for comprehensive extraction
-   - Stores rich content in `doc_comment` field for embeddings
+### ✅ COMPLETED - RAG INFRASTRUCTURE
 
-3. **POC Validation** - Demonstrated token reduction
-   - **Test 1**: CASCADE query → 83.5% reduction (2,151 → 355 tokens)
-   - **Test 2**: Semantic Tantivy query → 94.3% reduction (9,220 → 525 tokens)
-   - **Average**: 88.9% reduction (target was >85%) ✅
-   - Both FTS5 (text) and HNSW (semantic) searches working
-   - Content quality maintained (complete explanations with context)
+1. **Architecture** ✅
+   - Unified symbols table with content_type field
+   - No knowledge_embeddings complexity needed
+   - Proven infrastructure handles docs as first-class symbols
+   - FTS5 full-text search operational (<5ms)
+   - HNSW semantic search operational (<50ms)
 
-### 🎯 NEXT STEPS
+2. **Markdown Extraction** ✅
+   - Enhanced content extraction (lists, code, blockquotes, tables)
+   - Rich embeddings with complete section bodies
+   - Tree-sitter based extraction for consistency
 
-**Priority 1: Ship v1.1.0 Release** 🚀
-- Commit all changes with comprehensive message
-- Tag release as v1.1.0
-- Push to origin/main
-- Celebrate milestone!
+3. **Token Reduction** ✅
+   - **Validated**: 88.9% average reduction
+   - **Test 1**: CASCADE query → 83.5% reduction
+   - **Test 2**: Semantic query → 94.3% reduction
+   - **Quality**: Complete explanations with context preserved
 
-**Priority 2: Production Rollout** (Future)
-- Agent onboarding optimization
-- Documentation search integration
-- Cross-reference linking (code ↔ docs)
-- Query suggestion improvements
+4. **Search Quality** ✅
+   - Semantic fallback when text search fails (UX improvement)
+   - Code_context embeddings (3 lines before/after for richer semantic understanding)
+   - Both search modes working reliably
 
-**Priority 3: Additional Documentation Support** (Future)
-- Consider PDF support for external docs
-- DOCX support for Word documents
-- Plain text files (.txt)
-- Org-mode files if needed
+### 🎯 NEXT PRIORITIES
+
+**Priority 1: Language Support Expansion**
+- ✅ Markdown (#28) - Complete
+- ✅ JSON (#29) - Complete
+- ✅ TOML (#30) - Complete
+- 🎯 YAML (#31) - High priority for CI/CD configs
+- Consider: Plain text (.txt), CSV for data files
+
+**Priority 2: Production Optimization** (Future)
+- Agent onboarding flow improvements
+- Cross-reference discovery (code ↔ docs linking)
+- Query suggestion system
+- Additional document formats (PDF, DOCX) if needed
+
+**Priority 3: Search Quality Improvements** (Backlog)
+- Consider Tantivy reintroduction (if FTS5 becomes limiting)
+- Advanced query expansion beyond current fallback
+- Multi-workspace semantic search
+- Search result ranking improvements
 
 ### 📝 KEY LEARNINGS
 
@@ -285,5 +294,4 @@ Should we add a new tool specifically for semantic searching instead of it being
 
 we should add YAML treesitter support next
 
-Our symbols.db-wal file is staying a larger filesize than I would have expected, we should invetigate.
 
