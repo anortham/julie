@@ -2,11 +2,16 @@
 
 ## 🎯 Current Status (2025-11-07)
 
+### 🏆 Language #31 Complete - YAML Support Added ✅
+
+**Status**: ✅ Production - 31 Languages Supported
+**Latest Feature**: YAML extractor (CI/CD configs, Kubernetes, Docker Compose)
+**Latest Release**: v1.1.2 (2025-11-07)
+**Tests**: All 14 YAML extractor tests passing
+
 ### 🏆 RAG POC COMPLETE - v1.1.1 Released ✅
 
-**Status**: ✅ Production - RAG Infrastructure Complete
 **Achievement**: 88.9% average token reduction (83-94% range)
-**Latest Release**: v1.1.1 (2025-11-07)
 **Tests**: All 20 markdown extractor tests passing
 
 ### 📦 RELEASES
@@ -55,7 +60,8 @@
 - ✅ Markdown (#28) - Complete
 - ✅ JSON (#29) - Complete
 - ✅ TOML (#30) - Complete
-- 🎯 YAML (#31) - High priority for CI/CD configs
+- ✅ YAML (#31) - Complete (CI/CD configs: GitHub Actions, Kubernetes, Docker Compose)
+- ⏸️ Dockerfile - Blocked on tree-sitter-dockerfile 0.25+ compatibility (crate uses tree-sitter 0.20)
 - Consider: Plain text (.txt), CSV for data files
 
 **Priority 2: Production Optimization** (Future)
