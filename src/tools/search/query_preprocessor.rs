@@ -376,6 +376,14 @@ fn sanitize_standard_for_fts5(query: &str) -> String {
     result = result.replace('.', " ");
     result = result.replace('?', "");
 
+    // Remove FTS5 special characters that cause syntax errors
+    // These characters have special meaning in FTS5 and must be removed/escaped
+    result = result.replace('/', " ");  // Forward slash breaks FTS5 (e.g., "tests/mod.rs" → "fts5: syntax error near /")
+    result = result.replace('!', " ");  // Exclamation mark is NOT operator in FTS5
+    result = result.replace('(', " ");  // Parentheses are grouping operators in FTS5
+    result = result.replace(')', " ");
+    result = result.replace('"', " ");  // Double quotes are phrase search delimiters in FTS5
+
     result.trim().to_string()
 }
 

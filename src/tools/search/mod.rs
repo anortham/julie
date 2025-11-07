@@ -277,6 +277,87 @@ impl FastSearchTool {
         optimized.optimize_for_tokens(Some(self.limit as usize));
 
         if optimized.results.is_empty() {
+            // Semantic fallback: If text search returns 0 results, try semantic search
+            if self.search_method == "text" {
+                debug!("🔄 Text search returned 0 results, attempting semantic fallback");
+
+                let workspace_ids = self.resolve_workspace_filter(handler).await?;
+                match semantic_search::semantic_search_impl(
+                    &self.query,
+                    &self.language,
+                    &self.file_pattern,
+                    self.limit,
+                    workspace_ids,
+                    handler,
+                )
+                .await
+                {
+                    Ok(semantic_symbols) if !semantic_symbols.is_empty() => {
+                        debug!(
+                            "✅ Semantic fallback found {} results",
+                            semantic_symbols.len()
+                        );
+
+                        // Truncate code_context to save tokens
+                        let semantic_symbols =
+                            formatting::truncate_code_context(semantic_symbols, self.context_lines);
+
+                        // Create optimized response with confidence scoring
+                        let confidence =
+                            scoring::calculate_search_confidence(&self.query, &semantic_symbols);
+                        let mut optimized =
+                            OptimizedResponse::new("fast_search", semantic_symbols, confidence);
+
+                        // Add fallback message to insights
+                        let fallback_message = "🔄 Text search returned 0 results. Showing semantic matches instead.\n💡 Semantic search finds conceptually similar code even when exact terms don't match.";
+                        optimized = optimized.with_insights(fallback_message.to_string());
+
+                        // Add insights based on patterns found
+                        if let Some(insights) =
+                            scoring::generate_search_insights(&optimized.results, confidence)
+                        {
+                            // Append to existing insights
+                            let combined_insights = format!("{}\n\n{}", fallback_message, insights);
+                            optimized = optimized.with_insights(combined_insights);
+                        }
+
+                        // Add smart next actions
+                        let next_actions =
+                            scoring::suggest_next_actions(&self.query, &optimized.results);
+                        optimized = optimized.with_next_actions(next_actions);
+
+                        // Optimize for tokens
+                        optimized.optimize_for_tokens(Some(self.limit as usize));
+
+                        // Return structured + human-readable output
+                        let markdown = formatting::format_optimized_results(&self.query, &optimized);
+
+                        // Serialize to JSON for structured_content
+                        let structured = serde_json::to_value(&optimized).map_err(|e| {
+                            anyhow::anyhow!("Failed to serialize response: {}", e)
+                        })?;
+
+                        let structured_map = if let serde_json::Value::Object(map) = structured {
+                            map
+                        } else {
+                            return Err(anyhow::anyhow!("Expected JSON object"));
+                        };
+
+                        return Ok(CallToolResult::text_content(vec![TextContent::from(
+                            markdown,
+                        )])
+                        .with_structured_content(structured_map));
+                    }
+                    Ok(_) => {
+                        debug!("⚠️ Semantic fallback also returned 0 results");
+                    }
+                    Err(e) => {
+                        debug!("⚠️ Semantic fallback failed: {}", e);
+                    }
+                }
+            }
+
+            // If we get here, either not text mode or semantic fallback failed/returned 0
             let message = format!(
                 "🔍 No results found for: '{}'\n\
                 💡 Try a broader search term, different mode, or check spelling",

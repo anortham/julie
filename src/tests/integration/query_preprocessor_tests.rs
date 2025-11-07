@@ -277,6 +277,43 @@ mod fts5_sanitization {
 
         assert!(sanitized.contains("?."));
     }
+
+    #[test]
+    fn test_sanitize_fts5_special_chars() {
+        // RED TEST: FTS5 has special characters that cause syntax errors
+        // These must be escaped or removed to prevent "fts5: syntax error" failures
+
+        // Test forward slash (commonly in paths)
+        let query1 = "tests/mod.rs";
+        let sanitized1 = sanitize_for_fts5(query1, QueryType::Standard);
+        // Should not contain unescaped forward slashes that break FTS5
+        // Verify it doesn't cause FTS5 error by ensuring no literal "/" in query
+        assert!(!sanitized1.contains('/') || sanitized1.contains(r"\/"),
+                "Forward slash should be escaped or replaced: {}", sanitized1);
+
+        // Test exclamation mark (NOT operator in FTS5)
+        let query2 = "format! macro";
+        let sanitized2 = sanitize_for_fts5(query2, QueryType::Standard);
+        assert!(!sanitized2.contains('!'),
+                "Exclamation mark should be removed: {}", sanitized2);
+
+        // Test parentheses (grouping operators in FTS5)
+        let query3 = "fn(arg)";
+        let sanitized3 = sanitize_for_fts5(query3, QueryType::Standard);
+        // Parentheses are okay if properly balanced, but in standard queries they should be escaped or removed
+        // to prevent accidental grouping operator interpretation
+
+        // Test double quotes (phrase search in FTS5)
+        let query4 = r#"let x = "value""#;
+        let sanitized4 = sanitize_for_fts5(query4, QueryType::Standard);
+        // Quotes should be escaped or the string should be properly quoted
+
+        // Test combined case from TODO.md error
+        let query5 = "mod knowledge tests/mod.rs";
+        let sanitized5 = sanitize_for_fts5(query5, QueryType::Standard);
+        assert!(!sanitized5.contains('/'),
+                "Combined query with slash should not break FTS5: {}", sanitized5);
+    }
 }
 
 // ============================================================================

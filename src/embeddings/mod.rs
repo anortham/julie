@@ -571,6 +571,13 @@ impl EmbeddingEngine {
             parts.push(doc.clone());
         }
 
+        // Add code context if available (enables semantic search on actual code patterns)
+        // This is the key enhancement: all 30 extractors capture 3 lines before + symbol + 3 after
+        // Including this gives embeddings richer understanding of how symbols are used
+        if let Some(ctx) = &symbol.code_context {
+            parts.push(ctx.clone());
+        }
+
         parts.join(" ")
     }
 }

@@ -278,3 +278,12 @@ when this keeps happening the agent just gives up and falls back to search like:
 
   Are we missing any other tree-sitter parsers we need to add more documentation to our RAG? What about other file types that could have important info in them to add to the RAG? PDFs? docx? what all can we support? If we REALLY want to build a RAG out of the codebase we need to support as many types as we can.
 
+Should we add a semantic fallback results for text search results that return 0 results? 
+
+Should we add a new tool specifically for semantic searching instead of it being a "mode" in fast_search? What other tools we already have could benefit from a semantic search "layer"?
+
+
+we should add YAML treesitter support next
+
+Our symbols.db-wal file is staying a larger filesize than I would have expected, we should invetigate.
+

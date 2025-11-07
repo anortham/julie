@@ -237,12 +237,11 @@ async fn test_build_embedding_text() {
         metadata: None,
         semantic_group: None,
         confidence: None,
-        code_context: None,
+        code_context: Some("// Fetch user data from API".to_string()), // Fixed: use symbol.code_context
         content_type: None,
     };
 
-    let mut context = CodeContext::from_symbol(&symbol);
-    context.surrounding_code = Some("// Fetch user data from API".to_string());
+    let context = CodeContext::from_symbol(&symbol);
 
     let embedding_text = engine.build_embedding_text(&symbol, &context);
 
@@ -250,6 +249,91 @@ async fn test_build_embedding_text() {
     assert!(embedding_text.contains("getUserData"));
     assert!(embedding_text.contains("function")); // SymbolKind::Function.to_string() returns "function" lowercase
     assert!(embedding_text.contains("function getUserData(): Promise<User>"));
-    assert!(embedding_text.contains("user.ts"));
-    assert!(embedding_text.contains("Fetch user data from API"));
+    // Note: file_path is NOT included in embeddings (it's metadata, not semantic content)
+    assert!(embedding_text.contains("Fetch user data from API")); // Now comes from symbol.code_context
+}
+
+#[cfg_attr(
+    not(feature = "network_models"),
+    ignore = "requires downloadable embedding model"
+)]
+#[tokio::test]
+async fn test_build_embedding_text_includes_code_context() {
+    // RED TEST: This will FAIL initially because build_embedding_text doesn't include code_context
+    let temp_dir = TempDir::new().unwrap();
+    let cache_dir = temp_dir.path().to_path_buf();
+    let db = create_test_db();
+
+    let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
+
+    // Create a symbol WITH code_context populated (this is what extractors do)
+    let code_context_lines = vec![
+        "  // Validate user permissions",
+        "  if (!hasPermission(user)) {",
+        "    throw new Error('Unauthorized');",
+        "  }",
+        "  return await db.users.findById(userId);",
+    ]
+    .join("\n");
+
+    let symbol = Symbol {
+        id: "test".to_string(),
+        name: "getUserData".to_string(),
+        kind: SymbolKind::Function,
+        language: "typescript".to_string(),
+        file_path: "/src/services/user.ts".to_string(),
+        start_line: 10,
+        start_column: 0,
+        end_line: 15,
+        end_column: 1,
+        start_byte: 200,
+        end_byte: 350,
+        signature: Some("function getUserData(userId: string): Promise<User>".to_string()),
+        doc_comment: Some("/// Fetches user data from database".to_string()),
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(code_context_lines.clone()), // ← This is populated by extractors!
+        content_type: None,
+    };
+
+    let context = CodeContext::from_symbol(&symbol);
+
+    let embedding_text = engine.build_embedding_text(&symbol, &context);
+
+    // Should include all the important information
+    assert!(
+        embedding_text.contains("getUserData"),
+        "Embedding text should contain function name"
+    );
+    assert!(
+        embedding_text.contains("function"),
+        "Embedding text should contain symbol kind"
+    );
+    assert!(
+        embedding_text.contains("getUserData(userId: string)"),
+        "Embedding text should contain signature"
+    );
+    assert!(
+        embedding_text.contains("Fetches user data from database"),
+        "Embedding text should contain doc comment"
+    );
+
+    // THE KEY ASSERTION: code_context should be included for richer semantic understanding
+    assert!(
+        embedding_text.contains("hasPermission"),
+        "Embedding text should contain code_context for semantic search - found actual code usage patterns"
+    );
+    assert!(
+        embedding_text.contains("Unauthorized"),
+        "Embedding text should include error messages from code_context"
+    );
+    assert!(
+        embedding_text.contains("db.users.findById"),
+        "Embedding text should include database calls from code_context"
+    );
 }
