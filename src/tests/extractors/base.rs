@@ -192,3 +192,71 @@ fn test_id_generation() {
     assert_ne!(id1, id3); // Different inputs should give different IDs
     assert_eq!(id1.len(), 32); // MD5 hash is 32 chars
 }
+
+#[test]
+fn test_relative_path_canonicalization() {
+    // BUG FIX TEST: Verify that relative paths are correctly canonicalized
+    // This test reproduces the reference workspace indexing scenario where
+    // relative paths like "COA.CodeSearch.McpServer/Services/FileIndexingService.cs"
+    // were failing canonicalization because we tried to canonicalize them directly
+    // instead of joining to workspace_root first.
+
+    // Create a real temporary workspace directory
+    let temp_dir = std::env::temp_dir().join("julie_test_relative_path");
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    // Create nested directories mimicking a real project structure
+    let subdir = temp_dir.join("Services").join("Indexing");
+    std::fs::create_dir_all(&subdir).unwrap();
+
+    // Create a real file
+    let file_path = subdir.join("TestService.cs");
+    std::fs::write(&file_path, "class TestService { }").unwrap();
+
+    // TEST CASE 1: Relative path (the bug scenario)
+    let relative_path = "Services/Indexing/TestService.cs".to_string();
+    let extractor = BaseExtractor::new(
+        "csharp".to_string(),
+        relative_path.clone(),
+        "class TestService { }".to_string(),
+        &temp_dir,
+    );
+
+    // Verify the extractor was created successfully (no panic from canonicalization)
+    assert_eq!(extractor.language, "csharp");
+
+    // Verify the path is stored in relative Unix-style format
+    assert!(
+        extractor.file_path.contains('/'),
+        "Path should use Unix-style separators"
+    );
+    assert!(
+        !extractor.file_path.contains('\\'),
+        "Path should not contain Windows separators"
+    );
+    assert!(
+        extractor.file_path.contains("Services/Indexing"),
+        "Path should contain the directory structure"
+    );
+    assert!(
+        extractor.file_path.ends_with("TestService.cs"),
+        "Path should end with the filename"
+    );
+
+    // TEST CASE 2: Absolute path (should still work)
+    let extractor_abs = BaseExtractor::new(
+        "csharp".to_string(),
+        file_path.to_string_lossy().to_string(),
+        "class TestService { }".to_string(),
+        &temp_dir,
+    );
+
+    assert_eq!(extractor_abs.language, "csharp");
+    assert!(
+        extractor_abs.file_path.contains('/'),
+        "Absolute path should also be converted to Unix-style"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&temp_dir).unwrap();
+}

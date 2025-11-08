@@ -680,3 +680,95 @@ mod search_integration_tests {
         println!("Query '{}' should suggest corrections", query);
     }
 }
+
+/// Tests for symbol name relevance checking
+/// Prevents spurious matches where query appears only in comments/docs
+#[cfg(test)]
+mod symbol_name_relevance_tests {
+    use crate::utils::query_expansion::is_symbol_name_relevant;
+
+    #[test]
+    fn test_exact_match_different_casing() {
+        // "ProcessFilesOptimized" should match "process_files_optimized"
+        assert!(
+            is_symbol_name_relevant(
+                "ProcessFilesOptimized",
+                "process_files_optimized",
+                "process_files_optimized"
+            ),
+            "PascalCase query should match snake_case symbol"
+        );
+    }
+
+    #[test]
+    fn test_reject_spurious_comment_match() {
+        // "ProcessFilesOptimized" should NOT match "expand_query"
+        // (even though expand_query has "ProcessFilesOptimized" in a comment)
+        assert!(
+            !is_symbol_name_relevant(
+                "ProcessFilesOptimized",
+                "expand_query",
+                "ProcessFilesOptimized"
+            ),
+            "Should reject symbol that only mentions query in comments"
+        );
+    }
+
+    #[test]
+    fn test_camelcase_to_snake_case() {
+        // "createAuthServiceLogin" should match "create_auth_service_login"
+        assert!(
+            is_symbol_name_relevant(
+                "createAuthServiceLogin",
+                "create_auth_service_login",
+                "create_auth_service_login"
+            ),
+            "camelCase query should match snake_case symbol"
+        );
+    }
+
+    #[test]
+    fn test_snake_case_exact_match() {
+        // "get_user_data" should match "get_user_data"
+        assert!(
+            is_symbol_name_relevant("get_user_data", "get_user_data", "get_user_data"),
+            "Exact snake_case match should work"
+        );
+    }
+
+    #[test]
+    fn test_reject_unrelated_symbol() {
+        // "getUserData" should NOT match "create_user"
+        assert!(
+            !is_symbol_name_relevant("getUserData", "create_user", "getUserData"),
+            "Should reject unrelated symbol names"
+        );
+    }
+
+    #[test]
+    fn test_partial_substring_match() {
+        // "UserService" contains "User", so might accept "User" query
+        assert!(
+            is_symbol_name_relevant("UserService", "user_service", "user_service"),
+            "Should match when normalized names are equal"
+        );
+    }
+
+    #[test]
+    fn test_method_name_with_class_prefix() {
+        // "getData" should match "UserService.getData" or "get_data"
+        assert!(
+            is_symbol_name_relevant("getData", "get_data", "get_data"),
+            "Should match method names with case conversion"
+        );
+    }
+
+    #[test]
+    fn test_wildcard_variant_rejects_bad_match() {
+        // Even with wildcard variant, should reject clearly unrelated symbols
+        assert!(
+            !is_symbol_name_relevant("Process*", "unrelated_function", "Process*"),
+            "Wildcard query should still check name similarity"
+        );
+    }
+}

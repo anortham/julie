@@ -12,9 +12,8 @@ impl SymbolDatabase {
         // Enable foreign key constraints
         self.conn.execute("PRAGMA foreign_keys = ON", [])?;
 
-        // Set WAL mode for better concurrency (this returns results, so ignore them)
-        self.conn
-            .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        // NOTE: WAL mode is now set in SymbolDatabase::new() BEFORE migrations run
+        // This ensures WAL is active for all operations including schema changes
 
         // Create tables in dependency order
         self.create_workspaces_table()?;

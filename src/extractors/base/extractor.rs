@@ -42,7 +42,18 @@ impl BaseExtractor {
         // CRITICAL FIX: Canonicalize file_path to resolve symlinks (macOS /var vs /private/var)
         // This ensures database queries match during get_symbols (which also canonicalizes)
         // Without this: indexing stores /var/..., queries use /private/var/... → zero results
-        let canonical_path = std::path::Path::new(&file_path)
+        //
+        // 🔥 BUG FIX: Handle relative paths correctly
+        // If file_path is relative (e.g., "COA.CodeSearch.McpServer/Services/FileIndexingService.cs"),
+        // we must join it to workspace_root BEFORE canonicalizing.
+        // canonicalize() only works with absolute paths or CWD-relative paths.
+        let path_to_canonicalize = if std::path::Path::new(&file_path).is_absolute() {
+            std::path::PathBuf::from(&file_path)
+        } else {
+            workspace_root.join(&file_path)
+        };
+
+        let canonical_path = path_to_canonicalize
             .canonicalize()
             .unwrap_or_else(|e| {
                 warn!(

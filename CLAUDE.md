@@ -243,3 +243,4 @@ fast_search(
 ---
 
 *Use Julie's semantic search to access detailed documentation on-demand. Save 85-95% of context tokens.*
+- you CANNOT build the release build while we're running the server in session!

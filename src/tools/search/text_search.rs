@@ -10,6 +10,7 @@ use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::search::query_preprocessor::{preprocess_query, QueryType};
 use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
+use crate::utils::query_expansion::{expand_query, is_symbol_name_relevant};
 
 use super::query::matches_glob_pattern;
 
@@ -28,93 +29,194 @@ pub async fn text_search_impl(
     context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    // Step 1: Preprocess query (validate, detect type, sanitize)
-    let preprocessed = match preprocess_query(query) {
-        Ok(p) => {
-            debug!(
-                "✨ Query preprocessor: '{}' → {:?} → FTS5: '{}'",
-                query, p.query_type, p.fts5_query
-            );
-            p
-        }
-        Err(e) => {
-            // Preprocessing failed (e.g., pure wildcard query)
-            return Err(anyhow::anyhow!("Invalid query: {}", e));
-        }
+    // Step 1: Expand query into multiple variants
+    // Try variants in order: exact → CamelCase → snake_case → AND → wildcard → OR
+    // Trigger expansion for:
+    // - Multi-word queries (contains spaces)
+    // - CamelCase/PascalCase queries (contains uppercase letters)
+    let needs_expansion = query.contains(' ') || query.chars().any(|c| c.is_uppercase());
+
+    let query_variants = if needs_expansion {
+        let variants = expand_query(query);
+        debug!(
+            "🔄 Query expansion enabled: '{}' → {} variants: {:?}",
+            query,
+            variants.len(),
+            variants
+        );
+        variants
+    } else {
+        // Pure lowercase single word - no expansion needed
+        vec![query.to_string()]
     };
 
-    // Step 2: Use preprocessed FTS5 query for search
-    let fts5_query = &preprocessed.fts5_query;
+    // Step 2: Try each query variant until we get sufficient results
+    let mut tried_variants: Vec<(String, usize)> = Vec::new();
 
-    // Step 3: Route based on query type and search_target
-    // Symbol queries go to definitions, Pattern/Standard to content
-    let effective_search_target = match preprocessed.query_type {
-        QueryType::Symbol if search_target != "content" => "definitions",
-        QueryType::Glob if file_pattern.is_none() => {
-            // For glob queries without explicit file_pattern, search content
-            // The glob matching will happen via the file_path field
-            "content"
-        }
-        _ => search_target, // Respect user's explicit search_target
-    };
+    for (idx, variant) in query_variants.iter().enumerate() {
+        debug!(
+            "🔍 Trying variant {}/{}: '{}'",
+            idx + 1,
+            query_variants.len(),
+            variant
+        );
 
-    match effective_search_target {
-        "definitions" => {
-            // Search symbol definitions only (symbols_fts index)
-            if let Some(workspace_ids) = workspace_ids {
+        // Preprocess this variant
+        let preprocessed = match preprocess_query(variant) {
+            Ok(p) => {
                 debug!(
-                    "🔍 Symbol search with workspace filter: {:?}",
-                    workspace_ids
+                    "✨ Query preprocessor: '{}' → {:?} → FTS5: '{}'",
+                    variant, p.query_type, p.fts5_query
                 );
-                database_search_with_workspace_filter(
-                    fts5_query,
-                    language,
-                    file_pattern,
-                    limit,
-                    workspace_ids,
-                    handler,
-                )
-                .await
-            } else {
-                debug!("🔍 Symbol search in primary workspace (no workspace filter)");
-                // Get primary workspace ID and use it for filtering
-                let workspace = handler
-                    .get_workspace()
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                let registry_service =
-                    crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
-                let primary_workspace_id = registry_service
-                    .get_primary_workspace_id()
-                    .await?
-                    .unwrap_or_else(|| "primary".to_string());
+                p
+            }
+            Err(e) => {
+                warn!("⚠️  Variant '{}' failed preprocessing: {}", variant, e);
+                tried_variants.push((variant.clone(), 0));
+                continue; // Try next variant
+            }
+        };
 
-                database_search_with_workspace_filter(
+        let fts5_query = &preprocessed.fts5_query;
+
+        // Step 3: Route based on query type and search_target
+        // Symbol queries go to definitions, Pattern/Standard to content
+        let effective_search_target = match preprocessed.query_type {
+            QueryType::Symbol if search_target != "content" => "definitions",
+            QueryType::Glob if file_pattern.is_none() => {
+                // For glob queries without explicit file_pattern, search content
+                // The glob matching will happen via the file_path field
+                "content"
+            }
+            _ => search_target, // Respect user's explicit search_target
+        };
+
+        let results = match effective_search_target {
+            "definitions" => {
+                // Search symbol definitions only (symbols_fts index)
+                if let Some(ref workspace_ids) = workspace_ids {
+                    debug!(
+                        "🔍 Symbol search with workspace filter: {:?}",
+                        workspace_ids
+                    );
+                    database_search_with_workspace_filter(
+                        fts5_query,
+                        language,
+                        file_pattern,
+                        limit,
+                        workspace_ids.clone(),
+                        handler,
+                    )
+                    .await
+                } else {
+                    debug!("🔍 Symbol search in primary workspace (no workspace filter)");
+                    // Get primary workspace ID and use it for filtering
+                    let workspace = handler
+                        .get_workspace()
+                        .await?
+                        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                    let registry_service =
+                        crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+                    let primary_workspace_id = registry_service
+                        .get_primary_workspace_id()
+                        .await?
+                        .unwrap_or_else(|| "primary".to_string());
+
+                    database_search_with_workspace_filter(
+                        fts5_query,
+                        language,
+                        file_pattern,
+                        limit,
+                        vec![primary_workspace_id],
+                        handler,
+                    )
+                    .await
+                }
+            }
+            _ => {
+                // "content" or any other value: Search full file content (files_fts index)
+                debug!("🔍 Content search (full file text)");
+                sqlite_fts_search(
                     fts5_query,
                     language,
                     file_pattern,
                     limit,
-                    vec![primary_workspace_id],
+                    workspace_ids.clone(),
+                    context_lines,
                     handler,
                 )
                 .await
             }
-        }
-        _ => {
-            // "content" or any other value: Search full file content (files_fts index)
-            debug!("🔍 Content search (full file text)");
-            sqlite_fts_search(
-                fts5_query,
-                language,
-                file_pattern,
-                limit,
-                workspace_ids,
-                context_lines,
-                handler,
-            )
-            .await
+        };
+
+        match results {
+            Ok(symbols) => {
+                let count = symbols.len();
+                debug!(
+                    "✅ Variant '{}' returned {} results",
+                    variant, count
+                );
+                tried_variants.push((variant.clone(), count));
+
+                if count > 0 {
+                    // Check if we found "good" results:
+                    // 1. Actual code (not just documentation)
+                    // 2. For single-word CamelCase queries: Symbol name is relevant (not just mentioned in comments)
+
+                    // Only apply strict symbol name check for single-word CamelCase/PascalCase queries
+                    // Multi-word queries and dotted identifiers don't have the spurious comment match problem
+                    let is_single_word_camelcase = !query.contains(' ')
+                        && !query.contains('.')
+                        && query.chars().any(|c| c.is_uppercase());
+
+                    let has_relevant_code = symbols.iter().any(|s| {
+                        let is_code = s.content_type.is_none();
+
+                        if is_single_word_camelcase {
+                            // Strict check: symbol name must be relevant
+                            let is_relevant = is_symbol_name_relevant(query, &s.name, variant);
+                            is_code && is_relevant
+                        } else {
+                            // Lenient check: just needs to be code (not docs)
+                            is_code
+                        }
+                    });
+
+                    if has_relevant_code {
+                        // Found actual code with relevant symbol names - return immediately
+                        debug!(
+                            "🎯 Query expansion SUCCESS: Found relevant code symbols with variant '{}' (tried {}/{})",
+                            variant,
+                            idx + 1,
+                            query_variants.len()
+                        );
+                        return Ok(symbols);
+                    } else {
+                        // Only found documentation or spurious matches - try next variant
+                        debug!(
+                            "⚠️  Variant '{}' found {} results but no relevant code symbols (docs/spurious matches), trying next variant",
+                            variant, count
+                        );
+                        // Continue to next variant
+                    }
+                }
+                // No results or only docs, continue to next variant
+            }
+            Err(e) => {
+                warn!("⚠️  Variant '{}' search failed: {}", variant, e);
+                tried_variants.push((variant.clone(), 0));
+                // Continue to next variant
+            }
         }
     }
+
+    // All variants tried, no results found
+    debug!(
+        "❌ Query expansion exhausted: Tried {} variants, no results. Variants: {:?}",
+        tried_variants.len(),
+        tried_variants
+    );
+    Ok(Vec::new())
 }
 
 /// CASCADE FALLBACK: Database search with workspace filtering

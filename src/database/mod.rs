@@ -43,8 +43,36 @@ impl SymbolDatabase {
         let conn =
             Connection::open(&file_path).map_err(|e| anyhow!("Failed to open database: {}", e))?;
 
+        // 🚨 CRITICAL: Set WAL mode IMMEDIATELY after connection open
+        // This MUST happen before ANY other database operations (including migrations)
+        // to prevent corruption when multiple processes access the same database.
+        // WAL mode allows concurrent readers + single writer without corruption.
+        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
+            .map_err(|e| anyhow!("Failed to enable WAL mode: {}", e))?;
+
+        // Verify WAL mode was actually set (some filesystems don't support WAL)
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .map_err(|e| anyhow!("Failed to query journal mode: {}", e))?;
+
+        if !journal_mode.eq_ignore_ascii_case("wal") {
+            return Err(anyhow!(
+                "Failed to enable WAL mode (got '{}'). This filesystem may not support WAL. \
+                 Use a filesystem that supports WAL (NTFS, ext4, APFS, etc.)",
+                journal_mode
+            ));
+        }
+
+        debug!("✅ WAL mode enabled on database connection");
+
         // Set busy timeout for concurrent access - wait up to 5 seconds for locks
         conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+
+        // Set synchronous mode to NORMAL (safe with WAL, faster than FULL)
+        // FULL: fsync after every transaction (slow, overkill with WAL)
+        // NORMAL: fsync at WAL checkpoints (safe with WAL, 2-3x faster)
+        // OFF: no fsync (fast, data loss on power failure)
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
 
         // Configure WAL autocheckpoint to prevent large WAL files
         // Default is 1000 pages (~4MB), we set to 2000 pages (~8MB) for better performance
@@ -53,7 +81,27 @@ impl SymbolDatabase {
 
         let mut db = Self { conn, file_path };
 
-        // Run schema migrations BEFORE initializing schema
+        // 🔥 DEVELOPMENT MODE SAFETY: Detect schema version mismatches during development
+        // When building a new version with schema changes while old MCP is running,
+        // we can hit corruption. In dev mode, warn and optionally rebuild.
+        let current_schema = db.get_schema_version().unwrap_or(0);
+        let target_schema = crate::database::LATEST_SCHEMA_VERSION;
+
+        if current_schema > target_schema {
+            // Downgrade scenario - old database with newer schema
+            return Err(anyhow!(
+                "Database schema version ({}) is NEWER than code expects ({}). \
+                 This means you're running old Julie code against a database created by newer Julie. \
+                 Solutions:\n\
+                 1. Build and run the latest Julie version (recommended)\n\
+                 2. Delete .julie/indexes/ directory to rebuild with current schema\n\
+                 3. Checkout the newer Julie version that created this database",
+                current_schema,
+                target_schema
+            ));
+        }
+
+        // Run schema migrations AFTER WAL mode is configured
         db.run_migrations()?;
 
         db.initialize_schema()?;
@@ -172,5 +220,22 @@ impl SymbolDatabase {
         );
 
         Ok((busy, log, checkpointed))
+    }
+}
+
+// 🚨 CRITICAL: Implement Drop to checkpoint WAL on database close
+// This prevents corruption when process terminates while WAL has uncommitted changes
+impl Drop for SymbolDatabase {
+    fn drop(&mut self) {
+        // Best-effort checkpoint - log error but don't panic
+        // We can't return Result from Drop, so just log failures
+        if let Err(e) = self.checkpoint_wal() {
+            warn!(
+                "Failed to checkpoint WAL on database close (non-fatal): {}",
+                e
+            );
+        } else {
+            debug!("✅ WAL checkpointed successfully on database close");
+        }
     }
 }

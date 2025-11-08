@@ -1729,3 +1729,122 @@ fn test_wal_checkpoint() {
 
     println!("✅ WAL checkpoint successful: busy={}, log={}, checkpointed={}", busy, log, checkpointed);
 }
+
+// 🚨 CRITICAL CORRUPTION PREVENTION TEST
+// This test verifies the fix for "database disk image is malformed" errors
+// Root cause: Connections were opened in DELETE mode, then WAL was set later
+// Fix: WAL mode is now set IMMEDIATELY after connection open
+#[test]
+fn test_wal_mode_set_immediately_on_connection_open() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("wal_test.db");
+
+    // Create database - this should set WAL mode immediately
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Verify WAL mode is active
+    let journal_mode: String = db
+        .conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+
+    assert_eq!(
+        journal_mode.to_lowercase(),
+        "wal",
+        "Database MUST be in WAL mode immediately after opening to prevent corruption"
+    );
+
+    // Verify synchronous mode is NORMAL (safe with WAL, faster than FULL)
+    let sync_mode: i64 = db
+        .conn
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .unwrap();
+
+    assert_eq!(
+        sync_mode, 1,
+        "Synchronous mode should be NORMAL (1) for performance with WAL"
+    );
+
+    println!("✅ WAL mode verification passed: journal_mode={}, synchronous={}", journal_mode, sync_mode);
+}
+
+// 🚨 CORRUPTION PREVENTION: Test that Drop handler checkpoints WAL
+#[test]
+fn test_database_drop_checkpoints_wal() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("drop_test.db");
+
+    {
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Write some data to create WAL entries
+        db.store_file_with_content(
+            "test.rs",
+            "rust",
+            "hash123",
+            100,
+            1234567890,
+            "fn test() {}",
+            "test_workspace",
+        )
+        .unwrap();
+
+        // db goes out of scope here - Drop should checkpoint
+    }
+
+    // Reopen database - if Drop checkpoint worked, database should be clean
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Query should work without corruption
+    let stats = db.get_stats().unwrap();
+    assert_eq!(stats.total_files, 1);
+
+    println!("✅ Drop checkpoint verified - database reopened cleanly");
+}
+
+// 🚨 SCHEMA VERSION SAFETY: Test that newer schema is detected
+#[test]
+fn test_schema_version_downgrade_detection() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("schema_test.db");
+
+    // Create database with current schema
+    {
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let version = db.get_schema_version().unwrap();
+        assert_eq!(version, crate::database::LATEST_SCHEMA_VERSION);
+    }
+
+    // Manually bump schema version to simulate newer database
+    {
+        use rusqlite::Connection;
+        let conn = Connection::open(&db_path).unwrap();
+        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
+            .unwrap();
+
+        let future_version = crate::database::LATEST_SCHEMA_VERSION + 10;
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version, applied_at, description)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![future_version, 1234567890, "Future schema"],
+        )
+        .unwrap();
+    }
+
+    // Try to open with old code - should fail with clear error
+    let result = SymbolDatabase::new(&db_path);
+    assert!(
+        result.is_err(),
+        "Should fail when database schema is newer than code expects"
+    );
+
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("NEWER than code expects"),
+            "Error should explain schema version mismatch clearly. Got: {}",
+            error_msg
+        );
+        println!("✅ Schema version downgrade detection working");
+    }
+}

@@ -9,6 +9,8 @@
 //!
 //! This solves the #1 agent pain point: multi-word queries returning zero results.
 
+use crate::utils::cross_language_intelligence;
+
 /// Convert multi-word query to CamelCase
 /// "user service" → "UserService"
 /// "get user data" → "GetUserData"
@@ -137,9 +139,42 @@ pub fn expand_query(query: &str) -> Vec<String> {
             variants.push(or_query);
         }
     } else {
-        // Single word queries: just add wildcards and fuzzy
-        variants.push(format!("{}*", query));
-        variants.push(format!("{}~1", query));
+        // Single word queries
+
+        // If it's CamelCase/PascalCase, generate naming convention variants
+        // For single-word CamelCase, try EXACT match first (for structs like "SymbolDatabase")
+        // Then try snake_case (for functions like "process_files_optimized")
+        if query.chars().any(|c| c.is_uppercase()) {
+            // variants[0] is already the exact query from line 90 - keep it!
+            // "SymbolDatabase", "ProcessFilesOptimized", etc.
+
+            // Add snake_case variant as fallback
+            // "SymbolDatabase" → "symbol_database"
+            // "ProcessFilesOptimized" → "process_files_optimized"
+            let snake = cross_language_intelligence::to_snake_case(query);
+            let snake_is_different = snake != query;
+
+            // Add lowercase camelCase variant
+            // "SymbolDatabase" → "symbolDatabase"
+            // "ProcessFilesOptimized" → "processFilesOptimized"
+            let lower_camel = to_lowercase_camelcase(query);
+            let lower_camel_is_different = lower_camel != query && lower_camel != snake;
+
+            // Now push them
+            if snake_is_different {
+                variants.push(snake);
+            }
+            if lower_camel_is_different {
+                variants.push(lower_camel);
+            }
+
+            // Finally wildcards for partial matches
+            variants.push(format!("{}*", query));
+        } else {
+            // Pure lowercase single word - just wildcards and fuzzy
+            variants.push(format!("{}*", query));
+            variants.push(format!("{}~1", query));
+        }
     }
 
     variants
@@ -166,4 +201,69 @@ pub fn expand_query_permissive(query: &str) -> Vec<String> {
     variants.push(fuzzy_or);
 
     variants
+}
+
+/// Check if a symbol's name is actually relevant to the search query
+///
+/// Prevents spurious matches where the query appears only in comments/docs
+/// but the symbol name is completely unrelated.
+///
+/// # Arguments
+/// * `query` - Original user query (e.g., "ProcessFilesOptimized")
+/// * `symbol_name` - Actual symbol name from results (e.g., "expand_query" or "process_files_optimized")
+/// * `variant` - Query variant that produced this match (e.g., "ProcessFilesOptimized" or "process_files_optimized")
+///
+/// # Returns
+/// * `true` - Symbol name is relevant (matches query intent)
+/// * `false` - Symbol name is NOT relevant (spurious match via comments)
+///
+/// # Examples
+/// ```
+/// use julie::utils::query_expansion::is_symbol_name_relevant;
+///
+/// // Exact match (different casing)
+/// assert!(is_symbol_name_relevant(
+///     "ProcessFilesOptimized",
+///     "process_files_optimized",
+///     "process_files_optimized"
+/// ));
+///
+/// // Spurious match via comment
+/// assert!(!is_symbol_name_relevant(
+///     "ProcessFilesOptimized",
+///     "expand_query",
+///     "ProcessFilesOptimized"
+/// ));
+/// ```
+pub fn is_symbol_name_relevant(query: &str, symbol_name: &str, variant: &str) -> bool {
+    // Normalize all inputs to snake_case for comparison
+    let normalized_query = cross_language_intelligence::to_snake_case(query);
+    let normalized_symbol = cross_language_intelligence::to_snake_case(symbol_name);
+    let normalized_variant = cross_language_intelligence::to_snake_case(variant);
+
+    // Strip wildcards from variant for comparison
+    let variant_clean = normalized_variant.trim_end_matches('*');
+
+    // Check 1: Does the symbol name match the variant?
+    if normalized_symbol == variant_clean {
+        return true;
+    }
+
+    // Check 2: Does the symbol name match the original query?
+    if normalized_symbol == normalized_query {
+        return true;
+    }
+
+    // Check 3: Substring match (one contains the other)
+    // This handles method names like "UserService.getData" → "get_data"
+    if normalized_symbol.contains(variant_clean) || variant_clean.contains(&normalized_symbol) {
+        return true;
+    }
+
+    if normalized_symbol.contains(&normalized_query) || normalized_query.contains(&normalized_symbol) {
+        return true;
+    }
+
+    // No match found - this is a spurious result
+    false
 }
