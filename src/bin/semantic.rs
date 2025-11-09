@@ -505,20 +505,12 @@ async fn update_file_embeddings(
 
 /// Generate embedding for a search query (for query-time semantic search)
 async fn generate_query_embedding(text: &str, model: &str, format: &str) -> Result<()> {
-    // Initialize embedding engine without requiring database
+    // Initialize embedding engine in standalone mode (no database required)
     let cache_dir = std::env::temp_dir().join("julie-embeddings");
     std::fs::create_dir_all(&cache_dir)?;
 
-    // Create a temporary dummy database (required by EmbeddingEngine API)
-    // Note: This is a design limitation - the engine requires a DB but query doesn't need one
-    let temp_dir = std::env::temp_dir().join("julie-query-temp");
-    std::fs::create_dir_all(&temp_dir)?;
-    let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
-    let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
-    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
-
-    // Initialize embedding engine
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc).await?;
+    // Use standalone engine - no dummy database needed!
+    let mut engine = EmbeddingEngine::new_standalone(model, cache_dir).await?;
 
     // Generate embedding for query text
     let embedding = engine.embed_text(text)?;
@@ -563,13 +555,8 @@ async fn search_hnsw(
     let cache_dir = std::env::temp_dir().join("julie-embeddings");
     std::fs::create_dir_all(&cache_dir)?;
 
-    let temp_dir = std::env::temp_dir().join("julie-query-temp");
-    std::fs::create_dir_all(&temp_dir)?;
-    let dummy_db_path = temp_dir.join(format!("query_dummy_{}.db", std::process::id()));
-    let dummy_db = SymbolDatabase::new(dummy_db_path.to_str().unwrap())?;
-    let db_arc = std::sync::Arc::new(std::sync::Mutex::new(dummy_db));
-
-    let mut engine = EmbeddingEngine::new(model, cache_dir, db_arc).await?;
+    // Use standalone engine - no dummy database needed!
+    let mut engine = EmbeddingEngine::new_standalone(model, cache_dir).await?;
 
     let embed_start = Instant::now();
     let query_vector = engine.embed_text(text)?;

@@ -243,7 +243,7 @@ async fn test_build_embedding_text() {
 
     let context = CodeContext::from_symbol(&symbol);
 
-    let embedding_text = engine.build_embedding_text(&symbol, &context);
+    let embedding_text = engine.build_embedding_text(&symbol);
 
     // Should include all the important information
     assert!(embedding_text.contains("getUserData"));
@@ -303,7 +303,7 @@ async fn test_build_embedding_text_includes_code_context() {
 
     let context = CodeContext::from_symbol(&symbol);
 
-    let embedding_text = engine.build_embedding_text(&symbol, &context);
+    let embedding_text = engine.build_embedding_text(&symbol);
 
     // Should include all the important information
     assert!(

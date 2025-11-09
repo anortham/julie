@@ -60,8 +60,10 @@ pub struct EmbeddingEngine {
     model: OrtEmbeddingModel, // GPU-accelerated ONNX Runtime model
     model_name: String,
     dimensions: usize,
-    /// Required database connection for persistence (no in-memory fallback)
-    db: Arc<Mutex<SymbolDatabase>>,
+    /// Optional database connection for persistence
+    /// None = standalone mode (query-only, no persistence)
+    /// Some = full mode (with persistence capabilities)
+    db: Option<Arc<Mutex<SymbolDatabase>>>,
     /// Cache directory for model files (needed for reinitialization)
     cache_dir: PathBuf,
     /// Track if we've fallen back to CPU mode due to GPU failure
@@ -103,7 +105,43 @@ impl EmbeddingEngine {
             model,
             model_name: model_name.to_string(),
             dimensions,
-            db,
+            db: Some(db),
+            cache_dir,
+            cpu_fallback_triggered: false,
+        })
+    }
+
+    /// Create a standalone embedding engine without database (for query-only use)
+    ///
+    /// Use this when you only need `embed_text()` and don't need persistence.
+    /// This avoids the dummy database overhead in tools like `julie-semantic query`.
+    pub async fn new_standalone(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
+        tracing::info!("🚀 Initializing standalone EmbeddingEngine (no database)...");
+
+        // 1. Set up model manager and download model if needed
+        let model_manager = ModelManager::new(cache_dir.clone())?;
+        let model_paths = model_manager.ensure_model_downloaded(model_name).await?;
+
+        // 2. Create GPU-accelerated ORT model
+        let model = OrtEmbeddingModel::new(
+            model_paths.model,
+            model_paths.tokenizer,
+            model_name,
+            Some(model_manager.cache_dir()), // Pass cache dir for CoreML caching
+        )?;
+
+        let dimensions = model.dimensions();
+
+        tracing::info!(
+            "🧠 Standalone EmbeddingEngine initialized (GPU-accelerated, {} dimensions)",
+            dimensions
+        );
+
+        Ok(Self {
+            model,
+            model_name: model_name.to_string(),
+            dimensions,
+            db: None, // Standalone mode - no database
             cache_dir,
             cpu_fallback_triggered: false,
         })
@@ -112,7 +150,7 @@ impl EmbeddingEngine {
     /// Reinitialize the embedding engine in CPU-only mode after GPU failure
     ///
     /// This is called automatically when DirectML GPU crashes are detected.
-    /// Sets JULIE_FORCE_CPU=1 and recreates the ONNX model without GPU acceleration.
+    /// Recreates the ONNX model without GPU acceleration (Issue #3 fix: no unsafe env var).
     async fn reinitialize_with_cpu_fallback(&mut self) -> Result<()> {
         if self.cpu_fallback_triggered {
             // Already in CPU mode, don't reinitialize again
@@ -122,19 +160,14 @@ impl EmbeddingEngine {
         tracing::error!("🚨 GPU device failure detected - reinitializing in CPU-only mode");
         tracing::warn!("   This is slower but stable. Future batches will use CPU.");
 
-        // Set environment variable to force CPU mode
-        unsafe {
-            std::env::set_var("JULIE_FORCE_CPU", "1");
-        }
-
         // Recreate the model manager and get model paths
         let model_manager = ModelManager::new(self.cache_dir.clone())?;
         let model_paths = model_manager
             .ensure_model_downloaded(&self.model_name)
             .await?;
 
-        // Recreate the ONNX model in CPU-only mode
-        let new_model = OrtEmbeddingModel::new(
+        // Recreate the ONNX model in CPU-only mode (no env var needed!)
+        let new_model = OrtEmbeddingModel::new_cpu_only(
             model_paths.model,
             model_paths.tokenizer,
             &self.model_name,
@@ -152,8 +185,8 @@ impl EmbeddingEngine {
     }
 
     /// Generate context-aware embedding for a symbol
-    pub fn embed_symbol(&mut self, symbol: &Symbol, context: &CodeContext) -> Result<Vec<f32>> {
-        let enriched_text = self.build_embedding_text(symbol, context);
+    pub fn embed_symbol(&mut self, symbol: &Symbol, _context: &CodeContext) -> Result<Vec<f32>> {
+        let enriched_text = self.build_embedding_text(symbol);
 
         // Generate embedding using GPU-accelerated ORT model
         self.model.encode_single(enriched_text)
@@ -272,8 +305,8 @@ impl EmbeddingEngine {
         let mut symbol_ids = Vec::new();
 
         for symbol in symbols {
-            let context = CodeContext::from_symbol(symbol);
-            let embedding_text = self.build_embedding_text(symbol, &context);
+            let _context = CodeContext::from_symbol(symbol);
+            let embedding_text = self.build_embedding_text(symbol);
             batch_texts.push(embedding_text);
             symbol_ids.push(symbol.id.clone());
         }
@@ -376,7 +409,7 @@ impl EmbeddingEngine {
                             }
 
                             // Log detailed error information for debugging
-                            let embedding_text = self.build_embedding_text(symbol, &context);
+                            let embedding_text = self.build_embedding_text(symbol);
                             tracing::warn!(
                                 "Failed to embed symbol {} ({}::{}, {} chars): {}",
                                 symbol.id,
@@ -385,9 +418,15 @@ impl EmbeddingEngine {
                                 embedding_text.len(),
                                 e
                             );
-                            tracing::debug!(
-                                "Failed embedding text preview: {:?}",
-                                &embedding_text.chars().take(200).collect::<String>()
+                            // Log text preview at warn level for troubleshooting (Issue #2 fix)
+                            tracing::warn!(
+                                "Failed embedding text (first 500 chars): {:?}",
+                                &embedding_text.chars().take(500).collect::<String>()
+                            );
+                            tracing::warn!(
+                                "Text stats: length={}, lines={}",
+                                embedding_text.len(),
+                                embedding_text.lines().count()
                             );
                         }
                     }
@@ -403,6 +442,11 @@ impl EmbeddingEngine {
         file_path: &str,
         symbols: &[Symbol],
     ) -> Result<()> {
+        // Require database for persistence operations
+        if self.db.is_none() {
+            anyhow::bail!("Database required for upsert_file_embeddings - use EmbeddingEngine::new() instead of new_standalone()");
+        }
+
         if symbols.is_empty() {
             return Ok(());
         }
@@ -413,7 +457,7 @@ impl EmbeddingEngine {
 
         for symbol in symbols {
             let context = CodeContext::from_symbol(symbol);
-            let embedding_text = self.build_embedding_text(symbol, &context);
+            let embedding_text = self.build_embedding_text(symbol);
             batch_texts.push(embedding_text);
             symbol_contexts.push((symbol, context));
         }
@@ -421,7 +465,8 @@ impl EmbeddingEngine {
         // Generate embeddings for all symbols in one GPU-accelerated batch call
         match self.model.encode_batch(batch_texts) {
             Ok(batch_embeddings) => {
-                let db_guard = match self.db.lock() {
+                // Safe unwrap - we checked is_none() above
+                let db_guard = match self.db.as_ref().unwrap().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
                         warn!("Database mutex poisoned during batch embedding storage, recovering: {}", poisoned);
@@ -472,7 +517,8 @@ impl EmbeddingEngine {
                     let context = CodeContext::from_symbol(symbol);
                     match self.embed_symbol(symbol, &context) {
                         Ok(embedding) => {
-                            let db_guard = match self.db.lock() {
+                            // Safe unwrap - we checked is_none() above
+                            let db_guard = match self.db.as_ref().unwrap().lock() {
                                 Ok(guard) => guard,
                                 Err(poisoned) => {
                                     warn!("Database mutex poisoned during individual embedding storage, recovering: {}", poisoned);
@@ -522,11 +568,17 @@ impl EmbeddingEngine {
     /// Remove embeddings for symbols in a file (database-only)
     /// Note: Requires symbol IDs to be provided since we don't track file->symbol mapping in memory
     pub async fn remove_embeddings_for_symbols(&mut self, symbol_ids: &[String]) -> Result<()> {
+        // Require database for deletion operations
+        if self.db.is_none() {
+            anyhow::bail!("Database required for remove_embeddings_for_symbols - use EmbeddingEngine::new() instead of new_standalone()");
+        }
+
         if symbol_ids.is_empty() {
             return Ok(());
         }
 
-        let db_guard = match self.db.lock() {
+        // Safe unwrap - we checked is_none() above
+        let db_guard = match self.db.as_ref().unwrap().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 warn!("Database mutex poisoned during embedding removal, recovering: {}", poisoned);
@@ -546,7 +598,13 @@ impl EmbeddingEngine {
 
     /// Retrieve an embedding vector from the database
     pub async fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
-        let db_guard = match self.db.lock() {
+        // Require database for retrieval operations
+        if self.db.is_none() {
+            anyhow::bail!("Database required for get_embedding - use EmbeddingEngine::new() instead of new_standalone()");
+        }
+
+        // Safe unwrap - we checked is_none() above
+        let db_guard = match self.db.as_ref().unwrap().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 warn!("Database mutex poisoned during embedding retrieval, recovering: {}", poisoned);
@@ -556,9 +614,10 @@ impl EmbeddingEngine {
         db_guard.get_embedding_for_symbol(symbol_id, &self.model_name)
     }
 
-    pub fn build_embedding_text(&self, symbol: &Symbol, _context: &CodeContext) -> String {
+    pub fn build_embedding_text(&self, symbol: &Symbol) -> String {
         // Minimal embeddings for clean semantic matching in 384-dimensional space
         // Philosophy: Less noise = stronger signal in BGE-small's limited dimensions
+        // Issue #7 fix: Removed unused _context parameter - symbol.code_context used directly
         let mut parts = vec![symbol.name.clone(), symbol.kind.to_string()];
 
         // Add signature if available (type information aids semantic understanding)

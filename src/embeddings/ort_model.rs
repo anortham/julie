@@ -86,7 +86,7 @@ impl OrtEmbeddingModel {
         info!("✅ Tokenizer loaded successfully with padding and truncation configured");
 
         // 3. Create ONNX Runtime session with platform-specific GPU acceleration
-        let (session, is_gpu) = Self::create_session_with_gpu(model_path.as_ref(), cache_dir)
+        let (session, is_gpu) = Self::create_session_with_gpu(model_path.as_ref(), cache_dir, false)
             .context("Failed to create ONNX Runtime session")?;
 
         // 4. Determine model dimensions (384 for BGE-Small)
@@ -99,6 +99,71 @@ impl OrtEmbeddingModel {
         info!("   Model: {}", model_name);
         info!("   Dimensions: {}", dimensions);
         info!("   Max length: {}", max_length);
+
+        Ok(Self {
+            session,
+            tokenizer,
+            dimensions,
+            model_name: model_name.to_string(),
+            max_length,
+            is_gpu,
+        })
+    }
+
+    /// Create embedding model in CPU-only mode (for GPU crash recovery)
+    ///
+    /// Use this after GPU failures to reinitialize without GPU acceleration.
+    /// This is called by EmbeddingEngine::reinitialize_with_cpu_fallback().
+    pub fn new_cpu_only(
+        model_path: impl AsRef<Path>,
+        tokenizer_path: impl AsRef<Path>,
+        model_name: &str,
+        cache_dir: Option<impl AsRef<Path>>,
+    ) -> Result<Self> {
+        info!("🚀 Initializing OrtEmbeddingModel in CPU-only mode for {}", model_name);
+
+        // 1. Load tokenizer (same as regular initialization)
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path.as_ref()).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load tokenizer from {:?}: {}",
+                tokenizer_path.as_ref(),
+                e
+            )
+        })?;
+
+        // 2. Configure padding to ensure all sequences have the same length
+        use tokenizers::{
+            PaddingDirection, PaddingParams, PaddingStrategy, TruncationParams, TruncationStrategy,
+        };
+
+        tokenizer.with_padding(Some(PaddingParams {
+            strategy: PaddingStrategy::BatchLongest,
+            direction: PaddingDirection::Right,
+            pad_id: 0,
+            pad_type_id: 0,
+            pad_token: "[PAD]".to_string(),
+            pad_to_multiple_of: None,
+        }));
+
+        tokenizer
+            .with_truncation(Some(TruncationParams {
+                max_length: 512,
+                strategy: TruncationStrategy::LongestFirst,
+                stride: 0,
+                direction: tokenizers::TruncationDirection::Right,
+            }))
+            .map_err(|e| anyhow::anyhow!("Failed to configure tokenizer truncation: {}", e))?;
+
+        info!("✅ Tokenizer loaded successfully");
+
+        // 3. Create ONNX Runtime session in CPU-only mode (force_cpu = true)
+        let (session, is_gpu) = Self::create_session_with_gpu(model_path.as_ref(), cache_dir, true)
+            .context("Failed to create CPU-only ONNX Runtime session")?;
+
+        let dimensions = 384;
+        let max_length = 512;
+
+        info!("✅ OrtEmbeddingModel initialized in CPU-only mode");
 
         Ok(Self {
             session,
@@ -191,21 +256,17 @@ impl OrtEmbeddingModel {
     ///
     /// Tries GPU acceleration first, ORT automatically falls back to CPU if unavailable.
     ///
-    /// Set JULIE_FORCE_CPU=1 environment variable to skip GPU and use CPU only.
+    /// Create ONNX Runtime session with optional GPU acceleration
     ///
     /// Returns (Session, is_gpu) where is_gpu indicates if GPU acceleration is actually active
     #[allow(unused_variables)] // cache_dir used on Windows/Linux but not macOS
     fn create_session_with_gpu(
         model_path: &Path,
         cache_dir: Option<impl AsRef<Path>>,
+        force_cpu: bool,  // Issue #3 fix: pass as parameter instead of env var
     ) -> Result<(Session, bool)> {
-        // Check if user wants to force CPU mode (optional override)
-        let force_cpu = std::env::var("JULIE_FORCE_CPU")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-
         if force_cpu {
-            info!("🖥️  JULIE_FORCE_CPU is set - using CPU-only mode");
+            info!("🖥️  CPU-only mode requested (GPU fallback active)");
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -444,6 +505,15 @@ impl OrtEmbeddingModel {
                 .to_owned()
                 .into_raw_vec_and_offset()
                 .0;
+
+            // Issue #10 fix: Validate embedding dimensions
+            if cls_embedding.len() != self.dimensions {
+                anyhow::bail!(
+                    "Embedding dimension mismatch: expected {}, got {} (possible model corruption or ONNX error)",
+                    self.dimensions,
+                    cls_embedding.len()
+                );
+            }
 
             // L2 normalize the embedding (required for BGE models)
             let magnitude: f32 = cls_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();

@@ -68,19 +68,25 @@ impl ModelManager {
         // Get the repository handle
         let repo = self.api.model(repo_id.to_string());
 
-        // Download required files
+        // Download required files with timeout (Issue #5 fix)
         // HuggingFace Hub will cache these and skip download if already present
         info!("📥 Downloading model.onnx (this may take a while on first run)...");
-        let model_path = repo
-            .get("onnx/model.onnx")
-            .await
-            .with_context(|| format!("Failed to download model.onnx from {}", repo_id))?;
+        let model_path = tokio::time::timeout(
+            std::time::Duration::from_secs(300),  // 5 minute timeout
+            repo.get("onnx/model.onnx")
+        )
+        .await
+        .with_context(|| "Model download timed out after 5 minutes")?
+        .with_context(|| format!("Failed to download model.onnx from {}", repo_id))?;
 
         info!("📥 Downloading tokenizer.json...");
-        let tokenizer_path = repo
-            .get("tokenizer.json")
-            .await
-            .with_context(|| format!("Failed to download tokenizer.json from {}", repo_id))?;
+        let tokenizer_path = tokio::time::timeout(
+            std::time::Duration::from_secs(60),  // 1 minute timeout (much smaller file)
+            repo.get("tokenizer.json")
+        )
+        .await
+        .with_context(|| "Tokenizer download timed out after 1 minute")?
+        .with_context(|| format!("Failed to download tokenizer.json from {}", repo_id))?;
 
         // Verify files exist and are readable
         if !model_path.exists() {

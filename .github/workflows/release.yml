@@ -66,12 +66,16 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Build release binaries
+        run: |
+          cargo build --release --target ${{ matrix.target }} --bin julie-server
+          cargo build --release --target ${{ matrix.target }} --bin julie-semantic
 
-      - name: Strip binary (Linux/macOS)
+      - name: Strip binaries (Linux/macOS)
         if: matrix.os != 'windows-latest'
-        run: strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+        run: |
+          strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          strip target/${{ matrix.target }}/release/julie-semantic
 
       - name: Create archive
         shell: bash
@@ -79,10 +83,10 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
-            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}"
+            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "./target/${{ matrix.target }}/release/julie-semantic.exe"
           else
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
-            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
+            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }} julie-semantic
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -121,6 +125,12 @@ jobs:
 
           Cross-platform code intelligence server for AI coding agents.
 
+          ### 📦 What's Included
+
+          Each archive contains **two binaries**:
+          - **`julie-server`** - MCP server for code intelligence (search, navigation, refactoring)
+          - **`julie-semantic`** - Standalone embedding CLI for other projects (e.g., Goldfish)
+
           ### Installation
 
           Download the binary for your platform below, extract, and add to your PATH.
@@ -134,17 +144,23 @@ jobs:
           ### Quick Start
           ```bash
           # Extract the archive for your platform
-          # Add julie-server to your PATH
+          # Add julie-server and julie-semantic to your PATH
+
+          # MCP Server usage
           # Configure your MCP client to use julie-server
+
+          # Standalone embedding usage (for integration)
+          julie-semantic query --text "your query" --model bge-small
           ```
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
 
           ### Highlights
-          - 🚀 25 language extractors with 100% Miller parity
+          - 🚀 30 language extractors with comprehensive test coverage
           - ⚡ CASCADE architecture (SQLite FTS5 → HNSW Semantic)
           - 🛡️ Comprehensive safety mechanisms (all tools default to preview mode)
-          - 🎯 GPU acceleration on all platforms
+          - 🎯 GPU acceleration on all platforms (10-30x speedup)
+          - 🔧 Standalone embedding CLI for easy integration
           - ✅ 1,400+ tests passing
           EOF
 
@@ -173,7 +189,10 @@ jobs:
       - name: Verify Release
         run: |
           echo "✅ Release v${{ steps.version.outputs.version }} created successfully"
-          echo "Binaries built for:"
+          echo ""
+          echo "📦 Binaries included: julie-server + julie-semantic"
+          echo ""
+          echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc) - DirectML"
           echo "  - macOS Intel (x86_64-apple-darwin) - CoreML"
           echo "  - macOS Apple Silicon (aarch64-apple-darwin) - CoreML + Neural Engine"
