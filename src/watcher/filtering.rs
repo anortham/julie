@@ -14,7 +14,7 @@ pub fn build_supported_extensions() -> HashSet<String> {
         "php", "rb", "swift", "kt", "lua", "gd", "sql", "html", "htm", "css", "vue", "razor",
         "ps1", "sh", "bash", "qml", "zig", "dart", "r", "R",
         // Documentation and config files (extractors #28-30)
-        "md", "markdown", "json", "toml",
+        "md", "markdown", "json", "jsonl", "toml", "yml", "yaml",
     ]
     .iter()
     .map(|s| s.to_string())

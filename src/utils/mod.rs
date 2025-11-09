@@ -41,6 +41,13 @@ pub mod file_utils {
                     | "bash"
                     | "r"
                     | "R"
+                    | "md"        // Markdown
+                    | "markdown"
+                    | "json"      // JSON
+                    | "jsonl"     // JSON Lines
+                    | "toml"      // TOML
+                    | "yml"       // YAML
+                    | "yaml"
             )
         } else {
             false

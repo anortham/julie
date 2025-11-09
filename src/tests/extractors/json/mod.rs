@@ -643,4 +643,182 @@ mod json_extractor_tests {
         assert!(names.contains(&"key1"), "Should find key1");
         assert!(names.contains(&"key2"), "Should find key2");
     }
+
+    // ========================================================================
+    // JSONL (JSON Lines) Support Tests
+    // ========================================================================
+    // JSONL files have one JSON object per line, commonly used for logs,
+    // streaming data, and memory storage systems. Each line must be parsed
+    // independently and symbols should track which line they came from.
+
+    fn extract_symbols_jsonl(code: &str, file_name: &str) -> Vec<Symbol> {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = init_parser();
+
+        // For JSONL, we need to parse line by line
+        let mut all_symbols = Vec::new();
+        for (line_num, line) in code.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue; // Skip empty lines
+            }
+
+            // Create a new extractor for THIS line (so byte positions match)
+            let mut extractor = JsonExtractor::new(
+                "json".to_string(),
+                file_name.to_string(),
+                line.to_string(), // Use the single line as source_code
+                &workspace_root,
+            );
+
+            let tree = parser.parse(line, None).expect("Failed to parse JSONL line");
+            let mut symbols = extractor.extract_symbols(&tree);
+
+            // Adjust line numbers for each symbol based on which line of JSONL it came from
+            for symbol in &mut symbols {
+                symbol.start_line += line_num as u32;
+                symbol.end_line += line_num as u32;
+            }
+
+            all_symbols.extend(symbols);
+        }
+
+        all_symbols
+    }
+
+    #[test]
+    fn test_jsonl_basic_parsing() {
+        let jsonl = r#"{"type":"feature","content":"Added search feature"}
+{"type":"bug","content":"Fixed null pointer"}
+{"type":"refactor","content":"Cleaned up code"}"#;
+
+        let symbols = extract_symbols_jsonl(jsonl, "memories.jsonl");
+
+        // Should extract symbols from all three lines
+        assert!(symbols.len() >= 6, "Should extract at least 2 keys per line (type, content) × 3 lines");
+
+        // Check that we extracted "type" keys from each line
+        let type_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name == "type")
+            .collect();
+        assert_eq!(type_symbols.len(), 3, "Should find 'type' key from each of 3 lines");
+
+        // Check line numbers are correct (1-based: 1, 2, 3)
+        assert_eq!(type_symbols[0].start_line, 1, "First object should be on line 1");
+        assert_eq!(type_symbols[1].start_line, 2, "Second object should be on line 2");
+        assert_eq!(type_symbols[2].start_line, 3, "Third object should be on line 3");
+    }
+
+    #[test]
+    fn test_jsonl_with_empty_lines() {
+        let jsonl = r#"{"name":"first"}
+
+{"name":"second"}
+
+{"name":"third"}"#;
+
+        let symbols = extract_symbols_jsonl(jsonl, "test.jsonl");
+
+        // Should skip empty lines and extract from the 3 valid lines
+        let name_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name == "name")
+            .collect();
+        assert_eq!(name_symbols.len(), 3, "Should find 'name' from 3 non-empty lines");
+    }
+
+    #[test]
+    fn test_jsonl_memory_event_format() {
+        // Real-world JSONL format from recall memory system
+        let jsonl = r#"{"type":"decision","source":"agent","content":"Chose SQLite over PostgreSQL for vector storage","timestamp":"2025-11-08T12:00:00Z"}
+{"type":"feature","source":"agent","content":"Implemented semantic search with embeddings","timestamp":"2025-11-08T13:30:00Z"}
+{"type":"bug-fix","source":"user","content":"Fixed race condition in file watcher","timestamp":"2025-11-08T15:45:00Z"}"#;
+
+        let symbols = extract_symbols_jsonl(jsonl, "memories.jsonl");
+
+        // Each line has 4 keys: type, source, content, timestamp
+        assert!(symbols.len() >= 12, "Should extract 4 keys × 3 lines = 12 symbols minimum");
+
+        // Verify all expected keys exist
+        let key_names: std::collections::HashSet<&str> = symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+
+        assert!(key_names.contains("type"), "Should extract 'type' key");
+        assert!(key_names.contains("source"), "Should extract 'source' key");
+        assert!(key_names.contains("content"), "Should extract 'content' key");
+        assert!(key_names.contains("timestamp"), "Should extract 'timestamp' key");
+
+        // Verify line numbers are tracked correctly
+        let timestamp_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name == "timestamp")
+            .collect();
+
+        assert_eq!(timestamp_symbols.len(), 3, "Should find 'timestamp' from each line");
+        assert_eq!(timestamp_symbols[0].start_line, 1, "First timestamp on line 1");
+        assert_eq!(timestamp_symbols[1].start_line, 2, "Second timestamp on line 2");
+        assert_eq!(timestamp_symbols[2].start_line, 3, "Third timestamp on line 3");
+    }
+
+    #[test]
+    fn test_jsonl_complex_nested_objects() {
+        let jsonl = r#"{"id":"mem_001","data":{"user":"alice","action":"login"}}
+{"id":"mem_002","data":{"user":"bob","action":"logout"}}"#;
+
+        let symbols = extract_symbols_jsonl(jsonl, "events.jsonl");
+
+        // Should extract nested keys with proper hierarchy
+        assert!(symbols.len() >= 8, "Should extract id, data, user, action from 2 lines");
+
+        // Find nested "user" symbols
+        let user_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name == "user")
+            .collect();
+
+        assert_eq!(user_symbols.len(), 2, "Should find nested 'user' key from both lines");
+        assert_eq!(user_symbols[0].start_line, 1, "First nested user on line 1");
+        assert_eq!(user_symbols[1].start_line, 2, "Second nested user on line 2");
+    }
+
+    #[test]
+    fn test_real_world_jsonl_memories_fixture() {
+        // Test real-world JSONL fixture (recall memory format)
+        let content = std::fs::read_to_string("fixtures/real-world/json/memories.jsonl")
+            .expect("Should find memories.jsonl fixture");
+
+        let symbols = extract_symbols_jsonl(&content, "memories.jsonl");
+
+        // Each line has 5 keys: type, source, content, timestamp, workspace_path
+        // 6 lines × 5 keys = 30 symbols minimum
+        assert!(symbols.len() >= 30, "Should extract at least 30 symbols from 6-line fixture");
+
+        // Verify all expected keys exist
+        let key_names: std::collections::HashSet<&str> = symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+
+        assert!(key_names.contains("type"), "Should extract 'type' key");
+        assert!(key_names.contains("source"), "Should extract 'source' key");
+        assert!(key_names.contains("content"), "Should extract 'content' key");
+        assert!(key_names.contains("timestamp"), "Should extract 'timestamp' key");
+        assert!(key_names.contains("workspace_path"), "Should extract 'workspace_path' key");
+
+        // Verify line numbers are tracked correctly across all 6 lines
+        let timestamps: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.name == "timestamp")
+            .collect();
+
+        assert_eq!(timestamps.len(), 6, "Should find 'timestamp' from all 6 lines");
+        assert_eq!(timestamps[0].start_line, 1, "First line");
+        assert_eq!(timestamps[1].start_line, 2, "Second line");
+        assert_eq!(timestamps[2].start_line, 3, "Third line");
+        assert_eq!(timestamps[3].start_line, 4, "Fourth line");
+        assert_eq!(timestamps[4].start_line, 5, "Fifth line");
+        assert_eq!(timestamps[5].start_line, 6, "Sixth line");
+    }
 }

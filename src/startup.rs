@@ -336,7 +336,14 @@ fn is_code_file(path: &Path) -> bool {
             | "gd"
             | "dart"
             | "zig"
-            | "qml"  // QML (Qt Modeling Language)
-            | "r"    // R (Statistical Computing)
+            | "qml"   // QML (Qt Modeling Language)
+            | "r"     // R (Statistical Computing)
+            | "md"    // Markdown
+            | "markdown"
+            | "json"  // JSON
+            | "jsonl" // JSON Lines
+            | "toml"  // TOML
+            | "yml"   // YAML
+            | "yaml"
     )
 }

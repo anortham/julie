@@ -310,6 +310,13 @@ impl ParallelExtractor {
                 | "bash"
                 | "ps1"
                 | "zig"
+                | "md"       // Markdown
+                | "markdown"
+                | "json"     // JSON
+                | "jsonl"    // JSON Lines
+                | "toml"     // TOML
+                | "yml"      // YAML
+                | "yaml"
         )
     }
 }

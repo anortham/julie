@@ -48,6 +48,12 @@ impl ExtractorManager {
         // Determine language from file extension
         let language = self.get_language_from_extension(file_path)?;
 
+        // Special handling for JSONL (JSON Lines) files
+        // JSONL files have one JSON object per line and must be parsed line-by-line
+        if file_path.ends_with(".jsonl") {
+            return self.extract_symbols_jsonl(file_path, content, workspace_root);
+        }
+
         // Create parser for the language
         let mut parser = Parser::new();
         let tree_sitter_language = self.get_tree_sitter_language(&language)?;
@@ -77,6 +83,66 @@ impl ExtractorManager {
             file_path
         );
         Ok(symbols)
+    }
+
+    /// Extract symbols from JSONL (JSON Lines) file
+    ///
+    /// JSONL files contain one JSON object per line. Each line must be parsed
+    /// independently, and symbols must track which line they originated from.
+    fn extract_symbols_jsonl(
+        &self,
+        file_path: &str,
+        content: &str,
+        workspace_root: &Path,
+    ) -> Result<Vec<Symbol>, anyhow::Error> {
+        let mut parser = Parser::new();
+        let tree_sitter_language = self.get_tree_sitter_language("json")?;
+
+        parser.set_language(&tree_sitter_language).map_err(|e| {
+            anyhow::anyhow!("Failed to set JSON parser language: {}", e)
+        })?;
+
+        let mut all_symbols = Vec::new();
+
+        // Parse each line as a separate JSON object
+        for (line_num, line) in content.lines().enumerate() {
+            // Skip empty lines
+            if line.trim().is_empty() {
+                continue;
+            }
+
+            // Parse this line as JSON
+            let tree = parser.parse(line, None).ok_or_else(|| {
+                anyhow::anyhow!("Failed to parse JSONL line {} in file: {}", line_num + 1, file_path)
+            })?;
+
+            // Extract symbols from this line
+            // IMPORTANT: Use the single line as content so byte positions match
+            let mut symbols = super::routing_symbols::extract_symbols_for_language(
+                file_path,
+                line, // Use the line content, not the full file
+                "json",
+                &tree,
+                workspace_root,
+            )?;
+
+            // Adjust line numbers to reflect position in the JSONL file
+            for symbol in &mut symbols {
+                symbol.start_line += line_num as u32;
+                symbol.end_line += line_num as u32;
+            }
+
+            all_symbols.extend(symbols);
+        }
+
+        tracing::debug!(
+            "Extracted {} symbols from JSONL file: {} ({} lines)",
+            all_symbols.len(),
+            file_path,
+            content.lines().count()
+        );
+
+        Ok(all_symbols)
     }
 
     /// Extract identifiers (references/usages) from file content for LSP-quality find_references
