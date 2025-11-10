@@ -208,6 +208,32 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
+## Skills (Recommended)
+
+Julie includes skills that teach AI agents how to use its code intelligence and project memory tools effectively:
+
+**Code Intelligence:**
+- **smart-search** - Intelligent search mode selection (semantic for concepts, text for exact terms, symbols for definitions)
+- **semantic-intelligence** - Advanced semantic search patterns for cross-language code discovery and business logic filtering
+- **explore-codebase** - Systematic codebase exploration using symbol navigation without reading entire files
+- **safe-refactor** - Reference-checked refactoring with workspace-wide renames and fuzzy replacement
+
+**Project Memory:**
+- **development-memory** - Build persistent knowledge base using checkpoint/recall (automatically creates searchable project history)
+- **plan-tracking** - Manage working plans and tasks with mutable plan system (track progress, switch focus, one active plan)
+
+**Why use skills?** Skills provide proven workflow patterns that help AI agents use Julie's tools correctly and efficiently. They're like instruction manuals that activate automatically based on your requests.
+
+### Installation
+
+```bash
+# Install skills globally (works across all projects where Julie is configured)
+mkdir -p ~/.claude/skills
+cp -r /path/to/julie/skills/* ~/.claude/skills/
+```
+
+Skills are model-invoked - Claude automatically uses them when relevant based on your request. No explicit commands needed.
+
 ## Tools
 
 ### Search & Navigation

@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_69125a9b_392e9c",
+  "timestamp": 1762810523,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "9f84a95",
+    "dirty": true,
+    "files_changed": [
+      ".claude/skills/explore-codebase/SKILL.md",
+      ".claude/skills/safe-refactor/SKILL.md",
+      ".claude/skills/smart-search/SKILL.md",
+      "README.md"
+    ]
+  },
+  "description": "Created 3 new Julie skills for project memory and semantic intelligence: development-memory (checkpoint/recall patterns), plan-tracking (mutable working memory with 6 CRUD operations), and semantic-intelligence (advanced search strategies). Skills organized by category in README, symlinked for dogfooding.",
+  "tags": [
+    "skills",
+    "project-memory",
+    "semantic-search",
+    "documentation"
+  ]
+}

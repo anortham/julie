@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_69125bc0_652bc8",
+  "timestamp": 1762810816,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "9f84a95",
+    "dirty": true,
+    "files_changed": [
+      ".claude/skills/explore-codebase/SKILL.md",
+      ".claude/skills/safe-refactor/SKILL.md",
+      ".claude/skills/smart-search/SKILL.md",
+      "README.md",
+      "src/tests/integration/watcher_handlers.rs"
+    ]
+  },
+  "description": "Fixed WAL mode failures in watcher_handlers tests by switching from :memory: to file-based temporary databases. Reduced test failures from 6 to 1 (1660 passing). Also fixed macOS symlink path issue (/var vs /private/var) by canonicalizing workspace_root.",
+  "tags": [
+    "testing",
+    "bugfix",
+    "wal-mode",
+    "macos-paths"
+  ]
+}

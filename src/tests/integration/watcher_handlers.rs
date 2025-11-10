@@ -42,7 +42,7 @@ async fn test_incremental_indexing_absolute_path_handling() {
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let workspace_root = temp_dir.path();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create initial test file with one function
     let test_file = workspace_root.join("test.rs");
@@ -56,9 +56,10 @@ fn initial_function() {
     // Get ABSOLUTE path (what the watcher provides)
     let absolute_path = test_file.canonicalize().unwrap();
 
-    // Initialize database (use in-memory for test)
+    // Initialize database (use file-based temp database for WAL support)
+    let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(
-        SymbolDatabase::new(":memory:").expect("Failed to create test database"),
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
 
     // Initialize extractor manager
@@ -77,7 +78,7 @@ fn initial_function() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -125,7 +126,7 @@ fn modified_function() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -209,7 +210,7 @@ fn third_function() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Second modification should succeed");
@@ -259,7 +260,7 @@ fn third_function() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Re-indexing unchanged file should succeed");
@@ -315,7 +316,7 @@ fn final_function() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Re-indexing with new content should succeed");
@@ -333,15 +334,16 @@ fn final_function() {
 #[tokio::test]
 async fn test_file_deletion_absolute_path() {
     let temp_dir = TempDir::new().unwrap();
-    let workspace_root = temp_dir.path();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create and index a file
     let test_file = workspace_root.join("delete_me.rs");
     fs::write(&test_file, "fn example() {}").unwrap();
     let absolute_path = test_file.canonicalize().unwrap();
 
+    let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(
-        SymbolDatabase::new(":memory:").expect("Failed to create test database"),
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
     let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
@@ -353,7 +355,7 @@ async fn test_file_deletion_absolute_path() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -369,7 +371,7 @@ async fn test_file_deletion_absolute_path() {
     fs::remove_file(&test_file).unwrap();
 
     // Call deletion handler with absolute path
-    handle_file_deleted_static(absolute_path, &db, None, workspace_root)
+    handle_file_deleted_static(absolute_path, &db, None, &workspace_root)
         .await
         .expect("File deletion should succeed");
 
@@ -385,15 +387,16 @@ async fn test_file_deletion_absolute_path() {
 #[tokio::test]
 async fn test_file_rename_absolute_paths() {
     let temp_dir = TempDir::new().unwrap();
-    let workspace_root = temp_dir.path();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create original file
     let old_file = workspace_root.join("old_name.rs");
     fs::write(&old_file, "fn old_function() {}").unwrap();
     let old_absolute = old_file.canonicalize().unwrap();
 
+    let db_path = workspace_root.join("test.db");
     let db = Arc::new(Mutex::new(
-        SymbolDatabase::new(":memory:").expect("Failed to create test database"),
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
     let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
@@ -405,7 +408,7 @@ async fn test_file_rename_absolute_paths() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -423,7 +426,7 @@ async fn test_file_rename_absolute_paths() {
         &embeddings,
         &extractor_manager,
         None,
-        workspace_root,
+        &workspace_root,
     )
     .await
     .expect("File rename should succeed");
