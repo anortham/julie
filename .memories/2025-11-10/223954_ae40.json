@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_691269ba_108d0d",
+  "timestamp": 1762814394,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5c63afd",
+    "dirty": true,
+    "files_changed": [
+      "docs/debug/log.txt"
+    ]
+  },
+  "description": "Found root cause of MCP connection failures: auto-indexing blocks server.start() for 51+ seconds, preventing handshake. Claude Code sends initialize request immediately but Julie isn't listening yet. Fix: move auto-indexing to background task after server starts.",
+  "tags": [
+    "bug",
+    "mcp",
+    "connection",
+    "startup",
+    "indexing"
+  ]
+}

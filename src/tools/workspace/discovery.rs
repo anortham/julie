@@ -239,7 +239,9 @@ impl ManageWorkspaceTool {
             return false;
         }
 
-        let path_str = path.to_str().unwrap_or("");
+        // Normalize path to Unix-style for consistent pattern matching
+        // On Windows, paths use backslashes, but .julieignore patterns use forward slashes
+        let path_str = path.to_str().unwrap_or("").replace('\\', "/");
 
         for pattern in patterns {
             // Directory pattern (ends with /)

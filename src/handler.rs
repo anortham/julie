@@ -50,6 +50,7 @@ impl Default for IndexingStatus {
 /// - Symbol database management
 /// - Semantic search and embeddings
 /// - Cross-language relationship detection
+#[derive(Clone)]
 pub struct JulieServerHandler {
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
@@ -424,6 +425,50 @@ impl JulieServerHandler {
 
 #[async_trait]
 impl ServerHandler for JulieServerHandler {
+    /// Called after MCP handshake completes - run auto-indexing here
+    async fn on_initialized(&self, _runtime: Arc<dyn McpServer>) {
+        info!("🔗 MCP connection established - client initialized");
+
+        // Run auto-indexing in background task after handshake completes
+        // This ensures the MCP server is responsive immediately
+        let handler = self.clone();
+        tokio::spawn(async move {
+            use crate::startup::check_if_indexing_needed;
+
+            info!("🔍 Starting background auto-indexing check...");
+
+            // Check if indexing is needed
+            match check_if_indexing_needed(&handler).await {
+                Ok(true) => {
+                    info!("📚 Workspace needs indexing - starting auto-indexing...");
+
+                    // Run indexing via manage_workspace tool
+                    use crate::tools::workspace::ManageWorkspaceTool;
+                    let index_tool = ManageWorkspaceTool {
+                        operation: "index".to_string(),
+                        path: None, // Use default workspace path
+                        name: None,
+                        workspace_id: None,
+                        force: Some(false),
+                        detailed: None,
+                    };
+
+                    if let Err(e) = index_tool.call_tool(&handler).await {
+                        warn!("⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)", e);
+                    } else {
+                        info!("✅ Background auto-indexing completed successfully");
+                    }
+                }
+                Ok(false) => {
+                    info!("✅ Workspace already indexed - skipping auto-indexing");
+                }
+                Err(e) => {
+                    warn!("⚠️ Failed to check indexing status: {}", e);
+                }
+            }
+        });
+    }
+
     /// Handle ListToolsRequest - return all available Julie tools
     async fn handle_list_tools_request(
         &self,

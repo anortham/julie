@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_69126aca_529c85",
+  "timestamp": 1762814666,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5c63afd",
+    "dirty": true,
+    "files_changed": [
+      "docs/debug/log.txt",
+      "src/handler.rs",
+      "src/main.rs",
+      "src/startup.rs"
+    ]
+  },
+  "description": "Fixed MCP handshake blocking bug! Auto-indexing moved to on_initialized() callback. Server now responds to MCP initialize request in milliseconds instead of blocking for 51+ seconds. Background indexing runs after handshake completes.",
+  "tags": [
+    "bug-fix",
+    "mcp",
+    "connection",
+    "startup",
+    "performance"
+  ]
+}

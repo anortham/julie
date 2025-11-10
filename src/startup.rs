@@ -29,21 +29,22 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
     // Check if database exists and has symbols
     if let Some(db_arc) = &workspace.db {
-        let db = match db_arc.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Database mutex poisoned during startup check, recovering: {}", poisoned);
-                poisoned.into_inner()
-            }
-        };
-
-        // Check if we have any symbols for the actual primary workspace
+        // Get primary workspace ID first (before locking database)
         let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
         let primary_workspace_id = match registry_service.get_primary_workspace_id().await? {
             Some(id) => id,
             None => {
                 debug!("No primary workspace ID found - indexing needed");
                 return Ok(true);
+            }
+        };
+
+        // Now lock database (no await while holding this lock)
+        let db = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during startup check, recovering: {}", poisoned);
+                poisoned.into_inner()
             }
         };
 
