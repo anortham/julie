@@ -1,0 +1,19 @@
+{
+  "id": "checkpoint_69121954_1e1cc7",
+  "timestamp": 1762793812,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "d33a43c",
+    "dirty": false
+  },
+  "description": "Successfully released v1.5.1! Memory System Phase 1.5 complete with mutable plans (6 CRUD operations, 30 tests passing). Fixed 4 critical bugs: (1) 57GB RAM usage from .NET build artifacts, (2) FTS5 query syntax error with implicit AND, (3) plan tool JSON Schema case sensitivity, (4) query preprocessor phrase handling. Enhanced ignore patterns for major ecosystems (Gradle, Dart, Next.js, Nuxt, CMake). Commit d33a43c pushed to main, tag v1.5.1 created and pushed. Test pass rate: 1652/1661 (99.5%). Used plan tool dogfooding successfully throughout release process - plan system works flawlessly!",
+  "tags": [
+    "release",
+    "v1.5.1",
+    "milestone",
+    "phase-1.5",
+    "memory-system",
+    "dogfooding"
+  ]
+}
