@@ -1,0 +1,29 @@
+{
+  "id": "checkpoint_69120fac_dd28cd",
+  "timestamp": 1762791340,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5117a9d",
+    "dirty": true,
+    "files_changed": [
+      "README.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/schema.rs",
+      "src/embeddings/mod.rs",
+      "src/handler.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/mod.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Expanded default ignore patterns to cover all common build artifacts across major ecosystems (added .gradle, .dart_tool, .next, .nuxt, cmake-build-*, out). Reorganized patterns by category for clarity. Added comprehensive tests for Java/Android, Dart/Flutter, Next.js, Nuxt.js, CMake, and JetBrains IDE outputs. Updated README.md to document default ignore patterns and .julieignore usage. This follows \"pit of success\" design - users shouldn't need to know about .julieignore for common scenarios, only for project-specific needs.",
+  "tags": [
+    "enhancement",
+    "ux",
+    "documentation",
+    "ignore-patterns"
+  ]
+}

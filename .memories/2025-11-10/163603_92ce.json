@@ -1,0 +1,33 @@
+{
+  "id": "checkpoint_69121473_d46401",
+  "timestamp": 1762792563,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5117a9d",
+    "dirty": true,
+    "files_changed": [
+      "README.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/schema.rs",
+      "src/embeddings/mod.rs",
+      "src/handler.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tests/utils/query_expansion.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/mod.rs",
+      "src/utils/query_expansion.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Fixed FTS5 query syntax bug in query expansion system. SQLite FTS5 does NOT support 'AND' keyword - it uses implicit AND with space-separated terms. Changed query_expansion.rs to use '.join(\" \")' instead of '.join(\" AND \")' for both regular and wildcard multi-word queries. Updated to_wildcard_query() function and all related tests. Added comprehensive test (test_expand_query_generates_valid_fts5_syntax) that verifies no query variants contain 'AND' keyword. This eliminates the 'fts5: syntax error near \"AND\"' warnings that were appearing in logs when searching with multi-word queries like 'plan tool implementation'. TDD methodology: RED (failing test) → GREEN (fix implementation) → REFACTOR (update existing tests) → All 10 query_expansion tests + 140 search tests passing.",
+  "tags": [
+    "bug-fix",
+    "fts5",
+    "query-expansion",
+    "search",
+    "tdd"
+  ]
+}

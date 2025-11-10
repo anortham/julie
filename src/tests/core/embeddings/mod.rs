@@ -337,3 +337,75 @@ async fn test_build_embedding_text_includes_code_context() {
         "Embedding text should include database calls from code_context"
     );
 }
+
+/// Test that embed_symbols_batch respects batch size limits
+/// This is CRITICAL to prevent OOM errors when indexing files with 40k+ symbols
+#[cfg_attr(
+    not(feature = "network_models"),
+    ignore = "requires downloadable embedding model"
+)]
+#[tokio::test]
+async fn test_embed_symbols_batch_respects_batch_size_limits() {
+    let temp_dir = TempDir::new().unwrap();
+    let cache_dir = temp_dir.path().to_path_buf();
+    let db = create_test_db();
+
+    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
+
+    // Get the optimal batch size for this system
+    let batch_size = engine.calculate_optimal_batch_size();
+
+    // Create MORE symbols than the batch size to test batching logic
+    // Using 3x batch size to ensure we test multiple batches
+    let num_symbols = batch_size * 3;
+
+    let symbols: Vec<Symbol> = (0..num_symbols)
+        .map(|i| Symbol {
+            id: format!("symbol-{}", i),
+            name: format!("function{}", i),
+            kind: SymbolKind::Function,
+            language: "typescript".to_string(),
+            file_path: format!("/test/file{}.ts", i / 10),
+            start_line: i as u32 * 10,
+            start_column: 0,
+            end_line: i as u32 * 10 + 5,
+            end_column: 1,
+            start_byte: i as u32 * 200,
+            end_byte: i as u32 * 200 + 100,
+            signature: Some(format!("function function{}()", i)),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        })
+        .collect();
+
+    // Call embed_symbols_batch with more symbols than batch size
+    // This should NOT try to allocate 23GB+ of memory like the bug report
+    let results = engine.embed_symbols_batch(&symbols).unwrap();
+
+    // Verify all symbols were embedded
+    assert_eq!(
+        results.len(),
+        num_symbols,
+        "Should embed all {} symbols even when exceeding batch size of {}",
+        num_symbols,
+        batch_size
+    );
+
+    // Verify embeddings have correct dimensions
+    for (id, embedding) in &results {
+        assert_eq!(
+            embedding.len(),
+            384,
+            "Embedding for {} should have 384 dimensions",
+            id
+        );
+    }
+}

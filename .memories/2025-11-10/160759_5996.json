@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_69120ddf_b4724f",
+  "timestamp": 1762790879,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5117a9d",
+    "dirty": true,
+    "files_changed": [
+      "docs/JULIE_2_PLAN.md",
+      "src/database/schema.rs",
+      "src/embeddings/mod.rs",
+      "src/handler.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/mod.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Fixed critical 57GB RAM usage bug caused by indexing .NET build artifacts with 44k+ symbols. Three-part fix: (1) Added obj/ and bin/ to ignore patterns to prevent indexing build outputs, (2) Implemented batch size enforcement in embed_symbols_batch() to prevent 23GB+ ONNX allocation attempts by splitting large symbol sets into chunks, (3) Added comprehensive tests. Bug was causing recursive loop where watcher indexed massive JSON files → tried to embed all symbols at once → OOM → fallback to individual processing → CPU slam → repeat. Fix prevents 99% of the problem at source (ignore build artifacts) and handles edge cases with intelligent batching.",
+  "tags": [
+    "bug-fix",
+    "performance",
+    "memory",
+    "embedding",
+    "watcher",
+    "dotnet"
+  ]
+}

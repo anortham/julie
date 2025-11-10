@@ -35,10 +35,11 @@ fn test_to_lowercase_camelcase() {
 
 #[test]
 fn test_to_wildcard_query() {
-    assert_eq!(to_wildcard_query("user service"), "user* AND service*");
+    // FTS5 uses space-separated (implicit AND), not "AND" keyword
+    assert_eq!(to_wildcard_query("user service"), "user* service*");
     assert_eq!(
         to_wildcard_query("get user data"),
-        "get* AND user* AND data*"
+        "get* user* data*"
     );
 }
 
@@ -84,4 +85,32 @@ fn test_expand_query_single_word() {
 
     // Single words should still work but won't generate many variants
     assert!(variants.contains(&"user".to_string()));
+}
+
+#[test]
+fn test_expand_query_generates_valid_fts5_syntax() {
+    // Bug reproduction test: FTS5 does NOT support "AND" keyword
+    // Correct syntax: space-separated terms (implicit AND)
+    let variants = expand_query("plan tool implementation");
+
+    // Should NOT contain "AND" keyword (invalid FTS5 syntax)
+    for variant in &variants {
+        assert!(
+            !variant.contains(" AND "),
+            "FTS5 query should not contain 'AND' keyword. Found in variant: '{}'",
+            variant
+        );
+    }
+
+    // Should contain space-separated implicit AND query
+    assert!(
+        variants.contains(&"plan tool implementation".to_string()),
+        "Should contain implicit AND query (space-separated)"
+    );
+
+    // Should contain space-separated wildcard query
+    assert!(
+        variants.contains(&"plan* tool* implementation*".to_string()),
+        "Should contain space-separated wildcard query"
+    );
 }

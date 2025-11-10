@@ -53,14 +53,14 @@ pub fn to_lowercase_camelcase(query: &str) -> String {
     result
 }
 
-/// Convert to wildcard query
-/// "user service" → "user* AND service*"
+/// Convert to wildcard query with implicit AND (FTS5 compatible)
+/// "user service" → "user* service*" (space = implicit AND)
 pub fn to_wildcard_query(query: &str) -> String {
     query
         .split_whitespace()
         .map(|word| format!("{}*", word))
         .collect::<Vec<String>>()
-        .join(" AND ")
+        .join(" ")
 }
 
 /// Convert to OR query
@@ -111,25 +111,19 @@ pub fn expand_query(query: &str) -> Vec<String> {
             variants.push(lowercase_camel.clone());
         }
 
-        // 3. GOOGLE-STYLE: AND query (all terms must be present)
-        // "user auth controller post" → "user AND auth AND controller AND post"
+        // 3. FTS5 implicit AND query (all terms must be present)
+        // "user auth controller post" → "user auth controller post" (space = implicit AND)
         // This finds symbols containing ALL terms anywhere in the symbol
-        let and_query = query
-            .split_whitespace()
-            .collect::<Vec<&str>>()
-            .join(" AND ");
-        if and_query != query {
-            variants.push(and_query);
-        }
+        // Note: Already added as variants[0] on line 92, so skip to avoid duplicate
 
-        // 4. Wildcard AND: More permissive matching
-        // "user auth post" → "user* AND auth* AND post*"
-        let wildcard_and = query
+        // 4. Wildcard query with implicit AND (more permissive matching)
+        // "user auth post" → "user* auth* post*" (space = implicit AND)
+        let wildcard_implicit_and = query
             .split_whitespace()
             .map(|word| format!("{}*", word))
             .collect::<Vec<String>>()
-            .join(" AND ");
-        variants.push(wildcard_and);
+            .join(" ");
+        variants.push(wildcard_implicit_and);
 
         // 5. OR query: Find symbols matching ANY term (most permissive)
         // "user auth post" → "(user OR auth OR post)"

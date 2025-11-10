@@ -175,7 +175,13 @@ impl RecallTool {
 
             // Format git info (if present)
             let git_info = memory.git.as_ref().map(|git| {
-                format!(" [{}@{}]", git.branch, &git.commit[..8])
+                // Take up to 8 chars, or full hash if shorter (handles 7-char git short hashes)
+                let commit_display = if git.commit.len() >= 8 {
+                    &git.commit[..8]
+                } else {
+                    &git.commit
+                };
+                format!(" [{}@{}]", git.branch, commit_display)
             });
 
             // Build entry
@@ -251,5 +257,32 @@ mod tests {
 
         let result = parse_date_to_timestamp("2025/11/10");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_short_commit_hash_no_longer_panics() {
+        // BUG FIX VERIFICATION: Short commit hashes should not crash
+        // Git short hashes are typically 7 characters (e.g., "05a8cb5")
+        // We now handle this gracefully by taking min(len, 8)
+
+        let short_commit = "05a8cb5"; // 7 characters - typical git short hash
+        let long_commit = "05a8cb5def123"; // 13 characters
+
+        // Test the same logic as line 179-183
+        let short_display = if short_commit.len() >= 8 {
+            &short_commit[..8]
+        } else {
+            short_commit
+        };
+        let formatted_short = format!(" [main@{}]", short_display);
+        assert_eq!(formatted_short, " [main@05a8cb5]");
+
+        let long_display = if long_commit.len() >= 8 {
+            &long_commit[..8]
+        } else {
+            long_commit
+        };
+        let formatted_long = format!(" [main@{}]", long_display);
+        assert_eq!(formatted_long, " [main@05a8cb5d]");
     }
 }

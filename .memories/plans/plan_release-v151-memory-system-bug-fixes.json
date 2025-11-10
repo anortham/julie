@@ -1,0 +1,28 @@
+{
+  "id": "plan_release-v151-memory-system-bug-fixes",
+  "timestamp": 1762792838,
+  "type": "plan",
+  "title": "Release v1.5.1 - Memory System & Bug Fixes",
+  "status": "active",
+  "content": "## Release v1.5.1 - Memory System & Bug Fixes\n\n### Summary\nBundle recent memory system completion (Phase 1.5 mutable plans) with critical bug fixes:\n- ✅ Mutable plans implementation complete\n- ✅ 57GB memory bug fixed (build artifact indexing)\n- ✅ FTS5 query syntax bug fixed\n- ✅ Expanded ignore patterns for major ecosystems\n\n### Release Tasks\n\n- [ ] Review outstanding changes (git status + git diff)\n- [ ] Update version to 1.5.1 in Cargo.toml\n- [ ] Update CHANGELOG.md with release notes\n- [ ] Stage all changes (git add)\n- [ ] Create commit with detailed message\n- [ ] Run full test suite to verify stability\n- [ ] Push to main branch\n- [ ] Create git tag v1.5.1\n- [ ] Push tag to trigger release\n\n### Release Notes Draft\n\n**v1.5.1 - Memory System Complete + Critical Fixes**\n\n**New Features:**\n- Mutable plans system (Phase 1.5) - 6 CRUD operations, atomic updates\n- Enhanced ignore patterns for Gradle, Dart, Next.js, Nuxt, CMake\n\n**Bug Fixes:**\n- Fixed critical 57GB RAM usage from .NET build artifact indexing\n- Fixed FTS5 query syntax errors in multi-word searches\n- Batch size enforcement in embedding pipeline\n\n**Testing:**\n- 30 new tests for plan tool (22 unit + 8 integration)\n- Comprehensive ignore pattern test coverage\n\n### Success Criteria\n- [ ] All tests passing\n- [ ] Version bumped correctly\n- [ ] Clean git history\n- [ ] Tag created and pushed\n",
+  "git": {
+    "branch": "main",
+    "commit": "5117a9d18e7d92fef35016f66b028f454b178b1c",
+    "dirty": true,
+    "files_changed": [
+      "README.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/schema.rs",
+      "src/embeddings/mod.rs",
+      "src/handler.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tests/utils/query_expansion.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/mod.rs",
+      "src/utils/query_expansion.rs",
+      "src/watcher/filtering.rs"
+    ]
+  }
+}

@@ -514,6 +514,10 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🔍 Recall: {:?}", tool);
                 tool.call_tool(self).await
             }
+            JulieTools::PlanTool(tool) => {
+                debug!("📋 Plan: {:?}", tool);
+                tool.call_tool(self).await
+            }
         };
 
         // 🔒 Serialize transport writes ONLY while returning the result.

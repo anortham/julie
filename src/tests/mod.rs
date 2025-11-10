@@ -52,7 +52,8 @@ pub mod memory_tests; // Memory system tests (checkpoint/recall)
 pub mod memory_checkpoint_tests; // Checkpoint tool tests (file operations)
 pub mod memory_recall_tests; // Recall tool tests (reading from disk)
 pub mod memory_sql_views_tests; // SQL views and indexes for memories
-pub mod test_git_context; // Git context capture tests (debugging crashes)
+pub mod memory_plan_tests; // Plan system tests (mutable plans - Phase 1.5)
+// pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {
     pub mod ast_symbol_finder; // AST symbol finder tests
@@ -118,6 +119,7 @@ pub mod integration {
     pub mod fts5_rowid_corruption; // FTS5 rowid corruption from unnecessary rebuild (TDD)
     pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests
+    pub mod plan_tool; // PlanTool integration tests (Phase 1.5 - Mutable Plans)
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests

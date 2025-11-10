@@ -442,6 +442,12 @@ fn process_standard_query(query: &str) -> String {
         return trimmed.to_string();
     }
 
+    // Preserve quoted phrases (FTS5 phrase search)
+    // If the entire query is quoted, return as-is
+    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.matches('"').count() == 2 {
+        return trimmed.to_string();
+    }
+
     // For multi-word queries, use FTS5 AND logic: "a b c" → "a AND b AND c"
     // This finds documents containing ALL terms (Google-style search)
     // FTS5's tokenizer will handle CamelCase/snake_case splitting automatically

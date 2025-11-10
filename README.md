@@ -241,6 +241,29 @@ cargo build --release
 
 - `manage_workspace` - Index, add, remove, refresh, and clean workspaces
 
+**Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
+
+- **Build outputs**: `target/`, `build/`, `dist/`, `out/`, `obj/`, `bin/`
+- **Language-specific caches**: `.gradle/`, `.dart_tool/`, `cmake-build-*/`
+- **Framework caches**: `.next/`, `.nuxt/`
+- **Dependencies**: `node_modules/`, `vendor/`
+- **Version control**: `.git/`
+- **Test coverage**: `coverage/`, `.nyc_output/`
+- **Python bytecode**: `__pycache__/`, `*.pyc`
+- **Minified files**: `*.min.js`, `*.bundle.js`, `*.map`
+
+**Custom Ignore Patterns** - Create a `.julieignore` file in your workspace root for project-specific exclusions:
+
+```
+# .julieignore example
+experimental/
+legacy-code/
+third-party/
+*.generated.ts
+```
+
+Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
+
 ### Development Memory
 
 - `checkpoint` - Save immutable development memories (bug fixes, decisions, learnings)

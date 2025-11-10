@@ -6,7 +6,11 @@
   - .memories/ architecture implemented
   - Text search working on Windows (critical bug fixed)
   - 26/26 memory tests passing
-- 🚧 **Phase 1.5: Mutable Plans** - Not Started
+- ✅ **Phase 1.5: Mutable Plans** - **COMPLETE**
+  - plan() tool with 6 actions (save/get/list/activate/update/complete)
+  - Atomic updates with temp + rename pattern
+  - SQL views for plan searchability
+  - 22 unit tests + 8 integration tests passing
 - 🚧 **Phase 2: Cross-Workspace Intelligence** - Not Started
 - 🚧 **Phase 3: Skills System** - Not Started
 

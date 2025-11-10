@@ -24,23 +24,48 @@ pub fn build_supported_extensions() -> HashSet<String> {
 /// Build ignore patterns for files/directories to skip
 pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
     let patterns = [
+        // Package managers and dependencies
         "**/node_modules/**",
-        "**/target/**",
-        "**/build/**",
-        "**/dist/**",
+        "**/vendor/**",
+        "**/node_modules.nosync/**",
+
+        // Build outputs (language-specific)
+        "**/target/**",      // Rust
+        "**/build/**",       // Generic builds
+        "**/dist/**",        // Distribution builds
+        "**/out/**",         // Generic output (Java, Kotlin, JetBrains IDEs)
+        "**/obj/**",         // .NET intermediate outputs
+        "**/bin/**",         // .NET final outputs
+        "**/.gradle/**",     // Gradle build cache (Java, Android)
+        "**/.dart_tool/**",  // Dart/Flutter build cache
+        "**/cmake-build-*/**", // CMake build directories (cmake-build-debug, cmake-build-release, etc.)
+
+        // JavaScript/TypeScript framework caches
+        "**/.next/**",       // Next.js build cache
+        "**/.nuxt/**",       // Nuxt.js build cache
+
+        // Version control
         "**/.git/**",
-        "**/.julie/**", // Don't watch our own data directory
+
+        // Julie's own data
+        "**/.julie/**",      // Don't watch our own data directory
+
+        // Minified/bundled files
         "**/*.min.js",
         "**/*.bundle.js",
         "**/*.map",
+
+        // Test coverage
         "**/coverage/**",
         "**/.nyc_output/**",
+
+        // Temporary files
         "**/tmp/**",
         "**/temp/**",
+
+        // Python
         "**/__pycache__/**",
         "**/*.pyc",
-        "**/vendor/**",
-        "**/node_modules.nosync/**",
     ];
 
     patterns
@@ -108,5 +133,75 @@ mod tests {
             .expect("Should have node_modules pattern");
 
         assert!(node_modules_pattern.matches("src/node_modules/package.json"));
+    }
+
+    #[test]
+    fn test_dotnet_build_artifacts_ignored() {
+        let patterns = build_ignore_patterns().unwrap();
+
+        // Test obj/ directory (intermediate build outputs)
+        let obj_match = patterns.iter().any(|p| {
+            p.matches("MyProject/obj/Debug/net9.0/MyProject.dll")
+            || p.matches("src/obj/Debug/MyProject.json")
+            || p.matches("obj/staticwebassets.build.json")
+        });
+        assert!(obj_match, ".NET obj/ directories should be ignored");
+
+        // Test bin/ directory (final build outputs)
+        let bin_match = patterns.iter().any(|p| {
+            p.matches("MyProject/bin/Debug/net9.0/MyProject.dll")
+            || p.matches("src/bin/Release/MyProject.json")
+            || p.matches("bin/wwwroot/framework/blazor.boot.json")
+        });
+        assert!(bin_match, ".NET bin/ directories should be ignored");
+    }
+
+    #[test]
+    fn test_additional_build_artifacts_ignored() {
+        let patterns = build_ignore_patterns().unwrap();
+
+        // Test .gradle/ (Java/Android builds)
+        let gradle_match = patterns.iter().any(|p| {
+            p.matches("MyApp/.gradle/7.5/checksums/checksums.lock")
+                || p.matches(".gradle/buildOutputCleanup/cache.properties")
+                || p.matches("android/.gradle/file-system.probe")
+        });
+        assert!(gradle_match, "Gradle build directories should be ignored");
+
+        // Test .dart_tool/ (Dart/Flutter)
+        let dart_match = patterns.iter().any(|p| {
+            p.matches("my_flutter_app/.dart_tool/package_config.json")
+                || p.matches(".dart_tool/version")
+        });
+        assert!(dart_match, "Dart tool directories should be ignored");
+
+        // Test .next/ (Next.js build cache)
+        let next_match = patterns.iter().any(|p| {
+            p.matches("my-nextjs-app/.next/cache/webpack/client-production/0.pack")
+                || p.matches(".next/build-manifest.json")
+        });
+        assert!(next_match, "Next.js build cache should be ignored");
+
+        // Test .nuxt/ (Nuxt.js build cache)
+        let nuxt_match = patterns.iter().any(|p| {
+            p.matches("my-nuxt-app/.nuxt/dist/server/index.js")
+                || p.matches(".nuxt/routes.json")
+        });
+        assert!(nuxt_match, "Nuxt.js build cache should be ignored");
+
+        // Test cmake-build-* (CMake build directories)
+        let cmake_match = patterns.iter().any(|p| {
+            p.matches("cmake-build-debug/CMakeCache.txt")
+                || p.matches("cmake-build-release/Makefile")
+                || p.matches("project/cmake-build-relwithdebinfo/compile_commands.json")
+        });
+        assert!(cmake_match, "CMake build directories should be ignored");
+
+        // Test out/ (Generic output directories - common in JetBrains IDEs)
+        let out_match = patterns.iter().any(|p| {
+            p.matches("MyProject/out/production/MyProject/Main.class")
+                || p.matches("out/artifacts/MyApp.jar")
+        });
+        assert!(out_match, "Generic output directories should be ignored");
     }
 }

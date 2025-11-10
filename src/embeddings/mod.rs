@@ -295,12 +295,53 @@ impl EmbeddingEngine {
     /// PERFORMANCE OPTIMIZATION: Generate embeddings for a batch of symbols using batched ML inference
     /// This dramatically reduces ML model overhead compared to individual embedding calls
     /// Now GPU-accelerated for 10-100x speedup!
+    ///
+    /// CRITICAL: Respects batch size limits to prevent OOM errors (Bug fix for 23GB+ allocation attempts)
     pub fn embed_symbols_batch(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
         if symbols.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Collect all embedding texts and contexts in batches for efficient ML inference
+        // Calculate optimal batch size based on GPU/CPU capabilities
+        let batch_size = self.calculate_optimal_batch_size();
+
+        // If input is within batch size, process directly (fast path)
+        if symbols.len() <= batch_size {
+            return self.embed_symbols_batch_internal(symbols);
+        }
+
+        // Split large inputs into manageable chunks to prevent OOM
+        tracing::info!(
+            "🔄 Splitting {} symbols into batches of {} to prevent memory exhaustion",
+            symbols.len(),
+            batch_size
+        );
+
+        let mut all_results = Vec::new();
+
+        for chunk in symbols.chunks(batch_size) {
+            match self.embed_symbols_batch_internal(chunk) {
+                Ok(mut chunk_results) => {
+                    all_results.append(&mut chunk_results);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to process chunk of {} symbols: {}",
+                        chunk.len(),
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(all_results)
+    }
+
+    /// Internal batch embedding logic - processes a single batch WITHOUT splitting
+    /// This is the actual ONNX batch call - caller must ensure batch size is safe!
+    fn embed_symbols_batch_internal(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
+        // Collect all embedding texts and contexts for this batch
         let mut batch_texts = Vec::new();
         let mut symbol_ids = Vec::new();
 
@@ -311,7 +352,7 @@ impl EmbeddingEngine {
             symbol_ids.push(symbol.id.clone());
         }
 
-        // Generate embeddings for all symbols in one GPU-accelerated batch call
+        // Generate embeddings for this batch in one GPU-accelerated call
         let batch_result = self.model.encode_batch(batch_texts.clone());
 
         match batch_result {

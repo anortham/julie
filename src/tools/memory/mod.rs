@@ -14,9 +14,14 @@
 mod checkpoint;
 mod recall;
 
+// MCP Tools (Phase 1.5)
+pub mod plan; // Public module to expose plan functions and types
+mod plan_tool;
+
 // Re-export tools for external use
 pub use checkpoint::CheckpointTool;
 pub use recall::RecallTool;
+pub use plan_tool::{PlanAction, PlanTool};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -1,0 +1,33 @@
+{
+  "id": "checkpoint_69121748_e9acf9",
+  "timestamp": 1762793288,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5117a9d",
+    "dirty": true,
+    "files_changed": [
+      "README.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/schema.rs",
+      "src/embeddings/mod.rs",
+      "src/handler.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tests/utils/query_expansion.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/mod.rs",
+      "src/utils/query_expansion.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Fixed plan tool JSON Schema case sensitivity bug. Changed from #[serde(rename_all = \"lowercase\")] to explicit per-variant #[serde(rename = \"save\")] attributes on PlanAction enum. Root cause: rust-mcp-sdk JsonSchema derive doesn't respect rename_all attribute, causing schema to advertise capitalized enum values (\"Save\") while serde expects lowercase (\"save\"). Added 3 comprehensive tests proving serde works correctly (serializes/deserializes lowercase, rejects capitalized). Explicit per-variant attributes should be respected by both serde and JsonSchema. Bug manifested as 'unknown variant \"Save\"' errors when Claude Code sent capitalized action values based on incorrect schema.",
+  "tags": [
+    "bug-fix",
+    "plan-tool",
+    "json-schema",
+    "serde",
+    "tdd"
+  ]
+}
