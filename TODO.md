@@ -2,12 +2,20 @@
 
 ## 🎯 Current Status (2025-11-10)
 
-**Latest Release**: v1.2.0 (2025-11-09)
-**Latest Development**: Phase 1 Memory System ✅
+**Latest Release**: v1.5.0 (2025-11-10)
+**Latest Development**: Critical Performance Fix + Memory System ✅
 **Languages Supported**: 31/31 ✅
 **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic)
 
 ### ✅ Recent Completions
+
+**v1.5.0 - Critical Performance Fix + Memory System (2025-11-10)**
+- 🚀 Fixed incremental indexing path mismatch causing 100% cache miss on startup
+- ⚡ 53% startup time reduction (8.4s → 3.9s) - now correctly skips 741/786 unchanged files
+- 🐛 Fixed checkpoint tool crash from string slice panic on short git hashes
+- 💾 Complete Phase 1 memory system (checkpoint/recall tools, SQL views, 26 tests)
+- 📝 Updated tool descriptions with behavioral adoption patterns for proactive usage
+- 🔧 Memory files in `.memories/` are git-tracked, human-readable JSON
 
 **Phase 1 Memory System - Complete (2025-11-10)**
 - ✅ Checkpoint tool: Save immutable memories (checkpoints, decisions, learnings)
