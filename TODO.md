@@ -1,12 +1,22 @@
 # Julie TODO
 
-## 🎯 Current Status (2025-11-09)
+## 🎯 Current Status (2025-11-10)
 
 **Latest Release**: v1.2.0 (2025-11-09)
+**Latest Development**: Phase 1 Memory System ✅
 **Languages Supported**: 31/31 ✅
 **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic)
 
 ### ✅ Recent Completions
+
+**Phase 1 Memory System - Complete (2025-11-10)**
+- ✅ Checkpoint tool: Save immutable memories (checkpoints, decisions, learnings)
+- ✅ Recall tool: Query memories chronologically with filtering
+- ✅ Storage: `.memories/` directory (separate from `.julie/` internal state)
+- ✅ Architecture: Pretty-printed JSON files, git-trackable, atomic writes
+- ✅ Indexing: Automatic via file watcher, searchable with fast_search
+- ✅ Clean implementation: Whitelisted `.memories`, no complex path logic
+- 📍 See: `docs/JULIE_2_PLAN.md` for Phase 2 (mutable plans) roadmap
 
 **v1.2.0 - Embedding Fixes for Goldfish Integration**
 - Fixed EmbeddingEngine to support standalone mode (no dummy databases)
@@ -44,6 +54,7 @@
 - ⏸️ Dockerfile - Blocked on tree-sitter-dockerfile 0.25+ compatibility (crate uses 0.20)
 - Consider: Plain text (.txt), CSV for structured data
 - Consider: Additional doc formats (PDF, DOCX) if needed for RAG
+- We added JSONL support, we should add JSONC support too
 
 ### Priority 2: Search Quality Improvements
 - Monitor FTS5 + query expansion performance in production use
@@ -55,6 +66,11 @@
 - Agent onboarding flow improvements
 - Query suggestion system
 - Performance monitoring and optimization
+- **Background auto-indexing on startup**: Move auto-indexing to background thread to eliminate startup delay
+  - Current: Auto-indexing blocks server startup (3.9s with incremental, could be 10-20s on large projects)
+  - Proposed: Start server immediately, perform indexing in background, tools queue until ready
+  - Benefits: Instant server availability, better UX for large workspaces (1000+ files)
+  - See: `src/main.rs:302-373` (perform_auto_indexing function)
 
 ---
 

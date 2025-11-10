@@ -1,0 +1,13 @@
+{
+  "id": "checkpoint_69114bd8_4f480c",
+  "timestamp": 1762741208,
+  "type": "checkpoint",
+  "description": "Added custom slash commands /checkpoint and /recall for ergonomic memory system access. Commands use correct frontmatter format with allowed-tools. /checkpoint supports interactive mode (analyzes context), direct mode (with description), and typed mode (--type flag). /recall supports time-based (30m, 3h, 1d limited for context efficiency), topic-based (hybrid search: FTS5 + semantic), and filtered queries (--type, --since). README.md provides user-facing documentation.",
+  "tags": [
+    "feature",
+    "ux",
+    "commands",
+    "polish",
+    "phase1"
+  ]
+}

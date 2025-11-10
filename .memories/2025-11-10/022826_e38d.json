@@ -1,0 +1,13 @@
+{
+  "id": "checkpoint_69114dca_838420",
+  "timestamp": 1762741706,
+  "type": "checkpoint",
+  "description": "Fixed recall tool date parsing to accept datetime without timezone (YYYY-MM-DDTHH:MM:SS) and default to local machine time. Followed TDD: wrote failing test, fixed parse_date_to_timestamp function to handle three formats (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS local, YYYY-MM-DDTHH:MM:SSZ UTC), verified all 4 tests pass. Updated tool description and struct field documentation. Also fixed /recall slash command to append Z for UTC timezone.",
+  "tags": [
+    "bug",
+    "tdd",
+    "date-parsing",
+    "recall",
+    "phase1"
+  ]
+}

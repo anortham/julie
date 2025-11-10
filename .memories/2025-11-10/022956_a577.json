@@ -1,0 +1,13 @@
+{
+  "id": "checkpoint_69114e24_c5c96f",
+  "timestamp": 1762741796,
+  "type": "checkpoint",
+  "description": "Fixed recall tool to display timestamps in local timezone instead of UTC. Memories are still stored with UTC timestamps (for consistency), but now converted to local time for display using with_timezone(&Local). Users now see familiar local times instead of confusing UTC times.",
+  "tags": [
+    "bug",
+    "timezone",
+    "ux",
+    "recall",
+    "phase1"
+  ]
+}

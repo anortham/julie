@@ -1,0 +1,39 @@
+{
+  "id": "checkpoint_6911624b_8e9e68",
+  "timestamp": 1762746955,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05a8cb5",
+    "dirty": true,
+    "files_changed": [
+      ".claude-plugin/README.md",
+      ".claude-plugin/commands/index.md",
+      ".claude-plugin/commands/search.md",
+      ".claude-plugin/commands/symbols.md",
+      ".claude-plugin/plugin.json",
+      ".claude-plugin/skills/explore-codebase/SKILL.md",
+      ".claude-plugin/skills/safe-refactor/SKILL.md",
+      ".claude-plugin/skills/smart-search/SKILL.md",
+      "TODO.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/files.rs",
+      "src/database/schema.rs",
+      "src/handler.rs",
+      "src/tests/core/database.rs",
+      "src/tests/mod.rs",
+      "src/tools/mod.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/incremental.rs"
+    ]
+  },
+  "description": "Fixed critical bugs in Julie MCP server: (1) Checkpoint tool crash from string slice panic on short git commit hashes - changed to .chars().take(8) for safety. (2) Incremental indexing path mismatch bug causing 100% cache miss - absolute paths vs relative Unix-style database paths - added to_relative_unix_style conversion before hash lookup. (3) Updated checkpoint/recall tool descriptions with urgent directive language following Serena behavioral adoption patterns. Results: 53% startup time reduction (8.4s → 3.9s), incremental detection now correctly skips 741/786 unchanged files. Documented future optimization (background auto-indexing) in TODO.md.",
+  "tags": [
+    "bug-fix",
+    "performance",
+    "startup-optimization",
+    "incremental-indexing",
+    "memory-system",
+    "behavioral-adoption"
+  ]
+}

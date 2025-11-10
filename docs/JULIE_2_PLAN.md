@@ -1,5 +1,15 @@
 # Julie 2.0: Unified Project Intelligence System
 
+**📊 PROJECT STATUS (2025-11-10)**
+- ✅ **Phase 1: Immutable Memory System** - **COMPLETE**
+  - checkpoint/recall tools fully functional
+  - .memories/ architecture implemented
+  - Text search working on Windows (critical bug fixed)
+  - 26/26 memory tests passing
+- 🚧 **Phase 1.5: Mutable Plans** - Not Started
+- 🚧 **Phase 2: Cross-Workspace Intelligence** - Not Started
+- 🚧 **Phase 3: Skills System** - Not Started
+
 ## Executive Summary
 
 Julie evolves from a code intelligence tool into a comprehensive project intelligence system that unifies code search, project memory, and workflow orchestration. This transformation eliminates the need for separate tools (Tusk, Goldfish, Sherpa) by integrating their capabilities directly into Julie.
@@ -19,30 +29,74 @@ Julie evolves from a code intelligence tool into a comprehensive project intelli
 3. **Progressive Enhancement**: Each phase builds on the previous
 4. **No Breaking Changes**: Existing Julie functionality remains intact
 
+### Key Design Decisions
+
+**Individual JSON Files (Not JSONL):**
+- ✅ Perfect git mergeability (separate files = no conflicts)
+- ✅ Human-readable (pretty-printed with indentation)
+- ✅ Easy file operations (atomic write via temp + rename)
+- ✅ Manual inspection/editing possible
+- ❌ More files (mitigated by per-day directories)
+
+**Flexible Schema (Minimal Core + Flatten):**
+- Required: `id`, `timestamp`, `type` (3 fields only)
+- Optional common: `git` context
+- Everything else: type-specific via serde `flatten`
+- No schema validation - pure flexibility
+- Enables new memory types without breaking changes
+
+**Immutable First, Mutable Later:**
+- Phase 1: Append-only memories (checkpoint, decision, learning)
+- Phase 1.5: Mutable plans (task tracking, status updates)
+- Rationale: Validate foundation before adding complexity
+
+**`.memories/` Directory (Not `.julie/memories/`):**
+- ✅ Clear separation: `.julie/` = ephemeral cache, `.memories/` = permanent records
+- ✅ Users can delete `.julie/` to rebuild without losing memories
+- ✅ Simple indexing: Just whitelist `.memories` as a known dotfile
+- ✅ No complex path exceptions or special cases in discovery logic
+- ✅ Matches conventions like `.git`, `.vscode` (tool-specific, but user data)
+
+**Tool Names:**
+- `checkpoint` - Save immutable memory (clear "snapshot" semantics)
+- `recall` - Retrieve any memory type (works for both immutable/mutable)
+- `plan` - Create/update mutable plans (distinct from checkpoint)
+
 ### Storage Architecture
 
 ```
 # Project Level (with code)
-<project>/.julie/
-├── memories/                    # NEW: Project memories (JSONL)
-│   ├── 2025-01-09-143022.jsonl
-│   └── 2025-01-10-093012.jsonl
+<project>/.memories/              # NEW: Project memories (individual JSON files)
+├── 2025-01-09/
+│   ├── 143022_abc123.json
+│   ├── 150534_def456.json
+│   └── 163012_ghi789.json
+├── 2025-01-10/
+│   └── 093012_jkl012.json
+└── plans/                        # Mutable plans (Phase 2)
+    ├── plan_add-search.json
+    └── plan_refactor-db.json
+
+<project>/.julie/                 # Julie's internal state (ephemeral, can be deleted)
 ├── indexes/
 │   └── {workspace_id}/
-│       ├── db/symbols.db        # Existing + memory views
-│       └── vectors/             # HNSW index (code + memories)
-└── workspace_registry.json      # Existing
+│       ├── db/symbols.db         # Existing + memory views
+│       └── vectors/              # HNSW index (code + memories)
+└── workspace_registry.json       # Existing
 
 # User Level (cross-project)
 ~/.julie/
-└── workspace_registry.json      # NEW: All registered workspaces
+└── workspace_registry.json       # NEW: All registered workspaces
 ```
 
 ### Data Flow
 
 ```
-Memory Creation:
-User → checkpoint tool → JSONL file → File watcher → Tree-sitter → symbols.db → Embeddings → HNSW
+Memory Creation (Immutable):
+User → checkpoint tool → Pretty-printed JSON file → File watcher → Tree-sitter → symbols.db → Embeddings → HNSW
+
+Memory Creation (Mutable - Phase 2):
+User → plan tool → Pretty-printed JSON file → Update in-place → Reindex
 
 Memory Recall:
 User → recall tool → SQL view → Chronological results
@@ -54,20 +108,37 @@ User → search --all-workspaces → Registry → Parallel queries → Merged re
 
 ---
 
-## Phase 1: Project-Level Memory System
+## Phase 1: Immutable Memory System
 
 ### Goals
-- Add memory capabilities to Julie without disrupting existing functionality
-- Store memories as JSONL files that are automatically indexed
+- Add **immutable** memory capabilities (checkpoints, decisions, learnings)
+- Store memories as pretty-printed JSON files (one per memory, organized by day)
 - Enable both chronological recall and semantic search of memories
-- Keep memories git-trackable for team knowledge sharing
+- Keep memories git-trackable and human-readable for team knowledge sharing
+- **Defer mutable plans to Phase 2** - start simple with append-only semantics
 
 ### Implementation
 
 #### 1.1 Memory Storage Format
 
-Memories stored in `.julie/memories/` as JSONL files:
+**Storage Structure:**
+```
+.memories/                      # ✅ IMPLEMENTED - Clean separation from .julie/
+├── 2025-01-09/
+│   ├── 143022_abc123.json    # Individual memory files
+│   ├── 150534_def456.json    # Pretty-printed for readability
+│   └── 163012_ghi789.json    # Git-mergeable (separate files)
+└── 2025-01-10/
+    └── 093012_jkl012.json
+```
 
+**Schema Philosophy:**
+- **Minimal Core**: Only 3 required fields (id, timestamp, type)
+- **Optional Common**: git context (useful across all types)
+- **Type-Specific**: Everything else depends on memory type
+- **Flexible**: No schema enforcement, use `serde flatten` for extensibility
+
+**Example - Checkpoint Memory:**
 ```json
 {
   "id": "mem_1736422822_abc123",
@@ -75,92 +146,264 @@ Memories stored in `.julie/memories/` as JSONL files:
   "type": "checkpoint",
   "description": "Fixed race condition in auth flow by adding mutex",
   "tags": ["bug", "auth", "concurrency"],
-  "session_id": "session_xyz",
   "git": {
     "branch": "fix/auth-race",
     "commit": "abc123def",
     "dirty": false,
     "files_changed": ["src/auth.rs", "src/lib.rs"]
-  },
-  "metadata": {
-    "confidence": 85,
-    "related_symbols": ["AuthHandler::login", "SessionManager::validate"],
-    "error_pattern": "concurrent session validation"
   }
 }
 ```
 
-#### 1.2 New Tools
-
-**checkpoint** - Save a development checkpoint
-```rust
-julie checkpoint "description" [--tags tag1,tag2] [--type checkpoint|decision|learning]
+**Example - Decision Memory:**
+```json
+{
+  "id": "dec_1736423000_xyz789",
+  "timestamp": 1736423000,
+  "type": "decision",
+  "question": "Which database for memory storage?",
+  "chosen": "SQLite with JSON extraction",
+  "alternatives": ["Separate JSONL parser", "Postgres"],
+  "rationale": "Leverage existing indexing, zero new dependencies",
+  "git": {
+    "branch": "feature/memory-system",
+    "commit": "def456abc",
+    "dirty": true
+  }
+}
 ```
 
-**recall** - Retrieve memories chronologically or by search
+**Rust Implementation:**
 ```rust
-julie recall [--last-hour] [--since date] [--tags tags] [--semantic query]
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct Memory {
+    id: String,
+    timestamp: i64,
+    #[serde(rename = "type")]
+    memory_type: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git: Option<GitContext>,
+
+    // Everything else flattened at top level (flexible schema)
+    #[serde(flatten)]
+    extra: serde_json::Value,
+}
+
+// Serialization: one line
+let json = serde_json::to_string_pretty(&memory)?;
+std::fs::write(path, json)?;
 ```
 
-**plan** - Manage active development plans
+#### 1.2 New Tools (Phase 1)
+
+**checkpoint** - Save an immutable memory
 ```rust
-julie plan create "implement auth"
-julie plan update --status in_progress
-julie plan complete
+// MCP tool parameters
+{
+  "description": "Fixed auth race condition by adding mutex",
+  "tags": ["bug", "auth", "concurrency"],        // optional
+  "type": "checkpoint"                            // optional, defaults to "checkpoint"
+}
+
+// Other type examples:
+// type: "decision" - architectural decisions
+// type: "learning" - insights discovered
+// type: "observation" - noteworthy patterns
 ```
+
+**recall** - Retrieve memories
+```rust
+// MCP tool parameters
+{
+  "limit": 10,                    // max results
+  "since": "2025-01-01",          // date filter (optional)
+  "tags": ["bug", "auth"],        // tag filter (optional)
+  "type": "checkpoint"            // type filter (optional)
+}
+
+// Recall integrates with fast_search for semantic queries
+// "recall --semantic 'auth bug'" becomes fast_search with .julie/memories/ filter
+```
+
+**Note:** `plan` tool deferred to Phase 2 (mutable memories)
 
 #### 1.3 Database Enhancements
 
 Add SQL view for memories in symbols.db:
 
 ```sql
+-- View leveraging existing files table + JSON extraction
 CREATE VIEW memories AS
 SELECT
   f.path,
   f.content_hash,
   json_extract(f.content, '$.id') as id,
   json_extract(f.content, '$.timestamp') as timestamp,
-  json_extract(f.content, '$.description') as description,
   json_extract(f.content, '$.type') as type,
-  json_extract(f.content, '$.tags') as tags,
+  json_extract(f.content, '$.description') as description,  -- type-specific field
+  json_extract(f.content, '$.tags') as tags,                -- type-specific field
   json_extract(f.content, '$.git.branch') as git_branch,
-  json_extract(f.content, '$.git.commit') as git_commit
+  json_extract(f.content, '$.git.commit') as git_commit,
+  json_extract(f.content, '$.git.dirty') as git_dirty
 FROM files f
-WHERE f.path LIKE '.julie/memories/%'
-  AND f.path LIKE '%.jsonl';
+WHERE f.path LIKE '.memories/%'
+  AND f.path LIKE '%.json'
+  AND f.path NOT LIKE '%.memories/plans/%';  -- Exclude mutable plans (Phase 2)
 
--- Index for chronological queries
-CREATE INDEX idx_memories_timestamp ON memories(timestamp);
+-- Index for chronological queries (fast recall)
+CREATE INDEX idx_memories_timestamp ON files(
+  json_extract(content, '$.timestamp')
+) WHERE path LIKE '.memories/%' AND path LIKE '%.json';
+
+-- Index for type filtering
+CREATE INDEX idx_memories_type ON files(
+  json_extract(content, '$.type')
+) WHERE path LIKE '.memories/%' AND path LIKE '%.json';
 ```
 
-#### 1.4 Tree-Sitter Integration
+**Why This Works:**
+- Reuses existing `files` table (already indexed by tree-sitter)
+- JSON extraction is fast (SQLite's json_extract is optimized)
+- FTS5 already indexes all text fields (description, tags, etc.)
+- No schema changes needed - just a view + indexes
 
-Update JSON parser configuration to:
-- Parse JSONL files (each line as separate JSON)
-- Extract memory structure into searchable fields
-- Generate embeddings for description and metadata
+#### 1.4 Tree-Sitter Integration ✅ **COMPLETE**
 
-#### 1.5 Behavioral Adoption
+**JSON files already supported!** No changes needed to tree-sitter.
 
-Julie will proactively suggest memory creation:
-- After completing bug fixes
-- When making architectural decisions
-- During complex debugging sessions
-- At natural transition points
+Julie's existing JSON extractor:
+- Parses each `.json` file in `.memories/` ✅
+- Extracts all fields into the `files` table ✅
+- Indexes text content in FTS5 for full-text search ✅
+- Generates embeddings for semantic search ✅
 
-### Deliverables
-- [ ] Memory tool implementations (checkpoint, recall, plan)
-- [ ] JSONL file writer with atomic operations
-- [ ] SQL views and indexes for memory queries
-- [ ] Tree-sitter JSONL parsing updates
-- [ ] Integration tests for memory operations
-- [ ] Documentation and examples
+**Benefit:** Zero new code - memories are just JSON files that get indexed like any other code file.
+
+**Note:** `.memories/` is whitelisted in discovery logic for automatic indexing.
+
+#### 1.5 Git Integration
+
+Capture git context automatically when creating memories:
+
+```rust
+pub fn get_git_context(workspace_root: &Path) -> Option<GitContext> {
+    // Use existing git integration from workspace module
+    let repo = gix::open(workspace_root).ok()?;
+
+    Some(GitContext {
+        branch: repo.head().ok()?.name()?.as_bstr().to_string(),
+        commit: repo.head().ok()?.id().to_string(),
+        dirty: !repo.is_clean()?,
+        files_changed: get_changed_files(&repo),
+    })
+}
+```
+
+**Why git context matters:**
+- Links memories to code state
+- Enables "what was I working on?" queries
+- Team collaboration: see what branch a decision was made on
+
+### Phase 1 Deliverables (Immutable Memories Only) ✅ **COMPLETE**
+- [x] Memory data structures with flexible schema (serde flatten) ✅
+- [x] checkpoint tool implementation (save immutable memories) ✅
+- [x] recall tool implementation (chronological + type/tag filtering) ✅
+- [x] JSON file writer with atomic operations (temp file + rename) ✅
+- [x] SQL views and indexes for memory queries ✅
+- [x] Git context capture integration ✅
+- [x] Integration tests for memory operations (26/26 passing) ✅
+- [x] Documentation and examples ✅
+
+**CRITICAL BUG FIX (2025-11-10):**
+- Fixed Windows file_pattern GLOB bug in `src/database/files.rs:376-390`
+- **Issue**: Platform-specific normalization converted forward slashes to backslashes on Windows, breaking GLOB matching
+- **Root Cause**: Violated RELATIVE_PATHS_CONTRACT.md - database stores Unix-style paths with forward slashes
+- **Solution**: Removed normalization entirely - user patterns work as-is with workspace-relative storage
+- **Impact**: Enabled text search on memory files for Windows users
+- **Tests**: Added regression test `test_fts_file_pattern_forward_slash_glob_matching` with 5 test cases
+
+**Deferred to Phase 2:**
+- [ ] plan tool (mutable memories with update operations)
+- [ ] File watching for live reindexing of plan updates
 
 ### Success Metrics
-- Checkpoint save: <50ms
-- Chronological recall: <5ms
-- Semantic recall: <100ms (existing search performance)
+- Checkpoint save: <50ms (includes git context + file write)
+- Chronological recall: <5ms (SQL view query)
+- Semantic recall: <100ms (existing fast_search performance)
 - Zero impact on existing tool performance
+- Human-readable JSON files (can edit with text editor)
+- Git-friendly (no merge conflicts on concurrent work)
+
+### Why Immutable First?
+
+**Simplicity:**
+- Append-only semantics (no update logic needed)
+- No concurrency concerns (never modify existing files)
+- Easy to reason about (write once, never change)
+
+**Foundation:**
+- Gets core storage/indexing working
+- Validates flexible schema approach
+- Establishes SQL view patterns
+- Tests git integration
+
+**Phase 2 builds on this:**
+- Same storage structure (`.memories/`) ✅
+- Same indexing pipeline (tree-sitter → SQLite → HNSW) ✅
+- Just adds: update operations + mutable subdirectory
+
+---
+
+## Phase 1.5: Mutable Plans (Bridge to Phase 2)
+
+**Goals:**
+- Add mutable "plan" memories that can be updated
+- Keep same storage/indexing infrastructure
+- Enable task tracking and status updates
+
+**Key Differences from Immutable:**
+
+| Aspect | Immutable (checkpoint) | Mutable (plan) |
+|--------|----------------------|----------------|
+| Storage | `memories/YYYY-MM-DD/timestamp_id.json` | `memories/plans/plan_{id}.json` |
+| Filename | Includes timestamp (unique) | Stable ID (updateable) |
+| Operations | Write once | Write + Update |
+| Git merges | Perfect (separate files) | Good (plans usually single-author) |
+
+**Implementation:**
+```rust
+// New tool: plan
+pub async fn plan_tool(action: PlanAction) -> Result<String> {
+    match action {
+        PlanAction::Create { title, content } => {
+            // Create new plan file
+            let plan = Memory {
+                id: format!("plan_{}", generate_id()),
+                timestamp: now(),
+                memory_type: "plan".into(),
+                // ... plan-specific fields
+            };
+            write_plan_file(&plan)?;
+        }
+        PlanAction::Update { id, updates } => {
+            // Read existing plan
+            let mut plan = read_plan_file(&id)?;
+            // Apply updates (mark tasks complete, change status, etc.)
+            apply_updates(&mut plan, updates)?;
+            // Atomic write (temp + rename)
+            write_plan_file(&plan)?;
+        }
+    }
+}
+```
+
+**Deliverables:**
+- [ ] plan tool (create, update, complete, list)
+- [ ] Plan-specific update logic (task completion, status changes)
+- [ ] Tests for concurrent updates (rare but possible)
 
 ---
 

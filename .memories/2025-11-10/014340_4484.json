@@ -1,0 +1,15 @@
+{
+  "id": "decision_6911434c_6b50a8",
+  "timestamp": 1762739020,
+  "type": "decision",
+  "description": "Critical bug found: Windows file_pattern normalization converts forward slashes to backslashes, breaking ALL GLOB pattern searches on Windows. Located in src/database/files.rs:388-389. Violates RELATIVE_PATHS_CONTRACT.md. Exposed by memory system text search returning 0 results while semantic search worked. Direct SQL proved FTS5 works with forward-slash patterns, fails with backslash patterns. Fix: Remove platform-specific slash conversion, use forward slashes everywhere per Julie's cross-platform contract.",
+  "tags": [
+    "bug",
+    "critical",
+    "windows",
+    "cross-platform",
+    "file-pattern",
+    "glob",
+    "text-search"
+  ]
+}

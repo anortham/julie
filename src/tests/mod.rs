@@ -48,6 +48,12 @@ pub mod core {
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
+pub mod memory_tests; // Memory system tests (checkpoint/recall)
+pub mod memory_checkpoint_tests; // Checkpoint tool tests (file operations)
+pub mod memory_recall_tests; // Recall tool tests (reading from disk)
+pub mod memory_sql_views_tests; // SQL views and indexes for memories
+pub mod test_git_context; // Git context capture tests (debugging crashes)
+
 pub mod tools {
     pub mod ast_symbol_finder; // AST symbol finder tests
     pub mod get_symbols; // GetSymbolsTool tests

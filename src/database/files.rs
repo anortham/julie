@@ -373,25 +373,21 @@ impl SymbolDatabase {
             param_index += 1;
         }
 
-        // Normalize file_pattern for better UX
-        // Database stores canonical absolute paths (e.g., \\?\C:\source\julie\src\tests\...)
-        // User expects to use relative patterns (e.g., src/tests/**)
-        // Solution: Prepend wildcard to relative patterns to match any absolute prefix
-        let normalized_pattern = file_pattern.as_ref().map(|pattern| {
-            if pattern.starts_with('*') || pattern.starts_with('/') || pattern.starts_with('\\') {
-                // Already absolute or has wildcards - use as-is
-                pattern.clone()
-            } else {
-                // Relative pattern - prepend wildcard to match any absolute path prefix
-                // Platform-aware: Use backslashes on Windows, forward slashes on Unix
-                // src/tests/** becomes *\src\tests\** on Windows, */src/tests/** on Unix
-                #[cfg(windows)]
-                let normalized = format!("*\\{}", pattern.replace('/', "\\"));
-                #[cfg(not(windows))]
-                let normalized = format!("*/{}", pattern.replace('\\', "/"));
-                normalized
-            }
-        });
+        // 🔥 CRITICAL: Database stores relative Unix-style paths (not absolute!)
+        // per RELATIVE_PATHS_CONTRACT.md (see to_relative_unix_style in src/utils/paths.rs:88-95)
+        //
+        // Examples of stored paths:
+        // - src/tests/file.rs (NOT /Users/murphy/project/src/tests/file.rs)
+        // - .memories/2025-11-10/checkpoint.json (NOT C:\source\julie\.memories\...)
+        //
+        // Since storage is workspace-relative, user patterns are ALREADY correct!
+        // No normalization needed - use pattern as-is.
+        //
+        // Pattern examples:
+        // - src/**/*.rs → matches src/tests/file.rs ✅
+        // - .memories/**/*.json → matches .memories/2025-11-10/file.json ✅
+        // - **/tests/** → matches src/tests/file.rs ✅
+        let normalized_pattern = file_pattern.as_ref().map(|pattern| pattern.clone());
 
         if normalized_pattern.is_some() {
             where_clauses.push(format!("files.path GLOB ?{}", param_index));

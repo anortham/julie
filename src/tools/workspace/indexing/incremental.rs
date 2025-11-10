@@ -149,7 +149,20 @@ impl ManageWorkspaceTool {
         let mut modified_count = 0;
 
         for file_path in &all_files {
-            let file_path_str = file_path.to_string_lossy().to_string();
+            // Convert to relative Unix-style path for database lookup
+            // Database stores paths as relative Unix-style per CLAUDE.md Path Handling Contract
+            let file_path_relative = match crate::utils::paths::to_relative_unix_style(file_path, workspace_path) {
+                Ok(rel) => rel,
+                Err(e) => {
+                    warn!(
+                        "Failed to convert {} to relative path: {} - treating as new file",
+                        file_path.display(), e
+                    );
+                    files_to_process.push(file_path.clone());
+                    continue;
+                }
+            };
+
             let language = self.detect_language(file_path);
 
             // Calculate current file hash
@@ -158,7 +171,7 @@ impl ManageWorkspaceTool {
                 Err(e) => {
                     warn!(
                         "Failed to calculate hash for {}: {} - including for re-indexing",
-                        file_path_str, e
+                        file_path_relative, e
                     );
                     files_to_process.push(file_path.clone());
                     continue;
@@ -166,7 +179,7 @@ impl ManageWorkspaceTool {
             };
 
             // Check if file exists in database and if hash matches
-            if let Some(stored_hash) = existing_file_hashes.get(&file_path_str) {
+            if let Some(stored_hash) = existing_file_hashes.get(&file_path_relative) {
                 if stored_hash == &current_hash {
                     // File unchanged by hash, but check if it needs FILE_CONTENT symbols
                     // For files without parsers (text, json, etc.), we need to ensure they have
@@ -199,12 +212,12 @@ impl ManageWorkspaceTool {
                                     }
                                 };
                                 let symbol_count =
-                                    db_lock.get_file_symbol_count(&file_path_str).unwrap_or(0);
+                                    db_lock.get_file_symbol_count(&file_path_relative).unwrap_or(0);
                                 drop(db_lock);
 
                                 if symbol_count == 0 {
                                     // File has no symbols - needs FILE_CONTENT symbol created
-                                    debug!("File {} has no symbols, re-indexing to create FILE_CONTENT symbol", file_path_str);
+                                    debug!("File {} has no symbols, re-indexing to create FILE_CONTENT symbol", file_path_relative);
                                     modified_count += 1;
                                     files_to_process.push(file_path.clone());
                                     continue;

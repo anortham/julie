@@ -1,0 +1,15 @@
+{
+  "id": "decision_6911467a_74ea97",
+  "timestamp": 1762739834,
+  "type": "decision",
+  "description": "✅ Fixed critical Windows file_pattern GLOB bug via TDD. Removed platform-specific path normalization in src/database/files.rs:376-390. Root cause: Code converted forward slashes to backslashes on Windows, breaking GLOB matching against forward-slash storage per RELATIVE_PATHS_CONTRACT.md. Solution: Remove normalization entirely - database stores workspace-relative Unix-style paths, so user patterns work as-is. Added regression test test_fts_file_pattern_forward_slash_glob_matching with 5 test cases. Updated 2 obsolete tests that used absolute path storage. All 33 database tests pass. Memory system text search now works on Windows!",
+  "tags": [
+    "bug-fix",
+    "windows",
+    "glob",
+    "file-pattern",
+    "tdd",
+    "cross-platform",
+    "test-coverage"
+  ]
+}

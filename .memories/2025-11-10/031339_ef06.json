@@ -1,0 +1,36 @@
+{
+  "id": "checkpoint_69115863_fb29fe",
+  "timestamp": 1762744419,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05a8cb5",
+    "dirty": true,
+    "files_changed": [
+      ".claude-plugin/README.md",
+      ".claude-plugin/commands/index.md",
+      ".claude-plugin/commands/search.md",
+      ".claude-plugin/commands/symbols.md",
+      ".claude-plugin/plugin.json",
+      ".claude-plugin/skills/explore-codebase/SKILL.md",
+      ".claude-plugin/skills/safe-refactor/SKILL.md",
+      ".claude-plugin/skills/smart-search/SKILL.md",
+      "TODO.md",
+      "docs/JULIE_2_PLAN.md",
+      "src/database/files.rs",
+      "src/database/schema.rs",
+      "src/handler.rs",
+      "src/tests/core/database.rs",
+      "src/tests/mod.rs",
+      "src/tools/mod.rs",
+      "src/tools/workspace/discovery.rs"
+    ]
+  },
+  "description": "Fixed git context capture after debugging two issues: replaced std::process::Command with tokio::process::Command to prevent runtime crashes, then added proper stdio configuration (stdin=null, stdout/stderr=piped, kill_on_drop=true) to prevent hanging. Also fixed /checkpoint slash command to auto-save without asking for confirmation when called with no arguments.",
+  "tags": [
+    "bug-fix",
+    "git-integration",
+    "async",
+    "slash-commands"
+  ]
+}

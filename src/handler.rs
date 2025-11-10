@@ -506,6 +506,14 @@ impl ServerHandler for JulieServerHandler {
                 debug!("✂️  Edit symbol: {:?}", tool);
                 tool.call_tool(self).await
             }
+            JulieTools::CheckpointTool(tool) => {
+                debug!("💾 Checkpoint: {:?}", tool);
+                tool.call_tool(self).await
+            }
+            JulieTools::RecallTool(tool) => {
+                debug!("🔍 Recall: {:?}", tool);
+                tool.call_tool(self).await
+            }
         };
 
         // 🔒 Serialize transport writes ONLY while returning the result.

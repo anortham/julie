@@ -752,20 +752,10 @@ fn test_fts_search_with_file_pattern_and_language() {
 
     // Store files in different directories with same search term "refactoring"
     // Use platform-appropriate path separators to match production behavior
-    #[cfg(windows)]
-    let test_file = "C:\\source\\julie\\src\\tests\\tools\\refactoring\\rename_symbol.rs";
-    #[cfg(not(windows))]
-    let test_file = "/source/julie/src/tests/tools/refactoring/rename_symbol.rs";
-
-    #[cfg(windows)]
-    let tools_file = "C:\\source\\julie\\src\\tools\\refactoring\\mod.rs";
-    #[cfg(not(windows))]
-    let tools_file = "/source/julie/src/tools/refactoring/mod.rs";
-
-    #[cfg(windows)]
-    let docs_file = "C:\\source\\julie\\docs\\refactoring.md";
-    #[cfg(not(windows))]
-    let docs_file = "/source/julie/docs/refactoring.md";
+    // Store files with relative Unix-style paths (per RELATIVE_PATHS_CONTRACT.md)
+    let test_file = "src/tests/tools/refactoring/rename_symbol.rs";
+    let tools_file = "src/tools/refactoring/mod.rs";
+    let docs_file = "docs/refactoring.md";
 
     db.store_file_with_content(
         test_file,
@@ -810,9 +800,10 @@ fn test_fts_search_with_file_pattern_and_language() {
         "Without filters, should find all 3 files"
     );
 
-    // Test 2: Filter by file_pattern using natural relative pattern
-    // NEW UX: Users can now write natural patterns like "src/tests/**"
-    // Pattern normalization converts this to "*/src/tests/**" (or *\src\tests\** on Windows)
+    // Test 2: Filter by file_pattern using relative pattern
+    // Database stores: src/tests/tools/refactoring/rename_symbol.rs (relative Unix-style)
+    // User writes: src/tests/** (relative pattern)
+    // Pattern used: src/tests/** (no normalization - paths are already workspace-relative!)
     let results = db
         .search_file_content_fts("refactoring", &None, &Some("src/tests/**".to_string()), 10)
         .unwrap();
@@ -834,8 +825,9 @@ fn test_fts_search_with_file_pattern_and_language() {
     );
     assert!(results[0].path.contains("docs") && results[0].path.contains("refactoring.md"));
 
-    // Test 4: Combined filters using natural relative pattern
-    // NEW UX: Natural pattern "src/tools/**" instead of wildcard "**/tools/**"
+    // Test 4: Combined filters (language + file_pattern)
+    // Database stores: src/tools/refactoring/mod.rs (relative Unix-style)
+    // Filters: language="rust" AND file_pattern="src/tools/**"
     let results = db
         .search_file_content_fts(
             "refactoring",
@@ -873,35 +865,25 @@ fn test_fts_file_pattern_normalization() {
     std::fs::create_dir_all(&tests_dir).unwrap();
     std::fs::create_dir_all(&tools_dir).unwrap();
 
-    // Write actual files so we can canonicalize them
-    let test_file1 = tests_dir.join("test1.rs");
-    let test_file2 = tools_dir.join("tool.rs");
-    let test_file3 = src_dir.join("main.rs");
-    std::fs::write(&test_file1, test_content).unwrap();
-    std::fs::write(&test_file2, test_content).unwrap();
-    std::fs::write(&test_file3, test_content).unwrap();
+    // Store files with relative Unix-style paths (like production does per RELATIVE_PATHS_CONTRACT.md)
+    // Production uses to_relative_unix_style() which converts ALL paths to forward slashes
+    // (see src/utils/paths.rs:88-95)
+    db.store_file_with_content("src/tests/test1.rs", "rust", "abc1", 100, 1234567890, test_content, "test_workspace").unwrap();
+    db.store_file_with_content("src/tools/tool.rs", "rust", "abc2", 100, 1234567891, test_content, "test_workspace").unwrap();
+    db.store_file_with_content("src/main.rs", "rust", "abc3", 100, 1234567892, test_content, "test_workspace").unwrap();
 
-    // Get canonical absolute paths (on Windows these would be UNC paths)
-    let abs_path1 = test_file1.canonicalize().unwrap().to_string_lossy().to_string();
-    let abs_path2 = test_file2.canonicalize().unwrap().to_string_lossy().to_string();
-    let abs_path3 = test_file3.canonicalize().unwrap().to_string_lossy().to_string();
-
-    // Store files with absolute paths like production does
-    db.store_file_with_content(&abs_path1, "rust", "abc1", 100, 1234567890, test_content, "test_workspace").unwrap();
-    db.store_file_with_content(&abs_path2, "rust", "abc2", 100, 1234567891, test_content, "test_workspace").unwrap();
-    db.store_file_with_content(&abs_path3, "rust", "abc3", 100, 1234567892, test_content, "test_workspace").unwrap();
-
-    // TEST 1: Relative pattern without wildcards should be normalized
+    // TEST 1: Relative pattern works as-is (no normalization needed)
+    // Database stores: src/tests/test1.rs (relative Unix-style)
     // User writes: src/tests/**
-    // Normalization: */src/tests/**
-    // Should match: <absolute_prefix>/src/tests/test1.rs
+    // Pattern used: src/tests/** (no normalization - database uses relative paths!)
+    // Should match: src/tests/test1.rs
     let results = db
         .search_file_content_fts("pattern normalization", &None, &Some("src/tests/**".to_string()), 10)
         .unwrap();
     assert_eq!(
         results.len(),
         1,
-        "Relative pattern 'src/tests/**' should be normalized to '*/src/tests/**' and match test file"
+        "Relative pattern 'src/tests/**' should match relative stored path 'src/tests/test1.rs'"
     );
     assert!(results[0].path.contains("tests"), "Should match file in tests directory");
 
@@ -917,46 +899,61 @@ fn test_fts_file_pattern_normalization() {
         "Pattern '*tests*' already has wildcard prefix, should remain unchanged"
     );
 
-    // TEST 3: Pattern with mixed separators should be normalized
+    // TEST 3: Pattern with backslashes won't match forward-slash storage
+    // Database stores: src/tools/tool.rs (forward slashes - per contract)
     // User writes: src\tools\** (with backslashes)
-    // Windows normalization: *\src\tools\** (preserve backslashes)
-    // Unix normalization: */src/tools/** (convert to forward slashes)
+    // Pattern used: src\tools\** (no normalization)
+    // Result: NO MATCH (backslashes don't match forward slashes)
     let results = db
         .search_file_content_fts("pattern normalization", &None, &Some("src\\tools\\**".to_string()), 10)
         .unwrap();
     assert_eq!(
         results.len(),
-        1,
-        "Pattern 'src\\tools\\**' should normalize with platform-appropriate separators"
+        0,
+        "Pattern 'src\\tools\\**' (backslashes) should NOT match 'src/tools/tool.rs' (forward slashes)"
     );
-    assert!(results[0].path.contains("tools"), "Should match file in tools directory");
 
-    // TEST 4: Pattern already starting with separator should remain unchanged
-    // This is testing the "starts_with('/') || starts_with('\\')" logic
-    // Use platform-appropriate pattern
-    #[cfg(windows)]
-    let absolute_pattern = "\\*\\src\\**".to_string();
-    #[cfg(not(windows))]
-    let absolute_pattern = "/*/src/**".to_string();
-
+    // TEST 3b: Forward slash pattern DOES match
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some(absolute_pattern), 10)
+        .search_file_content_fts("pattern normalization", &None, &Some("src/tools/**".to_string()), 10)
         .unwrap();
     assert_eq!(
         results.len(),
-        3,
-        "Pattern already starting with path separator should remain unchanged and match all src files"
+        1,
+        "Pattern 'src/tools/**' (forward slashes) should match 'src/tools/tool.rs'"
+    );
+    assert!(results[0].path.contains("tools"), "Should match file in tools directory");
+
+    // TEST 4: Wildcard patterns match everything (including path separators)
+    // Database stores: src/tests/test1.rs, src/tools/tool.rs, src/main.rs
+    // User writes: src/* (in SQLite GLOB, * matches EVERYTHING including /)
+    // Result: All src/ files match (GLOB * is greedy)
+    let results = db
+        .search_file_content_fts("pattern normalization", &None, &Some("src/*".to_string()), 10)
+        .unwrap();
+    assert!(
+        results.len() >= 3,
+        "Pattern 'src/*' should match all src files (GLOB * is greedy, matches path separators too)"
     );
 
+    // TEST 4b: Use specific pattern to match only what we want
+    // To match ONLY top-level src files, need exact pattern: src/*.rs
+    let results = db
+        .search_file_content_fts("pattern normalization", &None, &Some("src/main.rs".to_string()), 10)
+        .unwrap();
+    assert_eq!(
+        results.len(),
+        1,
+        "Pattern 'src/main.rs' should match exact file only"
+    );
+    assert!(results[0].path == "src/main.rs", "Should match exact file");
+
     // TEST 5: Multiple relative path segments
+    // Database stores: src/tests/subfolder/nested.rs (relative Unix-style)
     // User writes: src/tests/subfolder/**
-    // Normalization: */src/tests/subfolder/**
-    let subfolder_dir = tests_dir.join("subfolder");
-    std::fs::create_dir_all(&subfolder_dir).unwrap();
-    let test_file4 = subfolder_dir.join("nested.rs");
-    std::fs::write(&test_file4, test_content).unwrap();
-    let abs_path4 = test_file4.canonicalize().unwrap().to_string_lossy().to_string();
-    db.store_file_with_content(&abs_path4, "rust", "abc4", 100, 1234567893, test_content, "test_workspace").unwrap();
+    // Pattern used: src/tests/subfolder/** (no normalization)
+    // Should match: src/tests/subfolder/nested.rs
+    db.store_file_with_content("src/tests/subfolder/nested.rs", "rust", "abc4", 100, 1234567893, test_content, "test_workspace").unwrap();
 
     let results = db
         .search_file_content_fts("pattern normalization", &None, &Some("src/tests/subfolder/**".to_string()), 10)
@@ -964,26 +961,22 @@ fn test_fts_file_pattern_normalization() {
     assert_eq!(
         results.len(),
         1,
-        "Deep relative pattern 'src/tests/subfolder/**' should normalize correctly"
+        "Deep relative pattern 'src/tests/subfolder/**' should match 'src/tests/subfolder/nested.rs'"
     );
     assert!(results[0].path.contains("subfolder"), "Should match nested file");
 
-    // TEST 6: Verify no normalization breaks existing wildcard patterns
-    // User writes: **/tools/** (with double-wildcard)
-    // Normalization: Unchanged (already has wildcard prefix)
-    // Platform-aware separators needed
-    #[cfg(windows)]
-    let wildcard_pattern = "**\\tools\\**".to_string();
-    #[cfg(not(windows))]
-    let wildcard_pattern = "**/tools/**".to_string();
-
+    // TEST 6: Wildcard patterns with * match correctly
+    // Database stores: src/tools/tool.rs (forward slashes)
+    // User writes: */tools/* (single wildcards)
+    // Pattern used: */tools/* (no normalization)
+    // Should match: src/tools/tool.rs
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some(wildcard_pattern), 10)
+        .search_file_content_fts("pattern normalization", &None, &Some("*/tools/*".to_string()), 10)
         .unwrap();
     assert_eq!(
         results.len(),
         1,
-        "Pattern with double-wildcard should work without normalization"
+        "Pattern '*/tools/*' should match 'src/tools/tool.rs'"
     );
 
     // TEST 7: Empty pattern should be handled (None vs Some(""))
@@ -995,6 +988,134 @@ fn test_fts_file_pattern_normalization() {
         results.len(),
         4,
         "No pattern filter should return all files"
+    );
+}
+
+/// 🔴 REGRESSION TEST: Windows GLOB pattern bug with forward-slash storage
+/// Bug: Lines 388-389 in src/database/files.rs convert forward slashes to backslashes on Windows
+/// This violates RELATIVE_PATHS_CONTRACT.md which mandates forward slashes for all stored paths
+///
+/// Reproduction:
+/// 1. Database stores: .memories/2025-11-10/file.json (forward slashes - per contract)
+/// 2. User pattern: .memories/**/*.json (forward slashes)
+/// 3. Buggy normalization: *\.memories\**\*.json (backslashes on Windows)
+/// 4. GLOB match: FAILS (backslashes don't match forward slashes)
+///
+/// This test stores paths with forward slashes (like production does via to_relative_unix_style)
+/// and verifies GLOB patterns with forward slashes match correctly.
+#[test]
+fn test_fts_file_pattern_forward_slash_glob_matching() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let test_content = r#"{"id": "checkpoint_test", "description": "Test checkpoint for GLOB bug"}"#;
+
+    // Store files with forward-slash paths (simulating production behavior)
+    // Production uses to_relative_unix_style() which converts ALL paths to forward slashes
+    // See src/utils/paths.rs:88-95
+    db.store_file_with_content(
+        ".memories/2025-11-10/013435_9fa8.json",  // Forward slashes (production format)
+        "json",
+        "abc1",
+        100,
+        1234567890,
+        test_content,
+        "test_workspace",
+    ).unwrap();
+
+    db.store_file_with_content(
+        ".memories/2025-11-10/phase1-clean.json",  // Forward slashes (production format)
+        "json",
+        "abc2",
+        100,
+        1234567891,
+        test_content,
+        "test_workspace",
+    ).unwrap();
+
+    db.store_file_with_content(
+        "src/tools/memory/mod.rs",  // Forward slashes (production format)
+        "rust",
+        "abc3",
+        100,
+        1234567892,
+        "// Memory module",
+        "test_workspace",
+    ).unwrap();
+
+    // TEST 1: Forward-slash pattern should match forward-slash paths
+    // User pattern: .memories/**/*.json (forward slashes)
+    // Expected: Match 2 memory files
+    // Bug: On Windows, normalization converts to *\.memories\**\*.json (backslashes)
+    //      which fails to match .memories/2025-11-10/... (forward slashes)
+    let results = db
+        .search_file_content_fts("checkpoint", &None, &Some(".memories/**/*.json".to_string()), 10)
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "Forward-slash pattern '.memories/**/*.json' should match forward-slash paths. \
+         Bug: Windows normalization converts pattern to backslashes which don't match forward-slash storage."
+    );
+    assert!(
+        results.iter().all(|r| r.path.contains(".memories")),
+        "All results should be from .memories directory"
+    );
+    assert!(
+        results.iter().all(|r| r.path.contains("/")),
+        "All results should have forward-slash separators (production format)"
+    );
+
+    // TEST 2: Verify memory files are excluded from other patterns
+    let results = db
+        .search_file_content_fts("Memory", &None, &Some("src/**/*.rs".to_string()), 10)
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        1,
+        "Pattern 'src/**/*.rs' should match only src files, not .memories"
+    );
+    assert!(results[0].path.contains("src/tools/memory/mod.rs"));
+
+    // TEST 3: Wildcard patterns work correctly
+    // Single * matches any sequence within a path segment
+    let results = db
+        .search_file_content_fts("checkpoint", &None, &Some(".memories/*/*.json".to_string()), 10)
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "Pattern '.memories/*/*.json' should match .memories/2025-11-10/*.json"
+    );
+
+    // TEST 4: Verify GLOB is case-sensitive
+    let results = db
+        .search_file_content_fts("checkpoint", &None, &Some(".MEMORIES/**/*.json".to_string()), 10)
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        0,
+        "Pattern '.MEMORIES/**/*.json' should NOT match .memories (case-sensitive)"
+    );
+
+    // TEST 5: No pattern filter returns all matching content
+    let results = db
+        .search_file_content_fts("checkpoint", &None, &None, 10)
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "No file_pattern filter should return all files matching FTS query"
+    );
+    assert!(
+        results.iter().all(|r| r.path.contains(".memories")),
+        "All results should be memory files (only files with 'checkpoint' in content)"
     );
 }
 

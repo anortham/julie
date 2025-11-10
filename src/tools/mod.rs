@@ -5,6 +5,7 @@
 pub mod shared;
 
 // Tool modules organized by functionality
+pub mod memory;            // Memory system (checkpoint/recall)
 pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
 pub mod edit_lines; // Surgical line editing tool (insert/replace/delete)
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
@@ -22,6 +23,7 @@ pub use edit_lines::EditLinesTool; // Surgical line editing (insert/replace/dele
 pub use editing::EditingTransaction; // Shared transaction infrastructure
 pub use exploration::FindLogicTool;
 pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
+pub use memory::{CheckpointTool, RecallTool}; // Memory system (checkpoint/recall)
 pub use navigation::{FastGotoTool, FastRefsTool};
 pub use refactoring::{EditSymbolTool, RenameSymbolTool};
 // SmartRefactorTool is internal only - not exposed to MCP clients
@@ -55,6 +57,9 @@ tool_box!(
         // Semantic refactoring tools (simplified, agent-friendly APIs)
         RenameSymbolTool,
         EditSymbolTool,
+        // Memory system tools (Phase 1)
+        CheckpointTool,
+        RecallTool,
         // Workspace management
         ManageWorkspaceTool,
     ]

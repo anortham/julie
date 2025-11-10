@@ -1,0 +1,33 @@
+{
+  "id": "milestone_phase1_complete",
+  "timestamp": 1762738000,
+  "type": "milestone",
+  "description": "Phase 1 Memory System Complete - Clean Architecture with .memories/",
+  "tags": ["phase1", "milestone", "architecture"],
+  "summary": "Successfully implemented Phase 1 memory system with elegant .memories/ architecture",
+  "details": {
+    "problem_solved": "Complex .julie/memories/ path logic was causing crashes when SQLite binary files were indexed",
+    "solution": "Moved memories to .memories/ directory - simple whitelist, zero special cases",
+    "benefits": [
+      "Users can delete .julie/ to rebuild without losing memories",
+      "Clean separation: .julie/ = ephemeral cache, .memories/ = permanent records",
+      "Simple indexing: just whitelist .memories as known dotfile",
+      "No complex path exceptions or special cases"
+    ],
+    "implementation": {
+      "checkpoint_tool": "Save immutable memories to .memories/YYYY-MM-DD/HHMMSS_xxxx.json",
+      "recall_tool": "Query memories chronologically with filtering",
+      "indexing": "Memories automatically indexed for semantic search via fast_search",
+      "storage": "Pretty-printed JSON, git-trackable, atomic writes"
+    },
+    "files_modified": [
+      "src/tools/memory/mod.rs - Changed path from .julie/memories/ to .memories/",
+      "src/tools/memory/checkpoint.rs - Updated descriptions and paths",
+      "src/tools/memory/recall.rs - Updated descriptions and file_pattern tips",
+      "src/tools/workspace/discovery.rs - Reverted complex logic, added .memories to whitelist",
+      "docs/JULIE_2_PLAN.md - Updated storage architecture and added design decision"
+    ],
+    "tests_passing": "26/26 memory tests passing",
+    "compilation": "Clean compilation, no warnings in memory module"
+  }
+}
