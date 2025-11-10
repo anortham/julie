@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691263fb_6e9804",
+  "timestamp": 1762812923,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "8c67db8",
+    "dirty": false
+  },
+  "description": "Investigated .gitignore creation in .julie directory. Code is working correctly for new workspaces - confirmed by test. Existing .julie directories created before September 2025 need manual .gitignore creation. Added test assertion to prevent regressions.",
+  "tags": [
+    "testing",
+    "bugfix",
+    "gitignore",
+    "investigation"
+  ]
+}

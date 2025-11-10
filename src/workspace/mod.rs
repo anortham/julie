@@ -327,6 +327,18 @@ impl JulieWorkspace {
             Self::save_config(&self.julie_dir, &self.config)?;
         }
 
+        // Ensure .gitignore exists to prevent accidental commits
+        let gitignore_path = self.julie_dir.join(".gitignore");
+        if !gitignore_path.exists() {
+            fs::write(
+                &gitignore_path,
+                "# Julie code intelligence data - do not commit to version control\n\
+                *\n\
+                !.gitignore\n",
+            )?;
+            info!("Created .gitignore in .julie directory");
+        }
+
         info!("Per-workspace structure validation passed");
         Ok(())
     }
