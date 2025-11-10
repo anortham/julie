@@ -23,11 +23,11 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - **Windows (GPU via DirectML)**: ~30 seconds per 10,000 symbols
 - **macOS (CPU-optimized)**: ~1-3 minutes per 10,000 symbols
 - **Linux (CPU default)**: ~5-10 minutes per 10,000 symbols
-  - **Linux (GPU via CUDA)**: ~30 seconds per 10,000 symbols (requires CUDA 12.x + cuDNN 9 - see GPU Acceleration section below)
+- **Linux (GPU via CUDA)**: ~30 seconds per 10,000 symbols (requires CUDA 12.x + cuDNN 9 - see GPU Acceleration section below)
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds regardless of platform.
 
-**First-time setup**: Initial workspace indexing happens once and runs in the background. Text search is available immediately; semantic search becomes available after embeddings complete. Most workflows use incremental updates (fast) rather than full re-indexing (one-time cost).
+**First-time setup**: Two-stage indexing - database (~2s, text search ready) → embeddings (background, semantic search ready when done). Most workflows use incremental updates (3-15s) rather than full re-indexing (one-time cost). See "First Use" section below for health check details.
 
 ### GPU Acceleration
 
@@ -161,12 +161,31 @@ If your MCP client doesn't support environment variables, Julie will use the cur
 
 **First Use:**
 
-Julie will automatically index your workspace on first use:
+Julie indexes your workspace in two separate phases:
 
-- **Text search**: Available immediately (~2s)
-- **Semantic search**: Builds in background (30s-3min depending on workspace size and GPU)
+1. **Database Indexing (~2s)**: Extracts symbols and creates SQLite FTS5 search index
+   - Text search (`search_method="text"`) available immediately after this completes
+   - Fast enough you won't notice the wait
 
-You can start searching with text mode while semantic indexing completes.
+2. **Embeddings Generation (30s-10min, background)**: Creates semantic search vectors
+   - Semantic search (`search_method="semantic"`) available after this completes
+   - Runs in background, doesn't block your work
+   - Duration depends on workspace size and GPU availability (see Performance Characteristics above)
+
+**You can start using text search immediately while embeddings build in the background.**
+
+**To check if semantic search is ready:**
+
+Use the health check command to see the current status:
+
+```
+manage_workspace(operation="health", detailed=true)
+```
+
+Status indicators:
+- `Embeddings Status: READY` - Semantic search fully available
+- `Embeddings Status: BUILDING` - Still generating, use text search meanwhile
+- `Embeddings Status: NOT INITIALIZED` - Embeddings haven't started
 
 **Workspace Detection:**
 
