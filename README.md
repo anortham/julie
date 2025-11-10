@@ -1,12 +1,13 @@
 # Julie
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 27 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 31 programming languages via the Model Context Protocol (MCP).
 
 ## Features
 
 - **Fast symbol search** with text and semantic modes
 - **Cross-language code navigation** (go-to-definition, find-references)
 - **Intelligent code editing** with fuzzy matching and AST-aware refactoring
+- **Development memory system** - checkpoint and recall significant development moments
 - **Multi-workspace support** for indexing and searching related codebases (one workspace at a time)
 - **Call path tracing** across language boundaries
 
@@ -53,13 +54,15 @@ The fallback happens once at runtime with clear logging - no manual intervention
 
 **Manual CPU Override**: Set the environment variable `JULIE_FORCE_CPU=1` to skip GPU entirely and use CPU-only mode from startup.
 
-## Supported Languages (27)
+## Supported Languages (31)
 
 **Core:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
 
 **Systems:** C, C++, Go, Lua, Zig
 
 **Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
+
+**Documentation:** Markdown, JSON, JSONL, TOML, YAML
 
 ## Installation
 
@@ -70,7 +73,7 @@ Download the latest release for your platform from the [Releases page](https://g
 **Windows:**
 
 ```bash
-# Download julie-v0.9.0-x86_64-pc-windows-msvc.zip
+# Download julie-v1.5.0-x86_64-pc-windows-msvc.zip
 # Extract julie-server.exe
 # Add to MCP configuration (see below)
 ```
@@ -78,24 +81,24 @@ Download the latest release for your platform from the [Releases page](https://g
 **macOS (Intel):**
 
 ```bash
-# Download julie-v0.9.0-x86_64-apple-darwin.tar.gz
-tar -xzf julie-v0.9.0-x86_64-apple-darwin.tar.gz
+# Download julie-v1.5.0-x86_64-apple-darwin.tar.gz
+tar -xzf julie-v1.5.0-x86_64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **macOS (Apple Silicon):**
 
 ```bash
-# Download julie-v0.9.0-aarch64-apple-darwin.tar.gz
-tar -xzf julie-v0.9.0-aarch64-apple-darwin.tar.gz
+# Download julie-v1.5.0-aarch64-apple-darwin.tar.gz
+tar -xzf julie-v1.5.0-aarch64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **Linux:**
 
 ```bash
-# Download julie-v0.9.0-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf julie-v0.9.0-x86_64-unknown-linux-gnu.tar.gz
+# Download julie-v1.5.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf julie-v1.5.0-x86_64-unknown-linux-gnu.tar.gz
 # Add to MCP configuration (see below)
 ```
 
@@ -219,6 +222,27 @@ cargo build --release
 
 - `manage_workspace` - Index, add, remove, refresh, and clean workspaces
 
+### Development Memory
+
+- `checkpoint` - Save immutable development memories (bug fixes, decisions, learnings)
+  - **Never ask permission** - create checkpoints proactively after significant work
+  - Automatically captures git context (branch, commit, dirty state)
+  - Stored as human-readable JSON in `.memories/` directory
+  - Performance: <50ms per checkpoint
+- `recall` - Query development history with filtering
+  - Filter by type (checkpoint, decision, learning, observation)
+  - Date range filtering (since/until)
+  - Returns most recent memories first
+  - Use for understanding past decisions and avoiding repeated mistakes
+  - Performance: <5ms for chronological queries
+
+**Memory System Benefits:**
+- Build persistent context across sessions
+- Understand why architectural decisions were made
+- Learn from previous debugging sessions
+- Create searchable development history (use `fast_search` with `file_pattern=".memories/**"`)
+
+
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
@@ -248,9 +272,10 @@ cargo build --release
 
 Julie uses a comprehensive testing methodology:
 
-- **Unit tests** for all 27 language extractors
+- **Unit tests** for all 31 language extractors
 - **Real-world validation** against GitHub repositories
 - **SOURCE/CONTROL methodology** for editing tools (original files vs expected results)
+- **Memory system integration tests** (26 tests covering checkpoint/recall/SQL views)
 - **Coverage targets**: 80% general, 90% for editing tools
 
 ```bash
@@ -268,14 +293,19 @@ cargo tarpaulin
 
 ```
 src/
-├── extractors/      # Language-specific symbol extraction (27 languages)
+├── extractors/      # Language-specific symbol extraction (31 languages)
 ├── database/        # SQLite storage with FTS5 search
 ├── embeddings/      # ONNX semantic search
 ├── tools/           # MCP tool implementations
+│   ├── memory/      # Development memory system (checkpoint/recall)
+│   ├── search/      # Search tools (fast_search, fast_goto, fast_refs)
+│   ├── editing/     # Code editing tools (fuzzy_replace, smart_refactor)
+│   └── workspace/   # Workspace management
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure
 
 fixtures/            # Test data (SOURCE/CONTROL files, real-world samples)
+.memories/           # Development memories (checkpoints, decisions, learnings)
 ```
 
 ## License
