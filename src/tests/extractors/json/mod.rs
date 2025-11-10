@@ -786,7 +786,9 @@ mod json_extractor_tests {
     #[test]
     fn test_real_world_jsonl_memories_fixture() {
         // Test real-world JSONL fixture (recall memory format)
-        let content = std::fs::read_to_string("fixtures/real-world/json/memories.jsonl")
+        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/real-world/json/memories.jsonl");
+        let content = std::fs::read_to_string(&fixture_path)
             .expect("Should find memories.jsonl fixture");
 
         let symbols = extract_symbols_jsonl(&content, "memories.jsonl");

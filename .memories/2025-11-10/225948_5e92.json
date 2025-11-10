@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_69126e64_7cb23a",
+  "timestamp": 1762815588,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "74634b5",
+    "dirty": true,
+    "files_changed": [
+      "docs/debug/log.txt"
+    ]
+  },
+  "description": "Released v1.5.4 with critical Windows .julieignore bug fix! Pattern matching was comparing Windows backslash paths against Unix forward-slash patterns, causing ALL ignore rules to fail on Windows. Added path normalization before pattern matching. Also includes MCP connection failure fixes from commit 9bc3d54. Test suite: 1655/1661 passing (99.6%), 6 flaky tests pass individually. Tag v1.5.4 created and pushed to main.",
+  "tags": [
+    "release",
+    "v1.5.4",
+    "windows-bug-fix",
+    "ignore-patterns",
+    "cross-platform"
+  ]
+}

@@ -831,13 +831,6 @@ mod real_world_tests {
     #[test]
     #[serial_test::serial]
     fn test_cross_language_real_world_integration() {
-        use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
-        use std::path::PathBuf;
-
-        // CRITICAL: Cleanup before test to avoid "disk I/O error 1802"
-        let workspace_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        atomic_cleanup_julie_dir(&workspace_path).ok(); // Ignore error if already clean
-
         // Use absolute path to avoid CWD issues in parallel tests
         let base_dir = real_world_test_dir();
         let mut total_files_processed = 0;
@@ -916,9 +909,6 @@ mod real_world_tests {
             total_files_processed,
             total_symbols_extracted
         );
-
-        // CRITICAL: Cleanup after test
-        atomic_cleanup_julie_dir(&workspace_path).ok();
     }
 }
 
