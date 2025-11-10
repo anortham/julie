@@ -1,0 +1,16 @@
+{
+  "id": "checkpoint_69121a20_84c748",
+  "timestamp": 1762794016,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "72e86f1",
+    "dirty": false
+  },
+  "description": "Testing improved pre-commit hook - now properly detects and stages untracked .memories/ files when you commit with other changes.",
+  "tags": [
+    "git-hook",
+    "test",
+    "automation"
+  ]
+}
