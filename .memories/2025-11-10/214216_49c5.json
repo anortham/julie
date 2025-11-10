@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_69125c38_61310f",
+  "timestamp": 1762810936,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "d2243a9",
+    "dirty": false
+  },
+  "description": "Released v1.5.2: Fixed WAL mode test failures, reorganized skills directory, pushed to GitHub. Test suite improved from 6 failures to 1 (1660 passing). Ready for testing on other machines.",
+  "tags": [
+    "release",
+    "v1.5.2",
+    "testing",
+    "deployment"
+  ]
+}

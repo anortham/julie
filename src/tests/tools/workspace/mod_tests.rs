@@ -52,6 +52,12 @@ async fn test_workspace_initialization() {
 
     // Check that config file was created
     assert!(workspace.julie_dir.join("config/julie.toml").exists());
+
+    // Check that .gitignore was created to prevent accidental commits
+    assert!(
+        workspace.julie_dir.join(".gitignore").exists(),
+        ".gitignore should be created in .julie directory"
+    );
 }
 
 #[tokio::test]
