@@ -404,10 +404,24 @@ pub async fn plan_tool(action: PlanAction) -> Result<String> {
 }
 ```
 
-**Deliverables:**
-- [ ] plan tool (create, update, complete, list)
-- [ ] Plan-specific update logic (task completion, status changes)
-- [ ] Tests for concurrent updates (rare but possible)
+**Deliverables:** ✅ **COMPLETE (v1.5.1 - 2025-11-10)**
+- [x] plan tool with 6 actions (save, get, list, activate, update, complete) ✅
+- [x] Plan-specific update logic (status changes, content updates) ✅
+- [x] Atomic file updates with temp + rename pattern ✅
+- [x] SQL views for plan searchability ✅
+- [x] One active plan enforcement ✅
+- [x] Stable filenames (plan_slug.json) ✅
+- [x] 22 unit tests + 8 integration tests (30 total) ✅
+- [x] 3 additional serialization tests for case sensitivity fix ✅
+
+**v1.5.1 Release Notes:**
+- Fixed plan tool JSON Schema case sensitivity bug (explicit per-variant serde rename)
+- Fixed query preprocessor phrase handling (preserve quoted phrases)
+- Enhanced ignore patterns (Gradle, Dart, Next.js, Nuxt, CMake)
+- Fixed 57GB RAM usage from .NET build artifact indexing
+- Fixed FTS5 query syntax error (implicit AND)
+- Test pass rate: 1652/1661 (99.5%)
+- Git pre-commit hook for automatic memory file staging
 
 ---
 
