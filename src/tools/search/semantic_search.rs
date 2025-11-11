@@ -38,8 +38,19 @@ fn is_vendor_symbol(file_path: &str) -> bool {
 }
 
 /// Get boost factor based on symbol kind (prioritize meaningful symbols)
-fn get_symbol_kind_boost(symbol: &Symbol) -> f32 {
+pub(crate) fn get_symbol_kind_boost(symbol: &Symbol) -> f32 {
     use crate::extractors::base::SymbolKind;
+
+    // Special case: Memory description symbols (JSON Variables from .memories/ files)
+    // These contain focused semantic content and should rank as high as documentation
+    if symbol.kind == SymbolKind::Variable
+        && symbol.language == "json"
+        && symbol.file_path.starts_with(".memories/")
+        && !symbol.file_path.starts_with(".memories/plans/")
+        && symbol.name == "description" {
+        return 2.0; // Rank memory descriptions as high as functions
+    }
+
     match symbol.kind {
         SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct => 2.5,
         SymbolKind::Function | SymbolKind::Method => 2.0,

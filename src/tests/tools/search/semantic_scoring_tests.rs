@@ -307,3 +307,118 @@ fn test_documented_class_beats_generic_html() {
     println!("✅ Generic Template tag score: {:.2}", html_final);
     println!("✅ Ratio: {:.2}x", class_final / html_final);
 }
+
+#[test]
+fn test_memory_description_symbol_gets_boost() {
+    use crate::tools::search::semantic_search::get_symbol_kind_boost;
+
+    // Memory description symbol (JSON Variable from .memories/ file)
+    // This is the symbol that contains the actual memory text we want to rank highly
+    let memory_description = Symbol {
+        id: "mem_desc_1".to_string(),
+        name: "description".to_string(),
+        file_path: ".memories/2025-11-11/140433_c77d.json".to_string(),
+        language: "json".to_string(),
+        kind: SymbolKind::Variable,
+        signature: Some("\"description\": \"Fixed auth bug\"".to_string()),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 50,
+        start_byte: 100,
+        end_byte: 150,
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        semantic_group: None,
+        doc_comment: None,
+        metadata: Some(HashMap::new()),
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Regular JSON Variable (not a memory description)
+    let regular_json_var = Symbol {
+        id: "reg_var_1".to_string(),
+        name: "timestamp".to_string(),
+        file_path: ".memories/2025-11-11/140433_c77d.json".to_string(),
+        language: "json".to_string(),
+        kind: SymbolKind::Variable,
+        signature: Some("\"timestamp\": 1234567890".to_string()),
+        start_line: 2,
+        start_column: 2,
+        end_line: 2,
+        end_column: 25,
+        start_byte: 20,
+        end_byte: 45,
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        semantic_group: None,
+        doc_comment: None,
+        metadata: Some(HashMap::new()),
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Plan description symbol (should NOT get boost - plans are Phase 3)
+    let plan_description = Symbol {
+        id: "plan_desc_1".to_string(),
+        name: "description".to_string(),
+        file_path: ".memories/plans/plan_auth_fix.json".to_string(),
+        language: "json".to_string(),
+        kind: SymbolKind::Variable,
+        signature: Some("\"description\": \"Fix auth system\"".to_string()),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 45,
+        start_byte: 100,
+        end_byte: 145,
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        semantic_group: None,
+        doc_comment: None,
+        metadata: Some(HashMap::new()),
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Test the boosts
+    let memory_boost = get_symbol_kind_boost(&memory_description);
+    let regular_boost = get_symbol_kind_boost(&regular_json_var);
+    let plan_boost = get_symbol_kind_boost(&plan_description);
+
+    // Memory description should get 2.0x boost (same as Functions)
+    assert_eq!(
+        memory_boost,
+        2.0,
+        "Memory description symbols should get 2.0x boost to avoid Variable penalty"
+    );
+
+    // Regular JSON variables should still get 0.8x penalty
+    assert_eq!(
+        regular_boost,
+        0.8,
+        "Regular JSON variables should keep 0.8x penalty"
+    );
+
+    // Plan descriptions should NOT get the boost (Phase 3 not implemented)
+    assert_eq!(
+        plan_boost,
+        0.8,
+        "Plan description symbols should not get boost (Phase 3)"
+    );
+
+    // Verify memory descriptions rank 2.5x higher than regular variables
+    assert!(
+        memory_boost > regular_boost * 2.0,
+        "Memory descriptions (2.0x) should rank 2.5x higher than regular variables (0.8x)"
+    );
+
+    println!("✅ Memory description boost: {:.2}x", memory_boost);
+    println!("✅ Regular JSON variable boost: {:.2}x", regular_boost);
+    println!("✅ Plan description boost: {:.2}x", plan_boost);
+    println!("✅ Memory/Regular ratio: {:.2}x", memory_boost / regular_boost);
+}

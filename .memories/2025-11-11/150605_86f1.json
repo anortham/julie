@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_691350dd_80bfb5",
+  "timestamp": 1762873565,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "0c39438",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/tools/search/semantic_scoring_tests.rs",
+      "src/tools/search/semantic_search.rs"
+    ]
+  },
+  "description": "Fixed critical escaped quotes bug in memory embeddings with serde_json streaming deserializer. Original find('\"') implementation would truncate descriptions like 'Fixed \"auth\" bug' at first quote. Now uses proper JSON parsing that handles escaped quotes, backslashes, and unicode escapes. Added test_memory_embedding_handles_escaped_quotes to validate edge cases. All 7 memory embedding tests passing.",
+  "tags": [
+    "bug-fix",
+    "memory-embeddings",
+    "json-parsing",
+    "testing",
+    "serde-json"
+  ]
+}

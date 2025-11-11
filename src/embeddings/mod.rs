@@ -342,12 +342,20 @@ impl EmbeddingEngine {
     /// This is the actual ONNX batch call - caller must ensure batch size is safe!
     fn embed_symbols_batch_internal(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
         // Collect all embedding texts and contexts for this batch
+        // Phase 2: Filter out symbols with empty embedding text (e.g., non-description memory symbols)
         let mut batch_texts = Vec::new();
         let mut symbol_ids = Vec::new();
 
         for symbol in symbols {
             let _context = CodeContext::from_symbol(symbol);
             let embedding_text = self.build_embedding_text(symbol);
+
+            // Skip symbols with empty embedding text (Phase 2: memory optimization)
+            // Empty text means the symbol should not get an embedding (e.g., "id", "timestamp", "tags" in .memories/)
+            if embedding_text.is_empty() {
+                continue;
+            }
+
             batch_texts.push(embedding_text);
             symbol_ids.push(symbol.id.clone());
         }
@@ -659,9 +667,20 @@ impl EmbeddingEngine {
         // RAG-optimized embeddings: Focus on semantic units, not noise
         // Philosophy: One concept per embedding = clearer signal in 384-dimensional space
         //
-        // 2025-11-11: Removed code_context (was 88% of embedded text)
+        // 2025-11-11 Phase 1: Removed code_context (was 88% of embedded text)
         // Rationale: BGE-Small truncates at 512 tokens (~2KB), code_context added noise
         // Result: 75-88% faster embedding generation, clearer semantic matching
+        //
+        // 2025-11-11 Phase 2: Custom pipeline for .memories/ files
+        // Memory files get focused embeddings: "{type}: {description}"
+        // Example: "checkpoint: Fixed auth bug" or "decision: Chose SQLite over PostgreSQL"
+
+        // Check if this is a memory file (but NOT mutable plans from Phase 3)
+        if symbol.file_path.starts_with(".memories/") && !symbol.file_path.starts_with(".memories/plans/") {
+            return self.build_memory_embedding_text(symbol);
+        }
+
+        // Standard code symbol embedding
         let mut parts = vec![symbol.name.clone(), symbol.kind.to_string()];
 
         // Add signature if available (type information aids semantic understanding)
@@ -682,6 +701,79 @@ impl EmbeddingEngine {
         // If search quality degrades, consider adding back with 500-char truncation
 
         parts.join(" ")
+    }
+
+    /// Build focused embedding text for memory files
+    ///
+    /// Memory files use a custom RAG pattern:
+    /// - ONLY the "description" symbol gets an embedding
+    /// - Embedding text format: "{type}: {description}"
+    /// - Other symbols (id, timestamp, tags) return empty (skipped)
+    ///
+    /// This gives us 1 focused embedding per memory instead of 10 scattered ones.
+    fn build_memory_embedding_text(&self, symbol: &Symbol) -> String {
+        // Only embed "description" symbols - skip id, timestamp, tags, etc.
+        if symbol.name != "description" {
+            return String::new(); // Empty = skip embedding for this symbol
+        }
+
+        // Extract the description value from code_context JSON
+        let description_value = self.extract_json_string_value(&symbol.code_context, "description")
+            .unwrap_or_else(|| symbol.name.clone()); // Fallback to symbol name if extraction fails
+
+        // Extract the type value to prefix the description
+        let type_value = self.extract_json_string_value(&symbol.code_context, "type")
+            .unwrap_or_else(|| "checkpoint".to_string()); // Default to "checkpoint" if type not found
+
+        // Build focused embedding: "{type}: {description}"
+        // Examples:
+        // - "checkpoint: Fixed auth bug by adding mutex"
+        // - "decision: Chose SQLite over PostgreSQL for simplicity"
+        // - "learning: BGE-Small truncates at 512 tokens"
+        format!("{}: {}", type_value, description_value)
+    }
+
+    /// Extract a JSON string value from code_context field
+    ///
+    /// Memory symbols have code_context like:
+    /// ```
+    ///   2:   "id": "milestone_69114732_999aff",
+    ///   3:   "timestamp": 1762740018,
+    ///   4:   "type": "milestone",
+    ///   5:   "description": "Updated JULIE_2_PLAN.md...",
+    /// ```
+    ///
+    /// This extracts the value for a given key (e.g., "description" or "type")
+    /// Properly handles escaped quotes, unicode escapes, and all JSON string edge cases.
+    fn extract_json_string_value(&self, code_context: &Option<String>, key: &str) -> Option<String> {
+        let context = code_context.as_ref()?;
+
+        // Find the line containing the key
+        // Format: "  5:   "description": "Updated JULIE_2_PLAN.md..."
+        let search_pattern = format!("\"{}\": ", key);
+
+        for line in context.lines() {
+            if line.contains(&search_pattern) {
+                // Find where the JSON string value starts (after the key)
+                if let Some(key_idx) = line.find(&search_pattern) {
+                    let value_start = &line[key_idx + search_pattern.len()..];
+
+                    // Use serde_json streaming deserializer to parse JUST the string value
+                    // This properly handles:
+                    // - Escaped quotes: "Fixed \"auth\" bug"
+                    // - Escaped backslashes: "Path: C:\\Users\\..."
+                    // - Unicode escapes: "Hello \u0041"
+                    // - Trailing commas (ignores them)
+                    use serde::Deserialize;
+                    let mut deserializer = serde_json::Deserializer::from_str(value_start);
+                    if let Ok(value) = String::deserialize(&mut deserializer) {
+                        return Some(value);
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 

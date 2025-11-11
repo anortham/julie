@@ -409,3 +409,416 @@ async fn test_embed_symbols_batch_respects_batch_size_limits() {
         );
     }
 }
+
+// ============================================================================
+// MEMORY EMBEDDING TESTS - Phase 2: Custom RAG Pipeline for .memories/
+// ============================================================================
+
+#[test]
+fn test_memory_embedding_text_checkpoint() {
+    // Create a memory symbol simulating the "description" key from a checkpoint file
+    let symbol = Symbol {
+        id: "test_mem_checkpoint".to_string(),
+        name: "description".to_string(), // Memory files have "description" key
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-10/020018_b4a2.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 200,
+        start_byte: 100,
+        end_byte: 300,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        // Simulated code_context from JSON file (what tree-sitter extracts)
+        code_context: Some(r#"      2:   "id": "milestone_69114732_999aff",
+      3:   "timestamp": 1762740018,
+      4:   "type": "checkpoint",
+  ➤   5:   "description": "Fixed auth bug by adding mutex to prevent race condition",
+      6:   "tags": [
+      7:     "bug""#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    // Note: This test doesn't need async/network - just testing text building logic
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should produce focused embedding: "checkpoint: {description}"
+    assert!(
+        embedding_text.contains("checkpoint:"),
+        "Should prefix with memory type. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("Fixed auth bug"),
+        "Should include description text. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("race condition"),
+        "Should include full description. Got: '{}'",
+        embedding_text
+    );
+
+    // Should NOT contain JSON structure noise
+    assert!(
+        !embedding_text.contains("timestamp"),
+        "Should not include timestamp field"
+    );
+    assert!(
+        !embedding_text.contains("tags"),
+        "Should not include tags field"
+    );
+}
+
+#[test]
+fn test_memory_embedding_text_decision() {
+    let symbol = Symbol {
+        id: "test_mem_decision".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-11/143022_abc123.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 150,
+        start_byte: 100,
+        end_byte: 250,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(r#"      2:   "id": "dec_1736423000_xyz789",
+      3:   "timestamp": 1736423000,
+      4:   "type": "decision",
+  ➤   5:   "description": "Chose SQLite over PostgreSQL for zero-dependency deployment",
+      6:   "alternatives": ["PostgreSQL", "MySQL"]"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should produce: "decision: Chose SQLite over PostgreSQL..."
+    assert!(
+        embedding_text.starts_with("decision:"),
+        "Should prefix with 'decision:'. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("SQLite"),
+        "Should include decision content. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_memory_embedding_skips_non_description_symbols() {
+    // Test that "id", "timestamp", "type", "tags" symbols get EMPTY embedding text
+    let non_description_symbols = vec!["id", "timestamp", "type", "tags", "git"];
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    for symbol_name in non_description_symbols {
+        let symbol = Symbol {
+            id: format!("test_mem_{}", symbol_name),
+            name: symbol_name.to_string(),
+            kind: SymbolKind::Variable,
+            language: "json".to_string(),
+            file_path: ".memories/2025-11-11/test.json".to_string(),
+            start_line: 2,
+            start_column: 2,
+            end_line: 2,
+            end_column: 50,
+            start_byte: 50,
+            end_byte: 100,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: Some(format!(r#"      2:   "{}": "some_value""#, symbol_name)),
+            content_type: None,
+        };
+
+        let embedding_text = engine.build_embedding_text(&symbol);
+
+        assert_eq!(
+            embedding_text,
+            "",
+            "Symbol '{}' should produce empty embedding text (skipped)",
+            symbol_name
+        );
+    }
+}
+
+#[test]
+fn test_memory_embedding_excludes_mutable_plans() {
+    // Phase 3 feature: .memories/plans/ should NOT use custom memory pipeline
+    // They should use standard JSON embedding instead
+    let symbol = Symbol {
+        id: "test_plan".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/plans/plan_test.json".to_string(), // Plans are excluded!
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 100,
+        start_byte: 100,
+        end_byte: 200,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(r#"      5:   "description": "Test plan description""#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Plans should use standard JSON embedding (name + kind + signature + doc)
+    // NOT the custom memory pipeline
+    assert_eq!(
+        embedding_text,
+        "description variable", // Standard JSON symbol embedding
+        "Plans should NOT use custom memory embedding pipeline"
+    );
+}
+
+#[test]
+fn test_memory_embedding_handles_missing_type_field() {
+    // Graceful degradation: if "type" field missing, default to "checkpoint"
+    let symbol = Symbol {
+        id: "test_mem_no_type".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-11/broken.json".to_string(),
+        start_line: 3,
+        start_column: 2,
+        end_line: 3,
+        end_column: 100,
+        start_byte: 50,
+        end_byte: 150,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        // Missing "type" field!
+        code_context: Some(r#"      2:   "id": "test_123",
+  ➤   3:   "description": "Some memory without type field",
+      4:   "timestamp": 123456"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should default to "checkpoint" prefix
+    assert!(
+        embedding_text.starts_with("checkpoint:"),
+        "Should default to 'checkpoint:' when type field missing. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("Some memory without type field"),
+        "Should still extract description. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_standard_code_symbols_unchanged() {
+    // Verify that normal code symbols (non-.memories/ files) still use standard embedding
+    let symbol = Symbol {
+        id: "test_code".to_string(),
+        name: "getUserData".to_string(),
+        kind: SymbolKind::Function,
+        language: "typescript".to_string(),
+        file_path: "src/services/user.ts".to_string(), // Regular code file
+        start_line: 10,
+        start_column: 0,
+        end_line: 15,
+        end_column: 1,
+        start_byte: 200,
+        end_byte: 350,
+        signature: Some("function getUserData(): Promise<User>".to_string()),
+        doc_comment: Some("Fetches user data from API".to_string()),
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some("const user = await fetchUser();".to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should use standard embedding: name + kind + signature + doc_comment
+    assert!(embedding_text.contains("getUserData"), "Should include name");
+    assert!(embedding_text.contains("function"), "Should include kind");
+    assert!(
+        embedding_text.contains("Promise<User>"),
+        "Should include signature"
+    );
+    assert!(
+        embedding_text.contains("Fetches user data"),
+        "Should include doc comment"
+    );
+
+    // Should NOT contain code_context (removed in Phase 1)
+    assert!(
+        !embedding_text.contains("fetchUser"),
+        "Should NOT include code_context (Phase 1 optimization)"
+    );
+}
+
+#[test]
+fn test_memory_embedding_handles_escaped_quotes() {
+    // CRITICAL: Test that escaped quotes in descriptions are handled correctly
+    // This validates the serde_json streaming deserializer fix
+    let symbol = Symbol {
+        id: "test_mem_escaped".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-11/escaped.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 150,
+        start_byte: 100,
+        end_byte: 250,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        // Description with escaped quotes, backslashes, and unicode
+        code_context: Some(r#"      2:   "id": "test_escaped_123",
+      3:   "timestamp": 1736423000,
+      4:   "type": "checkpoint",
+  ➤   5:   "description": "Fixed \"auth\" bug in C:\\Users\\path with unicode \u0041",
+      6:   "tags": ["bug"]"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should properly parse escaped quotes as actual quote characters
+    assert!(
+        embedding_text.contains("Fixed \"auth\" bug"),
+        "Should handle escaped quotes. Got: '{}'",
+        embedding_text
+    );
+
+    // Should handle escaped backslashes
+    assert!(
+        embedding_text.contains("C:\\Users\\path"),
+        "Should handle escaped backslashes. Got: '{}'",
+        embedding_text
+    );
+
+    // Should handle unicode escapes (serde_json decodes \u0041 to 'A')
+    assert!(
+        embedding_text.contains("unicode A") || embedding_text.contains("unicode \u{0041}"),
+        "Should handle unicode escapes. Got: '{}'",
+        embedding_text
+    );
+
+    // Should still have the type prefix
+    assert!(
+        embedding_text.starts_with("checkpoint:"),
+        "Should still have type prefix. Got: '{}'",
+        embedding_text
+    );
+}

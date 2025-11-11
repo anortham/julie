@@ -1,0 +1,22 @@
+{
+  "id": "learning_69134271_a96738",
+  "timestamp": 1762869873,
+  "type": "learning",
+  "git": {
+    "branch": "main",
+    "commit": "0c39438",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs"
+    ]
+  },
+  "description": "Root cause identified: Memory symbols (JSON Variable kind) get 0.8x penalty in semantic search ranking (line 48 of semantic_search.rs), causing them to rank 3x lower than Functions/Classes. This explains why semantic search returns zero memory results despite embeddings working perfectly. Memory description symbols need special boost to avoid Variable penalty.",
+  "tags": [
+    "bug",
+    "semantic-search",
+    "phase2",
+    "diagnosis"
+  ]
+}
