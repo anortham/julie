@@ -45,6 +45,7 @@ pub mod file_utils {
                     | "markdown"
                     | "json"      // JSON
                     | "jsonl"     // JSON Lines
+                    | "jsonc"     // JSON with Comments (VSCode configs)
                     | "toml"      // TOML
                     | "yml"       // YAML
                     | "yaml"

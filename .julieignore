@@ -59,4 +59,8 @@
 # Project-specific exclusions
 # Add your custom patterns below:
 
+# Test fixtures - exclude from indexing and embeddings
+# (test data has no semantic value for agent assistance)
+fixtures/
+tests/fixtures/
 

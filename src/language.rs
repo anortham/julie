@@ -106,7 +106,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "zig" => Some("zig"),
         "regex" => Some("regex"),
         "md" | "markdown" => Some("markdown"),
-        "json" | "jsonl" => Some("json"),
+        "json" | "jsonl" | "jsonc" => Some("json"),
         "toml" => Some("toml"),
         "yml" | "yaml" => Some("yaml"),
         _ => None,

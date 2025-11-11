@@ -9,9 +9,18 @@
 
 ### ✅ Recent Completions
 
+**v1.5.1 - JSONC Support (2025-11-10)**
+- 📄 Added JSONC (JSON with Comments) file extension support
+- ✅ VSCode config files (tsconfig.json, settings.json) now fully indexed
+- 🧪 4 comprehensive test cases for line comments, block comments, and real-world configs
+- 📝 Zero new dependencies - reuses existing tree-sitter-json parser
+
 **v1.5.0 - Critical Performance Fix + Memory System (2025-11-10)**
 - 🚀 Fixed incremental indexing path mismatch causing 100% cache miss on startup
 - ⚡ 53% startup time reduction (8.4s → 3.9s) - now correctly skips 741/786 unchanged files
+- ⚡ **Background auto-indexing**: Server now starts instantly, indexing runs in background after MCP handshake
+  - Moved auto-indexing from `main()` to `on_initialized()` callback in handler.rs
+  - Zero startup delay - instant MCP server availability regardless of workspace size
 - 🐛 Fixed checkpoint tool crash from string slice panic on short git hashes
 - 💾 Complete Phase 1 memory system (checkpoint/recall tools, SQL views, 26 tests)
 - 📝 Updated tool descriptions with behavioral adoption patterns for proactive usage
@@ -57,12 +66,42 @@
 
 ## 🎯 Active Priorities
 
+### Priority 0: Embedding Optimization (In Progress - 2025-11-11)
+
+**Context**: Database grew 4x (50MB → 203MB, 2.8K → 11.4K symbols), embedding generation significantly slower
+
+**Audit Findings**:
+- Current embedding per symbol: `name + kind + signature + doc_comment + code_context`
+- Average: 1,482 chars (88% is code_context at 1,304 chars avg)
+- Problem: BGE-Small truncates at 512 tokens (~2KB), so massive text gets truncated anyway
+- Outliers: Test fixtures with 479KB code_context fields (99.6% truncated!)
+- 11,944 embeddings total (11,440 symbols + some have multiple models)
+
+**Phase 1: Remove Noise (Target: 75-88% faster embedding generation)** ✅ Complete
+- ✅ Audit completed - identified code_context as primary bottleneck
+- ✅ Removed code_context from `build_embedding_text()` - focus on semantic units
+- ✅ Added `fixtures/` to `.julieignore` - exclude 761 test fixture symbols
+- ⏳ Test search quality - validate no degradation (requires reindex + testing)
+- Expected: Embedding time 75-88% faster, search quality same or better
+
+**Phase 2: Fix Memory Embeddings (Target: Proper RAG patterns)**
+- Custom pipeline for `.memories/` files
+- Embed only `description` field as focused semantic unit
+- Prefix with type: `"checkpoint: <description>"` or `"decision: <description>"`
+- Replace current 10 symbols/memory → 1 focused embedding/memory
+
+**Phase 3: Validation & Metrics**
+- Measure embedding generation time before/after
+- Compare search relevance scores
+- Document findings in Key Learnings
+
+**RAG Principle**: Embed semantically meaningful units (one concept per embedding), not random surrounding code
+
 ### Priority 1: Language Support Expansion
-- ✅ Markdown (#28), JSON (#29), TOML (#30), YAML (#31) - Complete
+- ✅ Markdown (#28), JSON (#29), TOML (#30), YAML (#31), JSONC (#32) - Complete
 - ⏸️ Dockerfile - Blocked on tree-sitter-dockerfile 0.25+ compatibility (crate uses 0.20)
 - Consider: Plain text (.txt), CSV for structured data
 - Consider: Additional doc formats (PDF, DOCX) if needed for RAG
-- We added JSONL support, we should add JSONC support too
 
 ### Priority 2: Search Quality Improvements
 - Monitor FTS5 + query expansion performance in production use
@@ -74,11 +113,6 @@
 - Agent onboarding flow improvements
 - Query suggestion system
 - Performance monitoring and optimization
-- **Background auto-indexing on startup**: Move auto-indexing to background thread to eliminate startup delay
-  - Current: Auto-indexing blocks server startup (3.9s with incremental, could be 10-20s on large projects)
-  - Proposed: Start server immediately, perform indexing in background, tools queue until ready
-  - Benefits: Instant server availability, better UX for large workspaces (1000+ files)
-  - See: `src/main.rs:302-373` (perform_auto_indexing function)
 
 ---
 

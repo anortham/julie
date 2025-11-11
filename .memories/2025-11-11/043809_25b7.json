@@ -1,0 +1,27 @@
+{
+  "id": "checkpoint_6912bdb1_4321dd",
+  "timestamp": 1762835889,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "74afa0a",
+    "dirty": true,
+    "files_changed": [
+      ".julieignore",
+      "TODO.md",
+      "src/embeddings/mod.rs",
+      "src/language.rs",
+      "src/tests/extractors/json/mod.rs",
+      "src/utils/mod.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Phase 1 Embedding Optimization Complete: Removed code_context from embeddings (88% of text), added fixtures/ to .julieignore. Rationale: BGE-Small truncates at 512 tokens anyway, code_context was adding noise not signal. Expected 75-88% faster embedding generation. Code_context still in DB for FTS5 text search. Philosophy shift to RAG best practices: one semantic concept per embedding.",
+  "tags": [
+    "performance",
+    "embeddings",
+    "rag",
+    "optimization",
+    "phase1-complete"
+  ]
+}

@@ -13,8 +13,8 @@ pub fn build_supported_extensions() -> HashSet<String> {
         "rs", "ts", "tsx", "js", "jsx", "py", "java", "cs", "cpp", "cxx", "cc", "c", "h", "go",
         "php", "rb", "swift", "kt", "lua", "gd", "sql", "html", "htm", "css", "vue", "razor",
         "ps1", "sh", "bash", "qml", "zig", "dart", "r", "R",
-        // Documentation and config files (extractors #28-30)
-        "md", "markdown", "json", "jsonl", "toml", "yml", "yaml",
+        // Documentation and config files (extractors #28-31)
+        "md", "markdown", "json", "jsonl", "jsonc", "toml", "yml", "yaml",
     ]
     .iter()
     .map(|s| s.to_string())

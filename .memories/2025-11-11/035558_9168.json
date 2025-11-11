@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6912b3ce_121b0f",
+  "timestamp": 1762833358,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "74afa0a",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/language.rs",
+      "src/tests/extractors/json/mod.rs",
+      "src/utils/mod.rs",
+      "src/watcher/filtering.rs"
+    ]
+  },
+  "description": "Added JSONC (JSON with Comments) support as language #32. Zero new dependencies - reused existing tree-sitter-json v0.24.8 parser which already handles JavaScript-style comments. Changed 3 files (language.rs, watcher/filtering.rs, utils/mod.rs) to add .jsonc extension mapping. Added 4 comprehensive tests covering line comments, block comments, mixed comments, and real-world tsconfig.json files. All 34 JSON extractor tests passing. Enables indexing of VSCode config files like tsconfig.json and settings.json with comments.",
+  "tags": [
+    "feature",
+    "jsonc",
+    "language-support",
+    "vscode-configs"
+  ]
+}

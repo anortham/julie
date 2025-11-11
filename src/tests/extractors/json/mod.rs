@@ -823,4 +823,136 @@ mod json_extractor_tests {
         assert_eq!(timestamps[4].start_line, 5, "Fifth line");
         assert_eq!(timestamps[5].start_line, 6, "Sixth line");
     }
+
+    // ========================================================================
+    // JSONC (JSON with Comments) Support Tests
+    // ========================================================================
+    // JSONC is JSON with JavaScript-style comments, used in VSCode configs
+    // (tsconfig.json, settings.json, etc.)
+
+    #[test]
+    fn test_jsonc_with_line_comments() {
+        let jsonc = r#"{
+  // This is a line comment
+  "compilerOptions": {
+    // TypeScript compiler options
+    "target": "ES2020",
+    "module": "commonjs" // Inline comment
+  },
+  // Another comment
+  "include": ["src/**/*"]
+}"#;
+
+        let symbols = extract_symbols(jsonc);
+
+        // Should extract keys despite comments
+        assert!(symbols.len() >= 3, "Expected at least 3 keys, got {}", symbols.len());
+
+        let compiler_opts = symbols.iter().find(|s| s.name == "compilerOptions");
+        assert!(compiler_opts.is_some(), "Should find 'compilerOptions' key");
+        assert_eq!(compiler_opts.unwrap().kind, SymbolKind::Module);
+
+        let target = symbols.iter().find(|s| s.name == "target");
+        assert!(target.is_some(), "Should find 'target' key");
+
+        let module = symbols.iter().find(|s| s.name == "module");
+        assert!(module.is_some(), "Should find 'module' key");
+
+        let include = symbols.iter().find(|s| s.name == "include");
+        assert!(include.is_some(), "Should find 'include' key");
+    }
+
+    #[test]
+    fn test_jsonc_with_block_comments() {
+        let jsonc = r#"{
+  /*
+   * Multi-line block comment
+   * Configuration for the project
+   */
+  "name": "my-project",
+  /* Block comment */ "version": "1.0.0",
+  "scripts": {
+    /* Build script */
+    "build": "tsc"
+  }
+}"#;
+
+        let symbols = extract_symbols(jsonc);
+
+        // Should extract keys despite block comments
+        assert!(symbols.len() >= 4, "Expected at least 4 keys, got {}", symbols.len());
+
+        let name = symbols.iter().find(|s| s.name == "name");
+        assert!(name.is_some(), "Should find 'name' key");
+
+        let version = symbols.iter().find(|s| s.name == "version");
+        assert!(version.is_some(), "Should find 'version' key");
+
+        let scripts = symbols.iter().find(|s| s.name == "scripts");
+        assert!(scripts.is_some(), "Should find 'scripts' key");
+
+        let build = symbols.iter().find(|s| s.name == "build");
+        assert!(build.is_some(), "Should find 'build' key");
+    }
+
+    #[test]
+    fn test_jsonc_mixed_comments() {
+        let jsonc = r#"{
+  // Line comment
+  "compilerOptions": {
+    /* Block comment */
+    "strict": true,
+    // Another line comment
+    "esModuleInterop": true /* Inline block */
+  }
+  /* Final comment */
+}"#;
+
+        let symbols = extract_symbols(jsonc);
+
+        // Should handle mixed comment styles
+        let compiler_opts = symbols.iter().find(|s| s.name == "compilerOptions");
+        assert!(compiler_opts.is_some(), "Should find 'compilerOptions' with mixed comments");
+
+        let strict = symbols.iter().find(|s| s.name == "strict");
+        assert!(strict.is_some(), "Should find 'strict' key");
+
+        let esmodule = symbols.iter().find(|s| s.name == "esModuleInterop");
+        assert!(esmodule.is_some(), "Should find 'esModuleInterop' key");
+    }
+
+    #[test]
+    fn test_real_world_tsconfig() {
+        // Real-world tsconfig.json with comments (commonly uses .jsonc or has comments)
+        let tsconfig = r#"{
+  // TypeScript Configuration
+  "compilerOptions": {
+    /* Target ES2020 for modern features */
+    "target": "ES2020",
+    "module": "commonjs",
+    // Enable all strict type checking options
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}"#;
+
+        let symbols = extract_symbols(tsconfig);
+
+        // Verify we extract all important keys
+        let key_names: std::collections::HashSet<&str> = symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+
+        assert!(key_names.contains("compilerOptions"), "Should extract 'compilerOptions'");
+        assert!(key_names.contains("target"), "Should extract 'target'");
+        assert!(key_names.contains("module"), "Should extract 'module'");
+        assert!(key_names.contains("strict"), "Should extract 'strict'");
+        assert!(key_names.contains("include"), "Should extract 'include'");
+        assert!(key_names.contains("exclude"), "Should extract 'exclude'");
+    }
 }
