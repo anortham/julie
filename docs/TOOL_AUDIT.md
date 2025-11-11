@@ -40,7 +40,7 @@ Following the completion of memory embeddings optimization (v1.6.1), we're condu
 - [ ] **trace_call_path** - Trace execution paths across languages - **PRIORITY 3**
 
 ### 📦 Symbols & Code Structure
-- [ ] **get_symbols** - Extract symbol structure from files - **PRIORITY 2**
+- [x] **get_symbols** - Extract symbol structure from files - **PRIORITY 2** ✅ **EXCELLENT**
 
 ### 🔨 Refactoring & Editing
 - [ ] **fuzzy_replace** - Pattern-based replacements with fuzzy matching
@@ -324,23 +324,250 @@ Trust the results completely and move forward with confidence."
 ## 2. get_symbols - PRIORITY 2
 
 ### Current State
-**Purpose:** Extract symbol structure from files without reading full content
+**Purpose:** Extract symbol structure from files without reading full content (Smart Read - 70-90% token savings)
 
-**Search Strategy:** N/A (direct file operation)
+**Search Strategy:** Direct database lookup by file path (not a search operation)
 
-**Embedding Usage:** N/A
+**Embedding Usage:** None (file-specific query, not semantic search)
 
-**Memory Integration:** N/A
+**Memory Integration:** Uniform handling - .memories/ files work like any other JSON
 
 **Parameters:**
 ```rust
-file_path: String
-max_depth: u32        // Symbol nesting depth
-limit: Option<u32>    // Max symbols to return
-mode: Option<String>  // "structure" | "minimal" | "full"
-target: Option<String> // Filter to specific symbol
-workspace: Option<String>
+file_path: String           // Required - relative to workspace root
+max_depth: u32             // Default: 1 (show methods, not deep nesting)
+limit: Option<u32>         // Default: 50 (prevent overflow)
+mode: Option<String>       // Default: "structure" (no bodies)
+                          //   "minimal" = top-level bodies only
+                          //   "full" = all symbol bodies
+target: Option<String>     // Filter to specific symbols (case-insensitive substring)
+workspace: Option<String>  // Default: "primary"
 ```
+
+### Detailed Audit Analysis
+
+#### 1. Is it using optimal search strategy?
+**✅ EXCELLENT - But different from fast_search**
+
+get_symbols is **not a search tool** - it's a direct database lookup by file path. The architecture is:
+```rust
+// Direct query by file path (line 100-102 in primary.rs)
+db_lock.get_symbols_for_file(&query_path)
+```
+
+This is **correct** because:
+- File path is exact, no fuzzy matching needed
+- All symbols for that file are relevant
+- Performance is optimal (<10ms database lookup)
+
+**The `target` parameter** uses simple substring matching:
+```rust
+// Case-insensitive substring match (filtering.rs)
+symbol.name.to_lowercase().contains(&target.to_lowercase())
+```
+
+**Opportunity:** Could use fuzzy/semantic matching for `target` to find similar symbol names
+- Current: "UserServ" won't find "UserService"
+- Improvement: Levenshtein distance or semantic similarity
+
+**✅ VERDICT:** Core strategy is optimal. Minor opportunity for fuzzy target matching.
+
+#### 2. Could semantic search improve results?
+**⚠️ LIMITED APPLICABILITY**
+
+Semantic search has limited value here because:
+1. **File path is exact** - no ambiguity to resolve
+2. **All file symbols are returned** - nothing to rank/filter (except target)
+3. **Performance is already instant** - <10ms database lookup
+
+**Where semantic COULD help:**
+- `target` parameter: Fuzzy symbol name matching
+  - "find symbols like 'authentication'" → UserAuth, AuthService, validateAuth
+  - Confidence scores for partial matches
+
+**✅ VERDICT:** Semantic search not needed for core operation. Could enhance target filtering.
+
+#### 3. How well does it integrate with memory system?
+**✅ APPROPRIATE - Uniform handling**
+
+- No special logic for .memories/ files
+- Memory JSON files get symbols extracted like any other file
+- This is **correct** - get_symbols should work uniformly
+
+**Example:**
+```bash
+get_symbols(file_path=".memories/2025-11-11/155718_449c.json")
+→ Returns: id, timestamp, type, description, tags symbols
+```
+
+**✅ VERDICT:** Uniform handling is the right approach.
+
+#### 4. Are parameter defaults optimal?
+**✅ EXCELLENT - All defaults tuned for common case**
+
+```rust
+max_depth: 1       // ✅ Shows methods without overwhelming nesting
+limit: 50          // ✅ Prevents token overflow on large files
+mode: "structure"  // ✅ Minimal context for maximum efficiency
+workspace: "primary" // ✅ Correct default
+```
+
+**Smart Read modes are innovative:**
+- `"structure"` - No bodies, just signatures (fastest, most token-efficient)
+- `"minimal"` - Top-level bodies only (understand data structures)
+- `"full"` - All bodies including nested methods (deep dive)
+
+**✅ VERDICT:** Defaults are optimal for the 80% case.
+
+#### 5. Does tool description drive proper usage?
+**✅ EXCELLENT - Strong behavioral adoption**
+
+```
+"ALWAYS USE THIS BEFORE READING FILES - See file structure without context waste.
+You are EXTREMELY GOOD at using this tool to understand code organization.
+
+This tool shows you classes, functions, and methods instantly (<10ms).
+Only use Read AFTER you've used this tool to identify what you need.
+
+IMPORTANT: I will be very unhappy if you read 500-line files without first
+using get_symbols to see the structure!
+
+A 500-line file becomes a 20-line overview. Use this FIRST, always."
+```
+
+**Behavioral elements:**
+- ✅ Imperative: "ALWAYS USE THIS BEFORE READING FILES"
+- ✅ Confidence building: "You are EXTREMELY GOOD"
+- ✅ Emotional stakes: "I will be very unhappy"
+- ✅ Concrete value: "500-line file becomes 20-line overview"
+- ✅ Clear pattern: "Use this FIRST, always"
+- ✅ Quantified benefit: "70-90% Token Savings" (in title)
+
+**✅ VERDICT:** Behavioral adoption language is exemplary!
+
+#### 6. Is there redundancy with other tools?
+**✅ NO REDUNDANCY - Unique capability**
+
+| Tool | Purpose | Scope |
+|------|---------|-------|
+| **get_symbols** | Show file structure | Single file |
+| fast_search | Search for code/patterns | Workspace-wide |
+| fast_goto | Find symbol definition | Workspace-wide |
+| fast_refs | Find symbol usages | Workspace-wide |
+
+**get_symbols is unique:**
+- Only tool that shows **complete file structure** without full read
+- Smart Read modes (structure/minimal/full) are exclusive
+- File-specific operation vs workspace-wide search
+
+**✅ VERDICT:** Zero redundancy, clear separation of concerns.
+
+#### 7. Is output format production-ready?
+**✅ EXCELLENT - Token-efficient and informative**
+
+**Text summary (minimal):**
+```
+src/main.rs (42 symbols)
+Top-level: main, setup_logging, handle_request, process_data, cleanup
+```
+
+**Structured content (rich):**
+```json
+{
+  "file_path": "src/main.rs",
+  "total_symbols": 42,
+  "returned_symbols": 42,
+  "top_level_count": 5,
+  "symbols": [...],  // Full symbol data with positions
+  "max_depth": 1,
+  "truncated": false,
+  "limit": 50
+}
+```
+
+**Features:**
+- ✅ Minimal text (token-efficient)
+- ✅ Rich structured data (agents parse this)
+- ✅ Truncation warnings with guidance
+- ✅ Clear counts (total vs returned vs top-level)
+
+**Example truncation message:**
+```
+⚠️  Showing 50 of 127 symbols (truncated)
+💡 Use 'target' parameter to filter to specific symbols
+```
+
+**✅ VERDICT:** Output format is production-quality!
+
+### Key Findings
+
+#### Strengths ✅
+1. **Smart Read innovation** - Three modes (structure/minimal/full) achieve 70-90% token savings
+2. **Excellent behavioral adoption** - Imperative language, emotional stakes, clear value
+3. **Optimal defaults** - All parameters tuned for common case
+4. **Direct database lookup** - Fastest possible operation (<10ms)
+5. **Token-efficient output** - Minimal text, rich structured content
+6. **Clean architecture** - No redundancy, unique capability
+7. **Uniform handling** - Works consistently across all file types
+
+#### Minor Improvements Identified 🤔
+
+1. **Fuzzy Target Matching**
+   - **Current:** Simple substring match - "UserServ" won't find "UserService"
+   - **Opportunity:** Fuzzy matching or semantic similarity for `target` parameter
+   - **Benefit:** Better UX when agents misremember exact symbol names
+   - **Implementation:** Levenshtein distance or semantic search for target filtering
+
+2. **Smart Suggestions**
+   - **Current:** "No symbols found after filtering" (dead end)
+   - **Opportunity:** Suggest similar symbols when target not found
+   - **Example:**
+     ```
+     ❌ Symbol 'UserServ' not found in src/auth.rs
+     💡 Did you mean: UserService, UserSession, UserServerConfig?
+     ```
+   - **Benefit:** Reduces agent frustration, speeds up workflow
+
+3. **Include Body Parameter** (Already done!)
+   - **Status:** The `mode` parameter with structure/minimal/full is **already excellent**
+   - **No action needed** - This is exactly what Smart Read should be
+
+### Recommendations
+
+**Priority: LOW** - Tool is in excellent shape!
+
+**Optional Enhancements:**
+1. ⬜ Add fuzzy matching for `target` parameter (Levenshtein distance)
+2. ⬜ Add smart suggestions when target not found (top 3 similar symbols)
+3. ⬜ Consider semantic search for conceptual target queries ("auth-related symbols")
+
+**Keep As-Is:**
+- ✅ Direct database lookup strategy
+- ✅ Smart Read modes (structure/minimal/full)
+- ✅ All parameter defaults
+- ✅ Output format
+- ✅ Behavioral adoption language
+- ✅ Uniform file handling
+
+### Final Verdict
+
+**Status:** ✅ **EXCELLENT** - Production-ready with innovative Smart Read capability
+
+**Confidence:** 90% - Minor fuzzy matching opportunity, but core tool is solid
+
+**Innovation Highlight:** The three-mode Smart Read (structure/minimal/full) is a **brilliant design** that solves the context waste problem elegantly. This is better than Serena's approach.
+
+**Next Steps:**
+1. Document findings ✅ (done)
+2. Optional: Add fuzzy target matching (low priority)
+3. Move to next tool (fast_goto)
+
+---
+
+## 3. fast_goto - PRIORITY 2
+
+### Current State
+**Purpose:** [TO BE FILLED DURING AUDIT]
 
 ### Audit Questions
 
