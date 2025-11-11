@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6913baaf_77e344",
+  "timestamp": 1762900655,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "53bee63",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/mod.rs",
+      "src/tools/workspace/indexing/embeddings.rs"
+    ]
+  },
+  "description": "Fixed misleading GPU logging after fallback - is_using_gpu flag now dynamically updates when GPU crashes and engine falls back to CPU mode. After batch errors, system re-checks engine.is_using_gpu() and updates the flag, so subsequent batches correctly log \"[CPU]\" instead of misleading \"[GPU]\". Added warning message when GPU→CPU fallback is detected.",
+  "tags": [
+    "bug-fix",
+    "logging",
+    "gpu-fallback",
+    "directml",
+    "embeddings"
+  ]
+}

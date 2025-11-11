@@ -145,6 +145,9 @@ pub async fn generate_embeddings_from_sqlite(
     let mut model_name = String::from("bge-small");
     let mut dimensions = 384;
 
+    // Track GPU mode dynamically (can change if GPU crashes and falls back to CPU)
+    let mut is_using_gpu = is_using_gpu;
+
     for (batch_idx, chunk) in symbols.chunks(batch_size).enumerate() {
         let batch_start = std::time::Instant::now();
 
@@ -248,6 +251,23 @@ pub async fn generate_embeddings_from_sqlite(
                     e,
                     consecutive_failures
                 );
+
+                // 🔄 LOGGING FIX: Re-check GPU status after errors
+                // If GPU crashed and engine fell back to CPU, update the flag
+                // This ensures subsequent batches log the correct mode
+                let current_gpu_status = {
+                    let read_guard = embedding_engine.read().await;
+                    if let Some(ref engine) = read_guard.as_ref() {
+                        engine.is_using_gpu()
+                    } else {
+                        false
+                    }
+                };
+
+                if is_using_gpu && !current_gpu_status {
+                    warn!("🔄 Detected GPU → CPU fallback, subsequent batches will log correctly");
+                    is_using_gpu = current_gpu_status;
+                }
 
                 // 🚨 CIRCUIT BREAKER: Stop if too many consecutive failures
                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {

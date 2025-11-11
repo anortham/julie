@@ -46,6 +46,11 @@ pub mod core {
 }
 
 // ============================================================================
+// EMBEDDING TESTS - Batch sizing, memory pressure, GPU handling
+// ============================================================================
+pub mod embedding_batch_sizing_tests; // Embedding batch sizing tests (DirectML memory pressure)
+
+// ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod memory_tests; // Memory system tests (checkpoint/recall)

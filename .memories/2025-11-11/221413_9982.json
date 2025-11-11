@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6913b535_59cb92",
+  "timestamp": 1762899253,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "53bee63",
+    "dirty": false
+  },
+  "description": "Updated explore-codebase and semantic-intelligence skills to use fast_explore instead of deprecated find_logic. Removed find_logic from allowed-tools, added comprehensive fast_explore documentation with all 3 modes (logic/similar/dependencies), updated all examples and workflow patterns, added performance timings for each mode. Skills now align with v1.7.0 tool suite. Commit: 53bee63, pushed to origin/main.",
+  "tags": [
+    "skills-update",
+    "fast_explore",
+    "documentation",
+    "v1.7.0"
+  ]
+}

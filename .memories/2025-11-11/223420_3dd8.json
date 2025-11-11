@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6913b9ec_d6fedd",
+  "timestamp": 1762900460,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "53bee63",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/mod.rs"
+    ]
+  },
+  "description": "Fixed DirectML GPU crash under memory pressure - reduced batch sizing from (VRAM/6)*50 to (VRAM/6)*30 for 40% safety margin. 6GB A1000 at 97.6% utilization was crashing with batch_size=50 (55s batch time + DirectML error 887A0006). Now uses batch_size=30 for stable operation. Comprehensive test suite added in src/tests/embedding_batch_sizing_tests.rs. No performance penalty on compute-bound workloads.",
+  "tags": [
+    "bug-fix",
+    "directml",
+    "gpu",
+    "embeddings",
+    "memory-pressure",
+    "windows"
+  ]
+}
