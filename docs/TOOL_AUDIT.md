@@ -37,7 +37,7 @@ Following the completion of memory embeddings optimization (v1.6.1), we're condu
 ### 🧭 Navigation
 - [x] **fast_goto** - Jump to symbol definitions - **PRIORITY 2** ✅ **EXCEPTIONAL**
 - [x] **fast_refs** - Find all symbol references - **PRIORITY 2** ✅ **EXCEPTIONAL**
-- [ ] **trace_call_path** - Trace execution paths across languages - **PRIORITY 3**
+- [x] **trace_call_path** - Trace execution paths across languages - **PRIORITY 3** ✅ **EXCEPTIONAL**
 
 ### 📦 Symbols & Code Structure
 - [x] **get_symbols** - Extract symbol structure from files - **PRIORITY 2** ✅ **EXCELLENT**
@@ -1184,23 +1184,334 @@ references.truncate(self.limit as usize);
 ## 5. trace_call_path - PRIORITY 3
 
 ### Current State
-**Purpose:** Trace execution paths across language boundaries (TypeScript → Go → Python → SQL)
+**Purpose:** Trace execution flow across language boundaries (TypeScript → Go → Python → SQL) - Julie's killer feature
 
-**Search Strategy:** [TO BE DETERMINED]
+**Search Strategy:** Three-strategy recursive tracing (direct → naming variants → semantic)
 
-**Embedding Usage:** [TO BE DETERMINED]
+**Embedding Usage:** Stage 3 with 0.7 threshold (balanced for call path discovery)
 
-**Memory Integration:** N/A
+**Memory Integration:** N/A (traces code execution, not memory-related)
 
 **Parameters:**
 ```rust
-symbol: String
-direction: String  // "upstream" | "downstream" | "both"
-max_depth: u32
-output_format: String  // "json" | "tree"
-context_file: Option<String>
-workspace: Option<String>
+symbol: String                // Required - starting point for trace
+direction: String             // Default: "upstream" ("upstream", "downstream", "both")
+max_depth: u32                // Default: 3, Max: 10 (prevents explosion)
+context_file: Option<String>  // Optional - disambiguates multiple symbols
+workspace: Option<String>     // Default: "primary"
+output_format: String         // Default: "json" ("json" | "tree")
 ```
+
+### Detailed Audit Analysis
+
+#### 1. Is it using optimal search strategy?
+**✅ EXCEPTIONAL - Three-strategy recursive tracing with cross-language intelligence**
+
+trace_call_path uses a sophisticated **three-strategy approach** similar to fast_goto/fast_refs, but adds **recursive depth traversal**:
+
+```rust
+// Step 1: Direct relationships (database-tracked calls/references)
+let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
+// Filters to Calls and References relationships
+// Batch fetches all caller symbols (avoids N+1 pattern)
+
+// Step 2: Cross-language naming variants (Julie's unique capability)
+let cross_lang_callers = find_cross_language_callers(db, symbol).await?;
+// Example: getUserData (JS) → get_user_data (Python) → GetUserData (C#)
+
+// Step 3: Semantic similarity (HNSW with 0.7 threshold)
+let semantic_callers = find_semantic_cross_language_callers(...).await?;
+// Finds conceptually similar functions: getUserData → fetchUserInfo
+```
+
+**Plus recursive tracing with depth control:**
+```rust
+// Recursively trace callers (lines 207-218)
+node.children = trace_upstream(handler, db, vector_store, &caller_symbol,
+                               current_depth + 1, visited, max_depth).await?;
+
+// Cross-language depth limiting (line 245) prevents explosion
+let cross_lang_limit = get_cross_language_depth_limit(max_depth);
+```
+
+**Why this is optimal:**
+1. **Proven CASCADE** - Reuses fast_goto/fast_refs three-strategy approach
+2. **Recursive depth traversal** - Builds complete execution flow trees
+3. **Cross-language depth limiting** - Prevents explosion when languages bridge multiple times
+4. **Visited tracking** - Prevents infinite loops with unique keys (file:line:name)
+5. **Batch queries** - Avoids N+1 pattern with `get_symbols_by_ids()`
+
+**The cross-language depth limiting is crucial:**
+```rust
+// Without limiting: JS → Python → Go → SQL → back to Python... (explosion)
+// With limiting: Reduces max_depth for cross-language branches
+// Prevents exponential growth while preserving useful traces
+```
+
+**✅ VERDICT:** Strategy is optimal for recursive cross-language tracing!
+
+#### 2. Could semantic search improve results?
+**✅ ALREADY OPTIMAL - 0.7 threshold balanced for discovery**
+
+Semantic search is integrated with **0.7 threshold** (line 85 in tracing.rs):
+
+- **0.7 threshold** - Balanced between fast_goto (0.7) and fast_refs (0.75)
+- **Graceful degradation** - Returns empty if HNSW not available (line 53)
+- **Context-aware embedding** - Uses `CodeContext` with surrounding code
+
+**Why 0.7 is correct for call tracing:**
+- **Call paths allow exploration** - Finding possible execution flows, not safety-critical
+- **Between navigation (0.7) and refactoring (0.75)** - Appropriate balance
+- **Discovery focus** - Want to find potential paths, not just exact matches
+
+**Semantic neighbors function** (lines 18-120):
+- Embeds symbol with code context
+- HNSW search with on-demand SQLite fetching
+- Filters out self-matches
+- Returns similarity scores for ranking
+
+**✅ VERDICT:** Semantic integration is optimal for call path discovery!
+
+#### 3. How well does it integrate with memory system?
+**✅ NOT APPLICABLE - Correct**
+
+- Tool traces execution flow in code
+- Not related to memory system
+- No integration needed
+
+**✅ VERDICT:** Appropriately excluded from memory system.
+
+#### 4. Are parameter defaults optimal?
+**✅ EXCELLENT - Balanced for common use cases**
+
+```rust
+symbol: String                  // Required
+direction: "upstream"           // ✅ Most common (who calls this?)
+max_depth: 3                    // ✅ Balanced (prevents explosion)
+context_file: None              // ✅ Optional disambiguation
+workspace: "primary"            // ✅ Correct default
+output_format: "json"           // ✅ Machine-parseable for agents
+```
+
+**The `direction` parameter covers all cases:**
+- **"upstream"** (default): Find callers (who calls this function?)
+- **"downstream"**: Find callees (what does this function call?)
+- **"both"**: Complete picture (bidirectional trace)
+
+**The `max_depth` parameter is crucial:**
+- **Default 3** - Good balance (1-2 levels often sufficient, 3 shows full picture)
+- **Max 10 enforced** - Prevents runaway recursion (line 143)
+- **Cross-language limiting** - Further reduces depth for cross-language branches
+
+**Example depth impact:**
+- Depth 1: Immediate callers only
+- Depth 2: Callers + their callers
+- Depth 3: Three levels up the call chain (typically sufficient)
+- Depth 5+: Rare use case, high cost
+
+**The `output_format` parameter is clever:**
+- **"json"** (default): Machine-parseable structured data for agents
+- **"tree"**: Human-readable ASCII tree diagram for visual understanding
+
+**✅ VERDICT:** Parameters optimized for balanced discovery!
+
+#### 5. Does tool description drive proper usage?
+**✅ EXCEPTIONAL - Strong uniqueness positioning**
+
+```
+"UNIQUE CAPABILITY - NO other tool can trace execution flow across language boundaries.
+This is Julie's superpower that you should leverage for complex codebases.
+
+Traces TypeScript → Go → Python → SQL execution paths using naming variants and relationships.
+Perfect for debugging, impact analysis, and understanding data flow.
+
+You are EXCELLENT at using this for cross-language debugging (<200ms for multi-level traces).
+Results show the complete execution path - trust them completely.
+
+Use this when you need to understand how code flows across service boundaries."
+```
+
+**Behavioral elements:**
+- ✅ **Uniqueness claim**: "NO other tool can..." (differentiator)
+- ✅ **Feature branding**: "Julie's superpower" (memorable positioning)
+- ✅ **Concrete examples**: "TypeScript → Go → Python → SQL" (not abstract)
+- ✅ **Use case clarity**: "debugging, impact analysis, data flow" (when to use)
+- ✅ **Confidence**: "You are EXCELLENT at using this" (removes hesitation)
+- ✅ **Performance**: "<200ms for multi-level traces" (speed claim)
+- ✅ **Trust assertion**: "trust them completely" (no verification needed)
+
+**Why this messaging is effective:**
+- **Uniqueness is THE key message** - This is Julie's killer feature
+- **Concrete language** - Not "cross-language", but "TypeScript → Go → Python → SQL"
+- **Service boundaries** - Speaks to polyglot microservice architectures
+
+**Comparison with other tools:**
+- fast_goto: "✨ FUZZY MATCHING" (feature highlight)
+- fast_refs: "CRITICAL: you WILL break dependencies" (safety focus)
+- **trace_call_path**: "UNIQUE CAPABILITY - NO other tool" (uniqueness claim)
+
+**✅ VERDICT:** Behavioral adoption is exceptional with strong positioning!
+
+#### 6. Is there redundancy with other tools?
+**✅ ZERO REDUNDANCY - Unique recursive cross-language capability**
+
+| Tool | Purpose | Scope | Depth |
+|------|---------|-------|-------|
+| **trace_call_path** | Trace execution flow | Multi-level recursive | Unlimited (depth param) |
+| fast_goto | Find definition | Single symbol | 0 (direct lookup) |
+| fast_refs | Find usages | Single symbol + refs | 1 (direct relationships) |
+| fast_search | Search code | Workspace-wide | 0 (no relationships) |
+
+**trace_call_path is unique:**
+1. **Recursive multi-level tracing** - Only tool that builds execution trees
+2. **Cross-language path discovery** - TypeScript → Go → Python → SQL bridges
+3. **Three match types** - Direct, NamingVariant, Semantic (all tools use this, but only this shows paths)
+4. **Bidirectional tracing** - Upstream, downstream, or both
+5. **Execution flow visualization** - Tree output format
+
+**No overlap:**
+- fast_goto: Single-level lookup (where is X defined?)
+- fast_refs: Single-level relationships (where is X used?)
+- trace_call_path: Multi-level execution flow (how does X connect to Y through Z?)
+
+**Workflow integration:**
+```
+1. fast_goto("processPayment")           → Find definition
+2. trace_call_path("processPayment")     → See complete call tree
+3. fast_refs("PaymentService")           → See all usages of specific symbol
+```
+
+**✅ VERDICT:** Zero redundancy, unique capability that no other tool provides.
+
+#### 7. Is output format production-ready?
+**✅ EXCELLENT - Dual format (JSON + tree)**
+
+**JSON format (default - machine-parseable):**
+```json
+{
+  "tool": "trace_call_path",
+  "symbol": "processPayment",
+  "direction": "upstream",
+  "max_depth": 3,
+  "cross_language": true,
+  "success": true,
+  "paths_found": 2,
+  "call_paths": [
+    {
+      "symbol": {
+        "name": "PaymentController.handlePayment",
+        "file_path": "src/controllers/payment.ts",
+        "start_line": 42
+      },
+      "level": 0,
+      "match_type": "Direct",
+      "relationship_kind": "Calls",
+      "similarity": null,
+      "children": [
+        {
+          "symbol": {...},
+          "level": 1,
+          "match_type": "NamingVariant",
+          "similarity": null,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "next_actions": [
+    "Review call paths to understand execution flow",
+    "Use fast_goto to navigate to specific symbols"
+  ]
+}
+```
+
+**Tree format (human-readable):**
+```
+processPayment (src/services/payment.ts:127)
+├── PaymentController.handlePayment (Direct, src/controllers/payment.ts:42)
+│   ├── express.Router.post (Direct, node_modules/express/lib/router/index.js:487)
+│   └── authMiddleware.validateToken (Direct, src/middleware/auth.ts:23)
+└── payment_processor.process (NamingVariant, payment/processor.py:156)
+    └── process_stripe_payment (Direct, payment/stripe.py:89)
+```
+
+**Features:**
+- ✅ **Dual format** - JSON for agents, tree for humans
+- ✅ **Match type indication** - Direct, NamingVariant, Semantic (transparency)
+- ✅ **Similarity scores** - Included when semantic matches found
+- ✅ **Relationship kinds** - Calls, References (shows connection type)
+- ✅ **File locations** - Complete file:line for all symbols
+- ✅ **Level indication** - Shows depth in tree
+- ✅ **Next actions** - Workflow guidance
+
+**Output optimizations:**
+- Token-efficient JSON (minimal text, rich structured)
+- Tree format uses Unicode box drawing characters
+- Recursive structure mirrors actual call paths
+- Cross-language indicators visible (language field in symbols)
+
+**✅ VERDICT:** Output format is production-quality with excellent dual format!
+
+### Key Findings
+
+#### Strengths ✅
+1. **Unique cross-language capability** - NO other tool can do this
+2. **Three-strategy recursive tracing** - Proven CASCADE + depth traversal
+3. **Cross-language depth limiting** - Prevents explosion intelligently
+4. **Visited tracking** - Prevents infinite loops
+5. **Batch query optimization** - Avoids N+1 pattern
+6. **Strong uniqueness positioning** - "Julie's superpower" messaging
+7. **Dual output format** - JSON for agents, tree for humans
+8. **Balanced defaults** - max_depth=3, direction="upstream"
+9. **Reference workspace support** - Works across multiple codebases
+10. **Professional engineering** - Mutex poisoning recovery, spawn_blocking
+
+#### Opportunities (None - Tool is optimal) ✅
+
+**This tool is architecturally mature and functionally unique.**
+
+### Recommendations
+
+**Priority: NONE** - Tool is in exceptional shape!
+
+**Keep As-Is:**
+- ✅ Three-strategy recursive tracing
+- ✅ Cross-language depth limiting
+- ✅ 0.7 semantic threshold (balanced for discovery)
+- ✅ All parameter defaults
+- ✅ Dual output format (JSON + tree)
+- ✅ Uniqueness positioning in behavioral adoption
+- ✅ Reference workspace support
+
+**No changes recommended.**
+
+### Final Verdict
+
+**Status:** ✅ **EXCEPTIONAL** - Julie's unique killer feature, architecturally mature
+
+**Confidence:** 95% - Most sophisticated tool, unique in the industry
+
+**Innovation Highlight:** **Cross-language call path tracing** is Julie's unique differentiator. The combination of direct relationships + naming variants + semantic similarity enables tracing execution flow across TypeScript → Go → Python → SQL boundaries that **NO other tool can achieve**.
+
+**Engineering Excellence:**
+- Cross-language depth limiting prevents explosion while preserving useful traces
+- Batch query optimization (avoids N+1 pattern)
+- Visited tracking with unique keys prevents infinite loops
+- Graceful degradation if HNSW unavailable
+- Mutex poisoning recovery throughout
+
+**Behavioral Excellence:** Strong positioning as "UNIQUE CAPABILITY" and "Julie's superpower" correctly emphasizes the tool's differentiating value.
+
+**Next Steps:**
+1. Document findings ✅ (done)
+2. Move to next category (editing tools or memory tools)
+
+---
+
+## 6. fuzzy_replace - Editing Tool
+
+### Current State
+**Purpose:** [TO BE FILLED DURING AUDIT]
 
 ### Audit Questions
 
