@@ -34,6 +34,7 @@ julie-server
 /test_workspaces/
 /temp/
 test_*.rs
+test_*.exe
 debug_*.rs
 validate_*.rs
 
