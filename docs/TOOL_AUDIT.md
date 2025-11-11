@@ -164,6 +164,10 @@ output: Option<String>     // "symbols" (default) | "lines" (grep-style)
 - Can search .memories/ via `file_pattern=".memories/"`
 - Memory descriptions get 2.0x boost in semantic ranking (v1.6.1)
 - Semantic fallback helps find relevant memories
+- **Note:** Dedicated `recall` tool exists for chronological/filtered memory queries
+  - fast_search is better for semantic/content search across memories
+  - recall is better for chronological queries with type/tag filtering
+  - Both tools complement each other
 
 **⚠️ MINOR ISSUE:** file_pattern parameter doesn't show memory search example
 
@@ -174,8 +178,12 @@ output: Option<String>     // "symbols" (default) | "lines" (grep-style)
 
 **Suggested addition:**
 ```rust
-/// Examples: "src/", "*.test.ts", ".memories/" (search project memories), "!node_modules/"
+/// Examples: "src/", "*.test.ts", ".memories/" (search memories - or use recall tool), "!node_modules/"
 ```
+
+**Note on recall vs fast_search for memories:**
+- Use `recall` for: "Show me last week's checkpoints", "Find all architecture decisions"
+- Use `fast_search` for: "Find memories about auth implementation", semantic similarity searches
 
 #### 4. Parameters optimal?
 **✅ ALL DEFAULTS EXCELLENT**
@@ -272,7 +280,8 @@ Trust the results completely and move forward with confidence."
 2. **Memory Search Visibility**
    - **Issue:** file_pattern parameter doesn't show `.memories/` example
    - **Impact:** Agents may not realize they can search memories this way
-   - **Fix:** Add `.memories/` to parameter examples
+   - **Context:** Dedicated `recall` tool exists for chronological/filtered queries
+   - **Fix:** Add `.memories/` to parameter examples with note about recall tool
 
 3. **Mode Selection Guidance**
    - **Issue:** No explicit examples of when to use semantic/hybrid
