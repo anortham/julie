@@ -1,13 +1,21 @@
 # Julie TODO
 
-## 🎯 Current Status (2025-11-10)
+## 🎯 Current Status (2025-11-11)
 
-**Latest Release**: v1.5.0 (2025-11-10)
-**Latest Development**: Critical Performance Fix + Memory System ✅
+**Latest Release**: v1.6.1 (2025-11-11)
+**Latest Development**: Memory Embeddings Phase 2 + Critical Bug Fixes ✅
 **Languages Supported**: 31/31 ✅
 **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic)
 
 ### ✅ Recent Completions
+
+**v1.6.1 - Memory Embeddings Phase 2 + Critical Bug Fixes (2025-11-11)**
+- 🎯 88.7% embedding reduction for .memories/ files (355 → 40 embeddings per workspace)
+- 🔧 Custom RAG pipeline: Only description symbols embedded with "{type}: {description}" format
+- 🐛 **Critical Fix #1**: Search ranking - 2.0x boost for memory descriptions (was 0.8x penalty)
+- 🐛 **Critical Fix #2**: Escaped quotes - serde_json streaming deserializer (handles \", \\, \u0041)
+- ✅ 7 comprehensive tests (all passing)
+- 📊 Impact: 80% database savings, correct search ranking, production-ready JSON parsing
 
 **v1.5.1 - JSONC Support (2025-11-10)**
 - 📄 Added JSONC (JSON with Comments) file extension support
