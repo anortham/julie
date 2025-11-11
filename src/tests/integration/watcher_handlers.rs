@@ -13,7 +13,6 @@ use crate::watcher::handlers::{
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tempfile::TempDir;
 use tokio::sync::RwLock;
 
 /// Regression test for Bug: Incremental indexing path mismatch causes duplicate symbols
@@ -41,7 +40,7 @@ async fn test_incremental_indexing_absolute_path_handling() {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = crate::tests::helpers::unique_temp_dir("incremental_indexing");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create initial test file with one function
@@ -333,7 +332,7 @@ fn final_function() {
 /// Test file deletion with absolute path
 #[tokio::test]
 async fn test_file_deletion_absolute_path() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = crate::tests::helpers::unique_temp_dir("file_deletion");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create and index a file
@@ -386,7 +385,7 @@ async fn test_file_deletion_absolute_path() {
 /// Test file rename with absolute paths
 #[tokio::test]
 async fn test_file_rename_absolute_paths() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create original file

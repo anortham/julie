@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_69126f54_2bcd89",
+  "timestamp": 1762815828,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "74634b5",
+    "dirty": true,
+    "files_changed": [
+      "docs/debug/log.txt",
+      "src/tests/helpers/mod.rs",
+      "src/tests/integration/real_world_validation.rs",
+      "src/tests/integration/watcher_handlers.rs"
+    ]
+  },
+  "description": "Fixed 6 flaky tests that failed in parallel execution! Root causes: (1) Parallel temp directory conflicts - created unique_temp_dir() helper with atomic counter, (2) Production directory cleanup panic - removed dangerous atomic_cleanup_julie_dir() calls trying to delete project root .julie directory. Fixed tests: test_incremental_indexing_absolute_path_handling, test_file_deletion_absolute_path, test_file_rename_absolute_paths, test_cross_language_real_world_integration. Also fixed test_real_world_jsonl_memories_fixture and test_process_phrase_query which only failed due to test pollution. New helper prevents future parallel test conflicts.",
+  "tags": [
+    "bug-fix",
+    "flaky-tests",
+    "test-infrastructure",
+    "parallel-execution",
+    "tdd"
+  ]
+}
