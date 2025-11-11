@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
     pub(crate) fn discover_indexable_files(&self, workspace_path: &Path) -> Result<Vec<PathBuf>> {
@@ -16,6 +16,7 @@ impl ManageWorkspaceTool {
 
         // Load custom ignore patterns from .julieignore if present
         let custom_ignores = self.load_julieignore(workspace_path)?;
+        info!("🔍 Loaded {} custom ignore patterns for file discovery", custom_ignores.len());
 
         debug!(
             "🔍 Starting recursive file discovery from: {}",
@@ -63,7 +64,7 @@ impl ManageWorkspaceTool {
 
             // Check against custom .julieignore patterns
             if self.is_ignored_by_pattern(&path, custom_ignores) {
-                debug!("⏭️  Skipping custom-ignored path: {}", path.display());
+                info!("⏭️  Skipping custom-ignored path: {}", path.display());
                 continue;
             }
 
@@ -224,10 +225,13 @@ impl ManageWorkspaceTool {
             .collect();
 
         if !patterns.is_empty() {
-            debug!(
+            info!(
                 "📋 Loaded {} custom ignore patterns from .julieignore",
                 patterns.len()
             );
+            info!("   Patterns: {:?}", patterns);
+        } else {
+            info!("⚠️  No patterns found in .julieignore (file exists but all lines filtered out)");
         }
 
         Ok(patterns)
@@ -246,7 +250,20 @@ impl ManageWorkspaceTool {
         for pattern in patterns {
             // Directory pattern (ends with /)
             if pattern.ends_with('/') {
+                // Match two ways:
+                // 1. Full pattern for files within directory (e.g., "packages/" in ".../packages/file.js")
                 if path_str.contains(pattern) {
+                    return true;
+                }
+                // 2. Directory itself - strip trailing slash and check if it's a path component
+                //    (e.g., "packages" matches ".../packages" or ".../packages/...")
+                let dir_name = &pattern[..pattern.len() - 1];
+                if path_str.ends_with(dir_name) {
+                    return true;
+                }
+                // Also check with path separator before dir_name (e.g., "/packages")
+                let dir_with_separator = format!("/{}", dir_name);
+                if path_str.contains(&dir_with_separator) {
                     return true;
                 }
             }
