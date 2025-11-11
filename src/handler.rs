@@ -539,8 +539,12 @@ impl ServerHandler for JulieServerHandler {
                 debug!("🔍 Fuzzy replace: {:?}", tool);
                 tool.call_tool(self).await
             }
+            JulieTools::FastExploreTool(tool) => {
+                debug!("🔍 Fast explore (mode={:?}): {:?}", tool.mode, tool);
+                tool.call_tool(self).await
+            }
             JulieTools::FindLogicTool(tool) => {
-                debug!("🏢 Find business logic: {:?}", tool);
+                debug!("🏢 Find business logic (deprecated - use fast_explore): {:?}", tool);
                 tool.call_tool(self).await
             }
             JulieTools::RenameSymbolTool(tool) => {

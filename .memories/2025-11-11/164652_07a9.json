@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_6913687c_3efb91",
+  "timestamp": 1762879612,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md"
+    ]
+  },
+  "description": "Completed comprehensive audit of recall tool (11/15 tools). Tool rated EXCELLENT with 90% confidence - production-ready memory retrieval with excellent positioning vs fast_search. KEY INTEGRATION FINDING: recall is a READ operation for chronological retrieval (correctly does NOT use semantic search), but description explicitly guides agents to fast_search for semantic queries (\"TIP: For semantic search across memories, use fast_search\"). Key findings: (1) Chronological retrieval (reverse order, most recent first), (2) Multiple filtering options (type, since/until date range, limit), (3) Performance <5ms for chronological queries, (4) Proactive behavioral language (\"USE THIS PROACTIVELY to: Remember how you solved...\"), (5) ISO 8601 date parsing (3 formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, YYYY-MM-DDTHH:MM:SSZ), (6) Clear positioning vs fast_search (chronological vs semantic), (7) Test coverage: 8 tests (empty workspace, single/multiple memories, chronological order, type filtering, date range, limit), (8) Helpful empty state messages (\"Create your first checkpoint!\" vs \"Try fast_search for semantic queries\"). Architecture: File-based retrieval via recall_memories(), reads .memories/ JSON files, sorts by timestamp, reverses for most-recent-first. Complementary tool positioning: checkpoint (write), recall (chronological read), fast_search (semantic search). Tool description guides workflow clearly: recall for recent work summary, fast_search for conceptual queries. Audit progress: 11/15 tools (73%), all 11 rated EXCELLENT or EXCEPTIONAL.",
+  "tags": [
+    "tool-audit",
+    "recall",
+    "memory-retrieval",
+    "chronological-queries",
+    "read-operation"
+  ]
+}

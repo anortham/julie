@@ -1,0 +1,19 @@
+{
+  "id": "decision_691378ed_1d6cf7",
+  "timestamp": 1762883821,
+  "type": "decision",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md"
+    ]
+  },
+  "description": "Strategic decision: find_logic → fast_explore multi-mode architecture. Will add tests first, then refactor to mode-based design (logic/similar/tests/deps modes). Aligns with Julie's existing patterns (fast_search modes, edit_symbol operations)",
+  "tags": [
+    "decision",
+    "architecture",
+    "tool-design"
+  ]
+}

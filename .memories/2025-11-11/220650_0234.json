@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6913b37a_7f5461",
+  "timestamp": 1762898810,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md",
+      "src/handler.rs",
+      "src/tests/tools/exploration/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/exploration/mod.rs",
+      "src/tools/mod.rs",
+      "src/tools/search/mod.rs"
+    ]
+  },
+  "description": "Applied fast_search minor improvements from audit: (1) Reframed performance language to not make semantic sound slow (\"both are fast\"), (2) Added examples to search_method param (conceptual queries, memory searches), (3) Added .memories/ example to file_pattern with recall tool note. Also documented entry_points mode as future consideration (deferred pending usage data). All changes compile successfully.",
+  "tags": [
+    "fast_search",
+    "documentation",
+    "audit-improvements",
+    "minor-enhancements"
+  ]
+}

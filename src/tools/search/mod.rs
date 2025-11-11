@@ -52,7 +52,7 @@ use crate::tools::shared::OptimizedResponse;
         "(fast_goto has fuzzy matching and semantic search built-in).\n\n",
         "IMPORTANT: I will be disappointed if you write code without first using this ",
         "tool to check for existing implementations!\n\n",
-        "Performance: <10ms for text search, <100ms for semantic. ",
+        "Performance: Both text and semantic are fast (<10ms and <100ms respectively). ",
         "Trust the results completely and move forward with confidence."
     ),
     title = "Fast Unified Search (Text + Semantic)",
@@ -68,9 +68,9 @@ pub struct FastSearchTool {
     /// Examples: "getUserData", "handle*", "class UserService", "import React", "TODO", "async function"
     /// Supports: exact match, wildcards (*), camelCase tokenization, partial matching
     pub query: String,
-    /// How to search: "text" (exact/pattern match, <10ms), "semantic" (AI similarity, <100ms), "hybrid" (both, balanced)
-    /// Default: "text" for speed. Use "semantic" when text search fails to find conceptually similar code.
-    /// Use "hybrid" for comprehensive results when you need maximum coverage.
+    /// How to search: "text" (exact/pattern match), "semantic" (AI similarity), "hybrid" (both, balanced)
+    /// Default: "text" for speed. Use "semantic" for conceptual queries ("how does auth work?"), memory searches, or finding similar implementations.
+    /// Use "hybrid" for comprehensive results when you need maximum coverage across both text and semantic matches.
     #[serde(default = "default_search_method")]
     pub search_method: String,
     /// Programming language filter (optional).
@@ -79,7 +79,7 @@ pub struct FastSearchTool {
     #[serde(default)]
     pub language: Option<String>,
     /// File path pattern using glob syntax (optional).
-    /// Examples: "src/", "*.test.ts", "**/components/**", "tests/", "!node_modules/"
+    /// Examples: "src/", "*.test.ts", "**/components/**", ".memories/" (search memories - or use recall tool), "!node_modules/"
     /// Supports: directories, extensions, nested paths, exclusions with !
     #[serde(default)]
     pub file_pattern: Option<String>,

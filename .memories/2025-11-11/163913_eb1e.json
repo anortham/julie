@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_691366b1_0aa17c",
+  "timestamp": 1762879153,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md"
+    ]
+  },
+  "description": "Completed comprehensive audit of edit_symbol tool (9/15 tools). Tool rated EXCELLENT with 85% confidence - production-ready file-specific semantic editing tool with AST-aware operations. KEY ARCHITECTURAL FINDING: Tool does NOT use Julie's semantic search capabilities - operates purely on tree-sitter AST parsing for precise symbol-level operations (this is CORRECT for its use case). Key findings: (1) Thin wrapper architecture delegates to SmartRefactorTool operations (clean separation of API layer from implementation), (2) Three clear operations (replace_body, insert_relative, extract_to_file) with operation-specific validation, (3) AST-based symbol finding via tree-sitter (find_any_symbol with depth-first traversal for top-level precedence), (4) Safe-by-default with dry_run=true (same pattern as other editing tools), (5) Strong behavioral adoption (\"You are EXCELLENT\", \"This tool understands code structure\"), (6) Zero redundancy with complementary positioning (edit_symbol for file-specific AST operations, rename_symbol for workspace-wide renaming, fuzzy_replace for bulk patterns, edit_lines for surgical line edits), (7) EditingTransaction for atomic operations, (8) Indentation normalization and formatting preservation. Test coverage: 7 tests (3 operations × basic tests + 2 validation + 1 dry_run); opportunity to add edge cases (nested symbols, multi-file extract with imports). Architecture strengths: Enum-based operations (type-safe), parameter validation per operation, delegates to proven SmartRefactorTool handlers. Tool correctly does NOT use Julie search because it needs exact file paths and performs structural AST transformations (different from conceptual queries). Audit progress: 9/15 tools (60%), all 9 rated EXCELLENT or EXCEPTIONAL.",
+  "tags": [
+    "tool-audit",
+    "edit-symbol",
+    "ast-operations",
+    "tree-sitter",
+    "semantic-editing"
+  ]
+}

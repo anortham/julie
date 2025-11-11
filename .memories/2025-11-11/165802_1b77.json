@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_69136b1a_670b93",
+  "timestamp": 1762880282,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md"
+    ]
+  },
+  "description": "Completed comprehensive audit of find_logic tool (13/15 tools). Tool rated EXCELLENT with 75% confidence - sophisticated 5-tier business logic discovery BUT missing tests (critical concern). KEY FINDING: find_logic uses semantic search CORRECTLY as Tier 4 of 5-tier cascade (TEXT → AST → PATH → SEMANTIC → GRAPH). Key findings: (1) 5-tier intelligent architecture: Tier 1 SQLite FTS5 keywords, Tier 2 tree-sitter AST patterns, Tier 3 path-based layers, Tier 4 HNSW semantic concept matching (0.2 threshold for broad coverage), Tier 5 relationship graph centrality, (2) CRITICAL: Tests were removed (file shows \"tests removed - testing private implementation details, TODO add integration tests\"), (3) Perfect positioning vs fast_search (exploration vs targeted search), (4) Performance protections (100 candidate hard cap, graceful degradation), (5) Concept expansion works (\"payment\" → \"checkout\", \"billing\"), (6) Architectural layer grouping (Controllers/Services/Models/Repositories), (7) Good tool description with behavioral language. Architecture is EXCELLENT but confidence lowered to 75% due to 0% test coverage for complex 5-tier system. Each tier can fail gracefully (needs testing), semantic integration critical (needs validation), graph analysis performance caps need verification. Recommendations: Priority 1 - Add integration tests (MCP workflow, architectural grouping), Priority 2 - Tier-specific tests (each tier independently), Priority 3 - Edge cases (candidate cap, graceful degradation, score filtering). Audit progress: 13/15 tools (87%), all 13 rated EXCELLENT or EXCEPTIONAL.",
+  "tags": [
+    "tool-audit",
+    "find_logic",
+    "business-logic-discovery",
+    "5-tier-architecture",
+    "missing-tests"
+  ]
+}

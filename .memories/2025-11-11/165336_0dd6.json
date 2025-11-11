@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_69136a10_0c8cca",
+  "timestamp": 1762880016,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f5089e9",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md"
+    ]
+  },
+  "description": "Completed comprehensive audit of plan tool (12/15 tools). Tool rated EXCELLENT with 90% confidence - production-ready mutable plan system with exceptional behavioral adoption. KEY FINDING: plan is a CRUD operation tool (save/get/list/activate/update/complete) that correctly does NOT use semantic search, but plans ARE automatically indexed by Julie's pipeline making them searchable via fast_search. Key findings: (1) 33 comprehensive tests (8 integration, 25 unit) covering all CRUD operations, (2) EXCEPTIONAL behavioral adoption language (strongest in tool suite with \"MANDATORY\", \"CRITICAL\", anti-hesitation guidance), (3) ONE active plan enforcement prevents context switching, (4) Atomic file operations (temp + rename), (5) Perfect complementary positioning: checkpoint (write immutable), recall (read chronological), plan (write/update mutable), fast_search (semantic search), (6) Git context auto-capture, (7) SQL view integration for structured querying, (8) Slug-based filenames (plan_add-search-feature.json), (9) Clean separation of concerns (Storage=plan, Search=Julie pipeline, Query=fast_search). Architecture: Direct file I/O to .memories/plans/, automatic indexing by tree-sitter + embeddings, no search/embedding overhead in tool itself. Rating EXCELLENT (not EXCEPTIONAL) because it's solid CRUD implementation without unique technical innovation. Completes memory system trilogy with mutable working memory. Audit progress: 12/15 tools (80%), all 12 rated EXCELLENT or EXCEPTIONAL.",
+  "tags": [
+    "tool-audit",
+    "plan",
+    "memory-system",
+    "crud-operations",
+    "behavioral-adoption"
+  ]
+}

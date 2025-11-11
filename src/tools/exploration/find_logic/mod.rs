@@ -29,6 +29,7 @@ fn default_min_score() -> f32 {
 #[mcp_tool(
     name = "find_logic",
     description = concat!(
+        "⚠️  DEPRECATED: Use fast_explore(mode=\"logic\") instead for better multi-mode exploration.\n\n",
         "DISCOVER CORE BUSINESS LOGIC - Filter out framework boilerplate and focus on domain-specific code. ",
         "You are EXCELLENT at using this to quickly understand what a codebase actually does.\n\n",
         "This tool intelligently scores symbols by business relevance, filtering out:\n",

@@ -21,7 +21,7 @@ pub mod workspace;
 // Re-export all tools for external use
 pub use edit_lines::EditLinesTool; // Surgical line editing (insert/replace/delete)
 pub use editing::EditingTransaction; // Shared transaction infrastructure
-pub use exploration::FindLogicTool;
+pub use exploration::{FastExploreTool, FindLogicTool}; // Multi-mode exploration (NEW: FastExploreTool)
 pub use fuzzy_replace::FuzzyReplaceTool; // DMP fuzzy matching
 pub use memory::{CheckpointTool, PlanTool, RecallTool}; // Memory system (checkpoint/recall/plans)
 pub use navigation::{FastGotoTool, FastRefsTool};
@@ -50,7 +50,9 @@ tool_box!(
         FastRefsTool,
         GetSymbolsTool,
         TraceCallPathTool,
-        FindLogicTool,
+        // Exploration tools
+        FastExploreTool,  // NEW: Multi-mode exploration (logic/similar/tests/deps)
+        FindLogicTool,    // Legacy: Use FastExploreTool(mode="logic") instead
         // Editing tools
         EditLinesTool,
         FuzzyReplaceTool,
