@@ -1,7 +1,7 @@
 ---
 name: explore-codebase
 description: Autonomously explore unfamiliar codebases using Julie's code intelligence. Use semantic search, symbol navigation, and call path tracing to understand architecture without reading entire files. Activates when user asks to understand, explore, or learn about a codebase.
-allowed-tools: mcp__julie__fast_search, mcp__julie__get_symbols, mcp__julie__fast_goto, mcp__julie__fast_refs, mcp__julie__trace_call_path, mcp__julie__find_logic, mcp__julie__fast_explore
+allowed-tools: mcp__julie__fast_search, mcp__julie__get_symbols, mcp__julie__fast_goto, mcp__julie__fast_refs, mcp__julie__trace_call_path, mcp__julie__fast_explore
 ---
 
 # Explore Codebase Skill
@@ -27,14 +27,11 @@ Mode: "lines" - Fast text search ("find all imports")
 Mode: "symbols" - Symbol-only search ("class UserService")
 ```
 
-**find_logic** - Business logic discovery
+**fast_explore** - Multi-mode exploration
 ```
-Filters out framework noise, finds actual business logic
-```
-
-**fast_explore** - Architectural exploration
-```
-Understand overall codebase structure and patterns
+Mode: "logic" - Business logic discovery (filters framework noise)
+Mode: "similar" - Semantic duplicate detection (find redundant code)
+Mode: "dependencies" - Dependency analysis (transitive dependency trees)
 ```
 
 ### 📖 Symbol Understanding
@@ -77,7 +74,7 @@ Direction: "both" - Full call graph
 **Goal:** Understand overall architecture
 
 ```
-1. fast_explore() → Get codebase overview
+1. fast_explore({ mode: "logic", domain: "core" }) → Business logic overview
 2. get_symbols(mode="structure") on key files
 3. trace_call_path(direction="downstream") on entry points
 4. Identify patterns and layers
@@ -219,7 +216,7 @@ TypeScript processPayment()
 ```
 User: "I'm new to this project, help me understand it"
 
-1. fast_explore() → Architecture overview
+1. fast_explore({ mode: "logic", domain: "core" }) → Business logic overview
 2. get_symbols(file="src/main.ts", mode="structure") → Entry point
 3. trace_call_path on main() → See initialization flow
 4. Present: "This is a [type] application with [layers].

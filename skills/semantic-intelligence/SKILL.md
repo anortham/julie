@@ -1,7 +1,7 @@
 ---
 name: semantic-intelligence
 description: Use Julie's semantic search capabilities for conceptual code understanding. Activates when searching for concepts, cross-language patterns, business logic, or exploring unfamiliar code. Combines text and semantic search for optimal results.
-allowed-tools: mcp__julie__fast_search, mcp__julie__find_logic, mcp__julie__trace_call_path, mcp__julie__fast_goto, mcp__julie__get_symbols
+allowed-tools: mcp__julie__fast_search, mcp__julie__fast_explore, mcp__julie__trace_call_path, mcp__julie__fast_goto, mcp__julie__get_symbols
 ---
 
 # Semantic Intelligence Skill
@@ -112,8 +112,8 @@ Not sure / want comprehensive?
         → ~150ms, text + semantic fused
 
 Looking for business logic specifically?
-  YES → find_logic({ domain: "..." })
-        → Filters framework noise, semantic tier included
+  YES → fast_explore({ mode: "logic", domain: "..." })
+        → Filters framework noise, 5-tier CASCADE architecture
 ```
 
 ---
@@ -151,20 +151,22 @@ Results discovered:
 
 **Problem:** Framework code dominates search results
 
-**Solution:** `find_logic` filters noise, finds actual business logic
+**Solution:** `fast_explore` (logic mode) filters noise, finds actual business logic
 
 ```
-find_logic({
+fast_explore({
+  mode: "logic",
   domain: "payment",
   max_results: 20,
   min_business_score: 0.3
 })
 
-Filtering strategy:
-1. Text patterns (business domain keywords)
-2. Symbol scoring (complexity, public visibility)
-3. Path scoring (src/ over node_modules/)
-4. **Semantic tier** (conceptual similarity to domain)
+Filtering strategy (5-tier CASCADE):
+1. Tier 1: SQLite FTS5 keyword search
+2. Tier 2: Tree-sitter AST patterns (architectural classes/methods)
+3. Tier 3: Path-based scoring (boosts services, penalizes utils/tests)
+4. Tier 4: HNSW semantic search (conceptual similarity)
+5. Tier 5: Relationship graph centrality (popular symbols)
 
 → Returns business logic, not framework boilerplate
 → Grouped by layer (controllers, services, models)
@@ -318,7 +320,7 @@ Step 1: Broad semantic search
   fast_search({ query: "main entry point", mode: "semantic" })
 
 Step 2: Find business logic
-  find_logic({ domain: "core", max_results: 30 })
+  fast_explore({ mode: "logic", domain: "core", max_results: 30 })
 
 Step 3: Trace execution
   trace_call_path({ symbol: "main", direction: "downstream", max_depth: 2 })
@@ -374,7 +376,7 @@ Step 4: Trace connections
 - Use text search for exact API/symbol names
 - Use hybrid when uncertain (comprehensive)
 - Search memories semantically (find past learnings)
-- Use find_logic to discover business code
+- Use fast_explore(mode="logic") to discover business code
 - Trace execution flows cross-language
 - Combine multiple search modes for completeness
 
@@ -406,7 +408,9 @@ This skill succeeds when:
 - **Text search**: <10ms
 - **Semantic search**: ~100ms
 - **Hybrid search**: ~150ms
-- **find_logic**: ~200ms (includes semantic tier)
+- **fast_explore (logic mode)**: ~200ms (5-tier CASCADE)
+- **fast_explore (similar mode)**: ~100ms (HNSW embeddings)
+- **fast_explore (dependencies mode)**: ~50ms (BFS graph traversal)
 - **trace_call_path**: ~200ms (cross-language)
 
 ---
