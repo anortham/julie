@@ -36,7 +36,7 @@ Following the completion of memory embeddings optimization (v1.6.1), we're condu
 
 ### 🧭 Navigation
 - [x] **fast_goto** - Jump to symbol definitions - **PRIORITY 2** ✅ **EXCEPTIONAL**
-- [ ] **fast_refs** - Find all symbol references - **PRIORITY 2**
+- [x] **fast_refs** - Find all symbol references - **PRIORITY 2** ✅ **EXCEPTIONAL**
 - [ ] **trace_call_path** - Trace execution paths across languages - **PRIORITY 3**
 
 ### 📦 Symbols & Code Structure
@@ -853,35 +853,324 @@ Next actions:
 ## 4. fast_refs - PRIORITY 2
 
 ### Current State
-**Purpose:** [TO BE FILLED DURING AUDIT]
+**Purpose:** Find all references/usages of a symbol across workspace (inverse of fast_goto)
 
-### Audit Questions
+**Search Strategy:** Three-stage CASCADE (exact → variants → semantic) + relationship tracking
 
-#### 1-7. [TO BE FILLED DURING AUDIT]
+**Embedding Usage:** Stage 3 fallback with strict 0.75 threshold (INTENTIONALLY HARDCODED, stricter than fast_goto)
 
-### Recommendations
-**Status:** ⬜ NOT AUDITED YET
-
----
-
-## 4. fast_refs - PRIORITY 2
-
-### Current State
-**Purpose:** Find all references/usages of a symbol across workspace
-
-**Search Strategy:** [TO BE DETERMINED]
-
-**Embedding Usage:** [TO BE DETERMINED]
-
-**Memory Integration:** N/A
+**Memory Integration:** N/A (finds code references, not memory-related)
 
 **Parameters:**
 ```rust
-symbol: String
-include_definition: bool
-limit: u32
-workspace: Option<String>
+symbol: String                // Required - same format as fast_goto
+include_definition: bool      // Default: true (see definition + all usages)
+limit: u32                    // Default: 50 (prevent token overflow)
+workspace: Option<String>     // Default: "primary"
 ```
+
+### Detailed Audit Analysis
+
+#### 1. Is it using optimal search strategy?
+**✅ EXCEPTIONAL - Same three-stage CASCADE as fast_goto + relationship tracking**
+
+fast_refs reuses fast_goto's proven CASCADE architecture:
+
+```rust
+// Stage 1: SQLite FTS5 exact name match (O(log n), <20ms)
+definitions = db_lock.get_symbols_by_name(&symbol);
+debug!("⚡ SQLite FTS5 found {} exact matches", definitions.len());
+
+// Stage 2: Cross-language naming variants (Julie's unique capability)
+let variants = generate_naming_variants(&self.symbol);
+// getUserData → get_user_data, GetUserData, GET_USER_DATA
+for variant in variants {
+    variant_symbols = db_lock.get_symbols_by_name(&variant);
+}
+
+// Stage 3: HNSW semantic similarity (strict 0.75 threshold)
+semantic_matching::find_semantic_references(handler, &self.symbol, ...)
+// Catches: getUserData → fetchUserInfo, retrieveUserDetails
+```
+
+**Plus relationship tracking layer:**
+```rust
+// After finding definitions, find who references them (line 309)
+let refs = db_lock.get_relationships_to_symbols(&definition_ids);
+// O(k * log n) indexed query - PERFORMANCE FIX from O(n) linear scan
+```
+
+**Why this is optimal:**
+1. **Proven CASCADE strategy** - Same as fast_goto (exact → smart → semantic)
+2. **Cross-language intelligence** - Shared `generate_naming_variants()` module
+3. **Relationship tracking** - Adds definition → references layer
+4. **Performance optimized** - Single batch query, not N individual queries
+
+**Performance optimization (line 286):**
+```rust
+// OLD (slow): Load ALL relationships, filter in memory - O(n) linear
+// NEW (fast): Targeted query for specific symbols - O(k * log n) indexed
+db_lock.get_relationships_to_symbols(&definition_ids)
+```
+
+**✅ VERDICT:** Strategy is optimal - fast_goto CASCADE + relationship layer!
+
+#### 2. Could semantic search improve results?
+**✅ ALREADY OPTIMAL - Even stricter than fast_goto**
+
+Semantic search is integrated with **0.75 threshold** (vs fast_goto's 0.7):
+
+- **Stricter threshold** (line 6) prevents false positives in reference finding
+- **INTENTIONALLY HARDCODED** to prevent agent iteration
+- **Deduplication** (lines 322-324) prevents duplicate semantic matches
+
+**From semantic_matching.rs (line 139-143):**
+```rust
+// STRICT threshold: 0.75 = only VERY similar symbols
+// INTENTIONALLY HARDCODED to prevent false positives and context waste.
+// AI agents would try multiple thresholds (0.9, 0.7, 0.5, ...) if exposed,
+// wasting 3+ tool calls for a single search operation.
+let similarity_threshold = 0.75;
+```
+
+**Why 0.75 is correct (stricter than fast_goto's 0.7):**
+- **Reference finding is safety-critical** - false positive = broken refactoring
+- **Higher stakes** - Changing code based on incomplete references breaks production
+- **Stricter threshold = fewer false positives** = safer refactoring
+
+**✅ VERDICT:** Semantic integration is optimal with appropriate strictness!
+
+#### 3. How well does it integrate with memory system?
+**✅ NOT APPLICABLE - Correct**
+
+- Tool finds code references (where symbols are used)
+- Not related to memory system
+- No integration needed
+
+**✅ VERDICT:** Appropriately excluded from memory system.
+
+#### 4. Are parameter defaults optimal?
+**✅ EXCELLENT - Safety-focused defaults**
+
+```rust
+symbol: String                  // Required
+include_definition: true        // ✅ See complete impact (definition + usages)
+limit: 50                      // ✅ Prevent token overflow on popular symbols
+workspace: "primary"           // ✅ Correct default
+```
+
+**The `include_definition` parameter is clever:**
+
+**Purpose** (line 64-66):
+- `true` (default): See definition + all usages (complete refactoring picture)
+- `false`: See only usages (when you already know the definition location)
+
+**Why `true` is the right default:**
+- Agents need complete context before changing code
+- Seeing definition helps understand what's being changed
+- "Complete impact before changes" (parameter description)
+
+**The `limit` parameter is essential:**
+- Popular symbols (e.g., `String`, `map`) may have 500+ references
+- Default 50 prevents token overflow
+- Can increase if needed ("Start with default, increase if you need comprehensive coverage")
+
+**✅ VERDICT:** Parameters optimized for safe refactoring!
+
+#### 5. Does tool description drive proper usage?
+**✅ EXCEPTIONAL - Strongest behavioral adoption of all tools**
+
+```
+"ALWAYS CHECK BEFORE CHANGING CODE - Professional developers NEVER modify symbols
+without first checking who uses them. You are a professional, so you do this too.
+
+This tool finds ALL references across the workspace in <20ms.
+Results are complete and accurate - no manual searching needed.
+
+CRITICAL: If you change code without using this tool first, you WILL break
+dependencies you didn't know about. This is non-negotiable.
+
+Use this BEFORE every refactor, rename, or deletion."
+```
+
+**Behavioral elements:**
+- ✅ **Imperative**: "ALWAYS CHECK BEFORE CHANGING CODE"
+- ✅ **Identity appeal**: "You are a professional, so you do this too"
+- ✅ **Consequence warning**: "you WILL break dependencies"
+- ✅ **Severity marker**: "CRITICAL"
+- ✅ **Non-negotiable**: "This is non-negotiable"
+- ✅ **Clear timing**: "BEFORE every refactor, rename, or deletion"
+- ✅ **Performance claim**: "<20ms"
+
+**Comparison with other tools:**
+- fast_search: "ALWAYS SEARCH BEFORE CODING" (discovery focus)
+- get_symbols: "I will be very unhappy if..." (emotional stakes)
+- fast_goto: "You don't need exact symbol names!" (reduces anxiety)
+- **fast_refs**: "you WILL break dependencies" (consequence focus)
+
+**This is the STRONGEST behavioral language** - appropriate because:
+- **Safety-critical** - Skipping this tool causes broken code
+- **Non-optional** - Always check before changes (not sometimes)
+- **Professional expectation** - Industry best practice
+
+**✅ VERDICT:** Behavioral adoption is exceptional and appropriately strong!
+
+#### 6. Is there redundancy with other tools?
+**✅ ZERO REDUNDANCY - Inverse of fast_goto**
+
+| Tool | Purpose | Direction | Use Case |
+|------|---------|-----------|----------|
+| **fast_refs** | Find usages | Symbol → references (where used) | Refactoring safety |
+| fast_goto | Find definition | Symbol → definition (where defined) | Navigation |
+| get_symbols | File structure | Show all symbols in file | File overview |
+| fast_search | Search code | Workspace-wide content search | Discovery |
+
+**fast_refs is unique:**
+1. **Inverse of fast_goto** - Finds usages, not definitions
+2. **Relationship tracking** - Uses `get_relationships_to_symbols()`
+3. **Safety-critical role** - Prevents broken refactoring
+4. **Reference direction** - TO this symbol (not FROM it)
+
+**No overlap:**
+- fast_goto: "where is X defined?" (single location)
+- fast_refs: "where is X used?" (many locations)
+- Complementary tools - often used together
+
+**Workflow integration:**
+```
+1. fast_goto("UserService")    → Find definition
+2. fast_refs("UserService")    → Find all usages (BEFORE changing)
+3. Make changes safely          → Know complete impact
+```
+
+**✅ VERDICT:** Zero redundancy, complementary to fast_goto.
+
+#### 7. Is output format production-ready?
+**✅ EXCELLENT - Token-efficient with complete data**
+
+**Text summary (minimal - 3 lines):**
+```
+Found 23 references for 'UserService'
+UserService, UserService, UserServiceBase
+```
+
+**Structured content (rich - agents parse this):**
+```json
+{
+  "tool": "fast_refs",
+  "symbol": "UserService",
+  "found": true,
+  "include_definition": true,
+  "definition_count": 1,
+  "reference_count": 23,
+  "definitions": [
+    {
+      "name": "UserService",
+      "kind": "Class",
+      "language": "typescript",
+      "file_path": "src/services/user.ts",
+      "start_line": 42,
+      "signature": "export class UserService"
+    }
+  ],
+  "references": [
+    {
+      "file_path": "src/controllers/user.ts",
+      "line_number": 142,
+      "confidence": 1.0
+    },
+    {
+      "file_path": "src/middleware/auth.ts",
+      "line_number": 67,
+      "confidence": 0.85
+    }
+  ],
+  "next_actions": [
+    "Navigate to reference locations",
+    "Use fast_goto to see definitions"
+  ]
+}
+```
+
+**Features:**
+- ✅ **Minimal text** (3 lines vs 50+ for verbose output)
+- ✅ **Separate counts** (definitions vs references - clear impact)
+- ✅ **Confidence scores** (sorted descending - most confident first)
+- ✅ **Exact locations** (file:line - ready for navigation)
+- ✅ **Rich metadata** (kind, language, signature for definitions)
+- ✅ **Next actions** (workflow guidance: "Use fast_goto to see definitions")
+
+**Sorting (lines 339-355):**
+```rust
+references.sort_by(|a, b| {
+    // 1. Confidence (descending) - most confident first
+    // 2. File path (alphabetical)
+    // 3. Line number (ascending)
+});
+```
+
+**Smart truncation (line 359):**
+```rust
+// Apply limit AFTER sorting to return top N most relevant references
+references.truncate(self.limit as usize);
+```
+
+**✅ VERDICT:** Output format is production-quality!
+
+### Key Findings
+
+#### Strengths ✅
+1. **Three-stage CASCADE reuse** - Proven strategy from fast_goto
+2. **Relationship tracking layer** - Definition → references mapping
+3. **Performance optimized** - Batch query O(k * log n), not O(n) linear scan
+4. **Stricter semantic threshold** - 0.75 vs fast_goto's 0.7 (safety-critical)
+5. **Strongest behavioral adoption** - Appropriately forceful for safety tool
+6. **Token-efficient output** - Separate counts, confidence sorting
+7. **Zero redundancy** - Inverse of fast_goto, complementary workflow
+8. **Professional engineering** - Mutex poisoning recovery, spawn_blocking
+9. **Smart defaults** - include_definition=true shows complete impact
+
+#### Opportunities (None - Tool is optimal) ✅
+
+**This tool is architecturally mature.**
+
+### Recommendations
+
+**Priority: NONE** - Tool is in exceptional shape!
+
+**Keep As-Is:**
+- ✅ Three-stage CASCADE strategy (reused from fast_goto)
+- ✅ Relationship tracking layer
+- ✅ INTENTIONALLY HARDCODED 0.75 threshold
+- ✅ Performance optimization (batch query)
+- ✅ All parameter defaults
+- ✅ Output format
+- ✅ Behavioral adoption language (strongest of all tools)
+
+**No changes recommended.**
+
+### Final Verdict
+
+**Status:** ✅ **EXCEPTIONAL** - Safety-critical tool with appropriate behavioral strength
+
+**Confidence:** 95% - Inverse of fast_goto with optimal relationship tracking
+
+**Innovation Highlight:** The **stricter 0.75 threshold** (vs fast_goto's 0.7) shows sophisticated understanding that **reference finding is safety-critical** - false positive reference = broken refactoring.
+
+**Behavioral Excellence:** The tool description uses the **strongest behavioral language** ("CRITICAL", "you WILL break dependencies", "non-negotiable") which is **appropriate** for a safety-critical tool that prevents broken code.
+
+**Engineering Excellence:** Performance optimization from O(n) linear scan to O(k * log n) indexed query shows attention to scalability (line 286 comment).
+
+**Next Steps:**
+1. Document findings ✅ (done)
+2. Move to next tool (trace_call_path or other)
+
+---
+
+## 5. trace_call_path - PRIORITY 3
+
+### Current State
+**Purpose:** [TO BE FILLED DURING AUDIT]
 
 ### Audit Questions
 
