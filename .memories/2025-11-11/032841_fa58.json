@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_6912ad69_b2b97b",
+  "timestamp": 1762831721,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "0d31f7f",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/workspace/discovery.rs",
+      "src/utils/ignore.rs"
+    ]
+  },
+  "description": "Fixed critical .julieignore pattern matching bug with word boundary violations. Pattern 'packages/' was incorrectly matching 'my-packages', 'subpackages', etc. Eliminated 44 lines of duplicated code between discovery.rs and utils/ignore.rs. All tests passing (1668 passed).",
+  "tags": [
+    "bug-fix",
+    "refactor",
+    "pattern-matching",
+    "julieignore"
+  ]
+}

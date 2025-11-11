@@ -1,5 +1,6 @@
 use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use crate::utils::ignore::is_ignored_by_pattern;
 use anyhow::Result;
 use std::collections::HashSet;
 use std::fs;
@@ -63,7 +64,7 @@ impl ManageWorkspaceTool {
             }
 
             // Check against custom .julieignore patterns
-            if self.is_ignored_by_pattern(&path, custom_ignores) {
+            if is_ignored_by_pattern(&path, custom_ignores) {
                 info!("⏭️  Skipping custom-ignored path: {}", path.display());
                 continue;
             }
@@ -237,49 +238,4 @@ impl ManageWorkspaceTool {
         Ok(patterns)
     }
 
-    /// Check if a path matches any of the custom ignore patterns
-    pub(crate) fn is_ignored_by_pattern(&self, path: &Path, patterns: &[String]) -> bool {
-        if patterns.is_empty() {
-            return false;
-        }
-
-        // Normalize path to Unix-style for consistent pattern matching
-        // On Windows, paths use backslashes, but .julieignore patterns use forward slashes
-        let path_str = path.to_str().unwrap_or("").replace('\\', "/");
-
-        for pattern in patterns {
-            // Directory pattern (ends with /)
-            if pattern.ends_with('/') {
-                // Match two ways:
-                // 1. Full pattern for files within directory (e.g., "packages/" in ".../packages/file.js")
-                if path_str.contains(pattern) {
-                    return true;
-                }
-                // 2. Directory itself - strip trailing slash and check if it's a path component
-                //    (e.g., "packages" matches ".../packages" or ".../packages/...")
-                let dir_name = &pattern[..pattern.len() - 1];
-                if path_str.ends_with(dir_name) {
-                    return true;
-                }
-                // Also check with path separator before dir_name (e.g., "/packages")
-                let dir_with_separator = format!("/{}", dir_name);
-                if path_str.contains(&dir_with_separator) {
-                    return true;
-                }
-            }
-            // Wildcard extension pattern (e.g., *.min.js)
-            else if pattern.starts_with("*.") {
-                let ext_pattern = &pattern[1..]; // Remove the *
-                if path_str.ends_with(ext_pattern) {
-                    return true;
-                }
-            }
-            // Substring match (matches anywhere in path)
-            else if path_str.contains(pattern) {
-                return true;
-            }
-        }
-
-        false
-    }
 }

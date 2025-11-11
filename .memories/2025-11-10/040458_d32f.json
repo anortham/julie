@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6911646a_320775",
+  "timestamp": 1762747498,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "ac0ce40",
+    "dirty": false
+  },
+  "description": "Released v1.5.0 with critical startup performance fix and complete memory system. Fixed incremental indexing path mismatch (53% speedup: 8.4s → 3.9s), checkpoint tool crash from string slicing, and memory system paths. Updated tool descriptions with behavioral adoption patterns. Successfully committed, tagged, and pushed release to GitHub with updated README documenting all new features.",
+  "tags": [
+    "release",
+    "v1.5.0",
+    "git",
+    "documentation"
+  ]
+}
