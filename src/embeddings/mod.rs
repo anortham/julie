@@ -791,6 +791,19 @@ impl EmbeddingEngine {
     }
 }
 
+/// Implement Drop to log embedding engine cleanup
+/// This helps track when the GPU model is released from memory
+impl Drop for EmbeddingEngine {
+    fn drop(&mut self) {
+        tracing::info!(
+            "🧹 Dropping EmbeddingEngine '{}' - OrtEmbeddingModel will now be dropped and GPU memory released",
+            self.model_name
+        );
+        // Note: The actual cleanup happens when self.model (OrtEmbeddingModel) drops,
+        // which will log its own GPU cleanup message via OrtEmbeddingModel::drop()
+    }
+}
+
 /// Calculate cosine similarity between two embedding vectors
 pub fn cosine_similarity(vec_a: &[f32], vec_b: &[f32]) -> f32 {
     if vec_a.len() != vec_b.len() {

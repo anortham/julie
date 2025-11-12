@@ -326,39 +326,49 @@ impl ManageWorkspaceTool {
         &self,
         file_path: &Path,
         language: &str,
-        parser: &mut Parser,
+        _parser: &mut Parser, // Unused: Creating new parser inside spawn_blocking for Send requirement
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
-        // Read file content for symbol extraction
-        // 🔥 CRITICAL: Canonicalize path first to resolve symlinks (macOS /var -> /private/var)
-        let canonical_file_path = file_path.canonicalize()
-            .unwrap_or_else(|_| file_path.to_path_buf());
+        // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
+        // When processing hundreds of large files (500KB+), blocking I/O in async functions
+        // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
+        let file_path_clone = file_path.to_path_buf();
+        let language_clone = language.to_string();
+        let workspace_root_clone = workspace_root.to_path_buf();
 
-        let content = std::fs::read_to_string(&canonical_file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical_file_path, e))?;
+        let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
+            // 🔍 DEBUG: Log that we're inside spawn_blocking
+            tracing::trace!("🔄 Inside spawn_blocking for: {:?}", file_path_clone);
+            // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
+            tracing::trace!("🔧 Canonicalizing path...");
+            let canonical = file_path_clone
+                .canonicalize()
+                .unwrap_or_else(|_| file_path_clone.clone());
+            tracing::trace!("✅ Canonicalized: {:?}", canonical);
+
+            // Blocking operation 2: read file content
+            tracing::trace!("📖 Reading file content...");
+            let file_content = std::fs::read_to_string(&canonical)
+                .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
+            tracing::trace!("✅ Read {} bytes", file_content.len());
+
+            // Blocking operation 3: create file info (does metadata, hash, etc)
+            // This also reads the file, but we do it here to keep ALL blocking I/O in one place
+            tracing::trace!("📊 Creating file info...");
+            let info = crate::database::create_file_info(&file_path_clone, &language_clone, &workspace_root_clone)?;
+            tracing::trace!("✅ File info created");
+
+            Ok::<_, anyhow::Error>((canonical, file_content, info))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking file I/O task: {}", e))??;
+
+        tracing::trace!("✅ spawn_blocking completed for: {:?}", file_path);
 
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
-            // Convert to relative path for storage (handle both absolute and relative paths)
-            let relative_path = if file_path.is_absolute() {
-                crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
-            } else {
-                file_path.to_string_lossy().replace('\\', "/")
-            };
-            return Ok((
-                Vec::new(),
-                Vec::new(),
-                crate::database::FileInfo {
-                    path: relative_path,
-                    language: language.to_string(),
-                    hash: "empty".to_string(),
-                    size: 0,
-                    last_modified: 0,
-                    last_indexed: 0,
-                    symbol_count: 0,
-                    content: Some(String::new()),
-                },
-            ));
+            // Return empty symbol list but include file_info (already created in spawn_blocking)
+            return Ok((Vec::new(), Vec::new(), file_info));
         }
 
         // Skip symbol extraction for CSS/HTML (text search only)
@@ -369,10 +379,20 @@ impl ManageWorkspaceTool {
                 file_path.display()
             );
 
-            // 🔥 create_file_info now handles relative path conversion internally
-            let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
+            // Return file info without symbols (file_info already created in spawn_blocking)
+            return Ok((Vec::new(), Vec::new(), file_info));
+        }
 
-            // Return file info, but no extracted symbols
+        // 🚨 CRITICAL: Skip symbol extraction for very large files (likely data/minified)
+        // These files cause exponential CPU usage in tree-sitter traversal (demo-data.js: 158KB = hang)
+        const MAX_FILE_SIZE_FOR_SYMBOLS: usize = 100_000; // 100KB limit
+        if content.len() > MAX_FILE_SIZE_FOR_SYMBOLS {
+            warn!(
+                "⏭️  Skipping symbol extraction for large file ({} bytes > {}KB limit): {} - indexing for text search only",
+                content.len(),
+                MAX_FILE_SIZE_FOR_SYMBOLS / 1024,
+                file_path.display()
+            );
             return Ok((Vec::new(), Vec::new(), file_info));
         }
 
@@ -386,19 +406,68 @@ impl ManageWorkspaceTool {
             file_path.to_string_lossy().replace('\\', "/")
         };
 
-        // PERFORMANCE OPTIMIZATION: Use pre-initialized parser instead of creating new one
-        let tree = parser
-            .parse(&content, None)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", relative_path))?;
+        // 🚨 CRITICAL FIX: Tree-sitter parsing is CPU-intensive and blocks the runtime
+        // Must wrap in spawn_blocking for large files (discovered with 158KB demo-data.js)
+        let language_clone2 = language.to_string();
+        let relative_path_clone = relative_path.clone();
+        let content_clone = content.clone();
+        let workspace_root_clone2 = workspace_root.to_path_buf();
 
-        // Extract symbols and relationships using language-specific extractor
-        // Pass relative path so symbols are stored with relative paths
-        let (symbols, relationships) =
-            self.extract_symbols_with_existing_tree(&tree, &relative_path, &content, language, workspace_root)?;
+        let (symbols, relationships) = {
+            use std::time::Duration;
+            let parse_start = std::time::Instant::now();
 
-        // Calculate file info for database storage
-        // 🔥 create_file_info now handles relative path conversion internally
-        let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
+            // Spawn with a timeout for very large files
+            let task = tokio::task::spawn_blocking(move || {
+                // Create a new parser inside spawn_blocking (Parser isn't Send, so we can't move it in)
+                let mut local_parser = tree_sitter::Parser::new();
+                let tree_sitter_lang = crate::language::get_tree_sitter_language(&language_clone2)?;
+                local_parser.set_language(&tree_sitter_lang)
+                    .map_err(|e| anyhow::anyhow!("Failed to set parser language: {}", e))?;
+
+                let tree = local_parser
+                    .parse(&content_clone, None)
+                    .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", relative_path_clone))?;
+
+                let parse_elapsed = parse_start.elapsed();
+
+                // Extract symbols - this is also CPU-intensive and can take minutes for large data files
+                let extract_start = std::time::Instant::now();
+                let result = crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
+                    &tree,
+                    &relative_path_clone,
+                    &content_clone,
+                    &language_clone2,
+                    &workspace_root_clone2
+                )?;
+
+                let extract_elapsed = extract_start.elapsed();
+
+                // Log timing for slow files (useful for performance analysis)
+                if parse_elapsed.as_millis() > 50 || extract_elapsed.as_millis() > 100 {
+                    debug!(
+                        "Slow file processing: {} - parse: {:?}, extraction: {:?}",
+                        relative_path_clone, parse_elapsed, extract_elapsed
+                    );
+                }
+
+                Ok::<_, anyhow::Error>(result)
+            });
+
+            // Wait with a 30-second timeout for extraction
+            match tokio::time::timeout(Duration::from_secs(30), task).await {
+                Ok(Ok(result)) => result?,
+                Ok(Err(e)) => {
+                    return Err(anyhow::anyhow!("Spawn blocking task panicked: {}", e));
+                }
+                Err(_) => {
+                    warn!("⏱️  Symbol extraction timed out after 30s for file: {} - skipping", relative_path);
+                    return Ok((Vec::new(), Vec::new(), file_info));
+                }
+            }
+        };
+
+        // file_info already created in spawn_blocking above - no need to recreate
 
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
@@ -422,27 +491,39 @@ impl ManageWorkspaceTool {
         language: &str,
         workspace_root: &Path, // NEW: Required for relative path conversion
     ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
-        trace!(
-            "Processing file without parser: {:?} (language: {})",
+        tracing::trace!(
+            "📂 Processing file without parser: {:?} (language: {})",
             file_path,
             language
         );
 
-        // Read file content for database storage
-        // 🔥 CRITICAL: Canonicalize path first to resolve symlinks (macOS /var -> /private/var)
-        let canonical_file_path = file_path.canonicalize()
-            .unwrap_or_else(|_| file_path.to_path_buf());
+        // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
+        let file_path_clone = file_path.to_path_buf();
+        let language_clone = language.to_string();
+        let workspace_root_clone = workspace_root.to_path_buf();
 
-        let content = std::fs::read_to_string(&canonical_file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical_file_path, e))?;
+        let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
+            tracing::trace!("🔄 Inside spawn_blocking (no parser) for: {:?}", file_path_clone);
+            // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
+            let canonical = file_path_clone
+                .canonicalize()
+                .unwrap_or_else(|_| file_path_clone.clone());
 
-        trace!("Read {} bytes from {:?}", content.len(), canonical_file_path);
+            // Blocking operation 2: read file content
+            let file_content = std::fs::read_to_string(&canonical)
+                .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
 
-        // Calculate file info for database storage
-        // 🔥 create_file_info now handles relative path conversion internally
-        let file_info = crate::database::create_file_info(file_path, language, workspace_root)?;
+            // Blocking operation 3: create file info (does metadata, hash, etc)
+            let info = crate::database::create_file_info(&file_path_clone, &language_clone, &workspace_root_clone)?;
 
-        // No symbols extracted (no parser available)
+            Ok::<_, anyhow::Error>((canonical, file_content, info))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking file I/O task: {}", e))??;
+
+        trace!("Read {} bytes from file without parser", content.len());
+
+        // No symbols extracted (no parser available), but file_info created in spawn_blocking above
         Ok((Vec::new(), Vec::new(), file_info))
     }
 }

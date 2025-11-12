@@ -205,6 +205,8 @@ impl ManageWorkspaceTool {
         file_name.contains(".min.")
             || file_name.ends_with(".min.js")
             || file_name.ends_with(".min.css")
+            || file_name.ends_with(".bundle.js") // Bundle files are generated/minified
+            || file_name.ends_with(".bundle.css")
     }
 
     /// Load custom ignore patterns from .julieignore file in workspace root

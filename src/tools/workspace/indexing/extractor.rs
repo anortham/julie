@@ -60,6 +60,41 @@ impl ManageWorkspaceTool {
         Ok((symbols, relationships))
     }
 
+    /// Static version for use in spawn_blocking (where self is not available)
+    ///
+    /// This is identical to extract_symbols_with_existing_tree but doesn't require &self
+    /// since it only delegates to the static factory function anyway.
+    pub(crate) fn extract_symbols_static(
+        tree: &Tree,
+        file_path: &str,
+        content: &str,
+        language: &str,
+        workspace_root_path: &std::path::Path,
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
+        debug!(
+            "Extracting symbols (static): language={}, file={}",
+            language, file_path
+        );
+        debug!("    Tree root node: {:?}", tree.root_node().kind());
+        debug!("    Content length: {} chars", content.len());
+
+        // Use centralized factory function (single source of truth)
+        let (symbols, relationships) = crate::extractors::extract_symbols_and_relationships(
+            tree,
+            file_path,
+            content,
+            language,
+            workspace_root_path,
+        )?;
+
+        debug!(
+            "🎯 extract_symbols_static returning: {} symbols, {} relationships for {} file: {}",
+            symbols.len(), relationships.len(), language, file_path
+        );
+
+        Ok((symbols, relationships))
+    }
+
     /// Determine if we should extract symbols from a file based on language
     ///
     /// CSS and HTML are indexed for text search only - no symbol extraction

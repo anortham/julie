@@ -639,6 +639,26 @@ impl OrtEmbeddingModel {
     }
 }
 
+/// Implement Drop to log GPU memory cleanup
+/// This helps diagnose GPU memory leaks by showing when ONNX Runtime releases resources
+impl Drop for OrtEmbeddingModel {
+    fn drop(&mut self) {
+        if self.is_gpu {
+            tracing::info!(
+                "🧹 Dropping OrtEmbeddingModel '{}' - releasing GPU memory (DirectML/CUDA/CoreML session cleanup)",
+                self.model_name
+            );
+        } else {
+            tracing::debug!(
+                "🧹 Dropping OrtEmbeddingModel '{}' (CPU-only, no GPU memory to release)",
+                self.model_name
+            );
+        }
+        // Note: ONNX Runtime Session has its own Drop implementation that handles actual cleanup
+        // We're just logging here for visibility
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
