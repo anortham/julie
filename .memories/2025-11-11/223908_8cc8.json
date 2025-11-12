@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6913bb0c_47453d",
+  "timestamp": 1762900748,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "62f1aff",
+    "dirty": false
+  },
+  "description": "Released v1.7.1 - DirectML GPU crash fixes committed, pushed, and tagged. Commit 62f1aff includes conservative batch sizing (40% reduction), dynamic GPU logging after fallback, and comprehensive test suite. Tag v1.7.1 pushed to origin. Ready for production deployment on Windows machines with DirectML GPUs.",
+  "tags": [
+    "release",
+    "v1.7.1",
+    "git",
+    "directml",
+    "gpu-crash-fix"
+  ]
+}
