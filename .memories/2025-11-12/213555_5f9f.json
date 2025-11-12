@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6914fdbb_b91486",
+  "timestamp": 1762983355,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "ef8899b",
+    "dirty": true,
+    "files_changed": [
+      "docs/JULIE_2_PLAN.md",
+      "src/tests/tools/exploration/fast_explore.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs"
+    ]
+  },
+  "description": "Implemented auto-generated .julieignore feature for vendor code detection. System analyzes project structure on first run, detects vendor patterns (libs/, plugin/, jquery/bootstrap files, minified directories), and generates self-documenting .julieignore automatically. Solves vendor code pollution problem in legacy apps with zero user friction. Added DirectoryStats tracking, analyze_vendor_patterns() with 3 confidence levels, comprehensive .julieignore template with usage docs, and modified discovery.rs to auto-generate before indexing. Documented as Bonus Phase in JULIE_2_PLAN.md. Compiles cleanly, ready for SurgeryScheduling workspace testing.",
+  "tags": [
+    "feature",
+    "julieignore",
+    "vendor-detection",
+    "legacy-apps",
+    "auto-generation"
+  ]
+}

@@ -1104,3 +1104,309 @@ Julie understands not just *what* code does, but *why* it exists and *how* you'v
 - Pragmatic decisions deliver better outcomes than rigid plans
 
 The vision was realized, just not exactly as originally planned. And that's okay - we shipped something better.
+
+---
+
+## Bonus Phase: Auto-Generated .julieignore (v1.7.3+)
+
+### Status: 🚀 **IN PROGRESS** (2025-11-12)
+
+**Problem Identified:**
+- Legacy apps mix vendor and custom code in same directories (`Scripts/` has jquery AND PatientCase)
+- Current 100KB limit catches big vendor files, but smaller libraries (67-84KB) still get indexed
+- Result: 15K+ vendor symbols pollute search results with bootstrap, jquery, angular noise
+
+**Solution:** Auto-generate `.julieignore` during first workspace scan to exclude vendor code automatically.
+
+### Goals
+- Detect vendor patterns during initial file discovery (libs/, plugin/, *.min.js)
+- Auto-generate `.julieignore` with detected patterns before indexing
+- Make the file self-documenting (explain what/why/how to modify)
+- Integrate diagnostics into health check (show what's excluded)
+- Enable agent-assisted debugging when search doesn't find files
+
+### Implementation
+
+#### 1. Enhanced Discovery Phase
+
+Modify `discover_indexable_files()` to analyze patterns before indexing:
+
+```rust
+// src/tools/workspace/discovery.rs
+
+pub(crate) fn discover_indexable_files(&self, workspace_path: &Path) -> Result<Vec<PathBuf>> {
+    let julieignore_path = workspace_path.join(".julieignore");
+
+    // If .julieignore doesn't exist, auto-generate it
+    let custom_ignores = if julieignore_path.exists() {
+        self.load_julieignore(workspace_path)?
+    } else {
+        info!("🤖 No .julieignore found - scanning for vendor patterns...");
+
+        // Step 1: Collect ALL files first
+        let mut all_files = Vec::new();
+        self.walk_directory_recursive(
+            workspace_path,
+            &blacklisted_dirs,
+            &blacklisted_exts,
+            max_file_size,
+            &[], // No filters yet
+            &mut all_files,
+        )?;
+
+        // Step 2: Analyze for vendor patterns
+        let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
+
+        // Step 3: Generate .julieignore file
+        if !detected_patterns.is_empty() {
+            self.generate_julieignore_file(workspace_path, &detected_patterns)?;
+            info!("✅ Generated .julieignore with {} patterns", detected_patterns.len());
+            detected_patterns
+        } else {
+            info!("✨ No vendor patterns detected - project looks clean!");
+            Vec::new()
+        }
+    };
+
+    // Continue with normal discovery...
+}
+```
+
+#### 2. Vendor Pattern Detection
+
+```rust
+fn analyze_vendor_patterns(&self, files: &[PathBuf], workspace_root: &Path) -> Result<Vec<String>> {
+    let mut patterns = Vec::new();
+    let mut dir_stats: HashMap<PathBuf, DirectoryStats> = HashMap::new();
+
+    // Collect statistics for each directory
+    for file in files {
+        if let Some(parent) = file.parent() {
+            let stats = dir_stats.entry(parent.to_path_buf()).or_default();
+            stats.file_count += 1;
+
+            // Check for vendor indicators
+            if let Some(name) = file.file_name().and_then(|n| n.to_str()) {
+                if name.contains(".min.") { stats.minified_count += 1; }
+                if name.starts_with("jquery") { stats.jquery_count += 1; }
+                if name.starts_with("bootstrap") { stats.bootstrap_count += 1; }
+            }
+        }
+    }
+
+    // Detect vendor directories with high confidence
+    for (dir, stats) in dir_stats {
+        let dir_name = dir.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+
+        // High confidence: Directory name indicates vendor code
+        if matches!(dir_name, "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party") {
+            if stats.file_count > 5 {
+                let pattern = self.dir_to_pattern(&dir, workspace_root);
+                info!("📦 Detected vendor directory: {} ({} files)", pattern, stats.file_count);
+                patterns.push(pattern);
+            }
+        }
+        // Medium confidence: Lots of vendor-named files
+        else if stats.jquery_count > 3 || stats.bootstrap_count > 2 {
+            let pattern = self.dir_to_pattern(&dir, workspace_root);
+            info!("📦 Detected library directory: {} (jquery/bootstrap files)", pattern);
+            patterns.push(pattern);
+        }
+        // Medium confidence: High concentration of minified files
+        else if stats.minified_count > 10 && stats.minified_count > stats.file_count / 2 {
+            let pattern = self.dir_to_pattern(&dir, workspace_root);
+            info!("📦 Detected minified code directory: {} ({} minified)", pattern, stats.minified_count);
+            patterns.push(pattern);
+        }
+    }
+
+    Ok(patterns)
+}
+
+#[derive(Default)]
+struct DirectoryStats {
+    file_count: usize,
+    minified_count: usize,
+    jquery_count: usize,
+    bootstrap_count: usize,
+}
+```
+
+#### 3. Self-Documenting .julieignore
+
+```rust
+fn generate_julieignore_file(&self, workspace_path: &Path, patterns: &[String]) -> Result<()> {
+    let content = format!(
+r#"# .julieignore - Julie Code Intelligence Exclusion Patterns
+# Auto-generated by Julie on {}
+#
+# ═══════════════════════════════════════════════════════════════
+# What Julie Did Automatically
+# ═══════════════════════════════════════════════════════════════
+# Julie analyzed your project and detected vendor/third-party code patterns.
+# These patterns exclude files from:
+# • Symbol extraction (function/class definitions)
+# • Semantic search embeddings (AI-powered search)
+#
+# Files are still searchable as TEXT using fast_search(mode="text"),
+# but won't clutter symbol navigation or semantic search results.
+#
+# ═══════════════════════════════════════════════════════════════
+# Why Exclude Vendor Code?
+# ═══════════════════════════════════════════════════════════════
+# 1. Search Quality: Prevents vendor code from polluting search results
+# 2. Performance: Skips symbol extraction for thousands of vendor functions
+# 3. Relevance: Semantic search focuses on YOUR code, not libraries
+#
+# ═══════════════════════════════════════════════════════════════
+# How to Modify This File
+# ═══════════════════════════════════════════════════════════════
+# • Add patterns: Just add new lines with glob patterns (gitignore syntax)
+# • Remove patterns: Delete lines or comment out with #
+# • Check impact: Use manage_workspace(operation="health")
+#
+# FALSE POSITIVE? If Julie excluded something important:
+# 1. Delete or comment out the pattern below
+# 2. Julie will automatically reindex on next file change
+#
+# DISABLE AUTO-GENERATION: Create this file manually before first run
+#
+# ═══════════════════════════════════════════════════════════════
+# Auto-Detected Vendor Directories
+# ═══════════════════════════════════════════════════════════════
+{}
+
+# ═══════════════════════════════════════════════════════════════
+# Common Patterns (Uncomment if needed in your project)
+# ═══════════════════════════════════════════════════════════════
+# *.min.js
+# *.min.css
+# jquery*.js
+# bootstrap*.js
+# angular*.js
+
+# ═══════════════════════════════════════════════════════════════
+# Debugging: If Search Isn't Finding Files
+# ═══════════════════════════════════════════════════════════════
+# Use manage_workspace(operation="health") to see:
+# • How many files are excluded by each pattern
+# • Whether patterns are too broad
+#
+# If a pattern excludes files it shouldn't, comment it out or make
+# it more specific (e.g., "**/vendor/lib/**" vs "**/lib/**")
+"#,
+        chrono::Local::now().format("%Y-%m-%d"),
+        patterns.iter()
+            .map(|p| format!("{}/**", p))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    std::fs::write(workspace_path.join(".julieignore"), content)?;
+    Ok(())
+}
+```
+
+#### 4. Enhanced Health Check
+
+```rust
+// src/tools/workspace/commands/health.rs
+
+pub async fn health_check(&self, detailed: bool) -> Result<HealthReport> {
+    // ... existing checks ...
+
+    // NEW: .julieignore analysis
+    if let Some(ignore_stats) = self.analyze_julieignore(workspace_path)? {
+        info!("📋 .julieignore patterns:");
+        info!("   Total patterns: {}", ignore_stats.pattern_count);
+        info!("   Files excluded: {}", ignore_stats.excluded_count);
+
+        if detailed {
+            for (pattern, count) in &ignore_stats.pattern_breakdown {
+                info!("   - {}: {} files", pattern, count);
+            }
+        }
+
+        // Warning if too broad
+        if ignore_stats.excluded_count > ignore_stats.total_files / 2 {
+            warn!("⚠️  More than 50% of files are excluded");
+            warn!("   Review .julieignore - patterns may be too broad");
+        }
+    }
+
+    Ok(report)
+}
+```
+
+#### 5. Server Instructions Update
+
+Add to `JULIE_AGENT_INSTRUCTIONS.md`:
+
+```markdown
+## 🔍 Auto-Generated .julieignore
+
+Julie automatically generates `.julieignore` on first run to exclude vendor code.
+
+### Debugging "File Not Found" Issues
+
+If search isn't finding expected files:
+
+1. **Check exclusion stats**: `manage_workspace(operation="health")`
+2. **Review .julieignore**: Read the file to see patterns
+3. **Test with text search**: Try `fast_search(mode="text")`
+
+### Example Debugging Workflow
+
+User: "Why can't I find MyCustomScript.js?"
+
+Agent:
+1. Calls manage_workspace(operation="health")
+   → Sees "Scripts/plugin/** excludes 89 files"
+2. Reads .julieignore
+   → Sees pattern excluding plugins directory
+3. Explains: "MyCustomScript.js is excluded. Edit .julieignore to adjust."
+```
+
+### Benefits
+
+1. **Zero User Friction** - Happens automatically during first scan
+2. **Transparent** - Logs explain what was detected and why
+3. **Self-Documenting** - File explains itself with comprehensive comments
+4. **Debuggable** - Health check shows exclusion stats
+5. **Correctable** - Easy to edit if false positives occur
+6. **Team-Shareable** - Commit to git like .gitignore
+
+### Example Output
+
+```
+🔍 Scanning workspace: /Users/murphy/source/SurgeryScheduling
+🤖 No .julieignore found - scanning for vendor patterns...
+📦 Detected vendor directory: Scheduling/Scripts/libs (15 files)
+📦 Detected vendor directory: Scheduling/Scripts/plugin (89 files)
+✅ Generated .julieignore with 2 patterns
+📝 Review and commit .julieignore to version control
+📊 Discovered 408 files total
+⏭️  Excluded 104 files, indexing 304 files
+```
+
+### Deliverables
+
+- [ ] Implement pattern detection in `discover_indexable_files()`
+- [ ] Add `analyze_vendor_patterns()` with heuristics
+- [ ] Generate comprehensive .julieignore template
+- [ ] Enhance health check with exclusion diagnostics
+- [ ] Update server instructions for debugging workflow
+- [ ] Add tests for pattern detection logic
+- [ ] Documentation and examples
+
+### Success Metrics
+
+- Pattern detection: <10ms overhead on file scan
+- False positive rate: <5% (conservative heuristics)
+- Self-serve debugging: Agents can diagnose via health check
+- Reduced vendor noise: 80-90% of vendor symbols excluded
+- Zero breaking changes: Existing projects unaffected
+
+**Status:** Ready for implementation (design approved 2025-11-12)

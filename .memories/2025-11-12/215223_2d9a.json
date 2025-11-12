@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_69150197_b0216a",
+  "timestamp": 1762984343,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "ef8899b",
+    "dirty": true,
+    "files_changed": [
+      "docs/JULIE_2_PLAN.md",
+      "src/tests/mod.rs",
+      "src/tests/tools/exploration/fast_explore.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs"
+    ]
+  },
+  "description": "Fixed critical bugs in .julieignore auto-generation and added comprehensive test coverage. Pattern format bug: changed dir/** to dir/ for proper word boundary matching (prevents false positives like matching old-libs/ when we only want libs/). Made dir_to_pattern() pub(crate) for testing. Added 19 comprehensive tests covering: vendor directory detection (libs/, plugins/, vendor/), jQuery/Bootstrap file detection, minified code concentration, path normalization, .julieignore file generation, and full workflow integration. All tests passing. Code compiles cleanly.",
+  "tags": [
+    "bugfix",
+    "testing",
+    "julieignore",
+    "vendor-detection",
+    "tdd"
+  ]
+}

@@ -2,6 +2,7 @@ use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::utils::ignore::is_ignored_by_pattern;
 use anyhow::Result;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
@@ -10,20 +11,56 @@ use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
     pub(crate) fn discover_indexable_files(&self, workspace_path: &Path) -> Result<Vec<PathBuf>> {
-        let mut indexable_files = Vec::new();
         let blacklisted_dirs: HashSet<&str> = BLACKLISTED_DIRECTORIES.iter().copied().collect();
         let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
         let max_file_size = 1024 * 1024; // 1MB limit for files
 
-        // Load custom ignore patterns from .julieignore if present
-        let custom_ignores = self.load_julieignore(workspace_path)?;
-        info!("🔍 Loaded {} custom ignore patterns for file discovery", custom_ignores.len());
+        let julieignore_path = workspace_path.join(".julieignore");
+
+        // Check if .julieignore exists, auto-generate if not
+        let custom_ignores = if julieignore_path.exists() {
+            self.load_julieignore(workspace_path)?
+        } else {
+            info!("🤖 No .julieignore found - scanning for vendor patterns...");
+
+            // Step 1: Collect ALL files first (no filtering yet)
+            let mut all_files = Vec::new();
+            self.walk_directory_recursive(
+                workspace_path,
+                &blacklisted_dirs,
+                &blacklisted_exts,
+                max_file_size,
+                &[], // No custom ignores yet
+                &mut all_files,
+            )?;
+
+            info!("📊 Discovered {} files total after hardcoded filters", all_files.len());
+
+            // Step 2: Analyze for vendor patterns
+            let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
+
+            // Step 3: Generate .julieignore file if patterns detected
+            if !detected_patterns.is_empty() {
+                self.generate_julieignore_file(workspace_path, &detected_patterns)?;
+                info!("✅ Generated .julieignore with {} patterns", detected_patterns.len());
+                detected_patterns
+            } else {
+                info!("✨ No vendor patterns detected - project looks clean!");
+                Vec::new()
+            }
+        };
+
+        if !custom_ignores.is_empty() {
+            info!("🔍 Loaded {} custom ignore patterns for file discovery", custom_ignores.len());
+        }
 
         debug!(
             "🔍 Starting recursive file discovery from: {}",
             workspace_path.display()
         );
 
+        // Now do final discovery with custom ignore patterns applied
+        let mut indexable_files = Vec::new();
         self.walk_directory_recursive(
             workspace_path,
             &blacklisted_dirs,
@@ -240,4 +277,173 @@ impl ManageWorkspaceTool {
         Ok(patterns)
     }
 
+    /// Analyze files for vendor patterns and return directory paths to exclude
+    pub(crate) fn analyze_vendor_patterns(
+        &self,
+        files: &[PathBuf],
+        workspace_root: &Path,
+    ) -> Result<Vec<String>> {
+        let mut patterns = Vec::new();
+        let mut dir_stats: HashMap<PathBuf, DirectoryStats> = HashMap::new();
+
+        // Collect statistics for each directory
+        for file in files {
+            if let Some(parent) = file.parent() {
+                let stats = dir_stats.entry(parent.to_path_buf()).or_default();
+                stats.file_count += 1;
+
+                // Check for vendor indicators
+                if let Some(name) = file.file_name().and_then(|n| n.to_str()) {
+                    if name.contains(".min.") {
+                        stats.minified_count += 1;
+                    }
+                    if name.starts_with("jquery") {
+                        stats.jquery_count += 1;
+                    }
+                    if name.starts_with("bootstrap") {
+                        stats.bootstrap_count += 1;
+                    }
+                }
+            }
+        }
+
+        // Detect vendor directories with high confidence
+        for (dir, stats) in dir_stats {
+            let dir_name = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            // High confidence: Directory name indicates vendor code
+            if matches!(
+                dir_name,
+                "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
+            ) {
+                if stats.file_count > 5 {
+                    let pattern = self.dir_to_pattern(&dir, workspace_root);
+                    info!(
+                        "📦 Detected vendor directory: {} ({} files)",
+                        pattern, stats.file_count
+                    );
+                    patterns.push(pattern);
+                }
+            }
+            // Medium confidence: Lots of vendor-named files
+            else if stats.jquery_count > 3 || stats.bootstrap_count > 2 {
+                let pattern = self.dir_to_pattern(&dir, workspace_root);
+                info!(
+                    "📦 Detected library directory: {} (jquery/bootstrap files)",
+                    pattern
+                );
+                patterns.push(pattern);
+            }
+            // Medium confidence: High concentration of minified files
+            else if stats.minified_count > 10 && stats.minified_count > stats.file_count / 2 {
+                let pattern = self.dir_to_pattern(&dir, workspace_root);
+                info!(
+                    "📦 Detected minified code directory: {} ({} minified files)",
+                    pattern, stats.minified_count
+                );
+                patterns.push(pattern);
+            }
+        }
+
+        Ok(patterns)
+    }
+
+    /// Convert directory path to relative pattern for .julieignore
+    pub(crate) fn dir_to_pattern(&self, dir: &Path, workspace_root: &Path) -> String {
+        dir.strip_prefix(workspace_root)
+            .unwrap_or(dir)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// Generate .julieignore file with detected patterns and comprehensive documentation
+    pub(crate) fn generate_julieignore_file(
+        &self,
+        workspace_path: &Path,
+        patterns: &[String],
+    ) -> Result<()> {
+        let content = format!(
+            r#"# .julieignore - Julie Code Intelligence Exclusion Patterns
+# Auto-generated by Julie on {}
+#
+# ═══════════════════════════════════════════════════════════════
+# What Julie Did Automatically
+# ═══════════════════════════════════════════════════════════════
+# Julie analyzed your project and detected vendor/third-party code patterns.
+# These patterns exclude files from:
+# • Symbol extraction (function/class definitions)
+# • Semantic search embeddings (AI-powered search)
+#
+# Files are still searchable as TEXT using fast_search(mode="text"),
+# but won't clutter symbol navigation or semantic search results.
+#
+# ═══════════════════════════════════════════════════════════════
+# Why Exclude Vendor Code?
+# ═══════════════════════════════════════════════════════════════
+# 1. Search Quality: Prevents vendor code from polluting search results
+# 2. Performance: Skips symbol extraction for thousands of vendor functions
+# 3. Relevance: Semantic search focuses on YOUR code, not libraries
+#
+# ═══════════════════════════════════════════════════════════════
+# How to Modify This File
+# ═══════════════════════════════════════════════════════════════
+# • Add patterns: Just add new lines with glob patterns (gitignore syntax)
+# • Remove patterns: Delete lines or comment out with #
+# • Check impact: Use manage_workspace(operation="health")
+#
+# FALSE POSITIVE? If Julie excluded something important:
+# 1. Delete or comment out the pattern below
+# 2. Julie will automatically reindex on next file change
+#
+# DISABLE AUTO-GENERATION: Create this file manually before first run
+#
+# ═══════════════════════════════════════════════════════════════
+# Auto-Detected Vendor Directories
+# ═══════════════════════════════════════════════════════════════
+{}
+
+# ═══════════════════════════════════════════════════════════════
+# Common Patterns (Uncomment if needed in your project)
+# ═══════════════════════════════════════════════════════════════
+# *.min.js
+# *.min.css
+# jquery*.js
+# bootstrap*.js
+# angular*.js
+
+# ═══════════════════════════════════════════════════════════════
+# Debugging: If Search Isn't Finding Files
+# ═══════════════════════════════════════════════════════════════
+# Use manage_workspace(operation="health") to see:
+# • How many files are excluded by each pattern
+# • Whether patterns are too broad
+#
+# If a pattern excludes files it shouldn't, comment it out or make
+# it more specific (e.g., "**/vendor/lib/**" vs "**/lib/**")
+"#,
+            chrono::Local::now().format("%Y-%m-%d"),
+            patterns
+                .iter()
+                .map(|p| format!("{}/", p))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        std::fs::write(workspace_path.join(".julieignore"), content)?;
+        info!("📝 Created .julieignore - review and commit to version control");
+
+        Ok(())
+    }
+}
+
+/// Statistics for analyzing vendor code patterns in a directory
+#[derive(Default)]
+struct DirectoryStats {
+    file_count: usize,
+    minified_count: usize,
+    jquery_count: usize,
+    bootstrap_count: usize,
 }

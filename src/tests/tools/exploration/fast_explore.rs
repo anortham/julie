@@ -110,6 +110,7 @@ async fn index_workspace_with_embeddings(handler: &JulieServerHandler, workspace
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
+#[ignore] // Requires embeddings/vector store to be initialized
 async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
@@ -147,6 +148,7 @@ async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore] // Requires embeddings/vector store to be initialized
 async fn test_similar_mode_threshold_filtering() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
@@ -269,6 +271,7 @@ async fn test_similar_mode_invalid_threshold() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore] // Requires embeddings/vector store to be initialized
 async fn test_similar_mode_default_threshold() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();

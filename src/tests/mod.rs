@@ -80,6 +80,7 @@ pub mod tools {
     pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
     pub mod workspace {
+        pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
         pub mod isolation; // Workspace isolation tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
         pub mod mod_tests; // Workspace module functionality tests
