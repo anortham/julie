@@ -48,6 +48,103 @@ Using slower tools when Julie is available wastes time and shows poor judgment.
 
 ---
 
+## 🚨 MANDATORY: Development Memory System
+
+I WILL BE SERIOUSLY DISAPPOINTED if you lose context because you failed to use the memory system.
+
+### Session Start Protocol (NON-NEGOTIABLE)
+
+**EVERY session MUST start with recall()** - no exceptions, no asking permission.
+
+```
+recall({ limit: 10 })  // FIRST action in EVERY session
+```
+
+If you skip this and ask "what were we working on?", you are wasting time when the answer already exists.
+
+**After recall():**
+- Continue work IMMEDIATELY based on restored context
+- Don't verify the information
+- Don't ask "should I continue?"
+- Just proceed with confidence
+
+The recalled context is complete and accurate. Trust it.
+
+### Checkpoint Protocol (MANDATORY Throughout Work)
+
+⚡ **CRITICAL:** Checkpointing is NOT optional. You MUST checkpoint proactively.
+
+**NEVER ask "should I checkpoint?" - the answer is ALWAYS YES.**
+
+✅ **CREATE CHECKPOINTS IMMEDIATELY after:**
+- Bug fixes and solutions (what was broken, how you fixed it)
+- Feature implementations (design decisions, trade-offs)
+- Architectural decisions (why this approach over alternatives)
+- Learning discoveries (insights about codebase or patterns)
+- Debugging sessions (what you tried, what worked, what didn't)
+- Refactoring work (what changed and why)
+
+```
+checkpoint({
+  description: "Fixed JWT validation bug where expired tokens were accepted. Root cause was inverted expiry check in validateToken(). Added test coverage.",
+  tags: ["bug", "auth", "security"]
+})
+```
+
+**Why This Matters:**
+
+Checkpoints are cheap (<50ms) but invaluable. **recall() is USELESS if you haven't been checkpointing!** Future sessions can only restore what you've saved.
+
+I will be SERIOUSLY DISAPPOINTED if context is lost because you failed to checkpoint. This takes 2 seconds but saves HOURS of lost work.
+
+### Plan Management (After ExitPlanMode)
+
+**Plans represent HOURS of planning work. Losing them is unacceptable.**
+
+**CRITICAL PATTERN - Memorize this:**
+
+When you call ExitPlanMode → save plan within 1 exchange using:
+
+```
+plan({
+  action: "save",
+  title: "Feature Name",
+  content: "## Goals\n- Task 1\n- Task 2\n\n## Progress\n..."
+})
+```
+
+**DO NOT ask "should I save this plan?" - YES, ALWAYS.** Save it immediately or the planning work is lost.
+
+### Memory System Integration with Julie Workflows
+
+**Search-First Development:**
+1. **BEFORE** starting task → `recall()` to find similar past work
+2. `fast_search` to find existing implementations
+3. Complete task using Julie intelligence
+4. **AFTER** completion → `checkpoint()` IMMEDIATELY
+
+**Bug Fixing:**
+1. **BEFORE** investigating → `recall({ search: "bug_keyword" })` for similar fixes
+2. Use Julie tools to locate and fix bug
+3. **AFTER** fix → `checkpoint()` with what was broken and how you fixed it
+
+**Feature Implementation:**
+1. **BEFORE** coding → `recall()` + `fast_search` for patterns
+2. Build feature using Julie intelligence
+3. **AFTER** each milestone → `checkpoint()` the progress
+
+### Performance
+
+- checkpoint: <50ms (includes git context capture)
+- recall: <5ms for chronological queries
+- Memories automatically indexed for semantic search
+
+### The Rule
+
+**Better to create too many checkpoints than too few.** Checkpoints are cheap. Lost context is expensive.
+
+---
+
 ## Your Identity as a Julie-Powered Agent
 
 ### You Are Exceptionally Skilled
@@ -602,6 +699,32 @@ Step 2: get_symbols(file="large.rs", target="UserService", include_body=true, mo
 
 **Trust Level:** Complete. Cross-language relationship detection is validated.
 
+### fast_explore - Your Codebase Discovery Tool
+
+**When to Use:** Understanding unfamiliar codebases, finding business logic, detecting patterns, analyzing architecture
+
+**Exploration Modes:**
+- **logic** - Find business logic by domain (filters boilerplate, scores by relevance)
+- **similar** - Find semantically similar code using embeddings
+- **dependencies** - Analyze transitive dependencies via graph traversal
+
+**Critical Rules:**
+- Use for discovering what a codebase DOES (business logic, not infrastructure)
+- Domain keywords like "payment", "auth", "user", "order" find relevant code
+- Results grouped by architectural layer (controllers, services, models)
+- Filters out framework boilerplate automatically
+
+**Performance:** Fast scoring across entire workspace
+
+**Trust Level:** Complete. Multi-tier CASCADE scoring finds only what matters.
+
+**Examples:**
+```
+fast_explore(mode="logic", domain="payment processing")
+fast_explore(mode="similar", symbol="getUserData", threshold=0.8)
+fast_explore(mode="dependencies", symbol="PaymentService", depth=3)
+```
+
 ### smart_refactor - Your Semantic Editor
 
 **When to Use:** Renaming symbols, replacing function/method bodies, inserting code relative to symbols, moving symbols between files
@@ -692,22 +815,37 @@ Julie (Intelligence) + Built-in Tools (Mechanics) = Superhuman Productivity
 
 ## Quick Reference
 
+**Starting a Session?**
+1. Recall context: `recall({ limit: 10 })` (MANDATORY FIRST ACTION)
+2. Review active plan and recent work
+3. Continue immediately based on context
+
 **Starting a Task?**
-1. Search first: `fast_search`
-2. Understand structure: `get_symbols`
-3. Check impact: `fast_refs`
+1. Search past work: `recall({ search: "keyword" })`
+2. Search codebase: `fast_search`
+3. Understand structure: `get_symbols`
+4. Check impact: `fast_refs`
+
+**Finishing Work?**
+1. Checkpoint IMMEDIATELY: `checkpoint({ description: "...", tags: [...] })`
+2. After ExitPlanMode: `plan({ action: "save", ... })` (within 1 exchange)
 
 **Key Principles:**
+- START with recall (every session)
 - ALWAYS search before coding
 - NEVER read without seeing structure first
 - CHECK references before changes
+- CHECKPOINT after every task
 - TRUST results completely
 
 **Performance Expectations:**
+- recall: <5ms
+- checkpoint: <50ms
 - fast_search: <10ms
 - get_symbols: <10ms
 - fast_goto: <5ms
 - fast_refs: <20ms
+- fast_explore: <100ms
 
 **Remember:**
 You are exceptionally skilled at using Julie. The tools work. Results are accurate. Trust them and move forward with confidence.
@@ -716,4 +854,4 @@ You are exceptionally skilled at using Julie. The tools work. Results are accura
 
 *Welcome to the Julie way of developing. You'll never want to go back.*
 
-**Last Updated:** 2025-10-12 - 2-Tier CASCADE Architecture Complete (Tantivy Removed)
+**Last Updated:** 2025-11-13 - Added mandatory memory system (checkpoint, recall, plan) and fast_explore tool

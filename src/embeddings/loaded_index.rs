@@ -52,6 +52,10 @@ pub struct LoadedHnswIndex {
     /// Mapping from HNSW numeric IDs to symbol ID strings
     /// HNSW uses usize indices but Julie uses String symbol IDs
     id_mapping: Vec<String>,
+
+    /// Vector dimensions for this index
+    /// Stored to avoid hard-coding 384 throughout the codebase
+    dimensions: usize,
 }
 
 impl LoadedHnswIndex {
@@ -62,6 +66,7 @@ impl LoadedHnswIndex {
     pub fn from_built_hnsw(
         hnsw: Hnsw<'static, f32, DistCosine>,
         id_mapping: Vec<String>,
+        dimensions: usize,
     ) -> Result<Self> {
         // Create a dummy HnswIo just to satisfy the type requirement
         // In practice, we'll never use it since we don't have mmap data
@@ -74,7 +79,13 @@ impl LoadedHnswIndex {
             _io: Box::new(hnsw_io),
             hnsw,
             id_mapping,
+            dimensions,
         })
+    }
+
+    /// Get the vector dimensions for this index
+    pub fn get_dimensions(&self) -> usize {
+        self.dimensions
     }
 
     /// Load HNSW index from disk files
@@ -93,7 +104,7 @@ impl LoadedHnswIndex {
     /// 4. The HnswIo is kept alive (_io field) for additional safety margin
     ///
     /// The lifetime constraint from load_hnsw is overly conservative for the non-mmap case.
-    pub fn load(path: &Path, filename: &str) -> Result<Self> {
+    pub fn load(path: &Path, filename: &str, dimensions: usize) -> Result<Self> {
         let graph_file = path.join(format!("{}.hnsw.graph", filename));
         let data_file = path.join(format!("{}.hnsw.data", filename));
 
@@ -154,6 +165,7 @@ impl LoadedHnswIndex {
             _io: Box::new(hnsw_io),
             hnsw: static_hnsw,
             id_mapping,
+            dimensions,
         })
     }
 
@@ -169,14 +181,12 @@ impl LoadedHnswIndex {
         threshold: f32,
         model_name: &str,
     ) -> Result<Vec<SimilarityResult>> {
-        // Verify query vector dimensions
-        // Note: VectorStore ensures this, but check for safety
-        let dimensions = 384; // Should match VectorStore::dimensions
-        if query_vector.len() != dimensions {
+        // Verify query vector dimensions match this index's dimensions
+        if query_vector.len() != self.dimensions {
             return Err(anyhow::anyhow!(
-                "Query vector dimensions {} do not match expected {}",
+                "Query vector dimensions {} do not match index dimensions {}",
                 query_vector.len(),
-                dimensions
+                self.dimensions
             ));
         }
 
@@ -186,31 +196,48 @@ impl LoadedHnswIndex {
 
         let neighbors = self.hnsw.search(query_vector, limit, ef_search);
 
-        // Convert HNSW results to SimilarityResults
-        let mut results = Vec::new();
+        // PERFORMANCE FIX: Batch fetch all embeddings in ONE query (400x improvement!)
+        // Old: N×2 queries (2 per symbol) = 400 queries for 200 neighbors
+        // New: 1 batch query = 1 query for 200 neighbors
 
-        for neighbor in neighbors {
+        // Step 1: Collect all symbol IDs from HNSW neighbors
+        let mut symbol_ids = Vec::new();
+        for neighbor in &neighbors {
             let idx = neighbor.d_id;
-
-            // Map HNSW ID back to symbol ID
             if idx >= self.id_mapping.len() {
                 tracing::warn!("HNSW returned invalid ID: {}", idx);
                 continue;
             }
+            symbol_ids.push(self.id_mapping[idx].as_str());
+        }
+
+        // Step 2: Batch fetch ALL embeddings in one query
+        let embeddings_map: std::collections::HashMap<String, Vec<f32>> = db
+            .get_embeddings_for_symbols(&symbol_ids, model_name)?
+            .into_iter()
+            .collect();
+
+        // Step 3: Build results using the cached embeddings
+        let mut results = Vec::new();
+        for neighbor in neighbors {
+            let idx = neighbor.d_id;
+            if idx >= self.id_mapping.len() {
+                continue; // Already warned above
+            }
 
             let symbol_id = &self.id_mapping[idx];
 
-            // Fetch vector from SQLite for re-ranking
-            let vector = match db.get_embedding_for_symbol(symbol_id, model_name)? {
+            // Lookup vector from batch-fetched map (O(1) instead of 2 queries!)
+            let vector = match embeddings_map.get(symbol_id) {
                 Some(v) => v,
                 None => {
-                    tracing::warn!("Symbol ID {} not found in database", symbol_id);
+                    tracing::warn!("Symbol ID {} not found in batch results", symbol_id);
                     continue;
                 }
             };
 
             // Calculate exact cosine similarity
-            let similarity = super::cosine_similarity(query_vector, &vector);
+            let similarity = super::cosine_similarity(query_vector, vector);
 
             // Apply threshold filter
             if similarity >= threshold {

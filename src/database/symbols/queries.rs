@@ -21,6 +21,9 @@ impl SymbolDatabase {
     }
 
     /// Get multiple symbols by their IDs in one batched query (for semantic search results)
+    ///
+    /// **CRITICAL**: Preserves the input order of IDs in the returned results.
+    /// This is essential for semantic search where similarity scores must match their corresponding symbols.
     pub fn get_symbols_by_ids(&self, ids: &[String]) -> Result<Vec<Symbol>> {
         if ids.is_empty() {
             return Ok(Vec::new());
@@ -28,10 +31,18 @@ impl SymbolDatabase {
 
         // Build parameterized query with IN clause for batch fetch
         let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+
+        // Build CASE statement for ORDER BY to preserve input order
+        // This maps each ID to its position in the input array
+        let order_cases: Vec<String> = (0..ids.len())
+            .map(|i| format!("WHEN id = ?{} THEN {}", i + 1, i))
+            .collect();
+
         let query = format!(
-            "SELECT {} FROM symbols WHERE id IN ({})",
+            "SELECT {} FROM symbols WHERE id IN ({}) ORDER BY CASE {} END",
             SYMBOL_COLUMNS,
-            placeholders.join(", ")
+            placeholders.join(", "),
+            order_cases.join(" ")
         );
 
         let mut stmt = self.conn.prepare(&query)?;

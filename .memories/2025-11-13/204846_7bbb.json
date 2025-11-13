@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6916442e_b56a8a",
+  "timestamp": 1763066926,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "src/tests/core/database.rs"
+    ]
+  },
+  "description": "TDD RED phase complete for Issue #1 (ordering bug). Wrote test_get_symbols_by_ids_preserves_order that proves get_symbols_by_ids() returns rows in arbitrary order (alphabetically by ID) instead of requested order. Test correctly fails: requested ['ppp_fourth', 'aaa_first', 'zzz_last', 'mmm_middle'] but got 'aaa_first' first. This confirms semantic search pairs similarity scores with wrong symbols. Fix needed: add ORDER BY clause with CASE statement or HashMap remapping to preserve input order. Ready for GREEN phase implementation.",
+  "tags": [
+    "tdd",
+    "red-phase",
+    "semantic-search",
+    "ordering-bug",
+    "testing",
+    "issue-1"
+  ]
+}

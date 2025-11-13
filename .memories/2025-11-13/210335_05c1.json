@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_691647a7_91b250",
+  "timestamp": 1763067815,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "src/database/embeddings.rs",
+      "src/database/symbols/queries.rs",
+      "src/embeddings/loaded_index.rs",
+      "src/tests/core/database.rs"
+    ]
+  },
+  "description": "Fixed Issue #3: Added vector length validation in bulk_store_embeddings. Prevents corrupted embeddings by validating vector_data.len() == dimensions before storage. Returns clear error message showing expected vs actual dimensions. Full TDD cycle: RED-GREEN-REFACTOR, all 36 database tests passing.",
+  "tags": [
+    "safety",
+    "validation",
+    "database",
+    "embeddings",
+    "tdd"
+  ]
+}

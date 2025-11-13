@@ -1969,3 +1969,601 @@ fn test_schema_version_downgrade_detection() {
         println!("✅ Schema version downgrade detection working");
     }
 }
+
+/// 🔴 TDD TEST: This test SHOULD FAIL until get_symbols_by_ids preserves order
+///
+/// Bug: get_symbols_by_ids() uses WHERE id IN(...) with no ORDER BY clause.
+/// SQLite returns rows in arbitrary order, causing semantic search to pair
+/// similarity scores with wrong symbols.
+///
+/// Expected behavior: Results should match input ID order exactly.
+#[test]
+fn test_get_symbols_by_ids_preserves_order() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("order_test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create symbols with DIFFERENT characteristics to ensure they don't naturally sort to input order
+    let symbols = vec![
+        Symbol {
+            id: "zzz_last".to_string(), // Alphabetically last
+            name: "alpha_function".to_string(), // But name is first
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/test.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 10,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "mmm_middle".to_string(),
+            name: "beta_function".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/test.rs".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 10,
+            end_column: 10,
+            start_byte: 100,
+            end_byte: 110,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "aaa_first".to_string(), // Alphabetically first
+            name: "zeta_function".to_string(), // But name is last
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/test.rs".to_string(),
+            start_line: 20,
+            start_column: 0,
+            end_line: 20,
+            end_column: 10,
+            start_byte: 200,
+            end_byte: 210,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "ppp_fourth".to_string(),
+            name: "delta_function".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/test.rs".to_string(),
+            start_line: 30,
+            start_column: 0,
+            end_line: 30,
+            end_column: 10,
+            start_byte: 300,
+            end_byte: 310,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+    ];
+
+    // Store all symbols
+    db.bulk_store_symbols(&symbols, "test_workspace").unwrap();
+
+    // Request in specific order (NOT alphabetical by ID or name or line number)
+    let requested_order = vec![
+        "ppp_fourth".to_string(),  // 4th alphabetically
+        "aaa_first".to_string(),   // 1st alphabetically
+        "zzz_last".to_string(),    // Last alphabetically
+        "mmm_middle".to_string(),  // Middle alphabetically
+    ];
+
+    // Retrieve symbols
+    let results = db.get_symbols_by_ids(&requested_order).unwrap();
+
+    // CRITICAL ASSERTION: Results MUST match input order exactly
+    assert_eq!(
+        results.len(),
+        requested_order.len(),
+        "Should return all requested symbols"
+    );
+
+    for (i, symbol) in results.iter().enumerate() {
+        assert_eq!(
+            symbol.id, requested_order[i],
+            "Symbol at position {} should be '{}' but got '{}'. \
+             This means get_symbols_by_ids() is not preserving input order, \
+             which causes semantic search to pair similarity scores with wrong symbols!",
+            i, requested_order[i], symbol.id
+        );
+    }
+
+    println!("✅ get_symbols_by_ids() preserves input order correctly");
+}
+
+#[test]
+fn test_batch_get_embeddings_for_symbols() {
+    // RED Phase: This test will fail until we implement get_embeddings_for_symbols()
+    //
+    // Problem: Current code does N×2 queries (2 per symbol) in search_similar()
+    // Solution: Batch fetch all embeddings in 1-2 queries total
+    
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("batch_embeddings_test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // First, create dummy symbols (FK constraint requires symbols to exist first)
+    let symbols = vec![
+        Symbol {
+            id: "sym_1".to_string(),
+            name: "test1".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 10,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "sym_2".to_string(),
+            name: "test2".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 2,
+            start_column: 0,
+            end_line: 2,
+            end_column: 10,
+            start_byte: 10,
+            end_byte: 20,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "sym_3".to_string(),
+            name: "test3".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 3,
+            start_column: 0,
+            end_line: 3,
+            end_column: 10,
+            start_byte: 20,
+            end_byte: 30,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "sym_4".to_string(),
+            name: "test4".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 4,
+            start_column: 0,
+            end_line: 4,
+            end_column: 10,
+            start_byte: 30,
+            end_byte: 40,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+        Symbol {
+            id: "sym_5".to_string(),
+            name: "test5".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: 5,
+            start_column: 0,
+            end_line: 5,
+            end_column: 10,
+            start_byte: 40,
+            end_byte: 50,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        },
+    ];
+
+    // Store symbols first (satisfies FK constraint)
+    db.bulk_store_symbols(&symbols, "test_workspace").unwrap();
+
+    // Create test embeddings for the 5 symbols
+    let test_embeddings = vec![
+        ("sym_1".to_string(), vec![0.1, 0.2, 0.3, 0.4]),
+        ("sym_2".to_string(), vec![0.5, 0.6, 0.7, 0.8]),
+        ("sym_3".to_string(), vec![0.9, 1.0, 1.1, 1.2]),
+        ("sym_4".to_string(), vec![1.3, 1.4, 1.5, 1.6]),
+        ("sym_5".to_string(), vec![1.7, 1.8, 1.9, 2.0]),
+    ];
+
+    // Store embeddings in database
+    db.bulk_store_embeddings(&test_embeddings, 4, "test-model")
+        .unwrap();
+
+    // Now fetch them all in one batch call (this function doesn't exist yet!)
+    let symbol_ids = vec!["sym_1", "sym_2", "sym_3", "sym_4", "sym_5"];
+    let batch_results = db
+        .get_embeddings_for_symbols(&symbol_ids, "test-model")
+        .unwrap();
+
+    // Verify we got all 5 embeddings back
+    assert_eq!(
+        batch_results.len(),
+        5,
+        "Should return all 5 requested embeddings"
+    );
+
+    // Verify each embedding matches what we stored
+    for (symbol_id, expected_vector) in &test_embeddings {
+        let found = batch_results
+            .iter()
+            .find(|(id, _)| id == symbol_id)
+            .expect(&format!("Should find embedding for {}", symbol_id));
+
+        assert_eq!(
+            &found.1, expected_vector,
+            "Vector for {} should match stored value",
+            symbol_id
+        );
+    }
+
+    // Test with subset of IDs
+    let subset_ids = vec!["sym_2", "sym_4"];
+    let subset_results = db
+        .get_embeddings_for_symbols(&subset_ids, "test-model")
+        .unwrap();
+
+    assert_eq!(subset_results.len(), 2, "Should return only requested subset");
+
+    // Test with non-existent ID (should skip gracefully)
+    let mixed_ids = vec!["sym_1", "nonexistent", "sym_3"];
+    let mixed_results = db
+        .get_embeddings_for_symbols(&mixed_ids, "test-model")
+        .unwrap();
+
+    assert_eq!(
+        mixed_results.len(),
+        2,
+        "Should return only the 2 existing embeddings"
+    );
+    assert!(
+        mixed_results.iter().any(|(id, _)| id == "sym_1"),
+        "Should include sym_1"
+    );
+    assert!(
+        mixed_results.iter().any(|(id, _)| id == "sym_3"),
+        "Should include sym_3"
+    );
+    assert!(
+        !mixed_results.iter().any(|(id, _)| id == "nonexistent"),
+        "Should not include nonexistent ID"
+    );
+
+    println!("✅ Batch embedding fetch works correctly");
+}
+
+#[test]
+fn test_bulk_store_embeddings_validates_dimensions() {
+    // RED Phase: This test will fail because bulk_store_embeddings doesn't validate vector length
+    //
+    // Problem: Function accepts dimensions parameter but never checks vector_data.len() == dimensions
+    // This allows storing corrupted embeddings (e.g., 300-dim vector labeled as 384-dim)
+    
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("dimension_validation_test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create a dummy symbol first (FK constraint)
+    let symbol = Symbol {
+        id: "test_symbol".to_string(),
+        name: "test".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "test.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 10,
+        start_byte: 0,
+        end_byte: 10,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+    db.bulk_store_symbols(&[symbol], "test_workspace").unwrap();
+
+    // Try to store embedding with WRONG dimensions
+    // Vector has 3 elements but we claim it's 384 dimensions
+    let bad_embeddings = vec![("test_symbol".to_string(), vec![0.1, 0.2, 0.3])];
+
+    let result = db.bulk_store_embeddings(&bad_embeddings, 384, "test-model");
+
+    // Should FAIL with clear error message
+    assert!(
+        result.is_err(),
+        "Should reject embedding with wrong dimensions (got 3, expected 384)"
+    );
+
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        (err_msg.contains("dimension") || err_msg.contains("length"))
+            && err_msg.contains("3")
+            && err_msg.contains("384"),
+        "Error message should explain dimension mismatch with actual numbers, got: {}",
+        err_msg
+    );
+
+    // Also test the inverse: claiming 4 dimensions but providing 384
+    let bad_embeddings2 = vec![(
+        "test_symbol".to_string(),
+        vec![0.0; 384], // 384 elements
+    )];
+
+    let result2 = db.bulk_store_embeddings(&bad_embeddings2, 4, "test-model");
+
+    assert!(
+        result2.is_err(),
+        "Should reject embedding with wrong dimensions (got 384, expected 4)"
+    );
+
+    println!("✅ Dimension validation catches mismatched vectors");
+}
+
+#[test]
+fn test_bulk_store_embeddings_handles_multiple_models() {
+    // RED Phase: This test will fail because vector_id collisions prevent storing
+    // the same symbol with multiple models
+    //
+    // Problem: vector_id = symbol_id, but vector_id is PRIMARY KEY
+    // This means symbol_id + model "bge-small" OVERWRITES symbol_id + model "bge-large"
+    // Solution: vector_id should be composite: "{symbol_id}_{model_name}"
+    
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("multi_model_test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create a dummy symbol first (FK constraint)
+    let symbol = Symbol {
+        id: "test_symbol".to_string(),
+        name: "test".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "test.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 10,
+        start_byte: 0,
+        end_byte: 10,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+    db.bulk_store_symbols(&[symbol], "test_workspace").unwrap();
+
+    // Store embedding with model "bge-small"
+    let embeddings_small = vec![("test_symbol".to_string(), vec![0.1, 0.2, 0.3, 0.4])];
+    db.bulk_store_embeddings(&embeddings_small, 4, "bge-small")
+        .unwrap();
+
+    // Store DIFFERENT embedding with model "bge-large" for SAME symbol
+    let embeddings_large = vec![("test_symbol".to_string(), vec![0.5, 0.6, 0.7, 0.8])];
+    db.bulk_store_embeddings(&embeddings_large, 4, "bge-large")
+        .unwrap();
+
+    // Both embeddings should exist (not overwritten)
+    let small_result = db
+        .get_embedding_for_symbol("test_symbol", "bge-small")
+        .unwrap();
+    let large_result = db
+        .get_embedding_for_symbol("test_symbol", "bge-large")
+        .unwrap();
+
+    assert!(
+        small_result.is_some(),
+        "Should find bge-small embedding (shouldn't be overwritten by bge-large)"
+    );
+    assert!(
+        large_result.is_some(),
+        "Should find bge-large embedding"
+    );
+
+    // Verify they have different values
+    let small_vec = small_result.unwrap();
+    let large_vec = large_result.unwrap();
+
+    assert_eq!(small_vec, vec![0.1, 0.2, 0.3, 0.4], "bge-small should have original values");
+    assert_eq!(large_vec, vec![0.5, 0.6, 0.7, 0.8], "bge-large should have different values");
+
+    println!("✅ Multiple models per symbol work correctly (no collisions)");
+}
+
+#[test]
+fn test_embedding_serialization_roundtrip() {
+    // This test ensures that our serialization optimization maintains correctness
+    //
+    // Problem: flat_map(|f| f.to_le_bytes()).collect() is CPU-heavy
+    // Solution: Pre-allocate Vec<u8> and write directly (4 bytes per f32)
+    
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("serialization_test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create symbol (FK constraint)
+    let symbol = Symbol {
+        id: "test_symbol".to_string(),
+        name: "test".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "test.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 10,
+        start_byte: 0,
+        end_byte: 10,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+    db.bulk_store_symbols(&[symbol], "test_workspace").unwrap();
+
+    // Test with various edge cases
+    let test_vectors = vec![
+        // Normal values
+        vec![0.1, 0.2, 0.3, 0.4],
+        // Negative values
+        vec![-0.1, -0.2, -0.3, -0.4],
+        // Zero
+        vec![0.0, 0.0, 0.0, 0.0],
+        // Very small values (near epsilon)
+        vec![1e-10, 2e-10, 3e-10, 4e-10],
+        // Mix of positive, negative, zero
+        vec![1.0, -1.0, 0.0, 0.5],
+    ];
+
+    for (idx, original_vector) in test_vectors.iter().enumerate() {
+        let symbol_id = format!("test_symbol_{}", idx);
+        
+        // Create symbol for this test case
+        let test_symbol = Symbol {
+            id: symbol_id.clone(),
+            name: format!("test{}", idx),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "test.rs".to_string(),
+            start_line: idx as u32,
+            start_column: 0,
+            end_line: idx as u32,
+            end_column: 10,
+            start_byte: 0,
+            end_byte: 10,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        db.bulk_store_symbols(&[test_symbol], "test_workspace").unwrap();
+
+        // Store embedding
+        let embeddings = vec![(symbol_id.clone(), original_vector.clone())];
+        db.bulk_store_embeddings(&embeddings, 4, "test-model")
+            .unwrap();
+
+        // Retrieve and verify exact match
+        let retrieved = db
+            .get_embedding_for_symbol(&symbol_id, "test-model")
+            .unwrap()
+            .expect("Should find embedding");
+
+        assert_eq!(
+            retrieved.len(),
+            original_vector.len(),
+            "Retrieved vector should have same length"
+        );
+
+        // Check each f32 value matches exactly (bit-for-bit via serialization)
+        for (i, (original, retrieved)) in original_vector.iter().zip(retrieved.iter()).enumerate() {
+            assert_eq!(
+                original, retrieved,
+                "Vector element {} should match exactly: original={}, retrieved={}",
+                i, original, retrieved
+            );
+        }
+    }
+
+    println!("✅ Embedding serialization maintains bit-perfect roundtrip");
+}

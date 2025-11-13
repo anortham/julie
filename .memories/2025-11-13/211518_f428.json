@@ -1,0 +1,28 @@
+{
+  "id": "checkpoint_69164a66_970a42",
+  "timestamp": 1763068518,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "src/database/embeddings.rs",
+      "src/database/symbols/queries.rs",
+      "src/embeddings/loaded_index.rs",
+      "src/embeddings/vector_store.rs",
+      "src/tests/core/database.rs",
+      "src/tests/core/embeddings/mod.rs"
+    ]
+  },
+  "description": "Fixed Issue #5: Removed hard-coded 384 dimensions throughout codebase. Added dimensions field to LoadedHnswIndex struct, updated from_built_hnsw() and load() methods to accept dimensions parameter, changed search_similar() to use self.dimensions. Now supports any embedding model dimension. Full TDD cycle: RED-GREEN-REFACTOR, all 29 embedding tests + 37 database tests passing.",
+  "tags": [
+    "maintainability",
+    "embeddings",
+    "refactoring",
+    "tdd",
+    "flexibility"
+  ]
+}

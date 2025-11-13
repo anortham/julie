@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69163eee_e768b5",
+  "timestamp": 1763065582,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      "JULIE_AGENT_INSTRUCTIONS.md"
+    ]
+  },
+  "description": "Comprehensive verification of semantic search review completed. Confirmed 7 critical issues: (1) Nondeterministic result ordering in get_symbols_by_ids - WHERE id IN() with no ORDER BY causes similarity scores paired with wrong symbols; (2) Context parameter unused in embed_symbol - accepts CodeContext but ignores it; (3) Hard-coded dimensions (384) in multiple locations; (4) N×2 database hits per query - get_embedding_for_symbol does 2 queries per neighbor, 400 total for 200 neighbors; (5) Vector ID collisions across models - using symbol_id as vector_id with PRIMARY KEY overwrites when switching models; (6) CPU-heavy serialization - flat_map with to_le_bytes creates many small allocations; (7) No vector length validation before storage. Created todo list with 8 items prioritized by impact.",
+  "tags": [
+    "review",
+    "semantic-search",
+    "embeddings",
+    "performance",
+    "correctness",
+    "bug-verification"
+  ]
+}

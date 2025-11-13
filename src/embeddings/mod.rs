@@ -184,7 +184,27 @@ impl EmbeddingEngine {
         Ok(())
     }
 
-    /// Generate context-aware embedding for a symbol
+    /// Generate embedding for a symbol
+    ///
+    /// # Context Parameter (Intentionally Unused)
+    ///
+    /// The `_context` parameter is intentionally unused based on evidence-based optimization:
+    ///
+    /// **Problem**: Including code_context caused:
+    /// - 4x database growth (50MB → 203MB)
+    /// - Significantly slower embedding generation
+    /// - 88% of embedding text was noise (avg 1,304 chars of surrounding code)
+    /// - BGE-Small truncates at 512 tokens (~2KB), so most context was truncated anyway
+    ///
+    /// **Solution**: Removed code_context from embeddings (2025-11-11)
+    /// - Result: 75-88% faster embedding generation
+    /// - Search quality: Maintained (clearer semantic matching)
+    /// - Database: 80% smaller
+    ///
+    /// **Evidence**: See TODO.md lines 77-124 for full analysis
+    ///
+    /// **Note**: code_context is still stored in the database for FTS5 text search,
+    /// so it's available when needed. This is purely an embedding optimization.
     pub fn embed_symbol(&mut self, symbol: &Symbol, _context: &CodeContext) -> Result<Vec<f32>> {
         let enriched_text = self.build_embedding_text(symbol);
 

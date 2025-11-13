@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_69163e12_f4e7d8",
+  "timestamp": 1763065362,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      "JULIE_AGENT_INSTRUCTIONS.md"
+    ]
+  },
+  "description": "Updated JULIE_AGENT_INSTRUCTIONS.md with mandatory memory system section following Goldfish's forceful behavioral language patterns. Added comprehensive checkpoint/recall/plan protocols with session start requirements and integration with Julie workflows. Added fast_explore tool to Tool Reference section. Updated Quick Reference with memory tool workflows and performance expectations. This addresses critical gap where agents weren't using memory tools autonomously because server instructions never mentioned them. Used Goldfish's proven patterns: \"MANDATORY\", \"I WILL BE DISAPPOINTED\", \"NEVER ask permission\", \"recall() is USELESS without checkpointing\". Expected impact: agents will now checkpoint proactively and recall at session start without prompting.",
+  "tags": [
+    "documentation",
+    "memory-system",
+    "agent-instructions",
+    "behavioral-language",
+    "goldfish-pattern"
+  ]
+}

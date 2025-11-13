@@ -1372,3 +1372,48 @@ fn test_non_markdown_symbols_unchanged_by_markdown_optimization() {
         "Non-markdown symbols should still be embedded normally"
     );
 }
+
+#[test]
+fn test_loaded_index_uses_correct_dimensions() {
+    // This test documents that LoadedHnswIndex should respect the dimensions
+    // parameter instead of hard-coding 384
+    //
+    // Problem: search_similar() hard-codes 384 dimensions
+    // Solution: Store dimensions in LoadedHnswIndex struct
+    
+    use crate::embeddings::loaded_index::LoadedHnswIndex;
+    use hnsw_rs::prelude::*;
+
+    // Create HNSW with NON-384 dimensions (e.g., 128 for a smaller model)
+    let dimensions = 128;
+    let max_nb_connection = 16;
+    let nb_elem = 100; // Initial capacity
+    let nb_layer = 16; // Number of layers
+    let ef_construction = 200;
+    let hnsw: Hnsw<f32, DistCosine> = Hnsw::new(
+        max_nb_connection,
+        nb_elem,
+        nb_layer,
+        ef_construction,
+        DistCosine,
+    );
+
+    // Transmute to 'static (same as production code does)
+    let hnsw_static: Hnsw<'static, f32, DistCosine> = unsafe {
+        std::mem::transmute(hnsw)
+    };
+
+    // Create LoadedHnswIndex
+    let id_mapping = vec!["test_id".to_string()];
+    let loaded_index = LoadedHnswIndex::from_built_hnsw(hnsw_static, id_mapping, dimensions)
+        .unwrap();
+
+    // Verify dimensions are stored and accessible
+    assert_eq!(
+        loaded_index.get_dimensions(),
+        128,
+        "LoadedHnswIndex should store and return correct dimensions"
+    );
+
+    println!("✅ LoadedHnswIndex stores dimensions correctly (not hard-coded)");
+}

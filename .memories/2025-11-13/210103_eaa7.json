@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6916470f_5adf84",
+  "timestamp": 1763067663,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "src/database/embeddings.rs",
+      "src/database/symbols/queries.rs",
+      "src/embeddings/loaded_index.rs",
+      "src/tests/core/database.rs"
+    ]
+  },
+  "description": "Fixed Issue #2: N×2 database hit problem in semantic search. Implemented batch embedding fetching with get_embeddings_for_symbols() using single JOIN query. Performance improvement: 400 queries → 1 query for 200 neighbors (400x improvement). Full TDD cycle: RED-GREEN-REFACTOR, all 35 database tests + 46 semantic tests passing.",
+  "tags": [
+    "performance",
+    "semantic-search",
+    "database",
+    "tdd",
+    "optimization"
+  ]
+}

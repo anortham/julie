@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6916453e_f8a3ed",
+  "timestamp": 1763067198,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "src/database/symbols/queries.rs",
+      "src/tests/core/database.rs"
+    ]
+  },
+  "description": "Fixed Issue #1: Result ordering nondeterminism in get_symbols_by_ids. Added ORDER BY CASE statement to preserve input order, preventing semantic search from pairing similarity scores with wrong symbols. Used full TDD cycle (RED-GREEN-REFACTOR). Test: test_get_symbols_by_ids_preserves_order, all 34 database tests passing.",
+  "tags": [
+    "bug",
+    "semantic-search",
+    "database",
+    "tdd",
+    "critical-fix"
+  ]
+}

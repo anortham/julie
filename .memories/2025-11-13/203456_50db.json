@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_691640f0_ac8561",
+  "timestamp": 1763066096,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "17d1472",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_release-v151-memory-system-bug-fixes.json",
+      "JULIE_AGENT_INSTRUCTIONS.md"
+    ]
+  },
+  "description": "Plan created for semantic search review fixes. Rejected Issue #7 (context parameter) based on evidence from TODO.md showing we already tested code_context inclusion (2025-11-11) and it caused 4x database growth (50MB→203MB) and significantly slower embedding generation with no quality improvement. BGE-Small truncates at 512 tokens so most context was wasted. Removing context gave 75-88% speed improvement while maintaining search quality. Parameter kept with underscore prefix as intentional design. Prioritized remaining 6 issues: #1 ordering bug (critical-wrong results), #2 N×2 queries (performance cliff), #3 validation (crash prevention), #4 model collisions (architecture), #5 hard-coded dimensions (maintainability), #6 serialization (micro-opt).",
+  "tags": [
+    "planning",
+    "semantic-search",
+    "embeddings",
+    "evidence-based",
+    "optimization"
+  ]
+}
