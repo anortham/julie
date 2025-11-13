@@ -210,13 +210,14 @@ fn test_analyze_vendor_patterns_detects_minified_concentration() {
 #[test]
 fn test_analyze_vendor_patterns_ignores_low_minified_concentration() {
     let tool = create_tool();
+    // Use "compiled" instead of "build" since "build" is now a recognized vendor directory
     let (temp_dir, files) = create_workspace_with_files(vec![
-        "build/app.min.js",
-        "build/vendor.min.js",
-        "build/styles.min.css", // 3 minified files (needs >10)
-        "build/source1.js",
-        "build/source2.js",
-        "build/source3.js",
+        "compiled/app.min.js",
+        "compiled/vendor.min.js",
+        "compiled/styles.min.css", // 3 minified files (needs >10)
+        "compiled/source1.js",
+        "compiled/source2.js",
+        "compiled/source3.js",
     ]);
 
     let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
@@ -228,31 +229,32 @@ fn test_analyze_vendor_patterns_ignores_low_minified_concentration() {
 #[test]
 fn test_analyze_vendor_patterns_ignores_minified_below_50_percent() {
     let tool = create_tool();
+    // Use "compiled" instead of "build" since "build" is now a recognized vendor directory
     let (temp_dir, files) = create_workspace_with_files(vec![
-        "build/app.min.js",
-        "build/vendor.min.js",
-        "build/styles.min.css",
-        "build/bootstrap.min.css",
-        "build/jquery.min.js",
-        "build/angular.min.js",
-        "build/lodash.min.js",
-        "build/moment.min.js",
-        "build/react.min.js",
-        "build/vue.min.js",
-        "build/axios.min.js", // 11 minified files (>10) ✓
+        "compiled/app.min.js",
+        "compiled/vendor.min.js",
+        "compiled/styles.min.css",
+        "compiled/bootstrap.min.css",
+        "compiled/jquery.min.js",
+        "compiled/angular.min.js",
+        "compiled/lodash.min.js",
+        "compiled/moment.min.js",
+        "compiled/react.min.js",
+        "compiled/vue.min.js",
+        "compiled/axios.min.js", // 11 minified files (>10) ✓
         // But add 11+ non-minified files to drop below 50%
-        "build/source1.js",
-        "build/source2.js",
-        "build/source3.js",
-        "build/source4.js",
-        "build/source5.js",
-        "build/source6.js",
-        "build/source7.js",
-        "build/source8.js",
-        "build/source9.js",
-        "build/source10.js",
-        "build/source11.js",
-        "build/source12.js", // 23 total, 11/23 = 47% (<50%)
+        "compiled/source1.js",
+        "compiled/source2.js",
+        "compiled/source3.js",
+        "compiled/source4.js",
+        "compiled/source5.js",
+        "compiled/source6.js",
+        "compiled/source7.js",
+        "compiled/source8.js",
+        "compiled/source9.js",
+        "compiled/source10.js",
+        "compiled/source11.js",
+        "compiled/source12.js", // 23 total, 11/23 = 47% (<50%)
     ]);
 
     let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
@@ -478,4 +480,61 @@ fn test_vendor_detection_full_workflow() {
 
     assert!(content.contains("Scripts/libs/"), "Should have correct pattern format");
     assert!(!content.contains("Scripts/libs/**"), "Should NOT use /** format");
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BUG REPRODUCTION: Blacklisted vendor directories not detected
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Test: discover_indexable_files should create .julieignore for blacklisted vendor dirs
+///
+/// BUG: When a workspace has directories that are BOTH in BLACKLISTED_DIRECTORIES
+/// (like target/, vendor/, node_modules/) AND contain many files (vendor pattern),
+/// the .julieignore file should still be created with those patterns.
+///
+/// CURRENT BEHAVIOR: discover_indexable_files filters out blacklisted dirs BEFORE
+/// analyzing for vendor patterns, so these directories are never detected and
+/// .julieignore is never created.
+///
+/// EXPECTED BEHAVIOR: Even though these dirs are in the hardcoded blacklist,
+/// we should still detect them as vendor patterns and create .julieignore so
+/// users can see what's being excluded and modify it if needed.
+#[test]
+fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs() {
+    let tool = create_tool();
+
+    // Create workspace with target/ directory (blacklisted AND vendor pattern)
+    let (temp_dir, _files) = create_workspace_with_files(vec![
+        "src/main.rs",
+        "src/lib.rs",
+        "target/debug/deps/file1.rlib",
+        "target/debug/deps/file2.rlib",
+        "target/debug/deps/file3.rlib",
+        "target/debug/deps/file4.rlib",
+        "target/debug/deps/file5.rlib",
+        "target/debug/deps/file6.rlib", // >5 files should trigger vendor detection
+        "target/debug/deps/file7.rlib",
+        "target/debug/deps/file8.rlib",
+    ]);
+
+    // Call discover_indexable_files (simulates first workspace scan)
+    let _indexable_files = tool.discover_indexable_files(temp_dir.path())
+        .expect("Failed to discover files");
+
+    // Verify .julieignore was created
+    let julieignore_path = temp_dir.path().join(".julieignore");
+    assert!(
+        julieignore_path.exists(),
+        "Expected .julieignore to be created for blacklisted vendor directory target/"
+    );
+
+    // Verify it contains the target/ pattern
+    let content = std::fs::read_to_string(&julieignore_path)
+        .expect("Failed to read .julieignore");
+
+    assert!(
+        content.contains("target/"),
+        "Expected .julieignore to contain 'target/' pattern. Content:\n{}",
+        content
+    );
 }

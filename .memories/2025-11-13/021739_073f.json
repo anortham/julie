@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_69153fc3_f464ee",
+  "timestamp": 1763000259,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "8375d15",
+    "dirty": true,
+    "files_changed": [
+      ".julieignore",
+      "src/tests/tools/workspace/discovery.rs",
+      "src/tools/workspace/discovery.rs"
+    ]
+  },
+  "description": "Fixed .julieignore auto-generation bug: Vendor directories like target/, node_modules/, build/ are now detected and added to .julieignore even though they're in the hardcoded blacklist. Two fixes: (1) Pass empty HashSet instead of blacklisted_dirs during initial vendor scan so all directories are analyzed, (2) Expanded vendor directory pattern matching to include target, node_modules, build, dist, out, bin, obj, Debug, Release, packages, bower_components. Updated 2 test fixtures from build/ to compiled/ to avoid false positives. Test test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs now passes.",
+  "tags": [
+    "bug-fix",
+    "julieignore",
+    "vendor-detection",
+    "tdd",
+    "workspace-indexing"
+  ]
+}

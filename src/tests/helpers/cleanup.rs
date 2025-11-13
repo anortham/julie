@@ -54,7 +54,8 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
     let is_temp_dir = path_str.starts_with("/tmp/")
         || path_str.starts_with("/var/folders/")  // macOS temp
         || path_str.contains(r"\AppData\Local\Temp\")  // Windows temp
-        || path_str.contains("/fixtures/test-workspaces/");  // Test fixtures are safe
+        || path_str.contains("/fixtures/test-workspaces/")  // Test fixtures (Unix)
+        || path_str.contains(r"\fixtures\test-workspaces\");  // Test fixtures (Windows)
 
     if !is_temp_dir {
         panic!(

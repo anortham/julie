@@ -24,10 +24,12 @@ impl ManageWorkspaceTool {
             info!("🤖 No .julieignore found - scanning for vendor patterns...");
 
             // Step 1: Collect ALL files first (including minified for vendor pattern detection)
+            // 🔧 BUG FIX: Use empty dir blacklist so we can detect vendor patterns in
+            // directories like target/, vendor/, node_modules/ that are normally blacklisted
             let mut all_files = Vec::new();
             self.walk_directory_recursive(
                 workspace_path,
-                &blacklisted_dirs,
+                &HashSet::new(), // Empty blacklist - scan everything for vendor detection
                 &blacklisted_exts,
                 max_file_size,
                 &[], // No custom ignores yet
@@ -319,9 +321,13 @@ impl ManageWorkspaceTool {
         for (dir, _) in &dir_stats {
             // First check the directory itself
             if let Some(dir_name) = dir.file_name().and_then(|n| n.to_str()) {
+                // 🔧 BUG FIX: Include all common build output and vendor directories
+                // that are normally blacklisted (target, node_modules, vendor, etc.)
                 if matches!(
                     dir_name,
                     "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
+                    | "target" | "node_modules" | "build" | "dist" | "out"
+                    | "bin" | "obj" | "Debug" | "Release" | "packages" | "bower_components"
                 ) {
                     vendor_candidates.insert(dir.to_path_buf());
                 }
@@ -338,6 +344,8 @@ impl ManageWorkspaceTool {
                     if matches!(
                         dir_name,
                         "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
+                        | "target" | "node_modules" | "build" | "dist" | "out"
+                        | "bin" | "obj" | "Debug" | "Release" | "packages" | "bower_components"
                     ) {
                         vendor_candidates.insert(parent.to_path_buf());
                     }
