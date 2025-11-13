@@ -153,6 +153,49 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 ---
 
+## 🐛 Debugging & Monitoring
+
+### 🚨 LOG LOCATION (STOP LOOKING IN THE WRONG PLACE!)
+
+**Logs are PROJECT-LEVEL, not user-level!**
+
+**CORRECT log location:**
+```
+/Users/murphy/source/julie/.julie/logs/julie.log.2025-11-13
+```
+
+**WRONG** (don't look here):
+```
+~/.julie/logs/  ← THIS DOES NOT EXIST!
+~/Library/Logs/ ← System logs only (crash reports)
+~/.config/Julie/ ← Wrong location
+```
+
+**When checking logs, ALWAYS use:**
+```bash
+# Primary workspace logs (use date for current day)
+tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
+
+# Check embedding/indexing progress
+tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "HNSW|embedding|Background"
+
+# View recent errors
+tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
+
+# List all log files
+ls -lh .julie/logs/
+```
+
+**Directory Structure:**
+```
+.julie/logs/
+├── julie.log.2025-11-13    # Current day (dated files)
+├── julie.log.2025-11-12    # Previous day
+└── julie.log.2025-11-11    # Older logs
+```
+
+---
+
 ## 🏗️ Architecture Principles (Brief)
 
 ### Core Design Decisions

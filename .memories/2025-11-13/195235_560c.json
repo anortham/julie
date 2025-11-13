@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69163703_1bf6ff",
+  "timestamp": 1763063555,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "902b83f",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs"
+    ]
+  },
+  "description": "Validated markdown empty heading optimization in production. After reindexing with new code: 545 embeddings created (only content-bearing symbols), 123 empty structural headings correctly skipped, achieving 18.4% embedding reduction. Semantic search working correctly - query \"add language support\" successfully found relevant documentation with rich content. No empty headings appearing in search results. Optimization confirms RAG principle: skip metadata, embed content only.",
+  "tags": [
+    "embeddings",
+    "markdown",
+    "optimization",
+    "validation",
+    "production"
+  ]
+}

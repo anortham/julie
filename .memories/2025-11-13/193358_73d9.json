@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_691632a6_f71efd",
+  "timestamp": 1763062438,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "902b83f",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs"
+    ]
+  },
+  "description": "Implemented markdown empty heading skip optimization for cleaner semantic embeddings. Skip embedding markdown headings without doc_comment (structural dividers like \"## Core Features\"), consistent with memory JSON optimization. Added 4 comprehensive tests: with content (embedded), empty (skipped), empty string (skipped), and non-markdown unchanged. All 25 embedding tests pass. Expected 18-22% reduction in markdown embeddings with clearer semantic signal. Rationale: RAG philosophy - \"One concept per embedding\" means skip metadata, embed content only.",
+  "tags": [
+    "embeddings",
+    "markdown",
+    "optimization",
+    "rag",
+    "tdd"
+  ]
+}

@@ -3,7 +3,7 @@
 
 use crate::database::SymbolDatabase;
 use crate::embeddings::{cosine_similarity, CodeContext, EmbeddingEngine};
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -1150,5 +1150,225 @@ fn test_memory_embedding_handles_missing_tags() {
         !embedding_text.contains("tags: |"),
         "Should not have empty tags section. Got: '{}'",
         embedding_text
+    );
+}
+
+// ============================================================================
+// Markdown Embeddings Tests - Skip Empty Headings (NEW)
+// ============================================================================
+
+#[test]
+fn test_markdown_heading_with_content_is_embedded() {
+    // CONTRACT: Markdown headings with doc_comment should be embedded normally
+    let symbol = Symbol {
+        id: "test_md_with_content".to_string(),
+        name: "Quick Start".to_string(),
+        kind: SymbolKind::Module,
+        language: "markdown".to_string(),
+        file_path: "docs/README.md".to_string(),
+        start_line: 5,
+        start_column: 0,
+        end_line: 10,
+        end_column: 0,
+        start_byte: 100,
+        end_byte: 500,
+        signature: None,
+        doc_comment: Some("Follow these steps to get started with Julie. First, install the dependencies...".to_string()),
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: Some("documentation".to_string()),
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should include heading name
+    assert!(
+        embedding_text.contains("Quick Start"),
+        "Should include heading name. Got: '{}'",
+        embedding_text
+    );
+
+    // Should include documentation content
+    assert!(
+        embedding_text.contains("Follow these steps"),
+        "Should include doc content. Got: '{}'",
+        embedding_text
+    );
+
+    // Should NOT be empty
+    assert!(
+        !embedding_text.is_empty(),
+        "Should not be empty for markdown with content"
+    );
+}
+
+#[test]
+fn test_markdown_empty_heading_is_skipped() {
+    // CONTRACT: Markdown headings WITHOUT doc_comment should be skipped (return empty string)
+    // This is consistent with memory JSON optimization where we skip metadata symbols
+    let symbol = Symbol {
+        id: "test_md_empty".to_string(),
+        name: "Core Search Tools".to_string(),
+        kind: SymbolKind::Module,
+        language: "markdown".to_string(),
+        file_path: "docs/README.md".to_string(),
+        start_line: 15,
+        start_column: 0,
+        end_line: 16,
+        end_column: 0,
+        start_byte: 600,
+        end_byte: 650,
+        signature: None,
+        doc_comment: None, // No content under this heading
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: Some("documentation".to_string()),
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should return empty string to skip embedding
+    assert!(
+        embedding_text.is_empty(),
+        "Should return empty string for markdown heading without content. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_markdown_empty_string_doc_comment_is_skipped() {
+    // CONTRACT: Empty string doc_comment should also be skipped
+    let symbol = Symbol {
+        id: "test_md_empty_string".to_string(),
+        name: "Implementation Details".to_string(),
+        kind: SymbolKind::Module,
+        language: "markdown".to_string(),
+        file_path: "docs/ARCHITECTURE.md".to_string(),
+        start_line: 20,
+        start_column: 0,
+        end_line: 21,
+        end_column: 0,
+        start_byte: 800,
+        end_byte: 850,
+        signature: None,
+        doc_comment: Some("".to_string()), // Empty string
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: Some("documentation".to_string()),
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should return empty string for empty doc_comment
+    assert!(
+        embedding_text.is_empty(),
+        "Should return empty string for markdown heading with empty doc_comment. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_non_markdown_symbols_unchanged_by_markdown_optimization() {
+    // CONTRACT: Non-markdown symbols should not be affected by markdown optimization
+    let symbol = Symbol {
+        id: "test_rust_fn".to_string(),
+        name: "process_data".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/processor.rs".to_string(),
+        start_line: 42,
+        start_column: 0,
+        end_line: 50,
+        end_column: 0,
+        start_byte: 1200,
+        end_byte: 1500,
+        signature: Some("fn process_data(input: &str) -> Result<String>".to_string()),
+        doc_comment: None, // No doc comment
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should still embed name, kind, signature for non-markdown
+    assert!(
+        embedding_text.contains("process_data"),
+        "Should include function name. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("function"),
+        "Should include kind. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("Result<String>"),
+        "Should include signature. Got: '{}'",
+        embedding_text
+    );
+
+    // Should NOT be empty (markdown optimization doesn't affect other languages)
+    assert!(
+        !embedding_text.is_empty(),
+        "Non-markdown symbols should still be embedded normally"
     );
 }

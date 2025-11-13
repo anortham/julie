@@ -1,0 +1,24 @@
+{
+  "id": "learning_6916389a_2cc810",
+  "timestamp": 1763063962,
+  "type": "learning",
+  "git": {
+    "branch": "main",
+    "commit": "902b83f",
+    "dirty": true,
+    "files_changed": [
+      "CLAUDE.md",
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs"
+    ]
+  },
+  "description": "Updated CLAUDE.md to document log file locations (.julie/logs/) after repeatedly looking in wrong places (~/Library/Logs, ~/.julie/logs). Identified meta-pattern: should use Julie's semantic search to find documentation instead of guessing locations. Added comprehensive log location section with correct paths, wrong paths to avoid, and monitoring commands copied from CLAUDE.md.archive. Learning: Use fast_search with semantic mode on docs/**/*.md to find operational information instead of defaulting to old habits of guessing file paths.",
+  "tags": [
+    "documentation",
+    "logs",
+    "debugging",
+    "learning",
+    "claude-md",
+    "semantic-search"
+  ]
+}

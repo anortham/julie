@@ -694,6 +694,17 @@ impl EmbeddingEngine {
             return self.build_memory_embedding_text(symbol);
         }
 
+        // 2025-11-13 Phase 3: Skip markdown headings without content
+        // Markdown headings with no doc_comment are structural dividers (e.g., "## Core Features")
+        // Rationale: Consistent with memory JSON optimization - skip metadata, embed content only
+        // Expected: 18-22% reduction in markdown embeddings, clearer semantic signal
+        if symbol.language == "markdown" {
+            // Skip if doc_comment is None OR empty string
+            if symbol.doc_comment.is_none() || symbol.doc_comment.as_ref().map(|d| d.is_empty()).unwrap_or(false) {
+                return String::new(); // Empty = skip embedding
+            }
+        }
+
         // Standard code symbol embedding
         let mut parts = vec![symbol.name.clone(), symbol.kind.to_string()];
 
