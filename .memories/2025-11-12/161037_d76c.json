@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_6914b17d_b78dfe",
+  "timestamp": 1762963837,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "cda4808",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "Fixed tokio runtime deadlock during large file indexing - wrapped tree-sitter parsing + symbol extraction in spawn_blocking, added 30s timeout and progress logging for slow files like demo-data.js (158KB) and dygraph-combined.js (413KB)",
+  "tags": [
+    "bugfix",
+    "performance",
+    "tokio",
+    "async",
+    "indexing"
+  ]
+}

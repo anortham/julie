@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_6914c401_d6a08c",
+  "timestamp": 1762968577,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "cda4808",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/workspace/mod.rs"
+    ]
+  },
+  "description": "Added automatic .julieignore file creation during workspace initialization. File is created in workspace root with default patterns for common build artifacts, IDE files, and large data files. Only creates if file doesn't exist (won't overwrite user customizations).",
+  "tags": [
+    "feature",
+    "workspace",
+    "initialization",
+    "ignore-patterns"
+  ]
+}

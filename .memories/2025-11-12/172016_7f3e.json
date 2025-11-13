@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_6914c1d0_df1e6f",
+  "timestamp": 1762968016,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "cda4808",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "Added 100KB file size limit for symbol extraction - discovered tokio::time::timeout doesn't work with spawn_blocking (can't interrupt OS threads doing CPU work). Files >100KB now skip symbol extraction but still indexed for text search. Fixes hang on demo-data.js (158KB) and dygraph-combined.js (413KB).",
+  "tags": [
+    "bugfix",
+    "performance",
+    "indexing",
+    "tokio",
+    "limits"
+  ]
+}

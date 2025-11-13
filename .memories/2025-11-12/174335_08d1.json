@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_6914c747_f01522",
+  "timestamp": 1762969415,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "cda4808",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/extractor.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/workspace/mod.rs"
+    ]
+  },
+  "description": "Fixed .julieignore creation for existing workspaces (was only created for new workspaces). Also cleaned up excessive DEBUG logging from troubleshooting - removed noisy info! logs, kept timing logs at debug! level only for slow files (>50ms parse or >100ms extraction).",
+  "tags": [
+    "bugfix",
+    "logging",
+    "workspace",
+    "cleanup"
+  ]
+}

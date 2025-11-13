@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6914a31e_7e9a14",
+  "timestamp": 1762960158,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "cda4808",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "Fixed critical tokio runtime deadlock in indexing caused by blocking filesystem I/O in async functions. Wrapped canonicalize, std::fs::read_to_string, and create_file_info in spawn_blocking for both process_file_with_parser and process_file_without_parser. Also eliminated triple file reads, fixed bundle.js detection in is_minified_file(), and added Drop implementations for OrtEmbeddingModel and EmbeddingEngine to log GPU memory cleanup. Bug discovered in PsychiatricIntake workspace (481 files with 854KB bundle.js causing silent hang). Fix tested successfully - indexing completes in ~6s for 769 files, embeddings generate in 62s.",
+  "tags": [
+    "bug-fix",
+    "tokio",
+    "blocking-io",
+    "indexing",
+    "gpu-memory"
+  ]
+}
