@@ -17,7 +17,7 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
 pub(crate) mod formatting; // Exposed for testing
-mod hybrid_search;
+pub(crate) mod hybrid_search; // Exposed for testing
 mod line_mode;
 mod query;
 pub mod query_preprocessor; // Public for testing
@@ -236,6 +236,8 @@ impl FastSearchTool {
                     &self.file_pattern,
                     self.limit,
                     workspace_ids,
+                    &self.search_target,
+                    self.context_lines,
                     handler,
                 )
                 .await?

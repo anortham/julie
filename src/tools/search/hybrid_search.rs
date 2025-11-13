@@ -22,6 +22,8 @@ pub async fn hybrid_search_impl(
     file_pattern: &Option<String>,
     limit: u32,
     workspace_ids: Option<Vec<String>>,
+    search_target: &str,
+    context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
     debug!("🔄 Hybrid search mode (text + semantic fusion)");
@@ -35,8 +37,8 @@ pub async fn hybrid_search_impl(
             file_pattern,
             limit,
             workspace_ids.clone(),
-            "symbols", // Hybrid search is for finding symbols
-            None,      // context_lines: use default
+            search_target,  // Use provided search_target (was hardcoded "symbols")
+            context_lines,  // Use provided context_lines (was hardcoded None)
             handler
         ),
         crate::tools::search::semantic_search::semantic_search_impl(

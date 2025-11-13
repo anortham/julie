@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6916103a_5afb6d",
+  "timestamp": 1763053626,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "202904b",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tools/search/hybrid_search.rs",
+      "src/tools/search/mod.rs"
+    ]
+  },
+  "description": "Implemented enhanced memory embeddings with tags and file terms. Memory embeddings now include searchable tags (e.g., 'performance', 'indexing') and extracted file terms (e.g., 'embeddings', 'ort_model', 'workspace') from files_changed arrays. Format: '{type}: {description} | tags: {tags} | files: {file_terms}'. Fixed tree-sitter line number prefix stripping bug in JSON array extraction. All 10 embedding tests pass. This enables much better memory search recall - users can now search for 'performance' and find all tagged memories, or 'embeddings' and find memories about work on embedding-related files. Ready to reindex memories to apply new format.",
+  "tags": [
+    "embeddings",
+    "memory-system",
+    "search-quality",
+    "tags",
+    "files-changed",
+    "tdd"
+  ]
+}

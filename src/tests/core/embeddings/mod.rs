@@ -476,15 +476,12 @@ fn test_memory_embedding_text_checkpoint() {
         embedding_text
     );
 
-    // Should NOT contain JSON structure noise
+    // Should NOT contain JSON structure noise (metadata fields)
     assert!(
         !embedding_text.contains("timestamp"),
         "Should not include timestamp field"
     );
-    assert!(
-        !embedding_text.contains("tags"),
-        "Should not include tags field"
-    );
+    // Note: tags ARE now included as searchable terms (not as JSON structure)
 }
 
 #[test]
@@ -819,6 +816,339 @@ fn test_memory_embedding_handles_escaped_quotes() {
     assert!(
         embedding_text.starts_with("checkpoint:"),
         "Should still have type prefix. Got: '{}'",
+        embedding_text
+    );
+}
+
+// ============================================================================
+// Enhanced Memory Embeddings Tests - Tags and File Terms (NEW)
+// ============================================================================
+
+#[test]
+fn test_memory_embedding_includes_tags() {
+    // CONTRACT: Memory embeddings should include tags for better searchability
+    // Format: "{type}: {description} | tags: {tag1} {tag2} {tag3}"
+
+    let symbol = Symbol {
+        id: "test_mem_with_tags".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-13/test.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 200,
+        start_byte: 100,
+        end_byte: 300,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        // Full memory JSON with tags array
+        code_context: Some(r#"      2:   "id": "checkpoint_abc123",
+      3:   "timestamp": 1762971017,
+      4:   "type": "checkpoint",
+  ➤   5:   "description": "Added 100KB file size limit for symbol extraction",
+      6:   "tags": [
+      7:     "performance",
+      8:     "file-size-limit",
+      9:     "indexing"
+     10:   ]"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should include description
+    assert!(
+        embedding_text.contains("Added 100KB file size limit"),
+        "Should include description. Got: '{}'",
+        embedding_text
+    );
+
+    // Should include tags section
+    assert!(
+        embedding_text.contains("tags:") || embedding_text.contains("| tags"),
+        "Should have tags section. Got: '{}'",
+        embedding_text
+    );
+
+    // Should include individual tag terms (searchable)
+    assert!(
+        embedding_text.contains("performance"),
+        "Should include 'performance' tag. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("file-size-limit"),
+        "Should include 'file-size-limit' tag. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("indexing"),
+        "Should include 'indexing' tag. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_memory_embedding_includes_file_terms() {
+    // CONTRACT: Memory embeddings should extract semantic terms from files_changed
+    // Format: "{type}: {description} | tags: {tags} | files: {extracted_terms}"
+
+    let symbol = Symbol {
+        id: "test_mem_with_files".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-13/test.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 200,
+        start_byte: 100,
+        end_byte: 300,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        // Full memory JSON with git.files_changed array
+        code_context: Some(r#"      2:   "id": "checkpoint_def456",
+      3:   "type": "checkpoint",
+      4:   "git": {
+      5:     "files_changed": [
+      6:       "src/embeddings/mod.rs",
+      7:       "src/embeddings/ort_model.rs",
+      8:       "src/tools/workspace/indexing/extractor.rs"
+      9:     ]
+     10:   },
+  ➤  11:   "description": "Optimized embedding generation performance",
+     12:   "tags": ["performance"]"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should include files section
+    assert!(
+        embedding_text.contains("files:") || embedding_text.contains("| files"),
+        "Should have files section. Got: '{}'",
+        embedding_text
+    );
+
+    // Should include extracted file terms (not full paths!)
+    assert!(
+        embedding_text.contains("embeddings"),
+        "Should extract 'embeddings' term. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("ort_model"),
+        "Should extract 'ort_model' term. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("workspace"),
+        "Should extract 'workspace' term. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("indexing"),
+        "Should extract 'indexing' term. Got: '{}'",
+        embedding_text
+    );
+    assert!(
+        embedding_text.contains("extractor"),
+        "Should extract 'extractor' term. Got: '{}'",
+        embedding_text
+    );
+
+    // Should NOT include noise terms
+    assert!(
+        !embedding_text.contains("src/") && !embedding_text.contains("mod.rs"),
+        "Should NOT include path noise like 'src/' or 'mod.rs'. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_memory_embedding_full_format_with_tags_and_files() {
+    // CONTRACT: Complete format test with tags AND files
+    // Expected: "{type}: {description} | tags: {tags} | files: {file_terms}"
+
+    let symbol = Symbol {
+        id: "test_mem_complete".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-13/complete_test.json".to_string(),
+        start_line: 5,
+        start_column: 2,
+        end_line: 5,
+        end_column: 200,
+        start_byte: 100,
+        end_byte: 300,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(r#"      2:   "id": "decision_789",
+      3:   "type": "decision",
+      4:   "git": {
+      5:     "files_changed": [
+      6:       "src/database/schema.rs",
+      7:       "src/database/symbols/mod.rs"
+      8:     ]
+      9:   },
+  ➤  10:   "description": "Chose SQLite FTS5 for search performance",
+     11:   "tags": ["architecture", "database", "performance"]"#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Verify complete format structure
+    assert!(
+        embedding_text.starts_with("decision:"),
+        "Should start with type prefix. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("Chose SQLite FTS5"),
+        "Should include description. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("tags:"),
+        "Should have tags section. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("architecture") &&
+        embedding_text.contains("database") &&
+        embedding_text.contains("performance"),
+        "Should include all tags. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("files:"),
+        "Should have files section. Got: '{}'",
+        embedding_text
+    );
+
+    assert!(
+        embedding_text.contains("schema") &&
+        embedding_text.contains("symbols"),
+        "Should include extracted file terms. Got: '{}'",
+        embedding_text
+    );
+
+    // Verify order: description comes before tags/files
+    let desc_pos = embedding_text.find("SQLite").unwrap();
+    let tags_pos = embedding_text.find("tags:").unwrap();
+    assert!(
+        desc_pos < tags_pos,
+        "Description should come before tags. Got: '{}'",
+        embedding_text
+    );
+}
+
+#[test]
+fn test_memory_embedding_handles_missing_tags() {
+    // CONTRACT: Should gracefully handle memories without tags field
+
+    let symbol = Symbol {
+        id: "test_mem_no_tags".to_string(),
+        name: "description".to_string(),
+        kind: SymbolKind::Variable,
+        language: "json".to_string(),
+        file_path: ".memories/2025-11-13/no_tags.json".to_string(),
+        start_line: 3,
+        start_column: 2,
+        end_line: 3,
+        end_column: 100,
+        start_byte: 50,
+        end_byte: 150,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(r#"      2:   "type": "checkpoint",
+  ➤   3:   "description": "Quick fix for bug""#.to_string()),
+        content_type: None,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let db = create_test_db();
+
+    let engine = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
+        })
+    }).join().unwrap().unwrap();
+
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // Should still work without tags
+    assert!(
+        embedding_text.contains("Quick fix for bug"),
+        "Should include description even without tags. Got: '{}'",
+        embedding_text
+    );
+
+    // Should not have empty tags section
+    assert!(
+        !embedding_text.contains("tags:  |") &&
+        !embedding_text.contains("tags: |"),
+        "Should not have empty tags section. Got: '{}'",
         embedding_text
     );
 }

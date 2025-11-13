@@ -739,12 +739,31 @@ impl EmbeddingEngine {
         let type_value = self.extract_json_string_value(&symbol.code_context, "type")
             .unwrap_or_else(|| "checkpoint".to_string()); // Default to "checkpoint" if type not found
 
-        // Build focused embedding: "{type}: {description}"
+        // Extract tags for searchability
+        let tags = self.extract_json_array_value(&symbol.code_context, "tags");
+
+        // Extract semantic terms from files_changed
+        let file_terms = self.extract_file_terms(&symbol.code_context);
+
+        // Build enhanced embedding: "{type}: {description} | tags: {tags} | files: {file_terms}"
         // Examples:
-        // - "checkpoint: Fixed auth bug by adding mutex"
-        // - "decision: Chose SQLite over PostgreSQL for simplicity"
-        // - "learning: BGE-Small truncates at 512 tokens"
-        format!("{}: {}", type_value, description_value)
+        // - "checkpoint: Fixed auth bug | tags: bugfix security | files: auth middleware"
+        // - "decision: Chose SQLite over PostgreSQL | tags: architecture database | files: schema migrations"
+        let mut parts = vec![format!("{}: {}", type_value, description_value)];
+
+        // Add tags if present
+        if let Some(tag_list) = tags {
+            if !tag_list.is_empty() {
+                parts.push(format!("tags: {}", tag_list.join(" ")));
+            }
+        }
+
+        // Add file terms if present
+        if let Some(terms) = file_terms {
+            parts.push(format!("files: {}", terms));
+        }
+
+        parts.join(" | ")
     }
 
     /// Extract a JSON string value from code_context field
@@ -782,6 +801,168 @@ impl EmbeddingEngine {
                     let mut deserializer = serde_json::Deserializer::from_str(value_start);
                     if let Ok(value) = String::deserialize(&mut deserializer) {
                         return Some(value);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract a JSON array value from code_context field
+    ///
+    /// Memory symbols have code_context with arrays like:
+    /// ```
+    ///   6:   "tags": [
+    ///   7:     "performance",
+    ///   8:     "file-size-limit",
+    ///   9:     "indexing"
+    ///  10:   ]
+    /// ```
+    ///
+    /// This extracts the array values as a Vec<String>
+    fn extract_json_array_value(&self, code_context: &Option<String>, key: &str) -> Option<Vec<String>> {
+        let context = code_context.as_ref()?;
+
+        // Find the line containing the key with array start
+        // Format: "  6:   "tags": ["
+        let search_pattern = format!("\"{}\": [", key);
+
+        for (i, line) in context.lines().enumerate() {
+            if line.contains(&search_pattern) {
+                // Collect lines until we find the closing bracket
+                let mut array_lines = Vec::new();
+                let lines: Vec<&str> = context.lines().collect();
+
+                for j in i..lines.len() {
+                    // Strip line number prefix (e.g., "  ➤   5:   " or "      6:   ")
+                    // Format: optional spaces, optional arrow, line number, colon, spaces, then JSON
+                    let cleaned = if let Some(colon_pos) = lines[j].find(':') {
+                        // Skip past first colon (line number) and any leading spaces
+                        &lines[j][colon_pos + 1..].trim_start()
+                    } else {
+                        lines[j]
+                    };
+
+                    array_lines.push(cleaned);
+                    if cleaned.contains(']') {
+                        break;
+                    }
+                }
+
+                // Join lines to form valid JSON
+                let array_json = array_lines.join("\n");
+
+                // Find where the array starts (after the key)
+                if let Some(key_idx) = array_json.find(&search_pattern) {
+                    let value_start = &array_json[key_idx + search_pattern.len() - 1..]; // Include the '['
+
+                    // Parse as JSON array
+                    use serde::Deserialize;
+                    let mut deserializer = serde_json::Deserializer::from_str(value_start);
+                    if let Ok(values) = Vec::<String>::deserialize(&mut deserializer) {
+                        return Some(values);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract semantic terms from file paths in git.files_changed
+    ///
+    /// Extracts meaningful domain terms from file paths while filtering noise:
+    /// - Input: ["src/embeddings/mod.rs", "src/tools/workspace/indexing.rs"]
+    /// - Output: "embeddings tools workspace indexing"
+    ///
+    /// Filters out: src/, lib/, test/, tests/, mod.rs, index.ts, file extensions
+    fn extract_file_terms(&self, code_context: &Option<String>) -> Option<String> {
+        let context = code_context.as_ref()?;
+
+        // Look for git.files_changed array nested in the JSON
+        // Format: "git": { "files_changed": ["path1", "path2"] }
+
+        // First find if there's a "files_changed" key
+        if !context.contains("\"files_changed\"") {
+            return None;
+        }
+
+        // Extract the files_changed array
+        let search_pattern = "\"files_changed\": [";
+
+        for (i, line) in context.lines().enumerate() {
+            if line.contains(search_pattern) {
+                // Collect lines until closing bracket
+                let mut array_lines = Vec::new();
+                let lines: Vec<&str> = context.lines().collect();
+
+                for j in i..lines.len() {
+                    // Strip line number prefix (same as extract_json_array_value)
+                    let cleaned = if let Some(colon_pos) = lines[j].find(':') {
+                        &lines[j][colon_pos + 1..].trim_start()
+                    } else {
+                        lines[j]
+                    };
+
+                    array_lines.push(cleaned);
+                    if cleaned.contains(']') {
+                        break;
+                    }
+                }
+
+                // Join and parse
+                let array_json = array_lines.join("\n");
+
+                if let Some(key_idx) = array_json.find(search_pattern) {
+                    let value_start = &array_json[key_idx + search_pattern.len() - 1..];
+
+                    use serde::Deserialize;
+                    let mut deserializer = serde_json::Deserializer::from_str(value_start);
+                    if let Ok(files) = Vec::<String>::deserialize(&mut deserializer) {
+                        // Extract semantic terms from file paths
+                        use std::collections::HashSet;
+                        use std::path::Path;
+
+                        let mut terms = HashSet::new();
+
+                        for file in files {
+                            let path = Path::new(&file);
+
+                            for component in path.iter() {
+                                let comp = component.to_string_lossy().to_string();
+
+                                // Skip common non-semantic terms
+                                if matches!(comp.as_str(),
+                                    "src" | "lib" | "test" | "tests" |
+                                    "mod.rs" | "index.ts" | "index.js" |
+                                    "main.rs" | "main.ts" | "app.ts"
+                                ) {
+                                    continue;
+                                }
+
+                                // Remove file extensions
+                                let without_ext = comp
+                                    .trim_end_matches(".rs")
+                                    .trim_end_matches(".ts")
+                                    .trim_end_matches(".js")
+                                    .trim_end_matches(".tsx")
+                                    .trim_end_matches(".jsx")
+                                    .trim_end_matches(".py");
+
+                                if !without_ext.is_empty() && without_ext.len() > 1 {
+                                    terms.insert(without_ext.to_string());
+                                }
+                            }
+                        }
+
+                        if terms.is_empty() {
+                            return None;
+                        }
+
+                        let mut terms_vec: Vec<String> = terms.into_iter().collect();
+                        terms_vec.sort(); // Consistent ordering
+                        return Some(terms_vec.join(" "));
                     }
                 }
             }
