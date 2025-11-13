@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_691520e6_b6917f",
+  "timestamp": 1762992358,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "2d92edd",
+    "dirty": true
+  },
+  "description": "Released v1.7.4 with complete fix for .julieignore auto-generation. Fixed 4 critical bugs: (1) removed workspace init conflict that created generic .julieignore before vendor detection, (2) added ancestor-walking to detect empty parent directories like plugin/ with 103 files in subdirs, (3) also check directories themselves not just ancestors to handle libs/ with 6 direct files, (4) added skip_minified_check flag to defer minified filtering until after vendor detection so libs/ counts all 6 files not just 2. Real-world tested on SurgeryScheduling workspace, now correctly detects all 3 vendor directories. Feature is production-ready for legacy codebases.",
+  "tags": [
+    "release",
+    "bugfix",
+    "julieignore",
+    "vendor-detection",
+    "v1.7.4"
+  ]
+}
