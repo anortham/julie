@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6915447a_a3a729",
+  "timestamp": 1763001466,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "8375d15",
+    "dirty": true,
+    "files_changed": [
+      ".julieignore",
+      "src/tests/helpers/cleanup.rs",
+      "src/tests/tools/workspace/discovery.rs",
+      "src/tools/workspace/discovery.rs"
+    ]
+  },
+  "description": "Fixed Windows path separator bug in test cleanup safety checks: Added support for backslash path separators (\\fixtures\\test-workspaces\\) in addition to forward slashes. This resolved 3 of 4 test failures (FTS5 minimal corruption tests and reference workspace tests). Remaining failures are Windows file locking concurrency issues (pass with --test-threads=1). Test suite now at 1733/1736 passing (99.8%).",
+  "tags": [
+    "bug-fix",
+    "windows",
+    "test-infrastructure",
+    "path-separators",
+    "cleanup"
+  ]
+}

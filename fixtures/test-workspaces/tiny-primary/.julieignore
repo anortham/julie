@@ -1,0 +1,26 @@
+# Julie ignore patterns
+# Add files and directories that Julie should skip during indexing
+# Supports glob patterns like .gitignore
+
+# Common build artifacts
+node_modules/
+target/
+build/
+dist/
+out/
+bin/
+obj/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Large data files
+*.log
+*.db
+*.sqlite
+
+# Minified/bundled files are automatically detected by extension
+# but you can add specific paths here if needed
