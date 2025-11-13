@@ -137,8 +137,8 @@ impl JulieWorkspace {
         let config = WorkspaceConfig::default();
         Self::save_config(&julie_dir, &config)?;
 
-        // Create default .julieignore in workspace root (if it doesn't exist)
-        Self::create_default_julieignore(&root)?;
+        // .julieignore creation now handled by discovery.rs during indexing
+        // (auto-generates with smart vendor detection instead of generic template)
 
         let mut workspace = Self {
             root,
@@ -182,8 +182,8 @@ impl JulieWorkspace {
                 info!("Found existing Julie workspace at: {}", root.display());
                 debug!("🔍 DEBUG: Workspace root will be: {}", root.display());
 
-                // Create default .julieignore if it doesn't exist (for existing workspaces)
-                Self::create_default_julieignore(&root)?;
+                // .julieignore creation now handled by discovery.rs during indexing
+                // (auto-generates with smart vendor detection instead of generic template)
 
                 // Load configuration
                 let config = Self::load_config(&julie_path)?;
@@ -266,51 +266,6 @@ impl JulieWorkspace {
             .map_err(|e| anyhow!("Failed to write config file: {}", e))?;
 
         debug!("Saved configuration to: {}", config_path.display());
-        Ok(())
-    }
-
-    /// Create default .julieignore file in workspace root (if it doesn't exist)
-    fn create_default_julieignore(workspace_root: &Path) -> Result<()> {
-        let julieignore_path = workspace_root.join(".julieignore");
-
-        // Only create if it doesn't exist (don't overwrite user customizations)
-        if julieignore_path.exists() {
-            debug!(".julieignore already exists at: {}", julieignore_path.display());
-            return Ok(());
-        }
-
-        let default_content = "# Julie ignore patterns
-# Add files and directories that Julie should skip during indexing
-# Supports glob patterns like .gitignore
-
-# Common build artifacts
-node_modules/
-target/
-build/
-dist/
-out/
-bin/
-obj/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Large data files
-*.log
-*.db
-*.sqlite
-
-# Minified/bundled files are automatically detected by extension
-# but you can add specific paths here if needed
-";
-
-        fs::write(&julieignore_path, default_content)
-            .map_err(|e| anyhow!("Failed to create .julieignore: {}", e))?;
-
-        info!("Created default .julieignore at: {}", julieignore_path.display());
         Ok(())
     }
 

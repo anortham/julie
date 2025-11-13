@@ -23,7 +23,7 @@ impl ManageWorkspaceTool {
         } else {
             info!("🤖 No .julieignore found - scanning for vendor patterns...");
 
-            // Step 1: Collect ALL files first (no filtering yet)
+            // Step 1: Collect ALL files first (including minified for vendor pattern detection)
             let mut all_files = Vec::new();
             self.walk_directory_recursive(
                 workspace_path,
@@ -32,6 +32,7 @@ impl ManageWorkspaceTool {
                 max_file_size,
                 &[], // No custom ignores yet
                 &mut all_files,
+                true, // Skip minified check - need all files for vendor detection
             )?;
 
             info!("📊 Discovered {} files total after hardcoded filters", all_files.len());
@@ -68,6 +69,7 @@ impl ManageWorkspaceTool {
             max_file_size,
             &custom_ignores,
             &mut indexable_files,
+            false, // Filter minified files for actual indexing
         )?;
 
         debug!("📊 File discovery summary:");
@@ -85,6 +87,7 @@ impl ManageWorkspaceTool {
         max_file_size: u64,
         custom_ignores: &[String],
         indexable_files: &mut Vec<PathBuf>,
+        skip_minified_check: bool,
     ) -> Result<()> {
         let entries = fs::read_dir(dir_path)
             .map_err(|e| anyhow::anyhow!("Failed to read directory {:?}: {}", dir_path, e))?;
@@ -121,10 +124,11 @@ impl ManageWorkspaceTool {
                     max_file_size,
                     custom_ignores,
                     indexable_files,
+                    skip_minified_check,
                 )?;
             } else if path.is_file() {
                 // Check file extension and size
-                if self.should_index_file(&path, blacklisted_exts, max_file_size)? {
+                if self.should_index_file(&path, blacklisted_exts, max_file_size, skip_minified_check)? {
                     // 🔥 CRITICAL: Canonicalize paths to resolve symlinks (macOS /var -> /private/var)
                     // This ensures file reads work correctly downstream
                     let canonical_path = path.canonicalize().unwrap_or(path);
@@ -142,9 +146,11 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         blacklisted_exts: &HashSet<&str>,
         max_file_size: u64,
+        skip_minified_check: bool,
     ) -> Result<bool> {
         // Skip minified files (they're generated, not source code)
-        if self.is_minified_file(file_path) {
+        // BUT: don't skip when collecting files for vendor pattern analysis
+        if !skip_minified_check && self.is_minified_file(file_path) {
             debug!("⏭️  Skipping minified file: {}", file_path.display());
             return Ok(false);
         }
@@ -307,44 +313,86 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Detect vendor directories with high confidence
-        for (dir, stats) in dir_stats {
-            let dir_name = dir
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+        // Build a set of all ancestor directories to check (including those with no direct files)
+        let mut vendor_candidates: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
 
-            // High confidence: Directory name indicates vendor code
-            if matches!(
-                dir_name,
-                "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
-            ) {
-                if stats.file_count > 5 {
-                    let pattern = self.dir_to_pattern(&dir, workspace_root);
+        for (dir, _) in &dir_stats {
+            // First check the directory itself
+            if let Some(dir_name) = dir.file_name().and_then(|n| n.to_str()) {
+                if matches!(
+                    dir_name,
+                    "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
+                ) {
+                    vendor_candidates.insert(dir.to_path_buf());
+                }
+            }
+
+            // Then check all ancestors of this directory
+            let mut current = dir.as_path();
+            while let Some(parent) = current.parent() {
+                if parent == workspace_root {
+                    break;
+                }
+
+                if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
+                    if matches!(
+                        dir_name,
+                        "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
+                    ) {
+                        vendor_candidates.insert(parent.to_path_buf());
+                    }
+                }
+                current = parent;
+            }
+        }
+
+        // For each vendor candidate directory, count files recursively
+        for vendor_dir in vendor_candidates {
+            let recursive_count: usize = dir_stats
+                .iter()
+                .filter(|(subdir, _)| subdir.starts_with(&vendor_dir))
+                .map(|(_, s)| s.file_count)
+                .sum();
+
+            let pattern = self.dir_to_pattern(&vendor_dir, workspace_root);
+            info!("🔍 Checking vendor candidate: {} (recursive_count: {})", pattern, recursive_count);
+
+            if recursive_count > 5 {
+                info!(
+                    "📦 Detected vendor directory: {} ({} files recursively)",
+                    pattern, recursive_count
+                );
+                patterns.push(pattern);
+            }
+        }
+
+        // Now check directories in dir_stats for medium-confidence patterns
+        for (dir, stats) in &dir_stats {
+            // Medium confidence: Lots of vendor-named files
+            if stats.jquery_count > 3 || stats.bootstrap_count > 2 {
+                let pattern = self.dir_to_pattern(&dir, workspace_root);
+
+                // Skip if already covered by a parent pattern
+                if !patterns.iter().any(|p| pattern.starts_with(p)) {
                     info!(
-                        "📦 Detected vendor directory: {} ({} files)",
-                        pattern, stats.file_count
+                        "📦 Detected library directory: {} (jquery/bootstrap files)",
+                        pattern
                     );
                     patterns.push(pattern);
                 }
             }
-            // Medium confidence: Lots of vendor-named files
-            else if stats.jquery_count > 3 || stats.bootstrap_count > 2 {
-                let pattern = self.dir_to_pattern(&dir, workspace_root);
-                info!(
-                    "📦 Detected library directory: {} (jquery/bootstrap files)",
-                    pattern
-                );
-                patterns.push(pattern);
-            }
             // Medium confidence: High concentration of minified files
             else if stats.minified_count > 10 && stats.minified_count > stats.file_count / 2 {
                 let pattern = self.dir_to_pattern(&dir, workspace_root);
-                info!(
-                    "📦 Detected minified code directory: {} ({} minified files)",
-                    pattern, stats.minified_count
-                );
-                patterns.push(pattern);
+
+                // Skip if already covered by a parent pattern
+                if !patterns.iter().any(|p| pattern.starts_with(p)) {
+                    info!(
+                        "📦 Detected minified code directory: {} ({} minified files)",
+                        pattern, stats.minified_count
+                    );
+                    patterns.push(pattern);
+                }
             }
         }
 
