@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691758ba_efa12b",
+  "timestamp": 1763137722,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true
+  },
+  "description": "Validated all 5 GPT5.1 semantic search findings through code inspection. Finding #1: File watcher calls embed_symbols_batch() but discards result (handlers.rs:146-161), no HNSW update. Finding #2: ensure_vector_store() early-returns if initialized (handler.rs:103-104), build_and_save_hnsw_index() creates local VectorStore that's dropped (embeddings.rs:419-467). Finding #3: get_symbols_without_embeddings() LEFT JOIN doesn't filter un-embeddable symbols (search.rs:98), markdown headings/memory symbols return empty from build_embedding_text() but stay queued. Finding #4: load_all_embeddings() creates HashMap<String, Vec<f32>> (embeddings.rs:357-377), 153MB+ for 100k symbols. Finding #5: semantic_search_impl() requests (limit*5).min(200) from HNSW (semantic_search.rs:368), filters AFTER fetching (lines 486-505), can under-deliver when filters discard candidates. All findings 100% accurate per actual code.",
+  "tags": [
+    "semantic-search",
+    "code-review",
+    "validation",
+    "audit"
+  ]
+}

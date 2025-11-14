@@ -21,7 +21,7 @@ pub async fn handle_file_created_or_modified_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     embeddings: &Arc<RwLock<Option<EmbeddingEngine>>>,
     extractor_manager: &Arc<ExtractorManager>,
-    _vector_store: Option<&Arc<RwLock<VectorIndex>>>,
+    vector_store: Option<&Arc<RwLock<VectorIndex>>>,
     workspace_root: &Path,
 ) -> Result<()> {
     info!("Processing file: {}", path.display());
@@ -127,12 +127,14 @@ pub async fn handle_file_created_or_modified_static(
         db_lock.commit_transaction()?;
     }
 
-    // 5. Update embeddings cache (non-blocking background task)
-    // Note: We only update the embedding cache, NOT the HNSW index
-    // CASCADE architecture: SQLite is single source of truth, HNSW rebuilt on demand
+    // 5. Generate and persist embeddings (non-blocking background task)
+    // BUG #1 FIX: Persist embeddings to SQLite and update HNSW index
+    // CASCADE architecture: SQLite is single source of truth, HNSW updated incrementally
     let embeddings_clone = embeddings.clone();
     let symbols_for_embedding = symbols.clone();
     let path_for_log = path.clone();
+    let db_clone = db.clone();
+    let vector_store_clone = vector_store.cloned();
 
     tokio::spawn(async move {
         debug!(
@@ -144,16 +146,47 @@ pub async fn handle_file_created_or_modified_static(
         let mut embedding_guard = embeddings_clone.write().await;
         if let Some(ref mut engine) = embedding_guard.as_mut() {
             match engine.embed_symbols_batch(&symbols_for_embedding) {
-                Ok(_) => {
+                Ok(embeddings) => {
                     debug!(
-                        "✅ Cached embeddings for {} symbols in {}",
+                        "✅ Generated embeddings for {} symbols in {}",
                         symbols_for_embedding.len(),
                         path_for_log.display()
                     );
+
+                    // BUG #1 FIX: Persist embeddings to SQLite
+                    let dimensions = engine.dimensions();
+                    let model_name = engine.model_name();
+
+                    // Persist to database (scope ensures lock is dropped before await)
+                    {
+                        let mut db_lock = match db_clone.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                warn!("Database mutex poisoned during embedding persistence: {}", poisoned);
+                                poisoned.into_inner()
+                            }
+                        };
+
+                        if let Err(e) = db_lock.bulk_store_embeddings(&embeddings, dimensions, model_name) {
+                            warn!("⚠️ Failed to persist embeddings for {}: {}", path_for_log.display(), e);
+                        } else {
+                            debug!("💾 Persisted {} embeddings to SQLite", embeddings.len());
+                        }
+                    } // db_lock dropped here, before any await
+
+                    // BUG #1 FIX: Update HNSW index incrementally
+                    if let Some(ref vector_store) = vector_store_clone {
+                        let mut store_write = vector_store.write().await;
+                        if let Err(e) = store_write.insert_batch(&embeddings) {
+                            warn!("⚠️ Failed to update HNSW index for {}: {}", path_for_log.display(), e);
+                        } else {
+                            debug!("🔄 Updated HNSW index with {} vectors", embeddings.len());
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!(
-                        "⚠️ Failed to cache embeddings for {}: {}",
+                        "⚠️ Failed to generate embeddings for {}: {}",
                         path_for_log.display(),
                         e
                     );

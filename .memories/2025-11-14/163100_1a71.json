@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_69175944_231bf2",
+  "timestamp": 1763137860,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true
+  },
+  "description": "Created comprehensive remediation plan for 5 confirmed semantic search issues. Prioritized as P0 (critical): #1 file watcher doesn't persist embeddings, #2 vector store never refreshed after rebuild; P1 (quality): #3 un-embeddable symbols queued forever, #5 filtering under-delivers results; P2 (scalability): #4 HNSW rebuild memory usage. Detailed 2-sprint implementation roadmap: Sprint 1 fixes critical accuracy gaps (file watcher persistence + vector reload mechanism, 3-4 days), Sprint 2 improves quality (SQL filtering + dynamic widening, 2-3 days). Includes concrete code solutions, test strategies, rollout plan, and success metrics. Document: docs/SEMANTIC_SEARCH_REMEDIATION_PLAN.md (356 lines).",
+  "tags": [
+    "remediation-plan",
+    "semantic-search",
+    "roadmap",
+    "architecture"
+  ]
+}

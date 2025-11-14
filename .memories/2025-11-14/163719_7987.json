@@ -1,0 +1,20 @@
+{
+  "id": "checkpoint_69175abf_098421",
+  "timestamp": 1763138239,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/mod.rs"
+    ]
+  },
+  "description": "Completed TDD RED phase for Bug #2 (vector store reload). Created comprehensive failing test in src/tests/integration/vector_store_reload.rs that reproduces the bug: manual reindex builds new HNSW and saves to disk but in-memory vector store never refreshes. Test verifies that semantic search returns stale results after reindex (without restart). Includes 3 test scenarios: (1) vector store reload after manual reindex, (2) staleness detection via on-disk timestamp, (3) concurrent search safety during reload. Test compiles successfully, marked #[ignore] until fix implemented. Registered in src/tests/mod.rs. Ready for GREEN phase (implementation).",
+  "tags": [
+    "tdd",
+    "bug-2",
+    "vector-store",
+    "test"
+  ]
+}

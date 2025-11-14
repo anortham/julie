@@ -94,8 +94,17 @@ impl SymbolDatabase {
             .map(|col| format!("s.{}", col))
             .collect::<Vec<_>>()
             .join(", ");
+
+        // BUG #3 FIX: Filter out un-embeddable symbols
+        // - Markdown headings without doc comments (build_embedding_text returns empty)
+        // - Memory JSON symbols except "description" (build_embedding_text returns empty)
         let query = format!(
-            "SELECT {} FROM symbols s LEFT JOIN embeddings e ON s.id = e.symbol_id WHERE e.symbol_id IS NULL ORDER BY s.file_path, s.start_line",
+            "SELECT {} FROM symbols s
+             LEFT JOIN embeddings e ON s.id = e.symbol_id
+             WHERE e.symbol_id IS NULL
+               AND NOT (s.language = 'markdown' AND (s.doc_comment IS NULL OR s.doc_comment = ''))
+               AND NOT (s.file_path LIKE '.memories/%' AND s.name != 'description')
+             ORDER BY s.file_path, s.start_line",
             columns_with_prefix
         );
         let mut stmt = self.conn.prepare(&query)?;

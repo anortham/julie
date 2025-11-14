@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_69176236_613d70",
+  "timestamp": 1763140150,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/vector_store.rs",
+      "src/tests/mod.rs",
+      "src/tools/search/semantic_search.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Fixed Bug #1 (P0): File watcher now persists embeddings to SQLite and updates HNSW index incrementally. File edits are now immediately visible in semantic search without manual reindex. Implementation: Modified handlers.rs to capture embeddings from embed_symbols_batch(), persist via bulk_store_embeddings(), and update HNSW with insert_batch(). All 1747 tests passing, zero regressions.",
+  "tags": [
+    "bug-fix",
+    "P0",
+    "semantic-search",
+    "file-watcher",
+    "embeddings",
+    "HNSW"
+  ]
+}

@@ -130,8 +130,12 @@ pub mod integration {
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
+    pub mod semantic_filtering; // Semantic search filtering under-delivery tests (Finding #5 fix)
     pub mod stale_index_detection; // Stale index detection tests
+    pub mod un_embeddable_symbols; // Un-embeddable symbols SQL filtering tests (Bug #3 fix)
+    pub mod vector_store_reload; // Vector store reload mechanism tests (Bug #2 fix)
     pub mod watcher; // File watcher tests
+    pub mod watcher_embeddings; // File watcher embeddings persistence tests (Bug #1 fix)
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
     pub mod tracing; // Tracing integration tests (dogfooding tests)

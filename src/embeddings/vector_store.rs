@@ -9,6 +9,7 @@ use anyhow::Result;
 use hnsw_rs::prelude::*; // Includes Hnsw, DistCosine, and other distance metrics
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
 const HNSW_MAX_LAYERS: usize = 16; // hnsw_rs NB_LAYER_MAX; required for dump persistence
 
@@ -31,6 +32,9 @@ pub struct VectorStore {
     /// Loaded HNSW index with its IO wrapper (safe lifecycle management)
     /// LoadedHnswIndex keeps HnswIo alive alongside Hnsw to satisfy lifetime requirements
     loaded_index: Option<LoadedHnswIndex>,
+    /// Timestamp when the HNSW index was last loaded from disk
+    /// Used for staleness detection - if on-disk files are newer, we reload
+    load_time: Option<SystemTime>,
 }
 
 impl VectorStore {
@@ -39,6 +43,7 @@ impl VectorStore {
         Ok(Self {
             dimensions,
             loaded_index: None,
+            load_time: None,
         })
     }
 
@@ -46,6 +51,13 @@ impl VectorStore {
     #[allow(dead_code)]
     pub(crate) fn get_dimensions(&self) -> usize {
         self.dimensions
+    }
+
+    /// Get the timestamp when HNSW index was last loaded from disk
+    /// Returns None if index hasn't been loaded yet
+    /// Used for staleness detection (Bug #2 fix)
+    pub fn get_load_time(&self) -> Option<SystemTime> {
+        self.load_time
     }
 
     // ========================================================================
@@ -226,6 +238,8 @@ impl VectorStore {
         let filename = "hnsw_index";
         let index = LoadedHnswIndex::load(path, filename, self.dimensions)?;
         self.loaded_index = Some(index);
+        // Record load time for staleness detection (Bug #2 fix)
+        self.load_time = Some(SystemTime::now());
         Ok(())
     }
 

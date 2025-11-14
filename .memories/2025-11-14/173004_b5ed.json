@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6917671c_23646c",
+  "timestamp": 1763141404,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true,
+    "files_changed": [
+      "src/database/symbols/search.rs",
+      "src/embeddings/vector_store.rs",
+      "src/tests/mod.rs",
+      "src/tools/search/semantic_search.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Fixed Finding #5 (P1): Semantic search filtering under-delivery. Implemented dynamic widening loop with 3-attempt retry strategy (50→100→200→500 candidates). Search now delivers full requested limit even when filters are restrictive. Added integration tests in semantic_filtering.rs. All 1748 tests passing, zero regressions. Files: semantic_search.rs (lines 404-603), semantic_filtering.rs (new), docs/SEMANTIC_SEARCH_REMEDIATION_PLAN.md (4/5 complete).",
+  "tags": [
+    "bug-fix",
+    "P1",
+    "semantic-search",
+    "filtering",
+    "dynamic-widening",
+    "performance"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_69175b68_477840",
+  "timestamp": 1763138408,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/vector_store.rs",
+      "src/tests/mod.rs",
+      "src/tools/search/semantic_search.rs"
+    ]
+  },
+  "description": "Completed Bug #2 fix implementation (TDD GREEN phase). Added load_time: Option<SystemTime> field to VectorStore struct (vector_store.rs:37), updated load_hnsw_index() to record SystemTime::now() on line 235, added get_load_time() public getter (line 59-61). Implemented staleness detection in semantic_search_impl() (semantic_search.rs:309-345): checks hnsw_index.hnsw.graph file mtime vs in-memory load_time, reloads if on-disk is newer. Uses read lock to check staleness, upgrades to write lock only for reload operation. Graceful degradation: continues with stale index if reload fails. Code compiles successfully with no errors. Ready for test verification.",
+  "tags": [
+    "tdd",
+    "bug-2",
+    "fix",
+    "vector-store",
+    "reload"
+  ]
+}

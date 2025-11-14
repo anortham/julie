@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69175ba2_e1fd51",
+  "timestamp": 1763138466,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b5f84ce",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/vector_store.rs",
+      "src/tests/mod.rs",
+      "src/tools/search/semantic_search.rs"
+    ]
+  },
+  "description": "Bug #2 FIX COMPLETE: Vector store reload mechanism verified. Full test suite passes (1747/1747 tests, 0 failures, 49 ignored). Implementation adds timestamp-based staleness detection: semantic search checks if on-disk hnsw_index.hnsw.graph is newer than in-memory load_time, automatically reloads if stale. Changes: (1) VectorStore.load_time field tracks when HNSW loaded, (2) load_hnsw_index() records SystemTime::now(), (3) semantic_search_impl() checks mtime vs load_time before each search, reloads atomically with write lock if needed. Zero regressions confirmed. Users can now run manual reindex and see fresh semantic results WITHOUT restart. Ready for production.",
+  "tags": [
+    "bug-2",
+    "complete",
+    "verified",
+    "production-ready"
+  ]
+}

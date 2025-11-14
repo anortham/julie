@@ -306,6 +306,44 @@ pub async fn semantic_search_impl(
         }
     };
 
+    // BUG #2 FIX: Check if on-disk HNSW is newer than in-memory version
+    // If so, reload to get fresh semantic search results
+    let vectors_dir = primary_workspace.workspace_vectors_path(&target_workspace_id);
+    let hnsw_graph_file = vectors_dir.join("hnsw_index.hnsw.graph");
+
+    if hnsw_graph_file.exists() {
+        // Check if on-disk HNSW is newer than in-memory load time
+        if let Ok(metadata) = hnsw_graph_file.metadata() {
+            if let Ok(on_disk_mtime) = metadata.modified() {
+                // Get current in-memory load time
+                let store_guard = vector_store.read().await;
+                let in_memory_load_time = store_guard.get_load_time();
+                drop(store_guard); // Release read lock
+
+                // Reload if on-disk is newer (or if we've never loaded before)
+                let should_reload = match in_memory_load_time {
+                    None => true, // Never loaded, definitely reload
+                    Some(load_time) => on_disk_mtime > load_time,
+                };
+
+                if should_reload {
+                    debug!("♻️ Detected stale vector store, reloading from disk...");
+                    let mut store_write = vector_store.write().await;
+                    match store_write.load_hnsw_index(&vectors_dir) {
+                        Ok(_) => {
+                            debug!("✅ Vector store reloaded successfully");
+                        }
+                        Err(e) => {
+                            warn!("⚠️ Failed to reload vector store: {}", e);
+                            // Continue with stale index rather than failing completely
+                        }
+                    }
+                    drop(store_write); // Release write lock
+                }
+            }
+        }
+    }
+
     // Ensure embedding engine is initialized for query embedding
     handler.ensure_embedding_engine().await?;
 
@@ -363,16 +401,18 @@ pub async fn semantic_search_impl(
         embedding_engine.embed_symbol(&query_symbol, &context)?
     };
 
-    // Use HNSW index for fast similarity search
-    // Search for more results than needed to allow filtering
-    let search_limit = (limit * 5).min(200) as usize;
+    // Use HNSW index for fast similarity search with dynamic widening
+    // Start with 5x limit, retry with larger limits if filtering under-delivers
     let similarity_threshold = 0.3; // Minimum similarity score
+    const MAX_ATTEMPTS: usize = 3;
+    const MAX_SEARCH_LIMIT: usize = 500; // Cap to prevent excessive memory usage
 
     let store_guard = vector_store.read().await;
 
     // Check if HNSW index is available (graceful degradation to text search)
     if !store_guard.has_hnsw_index() {
         debug!("⚠️ HNSW index not available - falling back to text search");
+        drop(store_guard);
         return crate::tools::search::text_search::text_search_impl(
             query,
             language,
@@ -386,123 +426,171 @@ pub async fn semantic_search_impl(
         .await;
     }
 
-    // CASCADE Architecture: Fetch vectors from SQLite on-demand during HNSW search
-    // We need to access the database within the async context, so use tokio::task::block_in_place
-    let semantic_results = match tokio::task::block_in_place(|| {
-        let db_lock = db.lock().map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
-        let model_name = "bge-small"; // Match the embedding model
-        store_guard.search_similar_hnsw(
-            &db_lock,
-            &query_embedding,
-            search_limit,
-            similarity_threshold,
-            model_name,
-        )
-    }) {
-        Ok(results) => results,
-        Err(e) => {
-            warn!(
-                "Semantic similarity search failed: {} - falling back to text search",
-                e
-            );
-            return crate::tools::search::text_search::text_search_impl(
-                query,
-                language,
-                file_pattern,
-                limit,
-                workspace_ids,
-                "symbols", // Semantic fallback searches symbols
-                None,      // context_lines: use default
-                handler,
+    // Dynamic widening loop: retry with larger search_limit if filtering under-delivers
+    let mut search_limit = (limit * 5).min(200) as usize;
+    let mut attempt = 0;
+    let mut filtered_symbols: Vec<Symbol> = Vec::new();
+
+    while filtered_symbols.len() < limit as usize && attempt < MAX_ATTEMPTS {
+        attempt += 1;
+
+        // CASCADE Architecture: Fetch vectors from SQLite on-demand during HNSW search
+        // We need to access the database within the async context, so use tokio::task::block_in_place
+        let semantic_results = match tokio::task::block_in_place(|| {
+            let db_lock =
+                db.lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+            let model_name = "bge-small"; // Match the embedding model
+            store_guard.search_similar_hnsw(
+                &db_lock,
+                &query_embedding,
+                search_limit,
+                similarity_threshold,
+                model_name,
             )
-            .await;
+        }) {
+            Ok(results) => results,
+            Err(e) => {
+                warn!(
+                    "Semantic similarity search failed: {} - falling back to text search",
+                    e
+                );
+                drop(store_guard);
+                return crate::tools::search::text_search::text_search_impl(
+                    query,
+                    language,
+                    file_pattern,
+                    limit,
+                    workspace_ids,
+                    "symbols", // Semantic fallback searches symbols
+                    None,      // context_lines: use default
+                    handler,
+                )
+                .await;
+            }
+        };
+
+        debug!(
+            "🔍 HNSW search (attempt {}/{}) returned {} candidates (limit: {}, threshold: {})",
+            attempt, MAX_ATTEMPTS, semantic_results.len(), search_limit, similarity_threshold
+        );
+
+        // Extract symbol IDs from similarity results
+        let symbol_ids: Vec<String> = semantic_results
+            .iter()
+            .map(|result| result.symbol_id.clone())
+            .collect();
+
+        if symbol_ids.is_empty() {
+            debug!("No similar symbols found by HNSW search");
+            break;
         }
-    };
+
+        // Fetch actual symbols from database (batched query for efficiency)
+        // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
+        // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
+        let symbols = match tokio::task::block_in_place(|| {
+            let db_lock =
+                db.lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+            db_lock.get_symbols_by_ids(&symbol_ids)
+        }) {
+            Ok(syms) => syms,
+            Err(e) => {
+                warn!("Failed to fetch symbols from database: {}", e);
+                break;
+            }
+        };
+
+        // Apply multi-factor quality scoring to rerank results
+        // Factors: symbol kind, doc comments, language quality, generic names, vendor status
+        // Documented symbols rank higher than generic boilerplate (e.g., C# class > HTML tag)
+        let mut scored_symbols: Vec<(Symbol, f32)> = symbols
+            .into_iter()
+            .zip(semantic_results.iter())
+            .map(|(symbol, result)| {
+                let score = result.similarity_score;
+
+                // Apply all boost factors (symbol kind, docs, language, generic penalty, vendor)
+                let final_score = apply_all_boosts(&symbol, score);
+
+                (symbol, final_score)
+            })
+            .collect();
+
+        // Re-sort by adjusted scores (higher is better)
+        // Use unwrap_or(Equal) to gracefully handle NaN values instead of panicking
+        scored_symbols
+            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Extract symbols after re-ranking
+        let symbols: Vec<Symbol> = scored_symbols
+            .into_iter()
+            .map(|(symbol, _)| symbol)
+            .collect();
+
+        // Apply filters (language, file_pattern)
+        filtered_symbols = symbols
+            .into_iter()
+            .filter(|symbol| {
+                // Apply language filter if specified
+                let language_match = language
+                    .as_ref()
+                    .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
+                    .unwrap_or(true);
+
+                // CRITICAL FIX: Use proper glob matching instead of contains()
+                // This now correctly handles patterns like "src/**/*.rs", "!**/target/*", etc.
+                let file_match = file_pattern
+                    .as_ref()
+                    .map(|pattern| matches_glob_pattern(&symbol.file_path, pattern))
+                    .unwrap_or(true);
+
+                language_match && file_match
+            })
+            .collect();
+
+        // Check if we have enough results after filtering
+        if filtered_symbols.len() >= limit as usize {
+            debug!(
+                "✅ Dynamic widening succeeded: {} filtered results (requested: {})",
+                filtered_symbols.len(),
+                limit
+            );
+            break;
+        }
+
+        // If we don't have enough results and haven't reached max attempts, widen search
+        if attempt < MAX_ATTEMPTS {
+            let previous_limit = search_limit;
+            search_limit = (search_limit * 2).min(MAX_SEARCH_LIMIT);
+
+            if search_limit == previous_limit {
+                // Hit the cap, can't widen further
+                debug!(
+                    "⚠️ Reached max search limit ({}) but only got {} results after filtering (requested: {})",
+                    MAX_SEARCH_LIMIT, filtered_symbols.len(), limit
+                );
+                break;
+            }
+
+            debug!(
+                "⚡ Dynamic widening: {} filtered results < {} requested, retrying with search_limit={}",
+                filtered_symbols.len(), limit, search_limit
+            );
+        }
+    }
+
     drop(store_guard);
 
-    let used_hnsw = true; // Always using HNSW in the new architecture
-
-    if used_hnsw {
+    // If still under-delivered after max attempts, log a warning
+    if filtered_symbols.len() < limit as usize && attempt == MAX_ATTEMPTS {
         debug!(
-            "🔍 HNSW search returned {} candidates (threshold: {})",
-            semantic_results.len(),
-            similarity_threshold
-        );
-    } else {
-        debug!(
-            "⚠️ Using brute-force semantic search ({} candidates, threshold: {})",
-            semantic_results.len(),
-            similarity_threshold
+            "⚠️ Dynamic widening exhausted {} attempts but only delivered {} results (requested: {}). \
+             Filters may be too restrictive or more matches may not exist.",
+            MAX_ATTEMPTS, filtered_symbols.len(), limit
         );
     }
-
-    // Extract symbol IDs from similarity results
-    let symbol_ids: Vec<String> = semantic_results
-        .iter()
-        .map(|result| result.symbol_id.clone())
-        .collect();
-
-    if symbol_ids.is_empty() {
-        debug!("No similar symbols found by HNSW search");
-        return Ok(Vec::new());
-    }
-
-    // Fetch actual symbols from database (batched query for efficiency)
-    // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
-    // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
-    let symbols = tokio::task::block_in_place(|| {
-        let db_lock = db
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
-        db_lock.get_symbols_by_ids(&symbol_ids)
-    })?;
-
-    // Apply multi-factor quality scoring to rerank results
-    // Factors: symbol kind, doc comments, language quality, generic names, vendor status
-    // Documented symbols rank higher than generic boilerplate (e.g., C# class > HTML tag)
-    let mut scored_symbols: Vec<(Symbol, f32)> = symbols
-        .into_iter()
-        .zip(semantic_results.iter())
-        .map(|(symbol, result)| {
-            let score = result.similarity_score;
-
-            // Apply all boost factors (symbol kind, docs, language, generic penalty, vendor)
-            let final_score = apply_all_boosts(&symbol, score);
-
-            (symbol, final_score)
-        })
-        .collect();
-
-    // Re-sort by adjusted scores (higher is better)
-    // Use unwrap_or(Equal) to gracefully handle NaN values instead of panicking
-    scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Extract symbols after re-ranking
-    let symbols: Vec<Symbol> = scored_symbols
-        .into_iter()
-        .map(|(symbol, _)| symbol)
-        .collect();
-
-    // Apply filters (language, file_pattern)
-    let filtered_symbols: Vec<Symbol> = symbols
-        .into_iter()
-        .filter(|symbol| {
-            // Apply language filter if specified
-            let language_match = language
-                .as_ref()
-                .map(|lang| symbol.language.eq_ignore_ascii_case(lang))
-                .unwrap_or(true);
-
-            // CRITICAL FIX: Use proper glob matching instead of contains()
-            // This now correctly handles patterns like "src/**/*.rs", "!**/target/*", etc.
-            let file_match = file_pattern
-                .as_ref()
-                .map(|pattern| matches_glob_pattern(&symbol.file_path, pattern))
-                .unwrap_or(true);
-
-            language_match && file_match
-        })
-        .collect();
 
     // Limit to requested number of results
     let results: Vec<Symbol> = filtered_symbols.into_iter().take(limit as usize).collect();
