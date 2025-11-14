@@ -313,10 +313,17 @@ pub fn recall_memories(workspace_root: &Path, options: RecallOptions) -> Result<
     // Sort by timestamp (chronological order)
     memories.sort_by_key(|m| m.timestamp);
 
-    // Apply limit if specified
+    // Reverse to get newest first, THEN apply limit to keep the N most recent
+    // (Note: caller in recall.rs will reverse again for display)
+    memories.reverse();
+
+    // Apply limit if specified - now keeps the N most recent
     if let Some(limit) = options.limit {
         memories.truncate(limit);
     }
+
+    // Reverse back to chronological order for caller
+    memories.reverse();
 
     Ok(memories)
 }
@@ -364,5 +371,59 @@ mod tests {
         let hex = generate_random_hex(4);
         assert_eq!(hex.len(), 4);
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_recall_memories_returns_most_recent_with_limit() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create temp workspace with .memories directory
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path();
+        let memories_dir = workspace_root.join(".memories").join("2025-11-14");
+        fs::create_dir_all(&memories_dir).unwrap();
+
+        // Create 5 memories with incrementing timestamps
+        // We'll verify that recall(limit=3) returns the 3 NEWEST, not 3 oldest
+        let base_ts = 1000000;
+
+        for i in 0..5 {
+            let memory = Memory::new(
+                format!("memory_{}", i),
+                base_ts + (i as i64 * 100), // 1000000, 1000100, 1000200, 1000300, 1000400
+                "checkpoint".to_string(),
+            ).with_extra(json!({
+                "description": format!("Memory number {}", i),
+                "tags": []
+            }));
+
+            let file_path = memories_dir.join(format!("mem_{}.json", i));
+            let json = serde_json::to_string_pretty(&memory).unwrap();
+            fs::write(&file_path, json).unwrap();
+        }
+
+        // Recall with limit=3 should return the 3 MOST RECENT (indices 2, 3, 4)
+        let options = RecallOptions {
+            memory_type: None,
+            since: None,
+            until: None,
+            limit: Some(3),
+        };
+
+        let recalled = recall_memories(workspace_root, options).unwrap();
+
+        // Should return exactly 3 memories
+        assert_eq!(recalled.len(), 3, "Should return exactly 3 memories");
+
+        // recall_memories returns in CHRONOLOGICAL order (oldest first)
+        // With limit=3, it should return the 3 NEWEST in chronological order
+        // So: [memory_2 (oldest of newest 3), memory_3, memory_4 (newest)]
+        assert_eq!(recalled[0].id, "memory_2",
+            "First memory should be memory_2 (oldest of newest 3), but got {}", recalled[0].id);
+        assert_eq!(recalled[1].id, "memory_3",
+            "Second memory should be memory_3, but got {}", recalled[1].id);
+        assert_eq!(recalled[2].id, "memory_4",
+            "Third memory should be memory_4 (newest overall), but got {}", recalled[2].id);
     }
 }

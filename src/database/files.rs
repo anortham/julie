@@ -130,6 +130,9 @@ impl SymbolDatabase {
             outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
             outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
 
+            // STEP 4b: Optimize FTS5 index for better query performance
+            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('optimize')", [])?;
+
             // STEP 5: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding file indexes after bulk insert");
             outer_tx.execute(
@@ -404,7 +407,8 @@ impl SymbolDatabase {
                 -- 🔥 FIX: Negate BM25 (returns negative scores) so multipliers work correctly
                 -- Without negation: test files get -0.17, source files get -18.00 (test files rank higher!)
                 -- With negation: test files get 0.17, source files get 18.00 (source files rank higher!)
-                -bm25(files_fts) *
+                -- 🔥 PERFORMANCE: Column weighting (path 20%, content 100%) ensures content ranks higher than path-only
+                -bm25(files_fts, 0.2, 1.0) *
 
                 -- BOOST: Symbol-rich files (likely source code, not tests)
                 -- Each symbol adds 5% boost (capped by symbol count)
@@ -586,10 +590,9 @@ impl SymbolDatabase {
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
-        // FTS5 CRITICAL: Rebuild index to prevent desync with external content table
-        // Without this, snippet() queries will fail with "missing row X from content table"
-        // when trying to access deleted rowids
-        self.rebuild_files_fts()?;
+        // FTS5: DELETE triggers handle FTS updates automatically
+        // Query-time rebuild-on-error path (symbols/queries.rs:276-289) provides safety net
+        // No manual rebuild needed - would be expensive for single-file deletes
 
         debug!(
             "Deleted file record for: {} ({} rows affected)",
@@ -604,8 +607,8 @@ impl SymbolDatabase {
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
-        // FTS5 CRITICAL: Rebuild index to prevent desync
-        self.rebuild_files_fts()?;
+        // FTS5: DELETE triggers handle FTS updates automatically
+        // No manual rebuild needed - would be expensive for single-file deletes
 
         debug!(
             "Deleted file record for '{}' ({} rows affected)",

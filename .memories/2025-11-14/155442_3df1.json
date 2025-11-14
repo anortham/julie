@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_691750c2_e8891c",
+  "timestamp": 1763135682,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "485d7b7",
+    "dirty": true,
+    "files_changed": [
+      "src/database/files.rs",
+      "src/database/migrations.rs",
+      "src/database/schema.rs",
+      "src/database/symbols/bulk.rs"
+    ]
+  },
+  "description": "Fixed migration_005 to handle fresh and legacy databases by checking if both files and symbols tables exist before attempting FTS rebuild. Updated schema.rs to include prefix='2 3 4 5' in create_files_fts_table and create_symbols_fts_table DDL so fresh databases get prefix indexes from the start. All 1746 tests now pass (was 219 failures, then 2, now 0). Changes complete: (1) migration_005 with table existence check, (2) schema.rs with prefix in DDL, (3) files.rs column weighting bm25(0.2, 1.0), (4) removed rebuild calls from delete methods, (5) added optimize after bulk operations. Ready for commit.",
+  "tags": [
+    "fts5",
+    "migration",
+    "bugfix",
+    "testing",
+    "all-tests-pass"
+  ]
+}

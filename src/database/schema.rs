@@ -107,12 +107,13 @@ impl SymbolDatabase {
                 path,
                 content,
                 tokenize = "unicode61 separators '_::->.'",
+                prefix='2 3 4 5',
                 content='files',
                 content_rowid='rowid'
             )"#,
             [],
         )?;
-        debug!("Created files_fts virtual table with unicode61 tokenizer (separators: _::->.)");
+        debug!("Created files_fts virtual table with unicode61 tokenizer and prefix indexes");
         Ok(())
     }
 
@@ -269,12 +270,13 @@ impl SymbolDatabase {
                 doc_comment,
                 code_context,
                 tokenize = "unicode61 separators '_::->.'",
+                prefix='2 3 4 5',
                 content='symbols',
                 content_rowid='rowid'
             )"#,
             [],
         )?;
-        debug!("Created symbols_fts virtual table with unicode61 tokenizer (separators: _::->.)");
+        debug!("Created symbols_fts virtual table with unicode61 tokenizer and prefix indexes");
         Ok(())
     }
 

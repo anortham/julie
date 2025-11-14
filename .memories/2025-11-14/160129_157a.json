@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_69175259_1f4bde",
+  "timestamp": 1763136089,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "485d7b7",
+    "dirty": true,
+    "files_changed": [
+      "src/database/files.rs",
+      "src/database/migrations.rs",
+      "src/database/schema.rs",
+      "src/database/symbols/bulk.rs",
+      "src/tools/memory/mod.rs"
+    ]
+  },
+  "description": "Fixed critical recall bug via TDD: recall(limit=N) was returning N OLDEST memories instead of N NEWEST. Root cause: recall_memories() sorted chronologically then truncated, keeping oldest entries. Fix: reverse BEFORE truncate to keep newest, then reverse back. Added test test_recall_memories_returns_most_recent_with_limit with 5 memories, verifying limit=3 returns [memory_2, memory_3, memory_4] not [memory_0, memory_1, memory_2]. All 74 memory tests pass. Bug exposed when user's /recall 30m returned Nov 9 memories instead of today's 2 newest checkpoints.",
+  "tags": [
+    "bug-fix",
+    "tdd",
+    "recall",
+    "memory-system",
+    "critical"
+  ]
+}

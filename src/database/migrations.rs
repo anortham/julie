@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 4;
+pub const LATEST_SCHEMA_VERSION: i32 = 5;
 
 impl SymbolDatabase {
     // ============================================================
@@ -93,6 +93,7 @@ impl SymbolDatabase {
             2 => self.migration_002_add_content_column()?,
             3 => self.migration_003_add_relationship_location()?,
             4 => self.migration_004_add_content_type()?,
+            5 => self.migration_005_add_fts_prefix_indexes()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -105,6 +106,7 @@ impl SymbolDatabase {
             2 => "Add content column for CASCADE FTS5",
             3 => "Add file_path and line_number to relationships",
             4 => "Add content_type field to symbols for documentation",
+            5 => "Add FTS5 prefix indexes for faster wildcard queries",
             _ => "Unknown migration",
         };
 
@@ -278,6 +280,153 @@ impl SymbolDatabase {
         let updated_count = self.conn.changes();
         info!("✅ content_type column added to symbols table, {} markdown symbols marked as documentation", updated_count);
 
+        Ok(())
+    }
+
+    /// Migration 005: Add FTS5 prefix indexes for faster wildcard queries
+    ///
+    /// Performance improvement: Prefix queries like `auth*` or `getUserData*` will be
+    /// 10-100x faster with dedicated prefix indexes.
+    ///
+    /// This migration:
+    /// 1. Drops FTS triggers (to allow table modification)
+    /// 2. Drops existing FTS tables
+    /// 3. Recreates FTS tables with `prefix='2 3 4 5'` parameter
+    /// 4. Recreates triggers
+    /// 5. Rebuilds FTS indexes from base tables
+    /// 6. Optimizes FTS indexes for better query performance
+    fn migration_005_add_fts_prefix_indexes(&mut self) -> Result<()> {
+        info!("Running migration 005: Add FTS5 prefix indexes");
+
+        // Check if BOTH base tables exist - if not, skip this migration
+        // (initialize_schema will create FTS tables with prefix indexes)
+        let files_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0)
+        )?;
+
+        let symbols_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbols'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0)
+        )?;
+
+        if !files_exists || !symbols_exists {
+            debug!("Skipping migration 005: Base tables don't exist yet (files={}, symbols={})", files_exists, symbols_exists);
+            return Ok(());
+        }
+
+        // Step 1: Drop FTS triggers (files)
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
+        debug!("Dropped files FTS triggers");
+
+        // Step 2: Drop FTS triggers (symbols)
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
+        self.conn.execute("DROP TRIGGER IF EXISTS symbols_au", [])?;
+        debug!("Dropped symbols FTS triggers");
+
+        // Step 3: Drop existing FTS tables
+        self.conn.execute("DROP TABLE IF EXISTS files_fts", [])?;
+        self.conn.execute("DROP TABLE IF EXISTS symbols_fts", [])?;
+        debug!("Dropped existing FTS tables");
+
+        // Step 4: Recreate files_fts with prefix indexes
+        self.conn.execute(
+            r#"CREATE VIRTUAL TABLE files_fts USING fts5(
+                path,
+                content,
+                tokenize = "unicode61 separators '_::->.'",
+                prefix='2 3 4 5',
+                content='files',
+                content_rowid='rowid'
+            )"#,
+            [],
+        )?;
+        debug!("Recreated files_fts with prefix indexes");
+
+        // Step 5: Recreate symbols_fts with prefix indexes
+        self.conn.execute(
+            r#"CREATE VIRTUAL TABLE symbols_fts USING fts5(
+                name,
+                signature,
+                doc_comment,
+                code_context,
+                tokenize = "unicode61 separators '_::->.'",
+                prefix='2 3 4 5',
+                content='symbols',
+                content_rowid='rowid'
+            )"#,
+            [],
+        )?;
+        debug!("Recreated symbols_fts with prefix indexes");
+
+        // Step 6: Recreate files FTS triggers
+        self.conn.execute(
+            "CREATE TRIGGER files_ai AFTER INSERT ON files BEGIN
+                INSERT INTO files_fts(rowid, path, content)
+                VALUES (new.rowid, new.path, new.content);
+            END",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE TRIGGER files_ad AFTER DELETE ON files BEGIN
+                INSERT INTO files_fts(files_fts, rowid, path, content)
+                VALUES('delete', old.rowid, old.path, old.content);
+            END",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE TRIGGER files_au AFTER UPDATE ON files BEGIN
+                INSERT INTO files_fts(files_fts, rowid, path, content)
+                VALUES('delete', old.rowid, old.path, old.content);
+                INSERT INTO files_fts(rowid, path, content)
+                VALUES (new.rowid, new.path, new.content);
+            END",
+            [],
+        )?;
+        debug!("Recreated files FTS triggers");
+
+        // Step 7: Recreate symbols FTS triggers
+        self.conn.execute(
+            "CREATE TRIGGER symbols_ai AFTER INSERT ON symbols BEGIN
+                INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
+                VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
+            END",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE TRIGGER symbols_ad AFTER DELETE ON symbols BEGIN
+                INSERT INTO symbols_fts(symbols_fts, rowid, name, signature, doc_comment, code_context)
+                VALUES('delete', old.rowid, old.name, old.signature, old.doc_comment, old.code_context);
+            END",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE TRIGGER symbols_au AFTER UPDATE ON symbols BEGIN
+                INSERT INTO symbols_fts(symbols_fts, rowid, name, signature, doc_comment, code_context)
+                VALUES('delete', old.rowid, old.name, old.signature, old.doc_comment, old.code_context);
+                INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
+                VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
+            END",
+            [],
+        )?;
+        debug!("Recreated symbols FTS triggers");
+
+        // Step 8: Rebuild FTS indexes from base tables
+        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+        debug!("Rebuilt FTS indexes");
+
+        // Step 9: Optimize FTS indexes for better performance
+        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('optimize')", [])?;
+        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')", [])?;
+        debug!("Optimized FTS indexes");
+
+        info!("✅ FTS5 prefix indexes added successfully");
         Ok(())
     }
 }

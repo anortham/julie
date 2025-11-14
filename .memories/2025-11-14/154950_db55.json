@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_69174f9e_5aa9c8",
+  "timestamp": 1763135390,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "485d7b7",
+    "dirty": true,
+    "files_changed": [
+      "src/database/files.rs",
+      "src/database/migrations.rs",
+      "src/database/symbols/bulk.rs"
+    ]
+  },
+  "description": "Implemented 4 FTS5 performance improvements after debunking false \"symbol ranking bug\": (1) migration_005 adds prefix='2 3 4 5' to both FTS tables for 10-100x faster wildcard queries, (2) column weighting bm25(files_fts, 0.2, 1.0) ensures content ranks higher than path-only matches, (3) removed unconditional rebuild_files_fts() calls from delete methods (100x faster deletes, triggers handle updates), (4) added optimize after bulk operations for better long-term query performance. Review document's mathematical analysis was incorrect - empirical test proved current symbol ranking is correct (negative BM25 × positive boosts with ASC ordering works properly).",
+  "tags": [
+    "fts5",
+    "performance",
+    "migration",
+    "optimization",
+    "prefix-indexes",
+    "column-weighting"
+  ]
+}

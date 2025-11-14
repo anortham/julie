@@ -1,0 +1,20 @@
+{
+  "id": "checkpoint_69164eb6_8c2976",
+  "timestamp": 1763069622,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "485d7b7",
+    "dirty": false
+  },
+  "description": "Released v1.7.8 with 6 critical semantic search fixes and performance improvements. Fixed ordering bug (similarity scores paired with wrong symbols), N×2 database hits (400 queries → 1 via batch fetching), vector validation, vector ID collisions (composite keys with :: delimiter), hard-coded dimensions (dimension-aware LoadedHnswIndex), and serialization performance (2-3x faster). Added 722 lines of comprehensive tests with full TDD cycle. Fixed minor code quality issues (test assertion operator precedence). Updated JULIE_AGENT_INSTRUCTIONS.md with mandatory memory system protocols. All 1,746 tests passing. Commit 485d7b7, tag v1.7.8 pushed to origin.",
+  "tags": [
+    "release",
+    "v1.7.8",
+    "semantic-search",
+    "performance",
+    "bug-fixes",
+    "tdd",
+    "production-ready"
+  ]
+}

@@ -256,6 +256,9 @@ impl SymbolDatabase {
             outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')", [])?;
             outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
 
+            // STEP 5b: Optimize FTS5 index for better query performance
+            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')", [])?;
+
             // STEP 6: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding symbol indexes after bulk insert");
             outer_tx.execute(
