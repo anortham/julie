@@ -650,9 +650,7 @@ mod navigation_tools_tests {
     }
 
     /// Test reference_kind filtering with real database
-    /// TODO: Fix JOIN query - currently finding 0 results
     #[test]
-    #[ignore]
     fn test_fast_refs_reference_kind_filtering() {
         use crate::database::SymbolDatabase;
         use crate::extractors::base::{Identifier, IdentifierKind};
@@ -687,10 +685,54 @@ mod navigation_tools_tests {
             content_type: None,
         };
 
-        db.bulk_store_symbols(&vec![symbol1], "test_workspace")
-            .expect("Failed to store symbol");
+        // Create caller symbols that the relationships will reference
+        let caller_fn = Symbol {
+            id: "caller_fn".to_string(),
+            name: "CallerFunction".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "caller1.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 15,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 200,
+            signature: Some("fn CallerFunction()".to_string()),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            parent_id: None,
+            metadata: Some(HashMap::new()),
+            semantic_group: None,
+            confidence: Some(1.0),
+            code_context: None,
+            content_type: None,
+        };
 
-        // Store file records (identifiers table has FK to files)
+        let another_fn = Symbol {
+            id: "another_fn".to_string(),
+            name: "AnotherFunction".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "caller2.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 15,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 200,
+            signature: Some("fn AnotherFunction()".to_string()),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            parent_id: None,
+            metadata: Some(HashMap::new()),
+            semantic_group: None,
+            confidence: Some(1.0),
+            code_context: None,
+            content_type: None,
+        };
+
+        // Store file records FIRST (symbols table has FK to files)
         use crate::database::FileInfo;
         let files = vec![
             FileInfo {
@@ -725,6 +767,10 @@ mod navigation_tools_tests {
             },
         ];
         db.bulk_store_files(&files).expect("Failed to store files");
+
+        // Now store symbols (after files exist to satisfy FK constraint)
+        db.bulk_store_symbols(&vec![symbol1, caller_fn, another_fn], "test_workspace")
+            .expect("Failed to store symbols");
 
         // Create identifiers of different kinds
         let call_identifier = Identifier {

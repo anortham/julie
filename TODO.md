@@ -158,6 +158,15 @@
 
 Why did these two searches not fallback to semantic results? 
 
+● julie - fast_search (MCP)(query: "checkpoint timestamp SystemTime", search_method: "text", search_target: "content", file_pattern: "src/tools/memory/**/*.rs", limit: 5)
+  ⎿  🔍 No results found for: 'checkpoint timestamp SystemTime'
+     💡 Try a broader search term, different mode, or check spelling
+
+● julie - fast_search (MCP)(query: "checkpoint save timestamp SystemTime::now", search_method: "text", search_target: "content", file_pattern:
+                           "src/tools/memory/checkpoint.rs", limit: 5)
+  ⎿  🔍 No results found for: 'checkpoint save timestamp SystemTime::now'
+     💡 Try a broader search term, different mode, or check spelling
+
 ### Active Investigations
 
 (None currently - add notes here as needed)

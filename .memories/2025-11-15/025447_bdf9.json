@@ -1,0 +1,28 @@
+{
+  "id": "checkpoint_6917eb77_fd353f",
+  "timestamp": 1763175287,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "56cd9f1",
+    "dirty": true,
+    "files_changed": [
+      ".claude/commands/recall.md",
+      "TODO.md",
+      "docs/TOOL_AUDIT.md",
+      "src/database/relationships.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tools/exploration/fast_explore/mod.rs"
+    ]
+  },
+  "description": "Fixed timezone/time mismatch bug in /recall command causing recent memories to be missed. Root cause: Slash command forced UTC time calculations without knowing current time, causing off-by-minutes errors. Solution: Updated .claude/commands/recall.md to (1) run `date` command to get actual current LOCAL time before calculations, (2) add 10-minute margin for reliability, (3) use local time format (no 'Z') which tool converts to UTC automatically, (4) recommend limit parameter for very recent queries (<30m). The Rust code was already correct - it handles local time properly (recall.rs:26-28). Bug was purely in slash command instructions. Verified fix works: recalled memory from 26 minutes ago using \"1hr\" query with proper time calculation.",
+  "tags": [
+    "bug-fix",
+    "timezone",
+    "recall",
+    "slash-command",
+    "dogfooding",
+    "ux"
+  ]
+}

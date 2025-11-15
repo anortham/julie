@@ -1,0 +1,27 @@
+{
+  "id": "checkpoint_6917e558_89617c",
+  "timestamp": 1763173720,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "56cd9f1",
+    "dirty": true,
+    "files_changed": [
+      "docs/TOOL_AUDIT.md",
+      "src/database/relationships.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tools/exploration/fast_explore/mod.rs"
+    ]
+  },
+  "description": "Fixed 3 critical bugs from GPT code review: (1) fast_refs filter SQL placeholder bug in relationships.rs causing zero results due to incorrect IN clause construction (placeholders[1..] dropped ?1), also fixed test data ordering (files before symbols for FK constraints), (2) fast_explore similar mode fallback using bare symbol name instead of build_embedding_text losing signature/docs/type context, (3) fast_explore types mode total_found counting HashMap.len() (always 2) instead of actual parents+children array lengths. All fixes follow TDD methodology, test_fast_refs_reference_kind_filtering now passing.",
+  "tags": [
+    "bug-fixes",
+    "code-review",
+    "tdd",
+    "fast-refs",
+    "fast-explore",
+    "sql",
+    "gpt-findings"
+  ]
+}

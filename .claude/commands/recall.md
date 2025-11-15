@@ -9,10 +9,20 @@ IMMEDIATELY retrieve development memories based on the provided query. DO NOT wa
 Determine query mode from $ARGUMENTS and execute the appropriate tool NOW:
 
 **Time-based query** (e.g., "30m", "1hr", "3d"):
-1. Parse the time expression (m/min=minutes, h/hr=hours, d/day=days)
-2. Calculate the "since" datetime in ISO 8601 format with UTC timezone (MUST end with 'Z')
-   Example: "2025-11-10T02:10:08Z"
-3. IMMEDIATELY call mcp__julie__recall with the since parameter
+⚠️ CRITICAL: Get actual current time from system BEFORE calculations!
+
+1. Run `date '+%Y-%m-%dT%H:%M:%S'` to get current LOCAL datetime
+   Example output: "2025-11-14T20:53:43"
+2. Parse the time expression (m/min=minutes, h/hr=hours, d/day=days)
+3. Add 10-minute margin for reliability (e.g., "10m" → look back 20 minutes)
+   - Accounts for: time calculation edge cases, user imprecision
+4. Calculate the "since" datetime by subtracting (duration + margin) from current time
+   - Use LOCAL time format (NO 'Z' suffix) - tool converts to UTC automatically
+   - Format: "YYYY-MM-DDTHH:MM:SS" (example: "2025-11-14T20:33:43")
+5. IMMEDIATELY call mcp__julie__recall with the since parameter
+
+💡 TIP: For very recent memories (< 30 minutes), just use limit instead:
+   "/recall" (no args) → last 10 memories
 
 **Topic-based query** (e.g., "db path bug", "auth implementation"):
 1. IMMEDIATELY call mcp__julie__fast_search with:

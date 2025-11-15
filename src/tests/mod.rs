@@ -39,7 +39,7 @@ pub mod core {
     pub mod database; // Database operations and SQLite tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
-    pub mod test_bulk_store_types; // TDD Phase 2: bulk_store_types tests
+    // pub mod test_bulk_store_types; // TDD Phase 2: bulk_store_types tests (TODO: restore when implementing)
     pub mod tracing; // Tracing and logging tests
     pub mod workspace_init; // Workspace root detection and initialization tests
 

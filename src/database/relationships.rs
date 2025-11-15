@@ -139,13 +139,14 @@ impl SymbolDatabase {
             .collect();
 
         // Join relationships with identifiers on file_path + line_number to find matching usages
+        // Use first N placeholders for symbol IDs, last placeholder for kind
         let query = format!(
             "SELECT DISTINCT r.id, r.from_symbol_id, r.to_symbol_id, r.kind, r.file_path, r.line_number, r.confidence, r.metadata
              FROM relationships r
              INNER JOIN identifiers i ON r.file_path = i.file_path AND r.line_number = i.start_line
              WHERE r.to_symbol_id IN ({})
                AND i.kind = ?{}",
-            placeholders[1..].join(", "),
+            placeholders[..symbol_ids.len()].join(", "),  // FIX: Use first N placeholders, not drop first!
             symbol_ids.len() + 1
         );
 

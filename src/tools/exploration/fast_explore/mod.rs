@@ -297,15 +297,17 @@ impl FastExploreTool {
                     );
                     embedding
                 } else {
-                    // Fallback: generate embedding from raw name
+                    // Fallback: generate embedding using full symbol context (not just bare name)
+                    // This ensures consistent quality with indexed embeddings
                     debug!(
-                        "⚠️  No stored embedding for '{}', falling back to raw name",
+                        "⚠️  No stored embedding for '{}', building from full symbol context",
                         symbol_name
                     );
                     handler.ensure_embedding_engine().await?;
                     let mut engine = handler.embedding_engine.write().await;
                     if let Some(ref mut engine) = *engine {
-                        engine.embed_text(symbol_name)?
+                        let embedding_text = engine.build_embedding_text(symbol);
+                        engine.embed_text(&embedding_text)?
                     } else {
                         anyhow::bail!("Embedding engine not available")
                     }
@@ -677,8 +679,18 @@ impl FastExploreTool {
             }
         }
 
+        // Count actual hierarchy entries (parents + children arrays), not HashMap size
+        let hierarchy_count = hierarchy
+            .get("parents")
+            .and_then(|v| v.as_array().map(|arr| arr.len()))
+            .unwrap_or(0)
+            + hierarchy
+                .get("children")
+                .and_then(|v| v.as_array().map(|arr| arr.len()))
+                .unwrap_or(0);
+
         let total_found =
-            implementations.len() + returns.len() + parameters.len() + hierarchy.len();
+            implementations.len() + returns.len() + parameters.len() + hierarchy_count;
 
         let result = json!({
             "type_name": type_name,
