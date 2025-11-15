@@ -580,16 +580,20 @@ async fn sqlite_fts_search(
 
     // Convert FileSearchResult → Symbol with precise line locations
     // CRITICAL FIX: Parse file content to find actual line numbers instead of fake positions
-    let mut symbols = Vec::new();
-    for result in file_results {
-        // Get file content to find the actual line number of the match
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
-                poisoned.into_inner()
-            }
-        };
+    // 🔥 CRITICAL BUG FIX: Wrap ALL database access in block_in_place to prevent race conditions
+    // Bug: db.lock() called in async context causes "database disk image is malformed" errors
+    // Fix: Move entire loop inside block_in_place so all DB access is isolated from Tokio runtime
+    let symbols = tokio::task::block_in_place(|| {
+        let mut symbols = Vec::new();
+        for result in file_results {
+            // Get file content to find the actual line number of the match
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
         if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
             // 🔥 FIX: Extract the actual matched term from <mark> tags instead of trying to match entire snippet
             // FTS5 snippets can be multi-line, but we search line-by-line, so matching entire snippet fails.
@@ -745,7 +749,9 @@ async fn sqlite_fts_search(
                 symbols.push(symbol);
             }
         }
-    }
+        }
+        symbols // Return symbols from block_in_place
+    }); // End of block_in_place - all DB access now properly isolated
 
     // Database already filters by language and file_pattern with normalized patterns
     // No need for duplicate filtering here

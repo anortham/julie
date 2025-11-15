@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_6917f2e9_98c9dc",
+  "timestamp": 1763177193,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "5b41aac",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/lock_contention.rs",
+      "src/tools/search/text_search.rs"
+    ]
+  },
+  "description": "Fixed critical race condition in sqlite_fts_search causing 'database disk image is malformed' errors. Wrapped all db.lock() calls (lines 586-754) in block_in_place to prevent Tokio scheduler from creating concurrent access violations. Added regression test test_concurrent_content_searches_no_corruption. This eliminates the intermittent corruption errors that occurred throughout the day.",
+  "tags": [
+    "bug",
+    "database",
+    "concurrency",
+    "critical-fix"
+  ]
+}
