@@ -8,10 +8,7 @@ use std::collections::HashMap;
 use tracing::{debug, warn};
 use tree_sitter::Node;
 
-use super::types::{
-    ContextConfig, Identifier, Symbol,
-    TypeInfo, Relationship,
-};
+use super::types::{ContextConfig, Identifier, Relationship, Symbol, TypeInfo};
 
 /// Base implementation for language extractors
 ///
@@ -53,15 +50,13 @@ impl BaseExtractor {
             workspace_root.join(&file_path)
         };
 
-        let canonical_path = path_to_canonicalize
-            .canonicalize()
-            .unwrap_or_else(|e| {
-                warn!(
-                    "⚠️  Failed to canonicalize path '{}': {} - using original",
-                    file_path, e
-                );
-                std::path::PathBuf::from(&file_path)
-            });
+        let canonical_path = path_to_canonicalize.canonicalize().unwrap_or_else(|e| {
+            warn!(
+                "⚠️  Failed to canonicalize path '{}': {} - using original",
+                file_path, e
+            );
+            std::path::PathBuf::from(&file_path)
+        });
 
         // Phase 2: Convert absolute path to relative Unix-style path for storage
         // File paths might be absolute OR relative - handle both
@@ -326,4 +321,3 @@ impl BaseExtractor {
         }
     }
 }
-

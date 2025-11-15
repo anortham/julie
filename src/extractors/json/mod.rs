@@ -4,8 +4,7 @@
 /// - Top-level keys and nested object keys are extracted
 /// - Objects and arrays are treated as SymbolKind::Module (containers)
 /// - Primitive values are treated as SymbolKind::Variable
-
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
 use std::path::Path;
 
 pub struct JsonExtractor {
@@ -86,7 +85,7 @@ impl JsonExtractor {
         // Determine the value type to choose appropriate SymbolKind
         let symbol_kind = match value_node.kind() {
             "object" | "array" => SymbolKind::Module, // Treat containers as modules
-            _ => SymbolKind::Variable, // Treat primitives as variables
+            _ => SymbolKind::Variable,                // Treat primitives as variables
         };
 
         let options = SymbolOptions {
@@ -97,13 +96,19 @@ impl JsonExtractor {
             ..Default::default()
         };
 
-        let symbol = self.base.create_symbol(
-            &node,
-            key_name,
-            symbol_kind,
-            options,
-        );
+        let symbol = self
+            .base
+            .create_symbol(&node, key_name, symbol_kind, options);
 
         Some(symbol)
+    }
+
+    pub fn extract_identifiers(
+        &mut self,
+        _tree: &tree_sitter::Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Identifier> {
+        // JSON is configuration data - no code identifiers
+        Vec::new()
     }
 }

@@ -306,12 +306,14 @@ input[type="search"]::-webkit-search-cancel-button {
         // Combinator selectors
         let direct_child = symbols.iter().find(|s| s.name == ".parent > .direct-child");
         assert!(direct_child.is_some());
-        assert!(direct_child
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("color: red"));
+        assert!(
+            direct_child
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("color: red")
+        );
 
         let descendant = symbols.iter().find(|s| s.name == ".ancestor .descendant");
         assert!(descendant.is_some());
@@ -367,27 +369,33 @@ input[type="search"]::-webkit-search-cancel-button {
         // Pseudo-elements
         let before_element = symbols.iter().find(|s| s.name == ".element::before");
         assert!(before_element.is_some());
-        assert!(before_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("content: ''"));
-        assert!(before_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("position: absolute"));
+        assert!(
+            before_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("content: ''")
+        );
+        assert!(
+            before_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("position: absolute")
+        );
 
         let after_element = symbols.iter().find(|s| s.name == ".element::after");
         assert!(after_element.is_some());
-        assert!(after_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("content: attr(data-label)"));
+        assert!(
+            after_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("content: attr(data-label)")
+        );
 
         let quote_before = symbols.iter().find(|s| s.name == ".quote::before");
         assert!(quote_before.is_some());

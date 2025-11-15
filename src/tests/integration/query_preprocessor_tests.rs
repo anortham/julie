@@ -13,8 +13,8 @@
 // TDD Approach: All tests written FIRST, then implementation follows.
 
 use crate::tools::search::{
-    detect_query_type, preprocess_query, process_query, sanitize_for_fts5, sanitize_query,
-    validate_query, QueryType,
+    QueryType, detect_query_type, preprocess_query, process_query, sanitize_for_fts5,
+    sanitize_query, validate_query,
 };
 
 // ============================================================================
@@ -288,14 +288,20 @@ mod fts5_sanitization {
         let sanitized1 = sanitize_for_fts5(query1, QueryType::Standard);
         // Should not contain unescaped forward slashes that break FTS5
         // Verify it doesn't cause FTS5 error by ensuring no literal "/" in query
-        assert!(!sanitized1.contains('/') || sanitized1.contains(r"\/"),
-                "Forward slash should be escaped or replaced: {}", sanitized1);
+        assert!(
+            !sanitized1.contains('/') || sanitized1.contains(r"\/"),
+            "Forward slash should be escaped or replaced: {}",
+            sanitized1
+        );
 
         // Test exclamation mark (NOT operator in FTS5)
         let query2 = "format! macro";
         let sanitized2 = sanitize_for_fts5(query2, QueryType::Standard);
-        assert!(!sanitized2.contains('!'),
-                "Exclamation mark should be removed: {}", sanitized2);
+        assert!(
+            !sanitized2.contains('!'),
+            "Exclamation mark should be removed: {}",
+            sanitized2
+        );
 
         // Test parentheses (grouping operators in FTS5)
         let query3 = "fn(arg)";
@@ -311,8 +317,11 @@ mod fts5_sanitization {
         // Test combined case from TODO.md error
         let query5 = "mod knowledge tests/mod.rs";
         let sanitized5 = sanitize_for_fts5(query5, QueryType::Standard);
-        assert!(!sanitized5.contains('/'),
-                "Combined query with slash should not break FTS5: {}", sanitized5);
+        assert!(
+            !sanitized5.contains('/'),
+            "Combined query with slash should not break FTS5: {}",
+            sanitized5
+        );
     }
 }
 

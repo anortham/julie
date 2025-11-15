@@ -1,9 +1,9 @@
 // Lua helpers inline tests extracted from extractors/lua/helpers.rs
 
+use crate::extractors::lua::LuaExtractor;
 use crate::extractors::lua::helpers::{
     contains_function_definition, find_child_by_type, infer_type_from_expression,
 };
-use crate::extractors::lua::LuaExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -65,7 +65,12 @@ fn test_infer_type_from_expression_string() {
 
     if let Some(string_node) = find_node_by_kind(root, "string") {
         let workspace_root = PathBuf::from("/tmp/test");
-        let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let base = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let inferred = infer_type_from_expression(base.base(), string_node);
         assert_eq!(
             inferred, "string",
@@ -86,7 +91,12 @@ fn test_infer_type_from_expression_number() {
 
     if let Some(number_node) = find_node_by_kind(root, "number") {
         let workspace_root = PathBuf::from("/tmp/test");
-        let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let base = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let inferred = infer_type_from_expression(base.base(), number_node);
         assert_eq!(
             inferred, "number",
@@ -107,7 +117,12 @@ fn test_infer_type_from_expression_table() {
 
     if let Some(table_node) = find_node_by_kind(root, "table_constructor") {
         let workspace_root = PathBuf::from("/tmp/test");
-        let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let base = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let inferred = infer_type_from_expression(base.base(), table_node);
         assert_eq!(
             inferred, "table",
@@ -128,7 +143,12 @@ fn test_infer_type_from_expression_require_call() {
 
     if let Some(call_node) = find_node_by_kind(root, "function_call") {
         let workspace_root = PathBuf::from("/tmp/test");
-        let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let base = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let inferred = infer_type_from_expression(base.base(), call_node);
         assert_eq!(
             inferred, "import",
@@ -149,7 +169,12 @@ fn test_infer_type_from_expression_unknown() {
 
     if let Some(id_node) = find_node_by_kind(root, "identifier") {
         let workspace_root = PathBuf::from("/tmp/test");
-        let base = LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let base = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let inferred = infer_type_from_expression(base.base(), id_node);
         assert_eq!(inferred, "unknown", "Identifier should infer as 'unknown'");
     } else {

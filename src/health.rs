@@ -4,7 +4,7 @@
 // to ensure consistent behavior across the entire Julie system.
 
 use crate::handler::JulieServerHandler;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use tracing::{debug, warn};
 
 /// System readiness levels for graceful degradation
@@ -163,7 +163,10 @@ impl HealthChecker {
             let db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("Database mutex poisoned during health report, recovering: {}", poisoned);
+                    warn!(
+                        "Database mutex poisoned during health report, recovering: {}",
+                        poisoned
+                    );
                     poisoned.into_inner()
                 }
             };

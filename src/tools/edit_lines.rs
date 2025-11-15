@@ -3,8 +3,8 @@
 //! Provides precise line-level file modifications with insert/replace/delete operations.
 //! Following TDD methodology with SOURCE/CONTROL golden master pattern.
 
-use anyhow::{anyhow, Result};
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use anyhow::{Result, anyhow};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -149,7 +149,7 @@ impl EditLinesTool {
                 return Err(anyhow!(
                     "Invalid operation '{}'. Must be 'insert', 'replace', or 'delete'",
                     self.operation
-                ))
+                ));
             }
         }
 
@@ -206,7 +206,9 @@ impl EditLinesTool {
 
     /// Perform insert operation
     fn perform_insert(&self, lines: &mut Vec<String>) -> Result<usize> {
-        let content = self.content.as_ref()
+        let content = self
+            .content
+            .as_ref()
             .ok_or_else(|| anyhow!("Internal error: content is required for insert operation"))?;
         let idx = (self.start_line - 1) as usize;
 
@@ -234,11 +236,15 @@ impl EditLinesTool {
 
     /// Perform replace operation
     fn perform_replace(&self, lines: &mut Vec<String>) -> Result<usize> {
-        let content = self.content.as_ref()
+        let content = self
+            .content
+            .as_ref()
             .ok_or_else(|| anyhow!("Internal error: content is required for replace operation"))?;
         let start_idx = (self.start_line - 1) as usize;
-        let end_idx = self.end_line
-            .ok_or_else(|| anyhow!("Internal error: end_line is required for replace operation"))? as usize;
+        let end_idx = self
+            .end_line
+            .ok_or_else(|| anyhow!("Internal error: end_line is required for replace operation"))?
+            as usize;
 
         if start_idx >= lines.len() {
             return Err(anyhow!(
@@ -279,8 +285,10 @@ impl EditLinesTool {
     /// Perform delete operation
     fn perform_delete(&self, lines: &mut Vec<String>) -> Result<usize> {
         let start_idx = (self.start_line - 1) as usize;
-        let end_idx = self.end_line
-            .ok_or_else(|| anyhow!("Internal error: end_line is required for delete operation"))? as usize;
+        let end_idx = self
+            .end_line
+            .ok_or_else(|| anyhow!("Internal error: end_line is required for delete operation"))?
+            as usize;
 
         if start_idx >= lines.len() {
             return Err(anyhow!(
@@ -335,12 +343,7 @@ impl EditLinesTool {
         let message = if dry_run {
             format!(
                 "Dry run: {} operation on {} ({})\nWould modify {} lines: {} -> {} lines (no changes applied)",
-                self.operation,
-                display_path,
-                line_description,
-                modified,
-                original_lines,
-                new_lines
+                self.operation, display_path, line_description, modified, original_lines, new_lines
             )
         } else {
             format!(

@@ -60,7 +60,10 @@ fn test_memory_flexible_schema_checkpoint() {
     assert_eq!(memory.memory_type, "checkpoint");
     // Check flattened fields exist in extra
     let extra = memory.extra.as_object().unwrap();
-    assert_eq!(extra.get("description").unwrap().as_str().unwrap(), "Fixed auth bug");
+    assert_eq!(
+        extra.get("description").unwrap().as_str().unwrap(),
+        "Fixed auth bug"
+    );
     assert_eq!(extra.get("tags").unwrap().as_array().unwrap().len(), 2);
 }
 
@@ -82,9 +85,15 @@ fn test_memory_flexible_schema_decision() {
     assert_eq!(memory.memory_type, "decision");
     // Check decision-specific fields
     let extra = memory.extra.as_object().unwrap();
-    assert_eq!(extra.get("question").unwrap().as_str().unwrap(), "Which database?");
+    assert_eq!(
+        extra.get("question").unwrap().as_str().unwrap(),
+        "Which database?"
+    );
     assert_eq!(extra.get("chosen").unwrap().as_str().unwrap(), "SQLite");
-    assert_eq!(extra.get("alternatives").unwrap().as_array().unwrap().len(), 2);
+    assert_eq!(
+        extra.get("alternatives").unwrap().as_array().unwrap().len(),
+        2
+    );
 }
 
 #[test]

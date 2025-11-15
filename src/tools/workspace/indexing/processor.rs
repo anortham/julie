@@ -93,6 +93,8 @@ impl ManageWorkspaceTool {
         // 🔥 COLLECT ALL DATA FIRST for bulk operations
         let mut all_symbols = Vec::new();
         let mut all_relationships = Vec::new();
+        let mut all_identifiers = Vec::new();
+        let mut all_types = Vec::new();
         let mut all_file_infos = Vec::new();
         let mut files_to_clean = Vec::new(); // Track files that need cleanup before re-indexing
 
@@ -117,7 +119,7 @@ impl ManageWorkspaceTool {
                             .process_file_with_parser(&file_path, &language, parser, &workspace_root)
                             .await
                         {
-                            Ok((symbols, relationships, file_info)) => {
+                            Ok((symbols, relationships, identifiers, types, file_info)) => {
                                 *total_files += 1;
 
                                 // Per-file processing details at trace level
@@ -141,6 +143,8 @@ impl ManageWorkspaceTool {
                                 // Collect data for bulk storage
                                 all_symbols.extend(symbols);
                                 all_relationships.extend(relationships);
+                                all_identifiers.extend(identifiers);
+                                all_types.extend(types.into_iter().map(|(_, v)| v));
                                 all_file_infos.push(file_info);
 
                                 if (*total_files).is_multiple_of(50) {
@@ -236,6 +240,8 @@ impl ManageWorkspaceTool {
                     &all_file_infos,
                     &all_symbols,
                     &all_relationships,
+                    &all_identifiers,
+                    &all_types,
                     &workspace_id,
                 ) {
                     warn!("Failed to perform atomic incremental update: {}", e);
@@ -286,6 +292,16 @@ impl ManageWorkspaceTool {
                     warn!("Failed to bulk store relationships: {}", e);
                 }
 
+                // Phase 4: Bulk store identifiers
+                if let Err(e) = db_lock.bulk_store_identifiers(&all_identifiers, &workspace_id) {
+                    warn!("Failed to bulk store identifiers: {}", e);
+                }
+
+                // Phase 4: Bulk store types
+                if let Err(e) = db_lock.bulk_store_types(&all_types, &workspace_id) {
+                    warn!("Failed to bulk store types: {}", e);
+                }
+
                 // Count documentation symbols for logging
                 let doc_count = all_symbols
                     .iter()
@@ -328,7 +344,7 @@ impl ManageWorkspaceTool {
         language: &str,
         _parser: &mut Parser, // Unused: Creating new parser inside spawn_blocking for Send requirement
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>, Vec<crate::extractors::Identifier>, HashMap<String, crate::extractors::base::TypeInfo>, crate::database::FileInfo)> {
         // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
         // When processing hundreds of large files (500KB+), blocking I/O in async functions
         // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
@@ -368,7 +384,7 @@ impl ManageWorkspaceTool {
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
             // Return empty symbol list but include file_info (already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // Skip symbol extraction for CSS/HTML (text search only)
@@ -380,7 +396,7 @@ impl ManageWorkspaceTool {
             );
 
             // Return file info without symbols (file_info already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // 🚨 CRITICAL: Skip symbol extraction for very large files (likely data/minified)
@@ -393,7 +409,7 @@ impl ManageWorkspaceTool {
                 MAX_FILE_SIZE_FOR_SYMBOLS / 1024,
                 file_path.display()
             );
-            return Ok((Vec::new(), Vec::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // 🔥 CRITICAL: Convert to relative Unix-style path for storage
@@ -413,7 +429,7 @@ impl ManageWorkspaceTool {
         let content_clone = content.clone();
         let workspace_root_clone2 = workspace_root.to_path_buf();
 
-        let (symbols, relationships) = {
+        let results = {
             use std::time::Duration;
             let parse_start = std::time::Instant::now();
 
@@ -462,12 +478,18 @@ impl ManageWorkspaceTool {
                 }
                 Err(_) => {
                     warn!("⏱️  Symbol extraction timed out after 30s for file: {} - skipping", relative_path);
-                    return Ok((Vec::new(), Vec::new(), file_info));
+                    return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
                 }
             }
         };
 
         // file_info already created in spawn_blocking above - no need to recreate
+
+        // Destructure ExtractionResults into all 4 fields
+        let symbols = results.symbols;
+        let relationships = results.relationships;
+        let identifiers = results.identifiers;
+        let types = results.types;
 
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
@@ -479,7 +501,7 @@ impl ManageWorkspaceTool {
         }
 
         // Return data for bulk operations (SQLite storage)
-        Ok((symbols, relationships, file_info))
+        Ok((symbols, relationships, identifiers, types, file_info))
     }
 
     /// Process a file without a tree-sitter parser (no symbol extraction)

@@ -4,8 +4,7 @@
 /// 1. Semantic search across documentation
 /// 2. goto definition for heading navigation
 /// 3. Knowledge graph connections between code and docs
-
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
 use std::path::Path;
 use tree_sitter::Tree;
 
@@ -66,7 +65,11 @@ impl MarkdownExtractor {
     }
 
     /// Extract a section (heading) as a symbol
-    fn extract_section(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_section(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         // Find the heading and section content within the section
         let mut heading_node = None;
         let mut section_content = String::new();
@@ -106,7 +109,7 @@ impl MarkdownExtractor {
                 | "block_quote"       // > quotes
                 | "table"             // Tables
                 | "thematic_break"    // ---
-                | "html_block"        // Raw HTML
+                | "html_block" // Raw HTML
         )
     }
 
@@ -169,5 +172,10 @@ impl MarkdownExtractor {
 
         // Count leading # characters
         text.chars().take_while(|&c| c == '#').count().max(1).min(6)
+    }
+
+    pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
+        // Markdown is documentation - no code identifiers
+        Vec::new()
     }
 }

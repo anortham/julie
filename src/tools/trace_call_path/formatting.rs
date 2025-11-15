@@ -37,7 +37,15 @@ pub fn format_call_trees(
     // Choose output format based on parameter
     if output_format == "tree" {
         // ASCII tree visualization for humans
-        build_ascii_tree(trees, total_nodes, &all_languages, direction_label, symbol, direction, max_depth)
+        build_ascii_tree(
+            trees,
+            total_nodes,
+            &all_languages,
+            direction_label,
+            symbol,
+            direction,
+            max_depth,
+        )
     } else {
         // JSON-focused summary for AI agents (default)
         Ok(format!(

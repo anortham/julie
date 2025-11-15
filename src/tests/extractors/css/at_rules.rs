@@ -460,12 +460,14 @@ mod tests {
         // Animation classes
         let fade_in_class = symbols.iter().find(|s| s.name == ".fade-in");
         assert!(fade_in_class.is_some());
-        assert!(fade_in_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("animation: fadeIn 0.6s ease-out"));
+        assert!(
+            fade_in_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("animation: fadeIn 0.6s ease-out")
+        );
 
         let slide_in_class = symbols.iter().find(|s| s.name == ".slide-in-left");
         assert!(slide_in_class.is_some());
@@ -478,17 +480,21 @@ mod tests {
 
         let complex_animation = symbols.iter().find(|s| s.name == ".complex-animation");
         assert!(complex_animation.is_some());
-        assert!(complex_animation
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("fadeIn 0.5s ease-out"));
-        assert!(complex_animation
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("slideInFromLeft 0.8s 0.2s ease-out both"));
+        assert!(
+            complex_animation
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("fadeIn 0.5s ease-out")
+        );
+        assert!(
+            complex_animation
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("slideInFromLeft 0.8s 0.2s ease-out both")
+        );
     }
 }

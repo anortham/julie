@@ -6,10 +6,10 @@ use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use tracing::{debug, info, warn};
 
-use crate::handler::JulieServerHandler;
-use super::filtering::apply_all_filters;
 use super::body_extraction::extract_code_bodies;
+use super::filtering::apply_all_filters;
 use super::formatting::format_symbol_response;
+use crate::handler::JulieServerHandler;
 
 /// Get symbols from the primary workspace
 pub async fn get_symbols_from_primary(
@@ -93,7 +93,10 @@ pub async fn get_symbols_from_primary(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned in get_symbols_from_primary, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned in get_symbols_from_primary, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };

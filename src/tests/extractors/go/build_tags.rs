@@ -100,55 +100,69 @@ func FuzzUserValidation(f *testing.F) {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let test_user_service = symbols.iter().find(|s| s.name == "TestUserService");
     assert!(test_user_service.is_some());
     let test_user_service = test_user_service.unwrap();
     assert_eq!(test_user_service.kind, SymbolKind::Function);
-    assert!(test_user_service
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func TestUserService(t *testing.T)"));
+    assert!(
+        test_user_service
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func TestUserService(t *testing.T)")
+    );
 
     let test_validation = symbols.iter().find(|s| s.name == "TestValidation");
     assert!(test_validation.is_some());
     let test_validation = test_validation.unwrap();
-    assert!(test_validation
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func TestValidation(t *testing.T)"));
+    assert!(
+        test_validation
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func TestValidation(t *testing.T)")
+    );
 
     let benchmark_user_creation = symbols.iter().find(|s| s.name == "BenchmarkUserCreation");
     assert!(benchmark_user_creation.is_some());
     let benchmark_user_creation = benchmark_user_creation.unwrap();
-    assert!(benchmark_user_creation
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func BenchmarkUserCreation(b *testing.B)"));
+    assert!(
+        benchmark_user_creation
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func BenchmarkUserCreation(b *testing.B)")
+    );
 
     let example_func = symbols
         .iter()
         .find(|s| s.name == "ExampleUserService_CreateUser");
     assert!(example_func.is_some());
     let example_func = example_func.unwrap();
-    assert!(example_func
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func ExampleUserService_CreateUser()"));
+    assert!(
+        example_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ExampleUserService_CreateUser()")
+    );
 
     let fuzz_func = symbols.iter().find(|s| s.name == "FuzzUserValidation");
     assert!(fuzz_func.is_some());
     let fuzz_func = fuzz_func.unwrap();
-    assert!(fuzz_func
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func FuzzUserValidation(f *testing.F)"));
+    assert!(
+        fuzz_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func FuzzUserValidation(f *testing.F)")
+    );
 }

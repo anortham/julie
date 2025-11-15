@@ -289,11 +289,13 @@ func _background_processing(data: Array):
                 .and_then(|m| m.get("dataType").and_then(|v| v.as_str())),
             Some("CharacterBody2D")
         );
-        assert!(player
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@onready var player: CharacterBody2D = $Player"));
+        assert!(
+            player
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@onready var player: CharacterBody2D = $Player")
+        );
 
         let ui_manager = symbols.iter().find(|s| s.name == "ui_manager");
         assert!(ui_manager.is_some());
@@ -308,22 +310,26 @@ func _background_processing(data: Array):
 
         let camera = symbols.iter().find(|s| s.name == "camera");
         assert!(camera.is_some());
-        assert!(camera
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("$Player/Camera2D"));
+        assert!(
+            camera
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("$Player/Camera2D")
+        );
 
         let player_scene = symbols.iter().find(|s| s.name == "PlayerScene");
         assert!(player_scene.is_some());
         let player_scene = player_scene.unwrap();
         assert_eq!(player_scene.kind, SymbolKind::Constant);
-        assert!(player_scene
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("preload(\"res://scenes/Player.tscn\")"));
+        assert!(
+            player_scene
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("preload(\"res://scenes/Player.tscn\")")
+        );
 
         let enemy_texture = symbols.iter().find(|s| s.name == "enemy_texture");
         assert!(enemy_texture.is_some());
@@ -389,12 +395,14 @@ func _background_processing(data: Array):
 
         let load_game = symbols.iter().find(|s| s.name == "load_game");
         assert!(load_game.is_some());
-        assert!(load_game
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("-> bool"));
+        assert!(
+            load_game
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("-> bool")
+        );
 
         let create_explosion = symbols.iter().find(|s| s.name == "create_explosion");
         assert!(create_explosion.is_some());

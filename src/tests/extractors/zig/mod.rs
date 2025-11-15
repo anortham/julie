@@ -11,8 +11,12 @@ mod zig_extractor_tests {
     pub(crate) fn extract_symbols(code: &str) -> Vec<crate::extractors::base::Symbol> {
         let tree = init_parser(code, "zig");
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor =
-            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         extractor.extract_symbols(&tree)
     }
 
@@ -22,8 +26,12 @@ mod zig_extractor_tests {
     ) -> Vec<crate::extractors::base::Relationship> {
         let tree = init_parser(code, "zig");
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor =
-            ZigExtractor::new("zig".to_string(), "test.zig".to_string(), code.to_string(), &workspace_root);
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            "test.zig".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         extractor.extract_relationships(&tree, symbols)
     }
 
@@ -176,21 +184,25 @@ const IoError = error{
             .iter()
             .find(|s| s.name == "Point" && s.kind == SymbolKind::Class);
         assert!(point_struct.is_some());
-        assert!(point_struct
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("const Point = struct"));
+        assert!(
+            point_struct
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("const Point = struct")
+        );
 
         let packed_struct = symbols.iter().find(|s| s.name == "PackedData");
         assert!(packed_struct.is_some());
-        assert!(packed_struct
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("packed struct"));
+        assert!(
+            packed_struct
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("packed struct")
+        );
 
         // Should extract struct fields
         let x_field = symbols
@@ -201,42 +213,50 @@ const IoError = error{
 
         let flags_field = symbols.iter().find(|s| s.name == "flags");
         assert!(flags_field.is_some());
-        assert!(flags_field
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("u8"));
+        assert!(
+            flags_field
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("u8")
+        );
 
         // Should extract struct methods
         let init_method = symbols
             .iter()
             .find(|s| s.name == "init" && s.kind == SymbolKind::Method);
         assert!(init_method.is_some());
-        assert!(init_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("pub fn init"));
+        assert!(
+            init_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("pub fn init")
+        );
 
         let distance_method = symbols.iter().find(|s| s.name == "distance");
         assert!(distance_method.is_some());
-        assert!(distance_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("f32"));
+        assert!(
+            distance_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("f32")
+        );
 
         let scale_method = symbols.iter().find(|s| s.name == "scale");
         assert!(scale_method.is_some());
-        assert!(scale_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("*Self"));
+        assert!(
+            scale_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("*Self")
+        );
 
         // Should extract constants
         let origin_constant = symbols.iter().find(|s| s.name == "ORIGIN");
@@ -248,22 +268,26 @@ const IoError = error{
             .iter()
             .find(|s| s.name == "Vector" && s.kind == SymbolKind::Function);
         assert!(vector_function.is_some());
-        assert!(vector_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("comptime T: type"));
+        assert!(
+            vector_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("comptime T: type")
+        );
 
         // Should extract unions
         let value_union = symbols.iter().find(|s| s.name == "Value");
         assert!(value_union.is_some());
-        assert!(value_union
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("union(enum)"));
+        assert!(
+            value_union
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("union(enum)")
+        );
 
         // Should extract union methods
         let type_string_method = symbols.iter().find(|s| s.name == "typeString");
@@ -271,24 +295,28 @@ const IoError = error{
 
         let as_integer_method = symbols.iter().find(|s| s.name == "asInteger");
         assert!(as_integer_method.is_some());
-        assert!(as_integer_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("?i64"));
+        assert!(
+            as_integer_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("?i64")
+        );
 
         // Should extract enums
         let color_enum = symbols
             .iter()
             .find(|s| s.name == "Color" && s.kind == SymbolKind::Enum);
         assert!(color_enum.is_some());
-        assert!(color_enum
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("enum(u8)"));
+        assert!(
+            color_enum
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("enum(u8)")
+        );
 
         // Should extract enum members
         let red_member = symbols.iter().find(|s| s.name == "red");
@@ -300,21 +328,25 @@ const IoError = error{
         // Should extract error sets
         let file_error = symbols.iter().find(|s| s.name == "FileError");
         assert!(file_error.is_some());
-        assert!(file_error
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("error{"));
+        assert!(
+            file_error
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("error{")
+        );
 
         let io_error = symbols.iter().find(|s| s.name == "IoError");
         assert!(io_error.is_some());
-        assert!(io_error
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("|| FileError"));
+        assert!(
+            io_error
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("|| FileError")
+        );
     }
 
     #[test]
@@ -435,42 +467,50 @@ const Counter = struct {
             .iter()
             .find(|s| s.name == "parseInteger" && s.kind == SymbolKind::Function);
         assert!(parse_integer_fn.is_some());
-        assert!(parse_integer_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("!i32"));
+        assert!(
+            parse_integer_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("!i32")
+        );
 
         // Should extract functions with optional returns
         let find_char_fn = symbols.iter().find(|s| s.name == "findChar");
         assert!(find_char_fn.is_some());
-        assert!(find_char_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("?usize"));
+        assert!(
+            find_char_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("?usize")
+        );
 
         // Should extract generic functions
         let swap_fn = symbols.iter().find(|s| s.name == "swap");
         assert!(swap_fn.is_some());
-        assert!(swap_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("comptime T: type"));
+        assert!(
+            swap_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("comptime T: type")
+        );
 
         // Should extract functions with allocator parameters
         let duplicate_string_fn = symbols.iter().find(|s| s.name == "duplicateString");
         assert!(duplicate_string_fn.is_some());
-        assert!(duplicate_string_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Allocator"));
+        assert!(
+            duplicate_string_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Allocator")
+        );
 
         // Should extract async functions
         let fetch_data_fn = symbols.iter().find(|s| s.name == "fetchData");
@@ -479,67 +519,81 @@ const Counter = struct {
         // Should extract comptime functions
         let create_array_fn = symbols.iter().find(|s| s.name == "createArray");
         assert!(create_array_fn.is_some());
-        assert!(create_array_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("comptime size: usize"));
+        assert!(
+            create_array_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("comptime size: usize")
+        );
 
         // Should extract inline functions
         let min_fn = symbols.iter().find(|s| s.name == "min");
         assert!(min_fn.is_some());
-        assert!(min_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("inline fn"));
+        assert!(
+            min_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("inline fn")
+        );
 
         // Should extract export functions
         let add_numbers_fn = symbols.iter().find(|s| s.name == "add_numbers");
         assert!(add_numbers_fn.is_some());
-        assert!(add_numbers_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("export fn"));
-        assert!(add_numbers_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("c_int"));
+        assert!(
+            add_numbers_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("export fn")
+        );
+        assert!(
+            add_numbers_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("c_int")
+        );
 
         // Should extract varargs functions
         let printf_fn = symbols.iter().find(|s| s.name == "printf");
         assert!(printf_fn.is_some());
-        assert!(printf_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("anytype"));
+        assert!(
+            printf_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("anytype")
+        );
 
         // Should extract function types
         let binary_op_type = symbols.iter().find(|s| s.name == "BinaryOp");
         assert!(binary_op_type.is_some());
-        assert!(binary_op_type
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("fn ("));
+        assert!(
+            binary_op_type
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("fn (")
+        );
 
         let apply_op_fn = symbols.iter().find(|s| s.name == "applyOperation");
         assert!(apply_op_fn.is_some());
-        assert!(apply_op_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("BinaryOp"));
+        assert!(
+            apply_op_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("BinaryOp")
+        );
 
         // Should extract counter struct and methods
         let counter_struct = symbols.iter().find(|s| s.name == "Counter");
@@ -722,12 +776,14 @@ const FileHandle = struct {
         // Should extract C interop structures
         let c_string_struct = symbols.iter().find(|s| s.name == "CString");
         assert!(c_string_struct.is_some());
-        assert!(c_string_struct
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("extern struct"));
+        assert!(
+            c_string_struct
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("extern struct")
+        );
 
         let from_slice_method = symbols.iter().find(|s| s.name == "fromSlice");
         assert!(from_slice_method.is_some());
@@ -735,34 +791,40 @@ const FileHandle = struct {
         // Should extract extern C functions
         let malloc_fn = symbols.iter().find(|s| s.name == "malloc");
         assert!(malloc_fn.is_some());
-        assert!(malloc_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("extern \"c\""));
+        assert!(
+            malloc_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("extern \"c\"")
+        );
 
         let free_fn = symbols.iter().find(|s| s.name == "free");
         assert!(free_fn.is_some());
 
         let printf_fn = symbols.iter().find(|s| s.name == "printf");
         assert!(printf_fn.is_some());
-        assert!(printf_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("..."));
+        assert!(
+            printf_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("...")
+        );
 
         // Should extract callback function types
         let callback_type = symbols.iter().find(|s| s.name == "CallbackFn");
         assert!(callback_type.is_some());
-        assert!(callback_type
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("callconv(.C)"));
+        assert!(
+            callback_type
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("callconv(.C)")
+        );
 
         // Should extract math library
         let math_lib = symbols.iter().find(|s| s.name == "MathLib");
@@ -920,12 +982,14 @@ const PlatformApi = switch (features.target_os) {
         // Should extract test functions
         let basic_arithmetic_test = symbols.iter().find(|s| s.name == "basic arithmetic");
         assert!(basic_arithmetic_test.is_some());
-        assert!(basic_arithmetic_test
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("test \"basic arithmetic\""));
+        assert!(
+            basic_arithmetic_test
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("test \"basic arithmetic\"")
+        );
 
         let string_ops_test = symbols.iter().find(|s| s.name == "string operations");
         assert!(string_ops_test.is_some());
@@ -978,12 +1042,14 @@ const PlatformApi = switch (features.target_os) {
         // Should extract platform-specific API
         let platform_api = symbols.iter().find(|s| s.name == "PlatformApi");
         assert!(platform_api.is_some());
-        assert!(platform_api
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("switch"));
+        assert!(
+            platform_api
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("switch")
+        );
 
         let get_current_dir_fn = symbols.iter().find(|s| s.name == "getCurrentDirectory");
         assert!(get_current_dir_fn.is_some());
@@ -1098,32 +1164,38 @@ const Container(comptime T: type) = struct {
         // Should extract type aliases
         let shape_list_type = symbols.iter().find(|s| s.name == "ShapeList");
         assert!(shape_list_type.is_some());
-        assert!(shape_list_type
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("std.ArrayList(BaseShape)"));
+        assert!(
+            shape_list_type
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("std.ArrayList(BaseShape)")
+        );
 
         // Should extract generic types
         let container_type = symbols.iter().find(|s| s.name == "Container");
         assert!(container_type.is_some());
-        assert!(container_type
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("comptime T: type"));
+        assert!(
+            container_type
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("comptime T: type")
+        );
 
         // Should handle polymorphic function calls
         let calculate_area_fn = symbols.iter().find(|s| s.name == "calculateTotalArea");
         assert!(calculate_area_fn.is_some());
-        assert!(calculate_area_fn
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("[]const BaseShape"));
+        assert!(
+            calculate_area_fn
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("[]const BaseShape")
+        );
     }
 }
 
@@ -1886,3 +1958,4 @@ fn example() !void {
         }
     }
 }
+mod types; // Phase 4: Type extraction verification tests

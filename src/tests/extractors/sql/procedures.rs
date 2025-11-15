@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -141,96 +141,118 @@ HAVING COUNT(ae.id) > 0;
             .iter()
             .find(|s| s.name == "GetUserAnalytics" && s.kind == SymbolKind::Function);
         assert!(get_user_analytics.is_some());
-        assert!(get_user_analytics
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("CREATE PROCEDURE"));
+        assert!(
+            get_user_analytics
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("CREATE PROCEDURE")
+        );
 
         let user_id_param = symbols.iter().find(|s| s.name == "p_user_id");
         assert!(user_id_param.is_some());
-        assert!(user_id_param
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("IN p_user_id BIGINT"));
+        assert!(
+            user_id_param
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("IN p_user_id BIGINT")
+        );
 
         let total_events_param = symbols.iter().find(|s| s.name == "p_total_events");
         assert!(total_events_param.is_some());
-        assert!(total_events_param
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("OUT"));
+        assert!(
+            total_events_param
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("OUT")
+        );
 
         let calculate_user_score = symbols.iter().find(|s| s.name == "CalculateUserScore");
         assert!(calculate_user_score.is_some());
-        assert!(calculate_user_score
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("RETURNS DECIMAL(10,2)"));
+        assert!(
+            calculate_user_score
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("RETURNS DECIMAL(10,2)")
+        );
 
         let update_user_prefs = symbols.iter().find(|s| s.name == "update_user_preferences");
         assert!(update_user_prefs.is_some());
-        assert!(update_user_prefs
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("RETURNS BOOLEAN"));
-        assert!(update_user_prefs
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("LANGUAGE plpgsql"));
+        assert!(
+            update_user_prefs
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("RETURNS BOOLEAN")
+        );
+        assert!(
+            update_user_prefs
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("LANGUAGE plpgsql")
+        );
 
         let score_var = symbols.iter().find(|s| s.name == "v_score");
         assert!(score_var.is_some());
-        assert!(score_var
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("DECLARE v_score DECIMAL(10,2)"));
+        assert!(
+            score_var
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("DECLARE v_score DECIMAL(10,2)")
+        );
 
         let current_prefs_var = symbols.iter().find(|s| s.name == "v_current_prefs");
         assert!(current_prefs_var.is_some());
-        assert!(current_prefs_var
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("JSONB"));
+        assert!(
+            current_prefs_var
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("JSONB")
+        );
 
         let audit_trigger = symbols.iter().find(|s| s.name == "audit_user_changes");
         assert!(audit_trigger.is_some());
-        assert!(audit_trigger
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("CREATE TRIGGER"));
-        assert!(audit_trigger
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("AFTER UPDATE ON users"));
+        assert!(
+            audit_trigger
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("CREATE TRIGGER")
+        );
+        assert!(
+            audit_trigger
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("AFTER UPDATE ON users")
+        );
 
         let engagement_view = symbols.iter().find(|s| s.name == "user_engagement_summary");
         assert!(engagement_view.is_some());
-        assert!(engagement_view
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("CREATE VIEW"));
+        assert!(
+            engagement_view
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("CREATE VIEW")
+        );
 
         let total_sessions = symbols.iter().find(|s| s.name == "total_sessions");
         assert!(total_sessions.is_some());

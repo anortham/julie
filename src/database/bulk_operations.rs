@@ -1,7 +1,7 @@
 // Bulk operations with index optimization
 
 use super::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
 
@@ -197,6 +197,205 @@ impl SymbolDatabase {
         )?;
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // TYPE BULK OPERATIONS (Phase 4)
+    // ============================================================================
+
+    /// 🚀 BLAZING-FAST bulk type storage for type intelligence
+    ///
+    /// Mirrors bulk_store_identifiers pattern for consistency and performance.
+    /// Uses the standard SQLite bulk pattern:
+    /// 1. Drop indexes (improves insert speed 10-100x)
+    /// 2. Bulk insert in single transaction
+    /// 3. Recreate indexes
+    /// 4. WAL checkpoint
+    pub fn bulk_store_types(
+        &mut self,
+        types: &[crate::extractors::base::TypeInfo],
+        _workspace_id: &str,
+    ) -> Result<()> {
+        if types.is_empty() {
+            return Ok(());
+        }
+
+        let start_time = std::time::Instant::now();
+        info!(
+            "🚀 Starting bulk insert of {} types",
+            types.len()
+        );
+
+        let original_sync: i64 = self
+            .conn
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))?;
+
+        let current_journal: String = self
+            .conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
+        if !current_journal.eq_ignore_ascii_case("wal") {
+            warn!(
+                "Journal mode '{}' detected before bulk type insert; forcing WAL",
+                current_journal
+            );
+            self.conn
+                .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        }
+
+        // SAFETY: drop to NORMAL only for the scope of this bulk insert and restore
+        // the caller's previous synchronous level afterwards (see finalizer below).
+        self.conn.pragma_update(None, "synchronous", 1)?;
+
+        // Track whether we need to rebuild indexes if the bulk insert bails out.
+        let mut indexes_dropped = false;
+
+        let mut result: Result<()> = (|| -> Result<()> {
+            // STEP 1: Drop all indexes for maximum insert speed
+            debug!("🗑️ Dropping type indexes for bulk insert optimization");
+            self.drop_type_indexes()?;
+            indexes_dropped = true;
+
+            // STEP 2: Optimize SQLite for bulk operations
+            self.conn.execute("PRAGMA cache_size = 20000", [])?;
+
+            // STEP 3: Start transaction for atomic bulk insert
+            let tx = self.conn.transaction()?;
+
+            // STEP 4: Prepare statement once, use many times
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO types
+                 (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+
+            // STEP 5: Batch insert for optimal performance
+            const BATCH_SIZE: usize = 1000;
+            let mut processed = 0;
+
+            for chunk in types.chunks(BATCH_SIZE) {
+                for type_info in chunk {
+                    // Serialize JSON fields
+                    let generic_params_json = type_info.generic_params.as_ref()
+                        .map(|v| serde_json::to_string(v).ok())
+                        .flatten();
+                    let constraints_json = type_info.constraints.as_ref()
+                        .map(|v| serde_json::to_string(v).ok())
+                        .flatten();
+                    let metadata_json = type_info.metadata.as_ref()
+                        .map(|m| serde_json::to_string(m).ok())
+                        .flatten();
+
+                    stmt.execute(params![
+                        type_info.symbol_id,
+                        type_info.resolved_type,
+                        generic_params_json,
+                        constraints_json,
+                        if type_info.is_inferred { 1 } else { 0 },
+                        type_info.language,
+                        metadata_json
+                    ])?;
+
+                    processed += 1;
+                }
+
+                // Progress logging for large bulk operations
+                if processed % 5000 == 0 {
+                    debug!(
+                        "📊 Bulk insert progress: {}/{} types",
+                        processed,
+                        types.len()
+                    );
+                }
+            }
+
+            // STEP 6: Drop statement and commit transaction
+            drop(stmt);
+            tx.commit()?;
+
+            Ok(())
+        })();
+
+        if indexes_dropped {
+            if let Err(e) = self.create_type_indexes() {
+                warn!(
+                    "Failed to rebuild type indexes after bulk insert: {}",
+                    e
+                );
+                if result.is_ok() {
+                    result = Err(e);
+                }
+            } else {
+                debug!("🏗️ Rebuilt type indexes after bulk insert");
+            }
+        }
+
+        if let Err(e) = self.conn.pragma_update(None, "synchronous", original_sync) {
+            warn!(
+                "Failed to restore PRAGMA synchronous to {}: {}",
+                original_sync, e
+            );
+            if result.is_ok() {
+                result = Err(anyhow!("Failed to restore PRAGMA synchronous: {}", e));
+            }
+        }
+
+        if result.is_ok() {
+            debug!("💾 Passive WAL checkpoint (non-blocking)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
+                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            }
+        }
+
+        if let Ok(()) = result.as_ref() {
+            let duration = start_time.elapsed();
+            info!(
+                "✅ Bulk type insert complete! {} types in {:.2}ms ({:.0} types/sec)",
+                types.len(),
+                duration.as_millis(),
+                types.len() as f64 / duration.as_secs_f64()
+            );
+        }
+
+        result
+    }
+
+    /// Drop all type table indexes for bulk operations
+    fn drop_type_indexes(&self) -> Result<()> {
+        let indexes = [
+            "idx_types_language",
+            "idx_types_resolved",
+            "idx_types_inferred",
+        ];
+
+        for index in &indexes {
+            if let Err(e) = self
+                .conn
+                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
+            {
+                debug!("Note: Could not drop index {}: {}", index, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create all type table indexes after bulk operations
+    fn create_type_indexes(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_language ON types(language)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_resolved ON types(resolved_type)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",
             [],
         )?;
 
@@ -426,15 +625,19 @@ impl SymbolDatabase {
         new_files: &[FileInfo],
         new_symbols: &[Symbol],
         new_relationships: &[Relationship],
+        new_identifiers: &[crate::extractors::Identifier],
+        new_types: &[crate::extractors::base::TypeInfo],
         _workspace_id: &str,
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
         info!(
-            "🔐 Starting ATOMIC incremental update: cleaning {} files, inserting {} files/{} symbols/{} relationships",
+            "🔐 Starting ATOMIC incremental update: cleaning {} files, inserting {} files/{} symbols/{} relationships/{} identifiers/{} types",
             files_to_clean.len(),
             new_files.len(),
             new_symbols.len(),
-            new_relationships.len()
+            new_relationships.len(),
+            new_identifiers.len(),
+            new_types.len()
         );
 
         // Prepare timestamp
@@ -472,6 +675,20 @@ impl SymbolDatabase {
                     )?;
                     total_rels_deleted += rels_deleted;
 
+                    // Delete identifiers
+                    debug!("Deleting identifiers for file: {}", file_path);
+                    outer_tx.execute(
+                        "DELETE FROM identifiers WHERE file_path = ?1",
+                        params![file_path],
+                    )?;
+
+                    // Delete types (via JOIN to find symbol_ids for this file)
+                    debug!("Deleting types for file: {}", file_path);
+                    outer_tx.execute(
+                        "DELETE FROM types WHERE symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+                        params![file_path],
+                    )?;
+
                     // Delete symbols
                     debug!("Deleting symbols for file: {}", file_path);
                     let symbols_deleted = outer_tx.execute(
@@ -481,8 +698,12 @@ impl SymbolDatabase {
                     total_symbols_deleted += symbols_deleted;
                 }
 
-                debug!("🧹 Total cleanup: deleted {} symbols and {} relationships from {} files",
-                      total_symbols_deleted, total_rels_deleted, files_to_clean.len());
+                debug!(
+                    "🧹 Total cleanup: deleted {} symbols and {} relationships from {} files",
+                    total_symbols_deleted,
+                    total_rels_deleted,
+                    files_to_clean.len()
+                );
             }
 
             // STEP 2: Bulk insert new files (if any)
@@ -512,7 +733,10 @@ impl SymbolDatabase {
 
             // STEP 3: Bulk insert new symbols (if any)
             if !new_symbols.is_empty() {
-                debug!("🔤 Inserting {} new symbols (FK checks are ON)", new_symbols.len());
+                debug!(
+                    "🔤 Inserting {} new symbols (FK checks are ON)",
+                    new_symbols.len()
+                );
 
                 let mut stmt = outer_tx.prepare(
                     "INSERT OR REPLACE INTO symbols
@@ -589,7 +813,7 @@ impl SymbolDatabase {
                         rel.confidence,
                         metadata_json
                     ]) {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(rusqlite::Error::SqliteFailure(err, _))
                             if err.code == rusqlite::ErrorCode::ConstraintViolation =>
                         {
@@ -604,7 +828,111 @@ impl SymbolDatabase {
                 drop(stmt);
             }
 
-            // STEP 5: Commit ENTIRE incremental update atomically
+            // STEP 4.5: Bulk insert new identifiers (if any)
+            if !new_identifiers.is_empty() {
+                debug!("🔍 Inserting {} new identifiers", new_identifiers.len());
+
+                let mut stmt = outer_tx.prepare(
+                    "INSERT OR REPLACE INTO identifiers
+                     (id, name, kind, language, file_path, start_line, start_col,
+                      end_line, end_col, start_byte, end_byte, containing_symbol_id,
+                      target_symbol_id, confidence, code_context)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                )?;
+
+                for identifier in new_identifiers {
+                    stmt.execute(params![
+                        identifier.id,
+                        identifier.name,
+                        identifier.kind.to_string(),
+                        identifier.language,
+                        identifier.file_path,
+                        identifier.start_line,
+                        identifier.start_column,
+                        identifier.end_line,
+                        identifier.end_column,
+                        identifier.start_byte,
+                        identifier.end_byte,
+                        identifier.containing_symbol_id,
+                        identifier.target_symbol_id,
+                        identifier.confidence,
+                        identifier.code_context
+                    ])?;
+                }
+                drop(stmt);
+            }
+
+            // STEP 4.6: Bulk insert new types (if any)
+            if !new_types.is_empty() {
+                debug!("📝 Inserting {} new types", new_types.len());
+
+                let mut stmt = outer_tx.prepare(
+                    "INSERT OR REPLACE INTO types
+                     (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata, last_indexed)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                )?;
+
+                for type_info in new_types {
+                    let generic_params_json = type_info.generic_params.as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?;
+                    let constraints_json = type_info.constraints.as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?;
+                    let metadata_json = type_info.metadata.as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?;
+
+                    stmt.execute(params![
+                        type_info.symbol_id,
+                        type_info.resolved_type,
+                        generic_params_json,
+                        constraints_json,
+                        type_info.is_inferred,
+                        type_info.language,
+                        metadata_json,
+                        now
+                    ])?;
+                }
+                drop(stmt);
+            }
+
+            // STEP 5: Rebuild FTS5 indexes INSIDE transaction (before commit)
+            // 🔥 FTS5 CRITICAL: Rebuild FTS5 indexes after incremental DELETE operations
+            // DELETE operations create rowid gaps in the base tables that FTS5 external
+            // content tables still reference, causing "missing row X from content table" errors.
+            //
+            // 🔒 CONCURRENCY FIX: By doing this INSIDE the transaction (before commit),
+            // we prevent database corruption from concurrent access during FTS5 rebuild.
+            // Previously, rebuild happened AFTER commit while MCP server was still running,
+            // causing "database disk image is malformed" errors.
+            if !files_to_clean.is_empty() {
+                debug!("🔄 Rebuilding FTS5 indexes after DELETE operations (inside transaction)");
+
+                // Rebuild symbols_fts (inline to avoid borrow conflict)
+                outer_tx.execute(
+                    "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
+                    [],
+                )?;
+                outer_tx.execute(
+                    "INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')",
+                    [],
+                )?;
+                debug!("✅ Symbols FTS5 index rebuilt");
+
+                // Rebuild files_fts (inline to avoid borrow conflict)
+                outer_tx.execute(
+                    "INSERT INTO files_fts(files_fts) VALUES('delete-all')",
+                    [],
+                )?;
+                outer_tx.execute(
+                    "INSERT INTO files_fts(files_fts) VALUES('rebuild')",
+                    [],
+                )?;
+                debug!("✅ Files FTS5 index rebuilt");
+            }
+
+            // STEP 6: Commit ENTIRE incremental update atomically (including FTS5 rebuild)
             debug!("💾 Committing atomic incremental update");
             outer_tx.commit()?;
 
@@ -617,24 +945,11 @@ impl SymbolDatabase {
         // 🔥 ATOMICITY WIN: If crash happens anywhere:
         // - Old data stays (delete didn't commit)
         // - New data not inserted
+        // - FTS5 rebuild didn't happen
         // - Database consistent (old state preserved)
         // Next incremental run will re-process the modified files
 
-        // 🔥 FTS5 CRITICAL: Rebuild FTS5 indexes after incremental DELETE operations
-        // DELETE operations create rowid gaps in the base tables that FTS5 external
-        // content tables still reference, causing "missing row X from content table" errors.
-        // This is the same fix as delete_workspace_data() (workspace.rs:33-34)
         if result.is_ok() {
-            debug!("🔄 Rebuilding FTS5 indexes after incremental update");
-            if let Err(e) = self.rebuild_symbols_fts() {
-                warn!("Failed to rebuild symbols_fts after incremental update: {}", e);
-                return Err(e);
-            }
-            if let Err(e) = self.rebuild_files_fts() {
-                warn!("Failed to rebuild files_fts after incremental update: {}", e);
-                return Err(e);
-            }
-
             let duration = start_time.elapsed();
             info!(
                 "✅ Atomic incremental update complete (with FTS5 rebuild) in {:.2}ms",

@@ -58,7 +58,11 @@ Item {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert_eq!(functions.len(), 3, "Should extract all three typed functions");
+        assert_eq!(
+            functions.len(),
+            3,
+            "Should extract all three typed functions"
+        );
     }
 
     #[test]
@@ -134,7 +138,10 @@ Item {
             .collect();
 
         // Should extract outer function, inner might or might not be extracted
-        assert!(functions.len() >= 1, "Should extract at least outer function");
+        assert!(
+            functions.len() >= 1,
+            "Should extract at least outer function"
+        );
     }
 
     #[test]
@@ -160,7 +167,11 @@ Item {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert_eq!(functions.len(), 2, "Should extract both functions with defaults");
+        assert_eq!(
+            functions.len(),
+            2,
+            "Should extract both functions with defaults"
+        );
     }
 
     #[test]

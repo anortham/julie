@@ -17,7 +17,10 @@ mod batch_sizing_tests {
         let batch_size = EmbeddingEngine::batch_size_from_vram(total_vram_bytes);
 
         // FIXED: Returns 30 for DirectML safety under memory pressure
-        assert_eq!(batch_size, 30, "DirectML-safe formula returns batch_size=30 for 6GB GPU");
+        assert_eq!(
+            batch_size, 30,
+            "DirectML-safe formula returns batch_size=30 for 6GB GPU"
+        );
 
         // This prevents: 55-second batch time → GPU crash on next batch
         // DirectML can now operate safely even at 97.6% GPU memory utilization

@@ -121,6 +121,59 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
+    /// Get relationships pointing TO these symbols, filtered by identifier kind
+    /// This joins with the identifiers table to filter by how symbols are used
+    /// (e.g., as types, in function calls, in imports, etc.)
+    pub fn get_relationships_to_symbols_filtered_by_kind(
+        &self,
+        symbol_ids: &[String],
+        identifier_kind: &str,
+    ) -> Result<Vec<Relationship>> {
+        if symbol_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build parameterized query with IN clause and JOIN with identifiers
+        let placeholders: Vec<String> = (1..=symbol_ids.len() + 1)
+            .map(|i| format!("?{}", i))
+            .collect();
+
+        // Join relationships with identifiers on file_path + line_number to find matching usages
+        let query = format!(
+            "SELECT DISTINCT r.id, r.from_symbol_id, r.to_symbol_id, r.kind, r.file_path, r.line_number, r.confidence, r.metadata
+             FROM relationships r
+             INNER JOIN identifiers i ON r.file_path = i.file_path AND r.line_number = i.start_line
+             WHERE r.to_symbol_id IN ({})
+               AND i.kind = ?{}",
+            placeholders[1..].join(", "),
+            symbol_ids.len() + 1
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        // Build params: symbol_ids + identifier_kind
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        for id in symbol_ids {
+            params.push(Box::new(id.clone()));
+        }
+        params.push(Box::new(identifier_kind.to_string()));
+
+        // Convert to &dyn ToSql
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params
+            .iter()
+            .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+            .collect();
+
+        let relationship_iter = stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
+
+        let mut relationships = Vec::new();
+        for relationship_result in relationship_iter {
+            relationships.push(relationship_result?);
+        }
+
+        Ok(relationships)
+    }
+
     pub fn get_file_relationship_statistics(
         &self,
     ) -> Result<std::collections::HashMap<String, usize>> {

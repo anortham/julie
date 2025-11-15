@@ -40,7 +40,10 @@ fn test_workspace_detection_priority() {
     // Since we can't easily test get_workspace_root() directly (it's private),
     // we verify the behavior through the documented contract:
     // - If no CLI args or env vars, it should use current_dir
-    let expected = workspace1.path().canonicalize().expect("Failed to canonicalize");
+    let expected = workspace1
+        .path()
+        .canonicalize()
+        .expect("Failed to canonicalize");
     assert!(
         expected.exists(),
         "Workspace 1 should exist for current_dir test"
@@ -55,8 +58,13 @@ fn test_workspace_detection_priority() {
     // Verify env var is set correctly
     let env_path = env::var("JULIE_WORKSPACE").expect("JULIE_WORKSPACE should be set");
     assert_eq!(
-        PathBuf::from(env_path).canonicalize().expect("Failed to canonicalize"),
-        workspace2.path().canonicalize().expect("Failed to canonicalize"),
+        PathBuf::from(env_path)
+            .canonicalize()
+            .expect("Failed to canonicalize"),
+        workspace2
+            .path()
+            .canonicalize()
+            .expect("Failed to canonicalize"),
         "JULIE_WORKSPACE env var should point to workspace2"
     );
 
@@ -142,11 +150,16 @@ fn test_tilde_expansion_in_env_var() {
 #[test]
 fn test_path_canonicalization() {
     let workspace = setup_test_workspace();
-    let canonical = workspace.path().canonicalize().expect("Failed to canonicalize");
+    let canonical = workspace
+        .path()
+        .canonicalize()
+        .expect("Failed to canonicalize");
 
     // Test various path representations
     let path_with_dot = workspace.path().join(".");
-    let path_with_dot_canonical = path_with_dot.canonicalize().expect("Failed to canonicalize ./");
+    let path_with_dot_canonical = path_with_dot
+        .canonicalize()
+        .expect("Failed to canonicalize ./");
 
     assert_eq!(
         canonical, path_with_dot_canonical,
@@ -203,9 +216,18 @@ async fn test_workspace_init_with_explicit_path() {
     );
 
     // Verify expected subdirectories exist
-    assert!(julie_dir.join("indexes").exists(), "indexes directory should exist");
-    assert!(julie_dir.join("models").exists(), "models directory should exist");
-    assert!(julie_dir.join("cache").exists(), "cache directory should exist");
+    assert!(
+        julie_dir.join("indexes").exists(),
+        "indexes directory should exist"
+    );
+    assert!(
+        julie_dir.join("models").exists(),
+        "models directory should exist"
+    );
+    assert!(
+        julie_dir.join("cache").exists(),
+        "cache directory should exist"
+    );
 }
 
 /// Test: Environment variable detection when current_dir differs
@@ -244,7 +266,10 @@ fn test_env_var_concept() {
     let current = env::current_dir().expect("Should have current dir");
     assert_ne!(
         current.canonicalize().expect("Failed to canonicalize"),
-        target_workspace.path().canonicalize().expect("Failed to canonicalize"),
+        target_workspace
+            .path()
+            .canonicalize()
+            .expect("Failed to canonicalize"),
         "Current directory should be different from JULIE_WORKSPACE"
     );
 
@@ -300,13 +325,20 @@ fn test_nonexistent_env_var_fallback() {
 
     // Verify the env var is set to something that doesn't exist
     let env_path = env::var("JULIE_WORKSPACE").expect("JULIE_WORKSPACE should be set");
-    assert!(!Path::new(&env_path).exists(), "Test env path should not exist: {}", env_path);
+    assert!(
+        !Path::new(&env_path).exists(),
+        "Test env path should not exist: {}",
+        env_path
+    );
 
     // Verify current_dir is set to our test workspace
     let current = env::current_dir().expect("Should have current dir");
     assert_eq!(
         current.canonicalize().expect("Failed to canonicalize"),
-        workspace.path().canonicalize().expect("Failed to canonicalize"),
+        workspace
+            .path()
+            .canonicalize()
+            .expect("Failed to canonicalize"),
         "Current directory should be set to test workspace"
     );
 
@@ -345,15 +377,17 @@ fn test_forward_slashes_on_windows() {
     let workspace_path = workspace.path();
 
     // Convert to string with forward slashes (like VS Code might send)
-    let forward_slash_path = workspace_path
-        .to_string_lossy()
-        .replace('\\', "/");
+    let forward_slash_path = workspace_path.to_string_lossy().replace('\\', "/");
 
     // PathBuf should handle this correctly
     let parsed = PathBuf::from(&forward_slash_path);
-    let canonical = parsed.canonicalize().expect("Should canonicalize forward-slash path");
+    let canonical = parsed
+        .canonicalize()
+        .expect("Should canonicalize forward-slash path");
 
-    let expected = workspace_path.canonicalize().expect("Should canonicalize original");
+    let expected = workspace_path
+        .canonicalize()
+        .expect("Should canonicalize original");
 
     assert_eq!(
         canonical, expected,
@@ -388,9 +422,14 @@ async fn test_incremental_indexing_respects_env_var() {
     env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
 
     // Initialize handler and workspace
-    let handler = JulieServerHandler::new().await.expect("Failed to create handler");
+    let handler = JulieServerHandler::new()
+        .await
+        .expect("Failed to create handler");
     handler
-        .initialize_workspace_with_force(Some(target_workspace.path().to_string_lossy().to_string()), true)
+        .initialize_workspace_with_force(
+            Some(target_workspace.path().to_string_lossy().to_string()),
+            true,
+        )
         .await
         .expect("Failed to initialize workspace");
 
@@ -476,7 +515,10 @@ fn test_resolve_workspace_path_respects_env_var() {
     );
 
     let resolved_path = resolved.unwrap();
-    let expected = target_workspace.path().canonicalize().expect("Failed to canonicalize");
+    let expected = target_workspace
+        .path()
+        .canonicalize()
+        .expect("Failed to canonicalize");
 
     // The resolved path should be the target workspace, not current_dir
     assert_eq!(

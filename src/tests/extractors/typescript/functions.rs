@@ -17,13 +17,12 @@ fn test_extract_function_with_signature() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(symbols.iter().any(|s| s.name == "add"));
@@ -42,13 +41,12 @@ fn test_extract_async_function() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "fetchData").unwrap();
@@ -70,13 +68,12 @@ fn test_extract_function_with_jsdoc_comment() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "validateEmail").unwrap();
@@ -84,16 +81,20 @@ fn test_extract_function_with_jsdoc_comment() {
         func_symbol.doc_comment.is_some(),
         "JSDoc comment should be extracted"
     );
-    assert!(func_symbol
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Validates user input"));
-    assert!(func_symbol
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("@param email"));
+    assert!(
+        func_symbol
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Validates user input")
+    );
+    assert!(
+        func_symbol
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("@param email")
+    );
 }
 
 #[test]
@@ -107,13 +108,12 @@ fn test_extract_function_without_jsdoc_comment() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "add").unwrap();

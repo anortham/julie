@@ -30,7 +30,7 @@ pub(super) fn extract_annotation(
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(

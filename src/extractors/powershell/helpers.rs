@@ -141,7 +141,9 @@ pub(super) fn extract_parameter_attributes(base: &BaseExtractor, node: Node) -> 
         .unwrap()
         .captures(&node_text)
     {
-        captures.get(0).map_or(String::new(), |m| m.as_str().to_string())
+        captures
+            .get(0)
+            .map_or(String::new(), |m| m.as_str().to_string())
     } else {
         String::new()
     }

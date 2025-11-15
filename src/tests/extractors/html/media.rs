@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -331,30 +331,38 @@ mod tests {
         });
         assert!(hero_image.is_some());
         assert_eq!(hero_image.unwrap().kind, SymbolKind::Variable); // Media elements as variables
-        assert!(hero_image
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"loading="lazy""#));
-        assert!(hero_image
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"decoding="async""#));
-        assert!(hero_image
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("srcset="));
-        assert!(hero_image
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("sizes="));
+        assert!(
+            hero_image
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"loading="lazy""#)
+        );
+        assert!(
+            hero_image
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"decoding="async""#)
+        );
+        assert!(
+            hero_image
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("srcset=")
+        );
+        assert!(
+            hero_image
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("sizes=")
+        );
 
         let data_uri_image = symbols.iter().find(|s| {
             s.signature
@@ -397,24 +405,30 @@ mod tests {
         // Video element
         let video_element = symbols.iter().find(|s| s.name == "video");
         assert!(video_element.is_some());
-        assert!(video_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("controls"));
-        assert!(video_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"preload="metadata""#));
-        assert!(video_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"poster="/images/video-poster.jpg""#));
+        assert!(
+            video_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("controls")
+        );
+        assert!(
+            video_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"preload="metadata""#)
+        );
+        assert!(
+            video_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"poster="/images/video-poster.jpg""#)
+        );
 
         // Track elements
         let track_elements: Vec<_> = symbols.iter().filter(|s| s.name == "track").collect();
@@ -452,12 +466,14 @@ mod tests {
         // Audio element
         let audio_element = symbols.iter().find(|s| s.name == "audio");
         assert!(audio_element.is_some());
-        assert!(audio_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"preload="none""#));
+        assert!(
+            audio_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"preload="none""#)
+        );
 
         let mp3_source = symbols.iter().find(|s| {
             s.signature
@@ -476,18 +492,22 @@ mod tests {
         // SVG element
         let svg_element = symbols.iter().find(|s| s.name == "svg");
         assert!(svg_element.is_some());
-        assert!(svg_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="img""#));
-        assert!(svg_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"aria-labelledby="chart-title chart-desc""#));
+        assert!(
+            svg_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="img""#)
+        );
+        assert!(
+            svg_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"aria-labelledby="chart-title chart-desc""#)
+        );
 
         let title_element = symbols.iter().find(|s| {
             s.name == "title"
@@ -513,44 +533,54 @@ mod tests {
         // SVG animation
         let animate_element = symbols.iter().find(|s| s.name == "animate");
         assert!(animate_element.is_some());
-        assert!(animate_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"attributeName="r""#));
-        assert!(animate_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"repeatCount="indefinite""#));
+        assert!(
+            animate_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"attributeName="r""#)
+        );
+        assert!(
+            animate_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"repeatCount="indefinite""#)
+        );
 
         // Object element
         let object_element = symbols.iter().find(|s| s.name == "object");
         assert!(object_element.is_some());
-        assert!(object_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"type="image/svg+xml""#));
+        assert!(
+            object_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"type="image/svg+xml""#)
+        );
 
         // Canvas element
         let canvas_element = symbols.iter().find(|s| s.name == "canvas");
         assert!(canvas_element.is_some());
-        assert!(canvas_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="img""#));
-        assert!(canvas_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"aria-describedby="canvas-description""#));
+        assert!(
+            canvas_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="img""#)
+        );
+        assert!(
+            canvas_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"aria-describedby="canvas-description""#)
+        );
 
         // Iframe elements
         let iframe_elements: Vec<_> = symbols.iter().filter(|s| s.name == "iframe").collect();
@@ -562,18 +592,22 @@ mod tests {
                 .map_or(false, |sig| sig.contains("youtube-nocookie.com"))
         });
         assert!(youtube_iframe.is_some());
-        assert!(youtube_iframe
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("allowfullscreen"));
-        assert!(youtube_iframe
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"loading="lazy""#));
+        assert!(
+            youtube_iframe
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("allowfullscreen")
+        );
+        assert!(
+            youtube_iframe
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"loading="lazy""#)
+        );
 
         let map_iframe = symbols.iter().find(|s| {
             s.signature
@@ -585,41 +619,49 @@ mod tests {
         // Embed element
         let embed_element = symbols.iter().find(|s| s.name == "embed");
         assert!(embed_element.is_some());
-        assert!(embed_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"type="application/pdf""#));
+        assert!(
+            embed_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"type="application/pdf""#)
+        );
 
         // Custom elements
         let custom_video_player = symbols.iter().find(|s| s.name == "custom-video-player");
         assert!(custom_video_player.is_some());
         assert_eq!(custom_video_player.unwrap().kind, SymbolKind::Class);
-        assert!(custom_video_player
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"controls="true""#));
+        assert!(
+            custom_video_player
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"controls="true""#)
+        );
 
         let data_visualization = symbols.iter().find(|s| s.name == "data-visualization");
         assert!(data_visualization.is_some());
-        assert!(data_visualization
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"data-source="/api/analytics""#));
+        assert!(
+            data_visualization
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"data-source="/api/analytics""#)
+        );
 
         let image_gallery = symbols.iter().find(|s| s.name == "image-gallery");
         assert!(image_gallery.is_some());
-        assert!(image_gallery
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"lazy-loading="true""#));
+        assert!(
+            image_gallery
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"lazy-loading="true""#)
+        );
 
         // Slot element
         let slot_element = symbols.iter().find(|s| {

@@ -16,11 +16,11 @@
 //! - Language modules (rust, typescript, python, etc.)
 
 pub mod base;
+pub mod factory;
 pub mod manager;
-pub mod routing_symbols;
 pub mod routing_identifiers;
 pub mod routing_relationships;
-pub mod factory;
+pub mod routing_symbols;
 
 // Language extractors (31 total - including documentation/config languages)
 pub mod bash;
@@ -33,8 +33,8 @@ pub mod gdscript;
 pub mod go;
 pub mod html;
 pub mod java;
-pub mod json;
 pub mod javascript;
+pub mod json;
 pub mod kotlin;
 pub mod lua;
 pub mod markdown;
@@ -56,6 +56,9 @@ pub mod yaml;
 pub mod zig;
 
 // Re-export the public API
-pub use base::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
-pub use manager::ExtractorManager;
+pub use base::{
+    ExtractionResults, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
+    SymbolKind,
+};
 pub use factory::extract_symbols_and_relationships;
+pub use manager::ExtractorManager;

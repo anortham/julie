@@ -52,31 +52,37 @@ interface Repository<T, ID> {
         let container_class = symbols.iter().find(|s| s.name == "Container");
         assert!(container_class.is_some());
         assert_eq!(container_class.unwrap().kind, SymbolKind::Class);
-        assert!(container_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public class Container<T>"));
+        assert!(
+            container_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public class Container<T>")
+        );
 
         let pair_class = symbols.iter().find(|s| s.name == "Pair");
         assert!(pair_class.is_some());
-        assert!(pair_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Pair<K, V>"));
+        assert!(
+            pair_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Pair<K, V>")
+        );
 
         let repository_interface = symbols.iter().find(|s| s.name == "Repository");
         assert!(repository_interface.is_some());
         assert_eq!(repository_interface.unwrap().kind, SymbolKind::Interface);
-        assert!(repository_interface
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("interface Repository<T, ID>"));
+        assert!(
+            repository_interface
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("interface Repository<T, ID>")
+        );
     }
 
     #[test]
@@ -110,21 +116,25 @@ public class Utils {
         let get_first_method = symbols.iter().find(|s| s.name == "getFirst");
         assert!(get_first_method.is_some());
         assert_eq!(get_first_method.unwrap().kind, SymbolKind::Method);
-        assert!(get_first_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public static <T> T getFirst"));
+        assert!(
+            get_first_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public static <T> T getFirst")
+        );
 
         let create_map_method = symbols.iter().find(|s| s.name == "createMap");
         assert!(create_map_method.is_some());
-        assert!(create_map_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public <K, V> Map<K, V> createMap"));
+        assert!(
+            create_map_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public <K, V> Map<K, V> createMap")
+        );
     }
 
     #[test]
@@ -161,29 +171,35 @@ public class Processor {
 
         let process_numbers = symbols.iter().find(|s| s.name == "processNumbers");
         assert!(process_numbers.is_some());
-        assert!(process_numbers
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("List<? extends Number>"));
+        assert!(
+            process_numbers
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("List<? extends Number>")
+        );
 
         let add_numbers = symbols.iter().find(|s| s.name == "addNumbers");
         assert!(add_numbers.is_some());
-        assert!(add_numbers
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("List<? super Integer>"));
+        assert!(
+            add_numbers
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("List<? super Integer>")
+        );
 
         let find_max = symbols.iter().find(|s| s.name == "findMax");
         assert!(find_max.is_some());
-        assert!(find_max
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("<T extends Comparable<T>>"));
+        assert!(
+            find_max
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<T extends Comparable<T>>")
+        );
     }
 }

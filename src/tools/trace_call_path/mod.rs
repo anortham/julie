@@ -13,9 +13,9 @@ pub mod formatting;
 pub mod tracing;
 pub mod types;
 
-use anyhow::{anyhow, Result};
-use rust_mcp_sdk::macros::mcp_tool;
+use anyhow::{Result, anyhow};
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -129,14 +129,18 @@ impl TraceCallPathTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(markdown)])
-            .with_structured_content(structured_map))
+        Ok(
+            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                .with_structured_content(structured_map),
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         ::tracing::info!(
             "🔍 Tracing call path: {} (direction: {}, depth: {}, cross_lang: enabled)",
-            self.symbol, self.direction, self.max_depth
+            self.symbol,
+            self.direction,
+            self.max_depth
         );
 
         // Validate parameters
@@ -224,11 +228,15 @@ impl TraceCallPathTool {
                             }
                         }
                     } else {
-                        ::tracing::debug!("ℹ️  No HNSW index found for reference workspace (semantic search disabled)");
+                        ::tracing::debug!(
+                            "ℹ️  No HNSW index found for reference workspace (semantic search disabled)"
+                        );
                         None
                     }
                 } else {
-                    ::tracing::debug!("ℹ️  No vectors directory for reference workspace (semantic search disabled)");
+                    ::tracing::debug!(
+                        "ℹ️  No vectors directory for reference workspace (semantic search disabled)"
+                    );
                     None
                 };
 
@@ -241,7 +249,10 @@ impl TraceCallPathTool {
             let db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    ::tracing::warn!("Database mutex poisoned in trace_call_path symbol lookup, recovering: {}", poisoned);
+                    ::tracing::warn!(
+                        "Database mutex poisoned in trace_call_path symbol lookup, recovering: {}",
+                        poisoned
+                    );
                     poisoned.into_inner()
                 }
             };

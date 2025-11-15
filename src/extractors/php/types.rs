@@ -1,6 +1,6 @@
 // PHP Extractor - Type extraction (classes, interfaces, traits, enums)
 
-use super::{determine_visibility, extract_modifiers, find_child, find_child_text, PhpExtractor};
+use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;

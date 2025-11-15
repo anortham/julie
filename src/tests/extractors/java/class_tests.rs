@@ -49,12 +49,14 @@ class DefaultClass {
         let user_class = symbols.iter().find(|s| s.name == "User");
         assert!(user_class.is_some());
         assert_eq!(user_class.unwrap().kind, SymbolKind::Class);
-        assert!(user_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public class User"));
+        assert!(
+            user_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public class User")
+        );
         assert_eq!(
             user_class.unwrap().visibility.as_ref().unwrap(),
             &Visibility::Public
@@ -62,12 +64,14 @@ class DefaultClass {
 
         let animal_class = symbols.iter().find(|s| s.name == "Animal");
         assert!(animal_class.is_some());
-        assert!(animal_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("abstract class Animal"));
+        assert!(
+            animal_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("abstract class Animal")
+        );
         assert_eq!(
             animal_class.unwrap().visibility.as_ref().unwrap(),
             &Visibility::Private
@@ -75,12 +79,14 @@ class DefaultClass {
 
         let constants_class = symbols.iter().find(|s| s.name == "Constants");
         assert!(constants_class.is_some());
-        assert!(constants_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("final class Constants"));
+        assert!(
+            constants_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("final class Constants")
+        );
     }
 
     #[test]
@@ -199,7 +205,10 @@ public class Outer {
 
         let inner = symbols.iter().find(|s| s.name == "Inner");
         assert!(inner.is_some(), "Inner class should be found");
-        assert!(inner.unwrap().parent_id.is_some(), "Inner should have parent");
+        assert!(
+            inner.unwrap().parent_id.is_some(),
+            "Inner should have parent"
+        );
 
         let nested = symbols.iter().find(|s| s.name == "StaticNested");
         assert!(nested.is_some(), "StaticNested class should be found");

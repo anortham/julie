@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rust_mcp_sdk::schema::{
-    schema_utils::CallToolError, CallToolRequest, CallToolResult, ListToolsRequest,
-    ListToolsResult, RpcError,
+    CallToolRequest, CallToolResult, ListToolsRequest, ListToolsResult, RpcError,
+    schema_utils::CallToolError,
 };
-use rust_mcp_sdk::{mcp_server::ServerHandler, McpServer};
-use std::sync::atomic::AtomicBool;
+use rust_mcp_sdk::{McpServer, mcp_server::ServerHandler};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tracing::{debug, error, info, warn};
 
 use crate::embeddings::EmbeddingEngine;
@@ -289,7 +289,9 @@ impl JulieServerHandler {
                                 "✅ Cleared primary workspace index: {}",
                                 primary_index_dir.display()
                             );
-                            info!("✅ Reference workspaces preserved (workspace isolation maintained)");
+                            info!(
+                                "✅ Reference workspaces preserved (workspace isolation maintained)"
+                            );
                         }
                     }
                 }
@@ -397,7 +399,9 @@ impl JulieServerHandler {
                         // Drop the engine to release memory
                         let mut engine_guard = engine.write().await;
                         *engine_guard = None;
-                        info!("🧹 Dropped embedding engine after 5 minutes of inactivity - ONNX model memory released");
+                        info!(
+                            "🧹 Dropped embedding engine after 5 minutes of inactivity - ONNX model memory released"
+                        );
 
                         // Reset last_used timestamp
                         let mut last_used_guard = last_used.lock().await;
@@ -407,7 +411,9 @@ impl JulieServerHandler {
             }
         });
 
-        info!("🕐 Started periodic embedding engine cleanup task (checks every 60s, drops after 5min idle)");
+        info!(
+            "🕐 Started periodic embedding engine cleanup task (checks every 60s, drops after 5min idle)"
+        );
     }
 
     /// Check if the tool execution lock is currently free (used in tests)
@@ -454,7 +460,10 @@ impl ServerHandler for JulieServerHandler {
                     };
 
                     if let Err(e) = index_tool.call_tool(&handler).await {
-                        warn!("⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)", e);
+                        warn!(
+                            "⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)",
+                            e
+                        );
                     } else {
                         info!("✅ Background auto-indexing completed successfully");
                     }
@@ -544,7 +553,10 @@ impl ServerHandler for JulieServerHandler {
                 tool.call_tool(self).await
             }
             JulieTools::FindLogicTool(tool) => {
-                debug!("🏢 Find business logic (deprecated - use fast_explore): {:?}", tool);
+                debug!(
+                    "🏢 Find business logic (deprecated - use fast_explore): {:?}",
+                    tool
+                );
                 tool.call_tool(self).await
             }
             JulieTools::RenameSymbolTool(tool) => {

@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -108,12 +108,14 @@ mod tests {
 
         let db_exception = symbols.iter().find(|s| s.name == "DatabaseException");
         assert!(db_exception.is_some());
-        assert!(db_exception
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public std::runtime_error"));
+        assert!(
+            db_exception
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public std::runtime_error")
+        );
 
         let file_guard = symbols.iter().find(|s| s.name == "FileGuard");
         assert!(file_guard.is_some());
@@ -125,23 +127,27 @@ mod tests {
 
         let file_guard_dtor = symbols.iter().find(|s| s.name == "~FileGuard");
         assert!(file_guard_dtor.is_some());
-        assert!(file_guard_dtor
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("noexcept"));
+        assert!(
+            file_guard_dtor
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("noexcept")
+        );
 
         let strong_guarantee = symbols.iter().find(|s| s.name == "strong_guarantee");
         assert!(strong_guarantee.is_some());
 
         let modern_function = symbols.iter().find(|s| s.name == "modern_function");
         assert!(modern_function.is_some());
-        assert!(modern_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("noexcept"));
+        assert!(
+            modern_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("noexcept")
+        );
     }
 }

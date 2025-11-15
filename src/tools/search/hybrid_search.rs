@@ -37,8 +37,8 @@ pub async fn hybrid_search_impl(
             file_pattern,
             limit,
             workspace_ids.clone(),
-            search_target,  // Use provided search_target (was hardcoded "symbols")
-            context_lines,  // Use provided context_lines (was hardcoded None)
+            search_target, // Use provided search_target (was hardcoded "symbols")
+            context_lines, // Use provided context_lines (was hardcoded None)
             handler
         ),
         crate::tools::search::semantic_search::semantic_search_impl(

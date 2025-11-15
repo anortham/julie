@@ -66,7 +66,8 @@ fn test_analyze_vendor_patterns_detects_libs_directory() {
         "Scripts/libs/file6.js", // >5 files triggers detection
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 1, "Should detect 1 vendor directory");
@@ -85,7 +86,8 @@ fn test_analyze_vendor_patterns_detects_plugin_directory() {
         "Scripts/plugin/plugin6.js", // >5 files
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 1);
@@ -104,7 +106,8 @@ fn test_analyze_vendor_patterns_detects_vendor_directory() {
         "vendor/lib6.js", // >5 files
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 1);
@@ -120,7 +123,8 @@ fn test_analyze_vendor_patterns_ignores_small_libs_directory() {
         "Scripts/libs/file3.js", // Only 3 files, needs >5
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 0, "Should NOT detect libs/ with <5 files");
@@ -140,10 +144,15 @@ fn test_analyze_vendor_patterns_detects_jquery_files() {
         "Scripts/jquery.unobtrusive-ajax.js", // >3 jquery files triggers detection
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 1, "Should detect directory with >3 jquery files");
+    assert_eq!(
+        patterns.len(),
+        1,
+        "Should detect directory with >3 jquery files"
+    );
     assert_eq!(patterns[0], "Scripts");
 }
 
@@ -156,10 +165,15 @@ fn test_analyze_vendor_patterns_detects_bootstrap_files() {
         "Styles/bootstrap.min.css", // >2 bootstrap files triggers detection
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 1, "Should detect directory with >2 bootstrap files");
+    assert_eq!(
+        patterns.len(),
+        1,
+        "Should detect directory with >2 bootstrap files"
+    );
     assert_eq!(patterns[0], "Styles");
 }
 
@@ -172,10 +186,15 @@ fn test_analyze_vendor_patterns_ignores_few_jquery_files() {
         "Scripts/custom.js",
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 0, "Should NOT detect with only 2 jquery files");
+    assert_eq!(
+        patterns.len(),
+        0,
+        "Should NOT detect with only 2 jquery files"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -197,13 +216,18 @@ fn test_analyze_vendor_patterns_detects_minified_concentration() {
         "dist/react.min.js",
         "dist/vue.min.js",
         "dist/axios.min.js", // 11 minified files (>10)
-        "dist/config.js",     // 12 total files, 11/12 = 91% (>50%)
+        "dist/config.js",    // 12 total files, 11/12 = 91% (>50%)
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 1, "Should detect high minified concentration");
+    assert_eq!(
+        patterns.len(),
+        1,
+        "Should detect high minified concentration"
+    );
     assert_eq!(patterns[0], "dist");
 }
 
@@ -220,10 +244,15 @@ fn test_analyze_vendor_patterns_ignores_low_minified_concentration() {
         "compiled/source3.js",
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 0, "Should NOT detect with <10 minified files");
+    assert_eq!(
+        patterns.len(),
+        0,
+        "Should NOT detect with <10 minified files"
+    );
 }
 
 #[test]
@@ -257,7 +286,8 @@ fn test_analyze_vendor_patterns_ignores_minified_below_50_percent() {
         "compiled/source12.js", // 23 total, 11/23 = 47% (<50%)
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 0, "Should NOT detect when minified <50%");
@@ -287,7 +317,8 @@ fn test_analyze_vendor_patterns_detects_multiple_directories() {
         "Scripts/plugin/p6.js",
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 2, "Should detect 2 vendor directories");
@@ -310,7 +341,8 @@ fn test_analyze_vendor_patterns_no_false_positives_for_normal_code() {
         "src/utils/validators.ts",
     ]);
 
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 0, "Should NOT detect normal source code");
@@ -326,10 +358,7 @@ fn test_generate_julieignore_file_creates_file_with_correct_format() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let workspace_path = temp_dir.path();
 
-    let patterns = vec![
-        "Scripts/libs".to_string(),
-        "Scripts/plugin".to_string(),
-    ];
+    let patterns = vec!["Scripts/libs".to_string(), "Scripts/plugin".to_string()];
 
     tool.generate_julieignore_file(workspace_path, &patterns)
         .expect("Failed to generate .julieignore");
@@ -337,14 +366,25 @@ fn test_generate_julieignore_file_creates_file_with_correct_format() {
     let julieignore_path = workspace_path.join(".julieignore");
     assert!(julieignore_path.exists(), ".julieignore should be created");
 
-    let content = std::fs::read_to_string(&julieignore_path)
-        .expect("Failed to read .julieignore");
+    let content = std::fs::read_to_string(&julieignore_path).expect("Failed to read .julieignore");
 
     // Verify patterns end with "/" not "/**"
-    assert!(content.contains("Scripts/libs/"), "Pattern should end with /");
-    assert!(content.contains("Scripts/plugin/"), "Pattern should end with /");
-    assert!(!content.contains("Scripts/libs/**"), "Pattern should NOT contain /**");
-    assert!(!content.contains("Scripts/plugin/**"), "Pattern should NOT contain /**");
+    assert!(
+        content.contains("Scripts/libs/"),
+        "Pattern should end with /"
+    );
+    assert!(
+        content.contains("Scripts/plugin/"),
+        "Pattern should end with /"
+    );
+    assert!(
+        !content.contains("Scripts/libs/**"),
+        "Pattern should NOT contain /**"
+    );
+    assert!(
+        !content.contains("Scripts/plugin/**"),
+        "Pattern should NOT contain /**"
+    );
 
     // Verify header documentation exists
     assert!(content.contains("# .julieignore - Julie Code Intelligence Exclusion Patterns"));
@@ -437,7 +477,10 @@ fn test_dir_to_pattern_handles_nested_directories() {
 
     let pattern = tool.dir_to_pattern(&dir, workspace_root);
 
-    assert_eq!(pattern, "src/vendor/libs/external", "Should handle nested paths");
+    assert_eq!(
+        pattern, "src/vendor/libs/external",
+        "Should handle nested paths"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -461,7 +504,8 @@ fn test_vendor_detection_full_workflow() {
     ]);
 
     // Step 1: Analyze for patterns
-    let patterns = tool.analyze_vendor_patterns(&files, temp_dir.path())
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 1, "Should detect 1 vendor directory");
@@ -475,11 +519,16 @@ fn test_vendor_detection_full_workflow() {
     let julieignore_path = temp_dir.path().join(".julieignore");
     assert!(julieignore_path.exists());
 
-    let content = std::fs::read_to_string(&julieignore_path)
-        .expect("Failed to read .julieignore");
+    let content = std::fs::read_to_string(&julieignore_path).expect("Failed to read .julieignore");
 
-    assert!(content.contains("Scripts/libs/"), "Should have correct pattern format");
-    assert!(!content.contains("Scripts/libs/**"), "Should NOT use /** format");
+    assert!(
+        content.contains("Scripts/libs/"),
+        "Should have correct pattern format"
+    );
+    assert!(
+        !content.contains("Scripts/libs/**"),
+        "Should NOT use /** format"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -518,7 +567,8 @@ fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs
     ]);
 
     // Call discover_indexable_files (simulates first workspace scan)
-    let _indexable_files = tool.discover_indexable_files(temp_dir.path())
+    let _indexable_files = tool
+        .discover_indexable_files(temp_dir.path())
         .expect("Failed to discover files");
 
     // Verify .julieignore was created
@@ -529,8 +579,7 @@ fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs
     );
 
     // Verify it contains the target/ pattern
-    let content = std::fs::read_to_string(&julieignore_path)
-        .expect("Failed to read .julieignore");
+    let content = std::fs::read_to_string(&julieignore_path).expect("Failed to read .julieignore");
 
     assert!(
         content.contains("target/"),

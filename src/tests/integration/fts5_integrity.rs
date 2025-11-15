@@ -90,13 +90,19 @@ fn test_fts5_integrity_check_detects_missing_entries() -> Result<()> {
         assert_eq!(symbol_count, 3, "Main table should still have 3 symbols");
 
         // Verify FTS5 index is corrupted (query should fail or return 0)
-        let fts_is_corrupted = db.conn.query_row(
-            "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'function'",
-            [],
-            |row| row.get::<_, i64>(0),
-        ).is_err(); // Query fails due to "invalid fts5 file format"
+        let fts_is_corrupted = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'function'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .is_err(); // Query fails due to "invalid fts5 file format"
 
-        assert!(fts_is_corrupted, "FTS5 index should be corrupted (query should fail)");
+        assert!(
+            fts_is_corrupted,
+            "FTS5 index should be corrupted (query should fail)"
+        );
     }
 
     // NOW TEST THE FIX: Reopen database and check if integrity check detects and fixes corruption
@@ -148,11 +154,9 @@ fn test_fts5_integrity_check_with_healthy_database() -> Result<()> {
 
         // Verify both tables are in sync
         let symbol_count = db.count_symbols_for_workspace()?;
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM symbols_fts",
-            [],
-            |row| row.get(0),
-        )?;
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols_fts", [], |row| row.get(0))?;
 
         assert_eq!(
             symbol_count, fts_count as usize,
@@ -177,11 +181,7 @@ fn test_files_fts5_integrity_check_detects_missing_entries() -> Result<()> {
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "fn test() {}")?;
 
-        let file_info = crate::database::create_file_info(
-            &test_file,
-            "rust",
-            temp_dir.path(),
-        )?;
+        let file_info = crate::database::create_file_info(&test_file, "rust", temp_dir.path())?;
 
         db.store_file_info(&file_info)?;
     }
@@ -203,32 +203,34 @@ fn test_files_fts5_integrity_check_detects_missing_entries() -> Result<()> {
         db.conn.execute("DELETE FROM files_fts_config", [])?;
 
         // Verify files table has entry
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 1, "files table should have 1 entry");
 
         // Verify FTS5 index is corrupted (query should fail)
-        let fts_is_corrupted = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH 'test'",
-            [],
-            |row| row.get::<_, i64>(0),
-        ).is_err(); // Query fails due to "invalid fts5 file format"
+        let fts_is_corrupted = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH 'test'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .is_err(); // Query fails due to "invalid fts5 file format"
 
-        assert!(fts_is_corrupted, "FTS5 index should be corrupted (query should fail)");
+        assert!(
+            fts_is_corrupted,
+            "FTS5 index should be corrupted (query should fail)"
+        );
     }
 
     // NOW TEST THE FIX: Reopen and verify integrity check rebuilds files_fts
     {
         let db = SymbolDatabase::new(&db_path)?;
 
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 1, "files table should still have 1 entry");
 
         // Verify FTS5 search works (index was rebuilt)

@@ -23,8 +23,12 @@ mod bash_extractor_tests {
         let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
-        let mut extractor =
-            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string(), &workspace_root);
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         extractor.extract_symbols(&tree)
     }
 
@@ -34,8 +38,12 @@ mod bash_extractor_tests {
         let workspace_root = PathBuf::from("/tmp/test");
         let mut parser = init_parser();
         let tree = parser.parse(code, None).expect("Failed to parse code");
-        let mut extractor =
-            BashExtractor::new("bash".to_string(), "test.sh".to_string(), code.to_string(), &workspace_root);
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         let symbols = extractor.extract_symbols(&tree);
         let relationships = extractor.extract_relationships(&tree, &symbols);
         (symbols, relationships)
@@ -375,8 +383,8 @@ deploy_with_rollback() {
             docker_host.visibility,
             Some(crate::extractors::base::Visibility::Public)
         ); // exported
-           // Now extracts real doc comment from code
-           // May contain shebang and section comment, so just check it contains the setup comment
+        // Now extracts real doc comment from code
+        // May contain shebang and section comment, so just check it contains the setup comment
         assert!(
             docker_host
                 .doc_comment
@@ -508,7 +516,7 @@ configure_app() {
         assert!(version_var.is_some(), "VERSION variable not found");
         let version_var = version_var.unwrap();
         assert_eq!(version_var.kind, SymbolKind::Constant); // readonly
-                                                            // Now extracts real doc comment from code (readonly declaration comment)
+        // Now extracts real doc comment from code (readonly declaration comment)
         assert!(
             version_var.doc_comment.is_some(),
             "VERSION should have doc comment"
@@ -1360,3 +1368,4 @@ collect_files() {
 }
 
 mod doc_comments;
+mod types; // Phase 4: Type extraction verification tests

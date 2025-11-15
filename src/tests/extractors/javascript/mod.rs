@@ -10,6 +10,7 @@ pub mod legacy_patterns;
 pub mod modern_features;
 pub mod relationships;
 pub mod scoping;
+pub mod types;
 
 use crate::extractors::javascript::JavaScriptExtractor;
 use std::path::PathBuf;

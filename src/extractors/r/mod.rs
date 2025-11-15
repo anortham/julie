@@ -65,7 +65,7 @@ impl RExtractor {
 
                                 let options = SymbolOptions {
                                     parent_id: parent_id.clone(),
-            ..Default::default()
+                                    ..Default::default()
                                 };
                                 let symbol =
                                     self.base.create_symbol(&node, name, symbol_kind, options);
@@ -82,7 +82,7 @@ impl RExtractor {
 
                                 let options = SymbolOptions {
                                     parent_id: parent_id.clone(),
-            ..Default::default()
+                                    ..Default::default()
                                 };
                                 let symbol = self.base.create_symbol(
                                     &node,
@@ -108,7 +108,11 @@ impl RExtractor {
         }
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: &Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         // TODO: Implement R relationship extraction
         Vec::new()
     }

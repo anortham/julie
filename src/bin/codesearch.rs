@@ -320,7 +320,9 @@ fn process_file(
     let language = detect_language(file_path);
 
     // Extract symbols
-    let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let workspace_root = file_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let extractor_manager = ExtractorManager::new();
     let symbols = extractor_manager
         .extract_symbols(&path_str, &content, workspace_root)

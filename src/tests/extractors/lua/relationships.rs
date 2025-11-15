@@ -18,8 +18,12 @@ end
     let mut parser = init_parser();
     let tree = parser.parse(code, None).expect("Failed to parse Lua code");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = LuaExtractor::new(
+        "lua".to_string(),
+        "test.lua".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
 
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);

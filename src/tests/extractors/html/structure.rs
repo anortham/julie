@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -326,30 +326,36 @@ mod tests {
         let html_element = symbols.iter().find(|s| s.name == "html");
         assert!(html_element.is_some());
         assert_eq!(html_element.unwrap().kind, SymbolKind::Class);
-        assert!(html_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"lang="en""#));
-        assert!(html_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"data-theme="light""#));
+        assert!(
+            html_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"lang="en""#)
+        );
+        assert!(
+            html_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"data-theme="light""#)
+        );
 
         let head_element = symbols.iter().find(|s| s.name == "head");
         assert!(head_element.is_some());
 
         let body_element = symbols.iter().find(|s| s.name == "body");
         assert!(body_element.is_some());
-        assert!(body_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"class="theme-light""#));
+        assert!(
+            body_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"class="theme-light""#)
+        );
 
         // Meta elements
         let charset_meta = symbols.iter().find(|s| {
@@ -391,12 +397,14 @@ mod tests {
         // Title
         let title_element = symbols.iter().find(|s| s.name == "title");
         assert!(title_element.is_some());
-        assert!(title_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Project Manager Pro"));
+        assert!(
+            title_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Project Manager Pro")
+        );
 
         // Link elements
         let stylesheet_link = symbols.iter().find(|s| {
@@ -447,54 +455,66 @@ mod tests {
         // Semantic elements
         let header_element = symbols.iter().find(|s| s.name == "header");
         assert!(header_element.is_some());
-        assert!(header_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="banner""#));
+        assert!(
+            header_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="banner""#)
+        );
 
         let nav_element = symbols.iter().find(|s| s.name == "nav");
         assert!(nav_element.is_some());
-        assert!(nav_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="navigation""#));
+        assert!(
+            nav_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="navigation""#)
+        );
 
         let main_element = symbols.iter().find(|s| s.name == "main");
         assert!(main_element.is_some());
-        assert!(main_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"id="main-content""#));
-        assert!(main_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="main""#));
+        assert!(
+            main_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"id="main-content""#)
+        );
+        assert!(
+            main_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="main""#)
+        );
 
         let aside_element = symbols.iter().find(|s| s.name == "aside");
         assert!(aside_element.is_some());
-        assert!(aside_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="complementary""#));
+        assert!(
+            aside_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="complementary""#)
+        );
 
         let footer_element = symbols.iter().find(|s| s.name == "footer");
         assert!(footer_element.is_some());
-        assert!(footer_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"role="contentinfo""#));
+        assert!(
+            footer_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"role="contentinfo""#)
+        );
 
         // Accessibility elements
         let skip_link = symbols.iter().find(|s| {

@@ -17,7 +17,9 @@ mod edit_lines_tests {
 
         // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let source_path = manifest_dir.join("fixtures/editing/sources").join(source_filename);
+        let source_path = manifest_dir
+            .join("fixtures/editing/sources")
+            .join(source_filename);
         let dest_path = temp_dir.path().join(source_filename);
 
         fs::copy(&source_path, &dest_path)?;
@@ -55,7 +57,8 @@ mod edit_lines_tests {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
         // Setup: Copy SOURCE to temp location
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_insert_import")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line_edit_base.py", "test_edit_lines_insert_import")?;
 
         // Load CONTROL (expected result)
         let expected_content = load_control_file("line_edit_insert_import.py")?;
@@ -66,7 +69,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -91,7 +97,8 @@ mod edit_lines_tests {
     async fn test_edit_lines_delete_comment() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_delete_comment")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line_edit_base.py", "test_edit_lines_delete_comment")?;
         let expected_content = load_control_file("line_edit_delete_comment.py")?;
 
         // Operation: Delete line 15 ("# Test data" comment)
@@ -100,7 +107,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -123,7 +133,8 @@ mod edit_lines_tests {
     async fn test_edit_lines_replace_function() -> Result<()> {
         // TDD RED: This test WILL FAIL because EditLinesTool doesn't exist yet
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_replace_function")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line_edit_base.py", "test_edit_lines_replace_function")?;
         let expected_content = load_control_file("line_edit_replace_function_only.py")?;
 
         // Operation: Replace lines 7-12 (calculate_sum function) with calculate_average
@@ -139,7 +150,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -163,7 +177,8 @@ mod edit_lines_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_relative_path")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line_edit_base.py", "test_edit_lines_relative_path")?;
         let relative_path = test_file
             .file_name()
             .expect("filename")
@@ -174,7 +189,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -205,7 +223,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -244,7 +265,8 @@ mod edit_lines_tests {
     async fn test_edit_lines_dry_run() -> Result<()> {
         // TDD RED: Verify dry_run doesn't modify file
 
-        let (temp_dir, test_file) = setup_test_file("line_edit_base.py", "test_edit_lines_dry_run")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line_edit_base.py", "test_edit_lines_dry_run")?;
         let original_content = fs::read_to_string(&test_file)?;
 
         use crate::handler::JulieServerHandler;
@@ -252,7 +274,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -287,7 +312,10 @@ mod edit_lines_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Try to access /etc/passwd using absolute path
@@ -326,7 +354,10 @@ mod edit_lines_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Try to access ../../../../etc/passwd using relative path traversal
@@ -372,7 +403,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Try to access through symlink
@@ -414,7 +448,10 @@ mod edit_lines_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Valid absolute path should work

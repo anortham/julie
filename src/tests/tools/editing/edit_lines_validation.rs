@@ -31,7 +31,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -46,7 +49,10 @@ mod edit_lines_validation_tests {
         let result = edit_tool.call_tool(&handler).await;
 
         // Should fail gracefully with descriptive error
-        assert!(result.is_err(), "Should fail when content is missing for insert");
+        assert!(
+            result.is_err(),
+            "Should fail when content is missing for insert"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("content") && error_msg.contains("required"),
@@ -68,7 +74,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -104,7 +113,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -138,11 +150,15 @@ mod edit_lines_validation_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line 1\nline 2\nline 3\n", "replace_missing_end")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line 1\nline 2\nline 3\n", "replace_missing_end")?;
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -156,7 +172,10 @@ mod edit_lines_validation_tests {
 
         let result = edit_tool.call_tool(&handler).await;
 
-        assert!(result.is_err(), "Should fail when end_line is missing for replace");
+        assert!(
+            result.is_err(),
+            "Should fail when end_line is missing for replace"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("end_line") && error_msg.contains("required"),
@@ -174,11 +193,15 @@ mod edit_lines_validation_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line 1\nline 2\nline 3\n", "replace_missing_content")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line 1\nline 2\nline 3\n", "replace_missing_content")?;
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -192,7 +215,10 @@ mod edit_lines_validation_tests {
 
         let result = edit_tool.call_tool(&handler).await;
 
-        assert!(result.is_err(), "Should fail when content is missing for replace");
+        assert!(
+            result.is_err(),
+            "Should fail when content is missing for replace"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("content") && error_msg.contains("required"),
@@ -210,11 +236,15 @@ mod edit_lines_validation_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line 1\nline 2\nline 3\n", "replace_backwards")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line 1\nline 2\nline 3\n", "replace_backwards")?;
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -250,7 +280,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -286,7 +319,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -320,11 +356,15 @@ mod edit_lines_validation_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line 1\nline 2\nline 3\n", "delete_missing_end")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line 1\nline 2\nline 3\n", "delete_missing_end")?;
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -338,7 +378,10 @@ mod edit_lines_validation_tests {
 
         let result = edit_tool.call_tool(&handler).await;
 
-        assert!(result.is_err(), "Should fail when end_line is missing for delete");
+        assert!(
+            result.is_err(),
+            "Should fail when end_line is missing for delete"
+        );
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
             error_msg.contains("end_line") && error_msg.contains("required"),
@@ -356,11 +399,15 @@ mod edit_lines_validation_tests {
         use crate::handler::JulieServerHandler;
         use crate::tools::edit_lines::EditLinesTool;
 
-        let (temp_dir, test_file) = setup_test_file("line 1\nline 2\nline 3\n", "delete_backwards")?;
+        let (temp_dir, test_file) =
+            setup_test_file("line 1\nline 2\nline 3\n", "delete_backwards")?;
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -396,7 +443,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -432,7 +482,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -470,7 +523,10 @@ mod edit_lines_validation_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let edit_tool = EditLinesTool {
@@ -487,8 +543,10 @@ mod edit_lines_validation_tests {
         assert!(result.is_err(), "Invalid operation should fail");
         let error_msg = format!("{}", result.unwrap_err());
         assert!(
-            error_msg.contains("Invalid operation") || error_msg.contains("insert")
-                || error_msg.contains("replace") || error_msg.contains("delete"),
+            error_msg.contains("Invalid operation")
+                || error_msg.contains("insert")
+                || error_msg.contains("replace")
+                || error_msg.contains("delete"),
             "Error should list valid operations: {}",
             error_msg
         );

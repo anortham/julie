@@ -116,11 +116,13 @@ var experience: float:
         assert!(player.is_some());
         let player = player.unwrap();
         assert_eq!(player.kind, SymbolKind::Class);
-        assert!(player
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class_name Player"));
+        assert!(
+            player
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class_name Player")
+        );
         assert_eq!(
             player
                 .metadata
@@ -150,21 +152,25 @@ var experience: float:
         });
         assert!(take_damage.is_some());
         assert_eq!(take_damage.unwrap().kind, SymbolKind::Method);
-        assert!(take_damage
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("func take_damage(amount: int) -> bool"));
+        assert!(
+            take_damage
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("func take_damage(amount: int) -> bool")
+        );
 
         let custom_resource = symbols.iter().find(|s| s.name == "CustomResource");
         assert!(custom_resource.is_some());
-        assert!(custom_resource
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@tool"));
+        assert!(
+            custom_resource
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@tool")
+        );
 
         let health = symbols.iter().find(|s| s.name == "health");
         assert!(health.is_some());
@@ -177,11 +183,13 @@ var experience: float:
                 .and_then(|m| m.get("dataType").and_then(|v| v.as_str())),
             Some("int")
         );
-        assert!(health
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("var health: int = 100"));
+        assert!(
+            health
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("var health: int = 100")
+        );
 
         let player_name = symbols.iter().find(|s| s.name == "player_name");
         assert!(player_name.is_some());
@@ -197,21 +205,25 @@ var experience: float:
         let speed = symbols.iter().find(|s| s.name == "speed");
         assert!(speed.is_some());
         let speed = speed.unwrap();
-        assert!(speed
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@export var speed: float = 200.0"));
+        assert!(
+            speed
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@export var speed: float = 200.0")
+        );
         assert_eq!(speed.visibility.as_ref().unwrap(), &Visibility::Public);
 
         let armor = symbols.iter().find(|s| s.name == "armor");
         assert!(armor.is_some());
-        assert!(armor
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@export_range(0, 100)"));
+        assert!(
+            armor
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@export_range(0, 100)")
+        );
 
         let legacy_speed = symbols.iter().find(|s| {
             s.name == "legacy_speed" && s.signature.as_ref().unwrap().contains("export var")
@@ -221,11 +233,13 @@ var experience: float:
         let sprite = symbols.iter().find(|s| s.name == "sprite");
         assert!(sprite.is_some());
         let sprite = sprite.unwrap();
-        assert!(sprite
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@onready var sprite: Sprite2D"));
+        assert!(
+            sprite
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@onready var sprite: Sprite2D")
+        );
         assert_eq!(
             sprite
                 .metadata
@@ -260,12 +274,14 @@ var experience: float:
 
         let score_property = symbols.iter().find(|s| s.name == "_score");
         assert!(score_property.is_some());
-        assert!(score_property
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("setget set_score, get_score"));
+        assert!(
+            score_property
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("setget set_score, get_score")
+        );
 
         let set_score = symbols
             .iter()

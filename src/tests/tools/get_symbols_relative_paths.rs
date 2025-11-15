@@ -26,7 +26,9 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
     fs::create_dir(&src_dir)?;
 
     let test_file = src_dir.join("test_unique_file.rs");
-    fs::write(&test_file, r#"
+    fs::write(
+        &test_file,
+        r#"
         pub fn get_user_data(id: u32) -> String {
             format!("User {}", id)
         }
@@ -34,7 +36,8 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
         pub struct UserService {
             pub name: String,
         }
-    "#)?;
+    "#,
+    )?;
 
     // Initialize workspace and index
     let handler = JulieServerHandler::new().await?;
@@ -97,11 +100,14 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
     fs::create_dir(&src_dir)?;
 
     let test_file = src_dir.join("test_unique_lib.rs");
-    fs::write(&test_file, r#"
+    fs::write(
+        &test_file,
+        r#"
         pub fn calculate_score(points: i32) -> i32 {
             points * 2
         }
-    "#)?;
+    "#,
+    )?;
 
     // Initialize workspace and index
     let handler = JulieServerHandler::new().await?;
@@ -157,9 +163,12 @@ async fn test_database_stores_relative_unix_paths() -> Result<()> {
     fs::create_dir_all(&tools_dir)?;
 
     let test_file = tools_dir.join("search.rs");
-    fs::write(&test_file, r#"
+    fs::write(
+        &test_file,
+        r#"
         pub fn search_code() {}
-    "#)?;
+    "#,
+    )?;
 
     // Initialize and index
     let handler = JulieServerHandler::new().await?;
@@ -178,7 +187,10 @@ async fn test_database_stores_relative_unix_paths() -> Result<()> {
     index_tool.call_tool(&handler).await?;
 
     // Get database and query directly
-    let workspace = handler.get_workspace().await?.expect("Workspace should exist");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace should exist");
     let db = workspace.db.as_ref().expect("Database should exist");
     let db_lock = db.lock().unwrap();
 
@@ -207,7 +219,8 @@ async fn test_database_stores_relative_unix_paths() -> Result<()> {
     }
 
     // Should find our specific file with relative path
-    let search_file_symbols: Vec<_> = all_symbols.iter()
+    let search_file_symbols: Vec<_> = all_symbols
+        .iter()
         .filter(|s| s.file_path == "src/tools/search.rs")
         .collect();
 

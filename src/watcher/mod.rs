@@ -12,8 +12,8 @@
 //! This separation prevents blocking on file I/O or database operations.
 
 mod events;
-pub mod filtering;  // Public for tests
-pub mod handlers;   // Public for tests
+pub mod filtering; // Public for tests
+pub mod handlers; // Public for tests
 pub mod types;
 
 use anyhow::{Context, Result};
@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
-use tokio::sync::{mpsc, Mutex as TokioMutex, RwLock};
+use tokio::sync::{Mutex as TokioMutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::database::SymbolDatabase;
@@ -149,7 +149,7 @@ impl IncrementalIndexer {
         let workspace_root = self.workspace_root.clone();
 
         tokio::spawn(async move {
-            use tokio::time::{interval, Duration};
+            use tokio::time::{Duration, interval};
             let mut tick = interval(Duration::from_secs(1)); // Process queue every second
 
             info!("🔄 Background queue processor started");
@@ -217,8 +217,13 @@ impl IncrementalIndexer {
                             .await
                         }
                         FileChangeType::Deleted => {
-                            handlers::handle_file_deleted_static(event.path, &db, vector_store.as_ref(), &workspace_root)
-                                .await
+                            handlers::handle_file_deleted_static(
+                                event.path,
+                                &db,
+                                vector_store.as_ref(),
+                                &workspace_root,
+                            )
+                            .await
                         }
                         FileChangeType::Renamed { from, to } => {
                             handlers::handle_file_renamed_static(
@@ -263,8 +268,13 @@ impl IncrementalIndexer {
                     .await
                 }
                 FileChangeType::Deleted => {
-                    handlers::handle_file_deleted_static(event.path, &self.db, self.vector_store.as_ref(), &self.workspace_root)
-                        .await
+                    handlers::handle_file_deleted_static(
+                        event.path,
+                        &self.db,
+                        self.vector_store.as_ref(),
+                        &self.workspace_root,
+                    )
+                    .await
                 }
                 FileChangeType::Renamed { from, to } => {
                     handlers::handle_file_renamed_static(

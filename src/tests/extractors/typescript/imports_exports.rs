@@ -19,12 +19,11 @@ mod tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "typescript".to_string(),
             "test.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 
@@ -42,12 +41,11 @@ mod tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "typescript".to_string(),
             "test.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
         let symbols = extractor.extract_symbols(&tree);
 

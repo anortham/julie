@@ -1,7 +1,7 @@
 // PlanTool - MCP interface for mutable development plans (Phase 1.5)
 
-use anyhow::{anyhow, Result};
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use anyhow::{Result, anyhow};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -218,13 +218,17 @@ impl PlanTool {
                 "✅ Plan created: {}\nID: {}\nStatus: {}\n\nPlan saved to: .memories/plans/{}.json",
                 plan.title,
                 plan.id,
-                if should_activate { "active" } else { match plan.status {
-                    PlanStatus::Active => "active",
-                    PlanStatus::Completed => "completed",
-                    PlanStatus::Archived => "archived",
-                }},
+                if should_activate {
+                    "active"
+                } else {
+                    match plan.status {
+                        PlanStatus::Active => "active",
+                        PlanStatus::Completed => "completed",
+                        PlanStatus::Archived => "archived",
+                    }
+                },
                 plan.id
-            )
+            ),
         )]))
     }
 
@@ -264,7 +268,7 @@ impl PlanTool {
                     PlanStatus::Archived => "archived",
                 },
                 content_preview
-            )
+            ),
         )]))
     }
 
@@ -287,7 +291,7 @@ impl PlanTool {
 
         if plans.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                "No plans found."
+                "No plans found.",
             )]));
         }
 
@@ -312,7 +316,9 @@ impl PlanTool {
             ));
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(output)]))
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            output,
+        )]))
     }
 
     async fn handle_activate(&self, workspace_root: &std::path::Path) -> Result<CallToolResult> {
@@ -331,7 +337,7 @@ impl PlanTool {
             format!(
                 "✅ Activated plan: {}\nAll other plans have been archived.",
                 plan.title
-            )
+            ),
         )]))
     }
 
@@ -373,7 +379,7 @@ impl PlanTool {
                     PlanStatus::Completed => "completed",
                     PlanStatus::Archived => "archived",
                 }
-            )
+            ),
         )]))
     }
 
@@ -388,10 +394,7 @@ impl PlanTool {
         let plan = complete_plan(workspace_root, id)?;
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            format!(
-                "✅ Completed plan: {}\nStatus: completed",
-                plan.title
-            )
+            format!("✅ Completed plan: {}\nStatus: completed", plan.title),
         )]))
     }
 }

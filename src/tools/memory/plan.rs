@@ -9,7 +9,7 @@
 // - Only one plan can be "active" at a time
 // - Plans are indexed and searchable like checkpoints
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -208,11 +208,7 @@ pub fn create_plan(
 /// let plan = update_plan(&PathBuf::from("."), "plan_add-search", updates)?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
-pub fn update_plan(
-    workspace_root: &Path,
-    id: &str,
-    updates: PlanUpdates,
-) -> Result<Plan> {
+pub fn update_plan(workspace_root: &Path, id: &str, updates: PlanUpdates) -> Result<Plan> {
     // Read existing plan
     let mut plan = get_plan(workspace_root, id)?;
 
@@ -285,10 +281,7 @@ pub fn get_plan(workspace_root: &Path, id: &str) -> Result<Plan> {
 /// let active = list_plans(&PathBuf::from("."), Some(PlanStatus::Active))?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
-pub fn list_plans(
-    workspace_root: &Path,
-    status_filter: Option<PlanStatus>,
-) -> Result<Vec<Plan>> {
+pub fn list_plans(workspace_root: &Path, status_filter: Option<PlanStatus>) -> Result<Vec<Plan>> {
     let plans_dir = workspace_root.join(".memories").join("plans");
 
     // Return empty list if directory doesn't exist
@@ -474,7 +467,9 @@ fn title_to_slug(title: &str) -> Result<String> {
 
     // Validate
     if slug.is_empty() {
-        return Err(anyhow!("Title cannot be empty or contain only special characters"));
+        return Err(anyhow!(
+            "Title cannot be empty or contain only special characters"
+        ));
     }
 
     if slug.len() > 100 {

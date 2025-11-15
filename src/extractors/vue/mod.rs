@@ -22,7 +22,7 @@ mod template;
 // Public re-exports
 pub use crate::extractors::base::{IdentifierKind, RelationshipKind};
 
-use parsing::{parse_vue_sfc, VueSection};
+use parsing::{VueSection, parse_vue_sfc};
 use script::create_symbol_manual;
 
 /// Vue Single File Component (SFC) Extractor
@@ -34,7 +34,12 @@ pub struct VueExtractor {
 }
 
 impl VueExtractor {
-    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
@@ -112,9 +117,33 @@ impl VueExtractor {
     }
 
     /// Infer types from Vue SFC
-    pub fn infer_types(&mut self, _symbols: &[Symbol]) -> HashMap<String, String> {
-        // implementation returns empty for now - follow the same approach
-        HashMap::new()
+    pub fn infer_types(&mut self, symbols: &[Symbol]) -> HashMap<String, String> {
+        let mut types = HashMap::new();
+        for symbol in symbols {
+            let metadata = &symbol.metadata;
+            // Check for returnType (from methods/functions)
+            if let Some(return_type) = metadata.as_ref().and_then(|m| m.get("returnType")) {
+                if let Some(type_str) = return_type.as_str() {
+                    types.insert(symbol.id.clone(), type_str.to_string());
+                }
+            }
+            // Check for propertyType (from props/data)
+            else if let Some(property_type) = metadata.as_ref().and_then(|m| m.get("propertyType")) {
+                if let Some(type_str) = property_type.as_str() {
+                    types.insert(symbol.id.clone(), type_str.to_string());
+                }
+            }
+            // Check for type field (generic type info)
+            else if let Some(type_val) = metadata.as_ref().and_then(|m| m.get("type")) {
+                if let Some(type_str) = type_val.as_str() {
+                    // Only include if it's an actual type, not a kind descriptor
+                    if !matches!(type_str, "function" | "property" | "method") {
+                        types.insert(symbol.id.clone(), type_str.to_string());
+                    }
+                }
+            }
+        }
+        types
     }
 
     /// Extract symbols from a specific section using appropriate parser

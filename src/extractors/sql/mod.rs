@@ -37,7 +37,12 @@ pub struct SqlExtractor {
 }
 
 impl SqlExtractor {
-    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
@@ -418,7 +423,10 @@ impl SqlExtractor {
             .map(|from_match| select_index + from_match.start());
 
         let select_section = if let Some(from_idx) = from_index {
-            if from_idx > select_index && error_text.is_char_boundary(select_index) && error_text.is_char_boundary(from_idx) {
+            if from_idx > select_index
+                && error_text.is_char_boundary(select_index)
+                && error_text.is_char_boundary(from_idx)
+            {
                 &error_text[select_index..from_idx]
             } else if error_text.is_char_boundary(select_index) {
                 &error_text[select_index..]

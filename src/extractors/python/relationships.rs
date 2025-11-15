@@ -1,7 +1,7 @@
 /// Relationship extraction
 /// Handles inheritance relationships and function call relationships
 use super::super::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
-use super::{helpers, PythonExtractor};
+use super::{PythonExtractor, helpers};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

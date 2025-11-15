@@ -1,7 +1,7 @@
 // File operations
 
 use super::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use blake3;
 use rusqlite::params;
 use std::path::Path;
@@ -525,7 +525,10 @@ impl SymbolDatabase {
                 let es = e.to_string();
                 // If the FTS index is desynced (common message: missing row from content table), rebuild and retry once
                 if es.contains("fts5: missing row") || es.contains("invalid fts5 file format") {
-                    warn!("⚠️ FTS5 query error detected ({}). Rebuilding files_fts and retrying once...", es);
+                    warn!(
+                        "⚠️ FTS5 query error detected ({}). Rebuilding files_fts and retrying once...",
+                        es
+                    );
                     // Attempt rebuild and retry
                     // Ignore rebuild error; if rebuild fails, return original error
                     let _ = self.rebuild_files_fts();
@@ -653,7 +656,11 @@ pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
 
 /// Create FileInfo from a file path
 /// CASCADE: Now reads and includes file content for FTS5 search
-pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str, workspace_root: &Path) -> Result<FileInfo> {
+pub fn create_file_info<P: AsRef<Path>>(
+    file_path: P,
+    language: &str,
+    workspace_root: &Path,
+) -> Result<FileInfo> {
     let path = file_path.as_ref();
     let metadata = std::fs::metadata(path)?;
     let hash = calculate_file_hash(path)?;
@@ -668,12 +675,11 @@ pub fn create_file_info<P: AsRef<Path>>(file_path: P, language: &str, workspace_
 
     // CRITICAL FIX: Canonicalize path to resolve symlinks, then convert to relative
     // This ensures files table and symbols table use same relative Unix-style paths
-    let canonical_path = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
     // Convert to relative Unix-style path for token efficiency and cross-platform compatibility
-    let relative_path = crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
+    let relative_path =
+        crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
 
     Ok(FileInfo {
         path: relative_path, // Use relative Unix-style path

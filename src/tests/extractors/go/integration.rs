@@ -90,8 +90,12 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     // Check we extracted all major symbols
@@ -118,21 +122,25 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
     let get_user = symbols.iter().find(|s| s.name == "GetUser");
     assert!(get_user.is_some());
     assert_eq!(get_user.unwrap().kind, SymbolKind::Method);
-    assert!(get_user
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (r *UserRepository) GetUser"));
+    assert!(
+        get_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (r *UserRepository) GetUser")
+    );
 
     let process_users = symbols.iter().find(|s| s.name == "ProcessUsers");
     assert!(process_users.is_some());
-    assert!(process_users
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("<-chan User"));
+    assert!(
+        process_users
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<-chan User")
+    );
 }
 
 #[test]
@@ -230,8 +238,12 @@ func main() {{
 
     let tree = init_parser(&code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let _relationships = extractor.extract_relationships(&tree, &symbols);
 

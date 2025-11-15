@@ -1,6 +1,6 @@
 // PHP Extractor - Property and constant extraction
 
-use super::{determine_visibility, extract_modifiers, find_child, PhpExtractor};
+use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;

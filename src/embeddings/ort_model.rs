@@ -9,7 +9,7 @@
 
 use anyhow::{Context, Result};
 use ndarray::{Array2, Axis};
-use ort::session::{builder::GraphOptimizationLevel, Session};
+use ort::session::{Session, builder::GraphOptimizationLevel};
 use ort::value::Tensor;
 use std::path::Path;
 use tokenizers::Tokenizer;
@@ -19,7 +19,7 @@ use tracing::{debug, info};
 use tracing::warn;
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ERROR_NOT_FOUND, IDXGIFactory1};
 
 /// ONNX Runtime embedding model with GPU acceleration
 pub struct OrtEmbeddingModel {
@@ -86,8 +86,9 @@ impl OrtEmbeddingModel {
         info!("✅ Tokenizer loaded successfully with padding and truncation configured");
 
         // 3. Create ONNX Runtime session with platform-specific GPU acceleration
-        let (session, is_gpu) = Self::create_session_with_gpu(model_path.as_ref(), cache_dir, false)
-            .context("Failed to create ONNX Runtime session")?;
+        let (session, is_gpu) =
+            Self::create_session_with_gpu(model_path.as_ref(), cache_dir, false)
+                .context("Failed to create ONNX Runtime session")?;
 
         // 4. Determine model dimensions (384 for BGE-Small)
         let dimensions = 384; // BGE-Small-EN-V1.5 outputs 384-dimensional embeddings
@@ -120,7 +121,10 @@ impl OrtEmbeddingModel {
         model_name: &str,
         cache_dir: Option<impl AsRef<Path>>,
     ) -> Result<Self> {
-        info!("🚀 Initializing OrtEmbeddingModel in CPU-only mode for {}", model_name);
+        info!(
+            "🚀 Initializing OrtEmbeddingModel in CPU-only mode for {}",
+            model_name
+        );
 
         // 1. Load tokenizer (same as regular initialization)
         let mut tokenizer = Tokenizer::from_file(tokenizer_path.as_ref()).map_err(|e| {
@@ -263,7 +267,7 @@ impl OrtEmbeddingModel {
     fn create_session_with_gpu(
         model_path: &Path,
         cache_dir: Option<impl AsRef<Path>>,
-        force_cpu: bool,  // Issue #3 fix: pass as parameter instead of env var
+        force_cpu: bool, // Issue #3 fix: pass as parameter instead of env var
     ) -> Result<(Session, bool)> {
         if force_cpu {
             info!("🖥️  CPU-only mode requested (GPU fallback active)");
@@ -299,13 +303,18 @@ impl OrtEmbeddingModel {
                             "🎮 Attempting DirectML (Windows GPU) acceleration with device ID {}...",
                             device_id
                         );
-                        match builder.with_execution_providers([DirectMLExecutionProvider::default()
-                            .with_device_id(device_id)
-                            .build()]) {
+                        match builder.with_execution_providers([
+                            DirectMLExecutionProvider::default()
+                                .with_device_id(device_id)
+                                .build(),
+                        ]) {
                             Ok(b) => {
                                 builder = b;
                                 is_gpu = true;
-                                info!("✅ DirectML execution provider initialized successfully on device {}", device_id);
+                                info!(
+                                    "✅ DirectML execution provider initialized successfully on device {}",
+                                    device_id
+                                );
                                 info!("   GPU acceleration active");
                             }
                             Err(e) => {
@@ -331,7 +340,8 @@ impl OrtEmbeddingModel {
             if !force_cpu {
                 // Check if CUDA libraries are actually available before trying to use them
                 // Common CUDA library locations on Linux
-                let cuda_available = std::path::Path::new("/usr/local/cuda-12/lib64/libcudart.so").exists()
+                let cuda_available = std::path::Path::new("/usr/local/cuda-12/lib64/libcudart.so")
+                    .exists()
                     || std::path::Path::new("/usr/local/cuda-12.6/lib64/libcudart.so").exists()
                     || std::path::Path::new("/usr/local/cuda/lib64/libcudart.so").exists()
                     || std::path::Path::new("/usr/lib/x86_64-linux-gnu/libcudart.so.12").exists();
@@ -349,10 +359,9 @@ impl OrtEmbeddingModel {
                     use ort::execution_providers::CUDAExecutionProvider;
                     info!("🎮 CUDA libraries found - attempting GPU acceleration...");
 
-                    match builder.with_execution_providers([
-                        CUDAExecutionProvider::default()
-                            .build(),
-                    ]) {
+                    match builder
+                        .with_execution_providers([CUDAExecutionProvider::default().build()])
+                    {
                         Ok(b) => {
                             builder = b;
                             is_gpu = true;
@@ -584,7 +593,9 @@ impl OrtEmbeddingModel {
     /// Get DirectML GPU memory (Windows only)
     #[cfg(target_os = "windows")]
     fn get_directml_memory() -> Option<usize> {
-        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ERROR_NOT_FOUND};
+        use windows::Win32::Graphics::Dxgi::{
+            CreateDXGIFactory1, DXGI_ERROR_NOT_FOUND, IDXGIFactory1,
+        };
 
         unsafe {
             match CreateDXGIFactory1::<IDXGIFactory1>() {
@@ -609,11 +620,7 @@ impl OrtEmbeddingModel {
                         }
                     }
 
-                    if max_vram > 0 {
-                        Some(max_vram)
-                    } else {
-                        None
-                    }
+                    if max_vram > 0 { Some(max_vram) } else { None }
                 }
                 Err(_) => None,
             }
@@ -699,7 +706,11 @@ mod tests {
             ) {
                 Ok(model) => {
                     assert_eq!(model.dimensions(), 384, "Dimensions should be 384");
-                    assert_eq!(model.model_name(), "bge-small-test", "Model name should match");
+                    assert_eq!(
+                        model.model_name(),
+                        "bge-small-test",
+                        "Model name should match"
+                    );
                 }
                 Err(e) => {
                     panic!("Model initialization failed: {}", e);

@@ -3,7 +3,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rust_mcp_sdk::schema::CallToolResult;
 use std::sync::atomic::Ordering;
 
@@ -20,7 +20,7 @@ pub async fn search_content(
         language: None,
         file_pattern: None,
         workspace: Some("primary".to_string()),
-        output: None,  // Use default (symbols mode)
+        output: None, // Use default (symbols mode)
         context_lines: None,
         search_target: "content".to_string(),
     };
@@ -138,11 +138,7 @@ pub fn assert_contains_symbol_kind(results: &[Symbol], kind: &str) {
 }
 
 /// Assert that first result matches criteria (for ranking tests)
-pub fn assert_first_result(
-    results: &[Symbol],
-    path_pattern: &str,
-    name_pattern: Option<&str>,
-) {
+pub fn assert_first_result(results: &[Symbol], path_pattern: &str, name_pattern: Option<&str>) {
     assert!(
         !results.is_empty(),
         "Expected at least one result, but got none"
@@ -213,8 +209,7 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
     let fixture = JulieTestFixture::get_instance();
 
     // Create a temporary workspace directory
-    let temp_dir = tempfile::TempDir::new()
-        .expect("Failed to create temp directory");
+    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp directory");
     let temp_root = temp_dir.path().to_path_buf();
 
     // Create the .julie folder structure in temp workspace
@@ -246,8 +241,7 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
     let src_size = fs::metadata(fixture_db_src)
         .expect("Failed to read fixture DB metadata")
         .len();
-    fs::copy(fixture_db_src, &fixture_db_dest)
-        .expect("Failed to copy fixture database");
+    fs::copy(fixture_db_src, &fixture_db_dest).expect("Failed to copy fixture database");
     let dest_size = fs::metadata(&fixture_db_dest)
         .expect("Failed to read copied DB metadata")
         .len();
@@ -261,14 +255,13 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
 
     // Now we need to load the fixture database directly
     // Open a connection to the fixture database directly (not through normal initialization)
+    use crate::database::SymbolDatabase;
     use rusqlite::Connection;
     use std::sync::{Arc, Mutex};
-    use crate::database::SymbolDatabase;
 
     // The copied database already has all the data - we just need to wrap it
     // Open a read-write connection directly to the fixture database
-    let conn = Connection::open(&fixture_db_dest)
-        .expect("Failed to open fixture database");
+    let conn = Connection::open(&fixture_db_dest).expect("Failed to open fixture database");
 
     // Configure for search operations
     conn.busy_timeout(std::time::Duration::from_secs(5))
@@ -277,33 +270,40 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
         .expect("Failed to set WAL autocheckpoint");
 
     // Verify the database has data
-    let symbol_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM symbols",
-        [],
-        |row| row.get(0),
-    ).expect("Failed to count symbols");
+    let symbol_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
+        .expect("Failed to count symbols");
 
-    println!("✓ Fixture database opened directly with {} symbols", symbol_count);
+    println!(
+        "✓ Fixture database opened directly with {} symbols",
+        symbol_count
+    );
 
     // Check if FTS5 indexes are healthy before rebuilding (optimization)
     // Only rebuild if indexes are corrupted or non-functional
-    let symbols_fts_ok = conn.query_row(
-        "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test'",
-        [],
-        |row| row.get::<_, i64>(0)
-    ).is_ok();
+    let symbols_fts_ok = conn
+        .query_row(
+            "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .is_ok();
 
-    let files_fts_ok = conn.query_row(
-        "SELECT COUNT(*) FROM files_fts WHERE content MATCH 'test'",
-        [],
-        |row| row.get::<_, i64>(0)
-    ).is_ok();
+    let files_fts_ok = conn
+        .query_row(
+            "SELECT COUNT(*) FROM files_fts WHERE content MATCH 'test'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .is_ok();
 
     if !symbols_fts_ok || !files_fts_ok {
         // Rebuild FTS5 indexes if corrupted (sometimes copying causes corruption)
         println!("⏳ FTS5 indexes need rebuild, fixing...");
         if !symbols_fts_ok {
-            if let Err(e) = conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", []) {
+            if let Err(e) =
+                conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])
+            {
                 println!("⚠️  symbols_fts rebuild failed: {}", e);
             } else {
                 println!("✓ symbols_fts rebuilt");
@@ -345,8 +345,7 @@ max_file_size = 1048576
 embedding_model = "bge-small"
 incremental_updates = true
 "#;
-        fs::write(julie_dir.join("julie.toml"), config)
-            .expect("Failed to write julie.toml");
+        fs::write(julie_dir.join("julie.toml"), config).expect("Failed to write julie.toml");
 
         // Create workspace_registry.json so workspace resolution works
         // The registry tracks primary and reference workspaces
@@ -401,7 +400,8 @@ incremental_updates = true
         fs::write(
             julie_dir.join("workspace_registry.json"),
             serde_json::to_string_pretty(&registry_json).expect("Failed to serialize registry"),
-        ).expect("Failed to write workspace_registry.json");
+        )
+        .expect("Failed to write workspace_registry.json");
     }
 
     // Create workspace structure manually with the fixture database
@@ -423,7 +423,9 @@ incremental_updates = true
 
     // Mark indexing as complete so searches work immediately
     // We're loading from a pre-indexed fixture, so this status is accurate
-    handler.indexing_status.sqlite_fts_ready
+    handler
+        .indexing_status
+        .sqlite_fts_ready
         .store(true, std::sync::atomic::Ordering::Relaxed);
 
     // Debug confirmation
@@ -433,10 +435,15 @@ incremental_updates = true
             println!("✓ Workspace initialized at: {}", ws.root.display());
             if let Some(db_arc) = ws.db.as_ref() {
                 if let Ok(db_lock) = db_arc.lock() {
-                    match db_lock.conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| {
-                        row.get::<_, i64>(0)
-                    }) {
-                        Ok(count) => println!("✓ Workspace database has {} symbols ready for search", count),
+                    match db_lock
+                        .conn
+                        .query_row("SELECT COUNT(*) FROM symbols", [], |row| {
+                            row.get::<_, i64>(0)
+                        }) {
+                        Ok(count) => println!(
+                            "✓ Workspace database has {} symbols ready for search",
+                            count
+                        ),
                         Err(e) => println!("✗ Error querying symbols: {}", e),
                     }
                 }

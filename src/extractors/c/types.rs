@@ -221,7 +221,9 @@ pub(super) fn extract_alignment_attributes(
             if let Some(align_end) = parent_text[align_start..].find(')') {
                 let end_idx = align_start + align_end + 1;
                 // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-                if parent_text.is_char_boundary(align_start) && parent_text.is_char_boundary(end_idx) {
+                if parent_text.is_char_boundary(align_start)
+                    && parent_text.is_char_boundary(end_idx)
+                {
                     let align_attr = &parent_text[align_start..end_idx];
                     if !attributes.contains(&align_attr.to_string()) {
                         attributes.push(align_attr.to_string());

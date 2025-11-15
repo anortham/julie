@@ -28,10 +28,35 @@ impl ExtractorManager {
     /// Get supported languages (all 27 extractors complete language support)
     pub fn supported_languages(&self) -> Vec<&'static str> {
         vec![
-            "rust", "typescript", "tsx", "javascript", "jsx", "python", "go", "java",
-            "c", "cpp", "csharp", "ruby", "php", "swift", "kotlin", "dart",
-            "gdscript", "lua", "qml", "r", "vue", "razor", "sql", "html", "css", "bash",
-            "powershell", "zig", "regex",
+            "rust",
+            "typescript",
+            "tsx",
+            "javascript",
+            "jsx",
+            "python",
+            "go",
+            "java",
+            "c",
+            "cpp",
+            "csharp",
+            "ruby",
+            "php",
+            "swift",
+            "kotlin",
+            "dart",
+            "gdscript",
+            "lua",
+            "qml",
+            "r",
+            "vue",
+            "razor",
+            "sql",
+            "html",
+            "css",
+            "bash",
+            "powershell",
+            "zig",
+            "regex",
         ]
     }
 
@@ -98,9 +123,9 @@ impl ExtractorManager {
         let mut parser = Parser::new();
         let tree_sitter_language = self.get_tree_sitter_language("json")?;
 
-        parser.set_language(&tree_sitter_language).map_err(|e| {
-            anyhow::anyhow!("Failed to set JSON parser language: {}", e)
-        })?;
+        parser
+            .set_language(&tree_sitter_language)
+            .map_err(|e| anyhow::anyhow!("Failed to set JSON parser language: {}", e))?;
 
         let mut all_symbols = Vec::new();
 
@@ -113,7 +138,11 @@ impl ExtractorManager {
 
             // Parse this line as JSON
             let tree = parser.parse(line, None).ok_or_else(|| {
-                anyhow::anyhow!("Failed to parse JSONL line {} in file: {}", line_num + 1, file_path)
+                anyhow::anyhow!(
+                    "Failed to parse JSONL line {} in file: {}",
+                    line_num + 1,
+                    file_path
+                )
             })?;
 
             // Extract symbols from this line
@@ -173,11 +202,7 @@ impl ExtractorManager {
 
         // Extract identifiers using the routing layer
         let identifiers = super::routing_identifiers::extract_identifiers_for_language(
-            file_path,
-            content,
-            &language,
-            &tree,
-            symbols,
+            file_path, content, &language, &tree, symbols,
         )?;
 
         tracing::debug!(
@@ -217,11 +242,7 @@ impl ExtractorManager {
 
         // Extract relationships using the routing layer
         let relationships = super::routing_relationships::extract_relationships_for_language(
-            file_path,
-            content,
-            &language,
-            &tree,
-            symbols,
+            file_path, content, &language, &tree, symbols,
         )?;
 
         tracing::debug!(

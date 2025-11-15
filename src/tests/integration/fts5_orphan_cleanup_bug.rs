@@ -20,7 +20,7 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::database::{create_file_info, SymbolDatabase};
+use crate::database::{SymbolDatabase, create_file_info};
 
 #[test]
 fn test_orphan_cleanup_loop_causes_fts5_corruption() -> Result<()> {
@@ -42,7 +42,10 @@ fn test_orphan_cleanup_loop_causes_fts5_corruption() -> Result<()> {
 
     for i in 1..=num_files {
         let test_file = temp_dir.path().join(format!("file{}.rs", i));
-        fs::write(&test_file, format!("fn test{}() {{ println!(\"hello\"); }}", i))?;
+        fs::write(
+            &test_file,
+            format!("fn test{}() {{ println!(\"hello\"); }}", i),
+        )?;
         test_files.push(test_file);
     }
 
@@ -56,19 +59,19 @@ fn test_orphan_cleanup_loop_causes_fts5_corruption() -> Result<()> {
         }
 
         // Verify initial state
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, num_files, "Should have {} files", num_files);
 
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(fts_count, num_files, "FTS5 should have {} entries", num_files);
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
+        assert_eq!(
+            fts_count, num_files,
+            "FTS5 should have {} entries",
+            num_files
+        );
     }
 
     // Phase 2: Simulate buggy orphan cleanup (delete one-by-one with FTS5 rebuild after each)
@@ -97,18 +100,14 @@ fn test_orphan_cleanup_loop_causes_fts5_corruption() -> Result<()> {
     {
         let db = SymbolDatabase::new(&db_path)?;
 
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 0, "All files should be deleted");
 
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
         assert_eq!(fts_count, 0, "FTS5 should have 0 entries after cleanup");
 
         // Try to search - this might trigger "missing row" if corruption occurred
@@ -120,7 +119,10 @@ fn test_orphan_cleanup_loop_causes_fts5_corruption() -> Result<()> {
 
         match search_result {
             Ok(count) => {
-                eprintln!("✅ Search succeeded with {} results (no corruption detected)", count);
+                eprintln!(
+                    "✅ Search succeeded with {} results (no corruption detected)",
+                    count
+                );
                 // If search succeeds with 0 results, that's actually correct (all deleted)
                 // But if it succeeds with >0 results, that's wrong!
                 assert_eq!(count, 0, "Should find 0 results after deleting all files");
@@ -156,7 +158,10 @@ fn test_orphan_cleanup_stress_100_files() -> Result<()> {
 
     for i in 1..=num_files {
         let test_file = temp_dir.path().join(format!("file{:03}.rs", i));
-        fs::write(&test_file, format!("fn test{}() {{ println!(\"hello\"); }}", i))?;
+        fs::write(
+            &test_file,
+            format!("fn test{}() {{ println!(\"hello\"); }}", i),
+        )?;
         test_files.push(test_file);
     }
 

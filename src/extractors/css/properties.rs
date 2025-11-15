@@ -98,10 +98,7 @@ impl PropertyExtractor {
             .captures(&text)
         {
             // Safe: capture group 1 exists if regex matched (pattern has one capture group)
-            let condition = captures
-                .get(1)
-                .map_or("", |m| m.as_str())
-                .trim();
+            let condition = captures.get(1).map_or("", |m| m.as_str()).trim();
             format!("@supports {}", condition)
         } else {
             "@supports".to_string()

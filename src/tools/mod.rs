@@ -5,12 +5,12 @@
 pub mod shared;
 
 // Tool modules organized by functionality
-pub mod memory;            // Memory system (checkpoint/recall)
 pub mod ast_symbol_finder; // AST-aware symbol finding using tree-sitter
 pub mod edit_lines; // Surgical line editing tool (insert/replace/delete)
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
 pub mod exploration;
 pub mod fuzzy_replace; // DMP fuzzy matching tool
+pub mod memory; // Memory system (checkpoint/recall)
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
@@ -34,7 +34,7 @@ pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types
 pub use shared::{
-    OptimizedResponse, BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, KNOWN_CODE_EXTENSIONS,
+    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, KNOWN_CODE_EXTENSIONS, OptimizedResponse,
 };
 
 // Generate the JulieTools enum with tool_box! macro (gradually add tools as they are migrated)
@@ -51,8 +51,8 @@ tool_box!(
         GetSymbolsTool,
         TraceCallPathTool,
         // Exploration tools
-        FastExploreTool,  // NEW: Multi-mode exploration (logic/similar/tests/deps)
-        FindLogicTool,    // Legacy: Use FastExploreTool(mode="logic") instead
+        FastExploreTool, // NEW: Multi-mode exploration (logic/similar/tests/deps)
+        FindLogicTool,   // Legacy: Use FastExploreTool(mode="logic") instead
         // Editing tools
         EditLinesTool,
         FuzzyReplaceTool,

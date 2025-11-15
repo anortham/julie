@@ -1,4 +1,4 @@
-use super::{parse_c, SymbolKind};
+use super::{SymbolKind, parse_c};
 
 #[cfg(test)]
 mod tests {
@@ -311,12 +311,14 @@ mod tests {
 
         let likely_macro = symbols.iter().find(|s| s.name == "LIKELY");
         assert!(likely_macro.is_some());
-        assert!(likely_macro
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("__builtin_expect"));
+        assert!(
+            likely_macro
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("__builtin_expect")
+        );
 
         let force_inline_macro = symbols.iter().find(|s| s.name == "FORCE_INLINE");
         assert!(force_inline_macro.is_some());
@@ -385,12 +387,14 @@ mod tests {
         // Pragma-affected structures - Tests pragma handling
         let network_header = symbols.iter().find(|s| s.name == "NetworkHeader");
         assert!(network_header.is_some());
-        assert!(network_header
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("PACKED"));
+        assert!(
+            network_header
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("PACKED")
+        );
 
         // Alignment directives - Tests alignment features
         let align_macro = symbols.iter().find(|s| s.name == "ALIGN");
@@ -399,22 +403,26 @@ mod tests {
         let atomic_counter = symbols.iter().find(|s| s.name == "AtomicCounter");
         assert!(atomic_counter.is_some());
 
-        assert!(atomic_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("ALIGN(CACHE_LINE_SIZE)"));
+        assert!(
+            atomic_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("ALIGN(CACHE_LINE_SIZE)")
+        );
 
         // Inline assembly functions - Tests inline assembly
         let rdtsc_function = symbols.iter().find(|s| s.name == "rdtsc");
         assert!(rdtsc_function.is_some());
-        assert!(rdtsc_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static inline uint64_t rdtsc(void)"));
+        assert!(
+            rdtsc_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static inline uint64_t rdtsc(void)")
+        );
 
         let cpu_pause_function = symbols.iter().find(|s| s.name == "cpu_pause");
         assert!(cpu_pause_function.is_some());

@@ -18,8 +18,12 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
     let tree = parser.parse(code, None).unwrap();
 
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        SqlExtractor::new("sql".to_string(), "test.sql".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = SqlExtractor::new(
+        "sql".to_string(),
+        "test.sql".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     extractor.extract_symbols(&tree)
 }
 
@@ -28,8 +32,12 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
     let tree = parser.parse(code, None).unwrap();
 
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        SqlExtractor::new("sql".to_string(), "test.sql".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = SqlExtractor::new(
+        "sql".to_string(),
+        "test.sql".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
     (symbols, relationships)
@@ -45,3 +53,4 @@ pub mod relationships;
 pub mod schema;
 pub mod security;
 pub mod transactions;
+mod types; // Phase 4: Type extraction verification tests

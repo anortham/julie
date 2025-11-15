@@ -99,11 +99,13 @@ function Set-CustomProperty {
                 "Should extract Get-UserInfo function"
             );
             let get_user_info = get_user_info.unwrap();
-            assert!(get_user_info
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("Get-UserInfo"));
+            assert!(
+                get_user_info
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("Get-UserInfo")
+            );
             assert_eq!(
                 get_user_info.visibility.as_ref().unwrap(),
                 &Visibility::Public
@@ -115,11 +117,13 @@ function Set-CustomProperty {
                 "Should extract Get-ComputerData function"
             );
             let get_computer_data = get_computer_data.unwrap();
-            assert!(get_computer_data
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("[CmdletBinding()]"));
+            assert!(
+                get_computer_data
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("[CmdletBinding()]")
+            );
 
             let set_custom_property = functions.iter().find(|f| f.name == "Set-CustomProperty");
             assert!(
@@ -143,11 +147,13 @@ function Set-CustomProperty {
                 "Should extract ComputerName parameter"
             );
             let computer_name_param = computer_name_param.unwrap();
-            assert!(computer_name_param
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("[Parameter(Mandatory=$true)]"));
+            assert!(
+                computer_name_param
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("[Parameter(Mandatory=$true)]")
+            );
         }
     }
 
@@ -198,11 +204,13 @@ Write-Host "Last exit code: $LASTEXITCODE"
             let config_path = variables.iter().find(|v| v.name == "ConfigPath");
             assert!(config_path.is_some(), "Should extract ConfigPath variable");
             let config_path = config_path.unwrap();
-            assert!(config_path
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("$Global:ConfigPath"));
+            assert!(
+                config_path
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("$Global:ConfigPath")
+            );
             assert_eq!(
                 config_path.visibility.as_ref().unwrap(),
                 &Visibility::Public
@@ -211,11 +219,13 @@ Write-Host "Last exit code: $LASTEXITCODE"
             let log_level = variables.iter().find(|v| v.name == "LogLevel");
             assert!(log_level.is_some(), "Should extract LogLevel variable");
             let log_level = log_level.unwrap();
-            assert!(log_level
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("$Script:LogLevel"));
+            assert!(
+                log_level
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("$Script:LogLevel")
+            );
 
             // Should extract environment variables
             let env_vars = variables
@@ -340,11 +350,13 @@ class ServerInfo : ComputerInfo {
             let get_uptime = methods.iter().find(|m| m.name == "GetUptime");
             assert!(get_uptime.is_some(), "Should extract GetUptime method");
             let get_uptime = get_uptime.unwrap();
-            assert!(get_uptime
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("[string] GetUptime()"));
+            assert!(
+                get_uptime
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("[string] GetUptime()")
+            );
 
             let get_local_computer = methods.iter().find(|m| m.name == "GetLocalComputer");
             assert!(
@@ -352,11 +364,13 @@ class ServerInfo : ComputerInfo {
                 "Should extract GetLocalComputer method"
             );
             let get_local_computer = get_local_computer.unwrap();
-            assert!(get_local_computer
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("static"));
+            assert!(
+                get_local_computer
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("static")
+            );
 
             // Should extract properties
             let properties = symbols
@@ -371,11 +385,13 @@ class ServerInfo : ComputerInfo {
             let name_property = properties.iter().find(|p| p.name == "Name");
             assert!(name_property.is_some(), "Should extract Name property");
             let name_property = name_property.unwrap();
-            assert!(name_property
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("[string]$Name"));
+            assert!(
+                name_property
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("[string]$Name")
+            );
 
             let hidden_property = properties.iter().find(|p| p.name == "InternalId");
             assert!(
@@ -999,20 +1015,24 @@ Export-ModuleMember -Alias gcd
             let az_accounts = imports.iter().find(|i| i.name == "Az.Accounts");
             assert!(az_accounts.is_some(), "Should extract Az.Accounts import");
             let az_accounts = az_accounts.unwrap();
-            assert!(az_accounts
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("Import-Module Az.Accounts"));
+            assert!(
+                az_accounts
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("Import-Module Az.Accounts")
+            );
 
             let custom_tools = imports.iter().find(|i| i.name == "Custom.Tools");
             assert!(custom_tools.is_some(), "Should extract Custom.Tools import");
             let custom_tools = custom_tools.unwrap();
-            assert!(custom_tools
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("RequiredVersion \"2.1.0\""));
+            assert!(
+                custom_tools
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("RequiredVersion \"2.1.0\"")
+            );
 
             // Should extract using statements
             let using_statements = imports
@@ -1698,3 +1718,4 @@ function Simple-Function {
         }
     }
 }
+mod types; // Phase 4: Type extraction verification tests

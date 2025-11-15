@@ -5,7 +5,7 @@
 //! `crate::extractors::extract_symbols_and_relationships()` to eliminate duplicate
 //! match statements that caused the R/QML/PHP bug.
 
-use crate::extractors::{Relationship, Symbol};
+use crate::extractors::ExtractionResults;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use tracing::debug;
@@ -23,7 +23,7 @@ impl ManageWorkspaceTool {
         content: &str,
         language: &str,
         workspace_root_path: &std::path::Path,
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
+    ) -> Result<ExtractionResults> {
         debug!(
             "Extracting symbols (static): language={}, file={}",
             language, file_path
@@ -32,7 +32,7 @@ impl ManageWorkspaceTool {
         debug!("    Content length: {} chars", content.len());
 
         // Use centralized factory function (single source of truth)
-        let (symbols, relationships) = crate::extractors::extract_symbols_and_relationships(
+        let results = crate::extractors::extract_symbols_and_relationships(
             tree,
             file_path,
             content,
@@ -41,11 +41,11 @@ impl ManageWorkspaceTool {
         )?;
 
         debug!(
-            "🎯 extract_symbols_static returning: {} symbols, {} relationships for {} file: {}",
-            symbols.len(), relationships.len(), language, file_path
+            "🎯 extract_symbols_static returning: {} symbols, {} relationships, {} identifiers, {} types for {} file: {}",
+            results.symbols.len(), results.relationships.len(), results.identifiers.len(), results.types.len(), language, file_path
         );
 
-        Ok((symbols, relationships))
+        Ok(results)
     }
 
     /// Determine if we should extract symbols from a file based on language

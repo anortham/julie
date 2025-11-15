@@ -97,21 +97,25 @@ mod tests {
 
         let async_computation = symbols.iter().find(|s| s.name == "async_computation");
         assert!(async_computation.is_some());
-        assert!(async_computation
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("std::future<int>"));
+        assert!(
+            async_computation
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("std::future<int>")
+        );
 
         let tls_counter = symbols.iter().find(|s| s.name == "tls_counter");
         assert!(tls_counter.is_some());
-        assert!(tls_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("thread_local"));
+        assert!(
+            tls_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("thread_local")
+        );
 
         let producer = symbols.iter().find(|s| s.name == "producer");
         assert!(producer.is_some());

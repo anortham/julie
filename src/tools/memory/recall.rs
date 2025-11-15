@@ -8,13 +8,13 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::memory::{recall_memories, RecallOptions};
+use crate::tools::memory::{RecallOptions, recall_memories};
 
 /// Parse ISO date string to Unix timestamp
 fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
@@ -30,13 +30,14 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
 
     // Try parsing just date (YYYY-MM-DD)
     if let Ok(naive) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-        return Ok(
-            Utc.from_utc_datetime(&naive.and_hms_opt(0, 0, 0).unwrap())
-                .timestamp(),
-        );
+        return Ok(Utc
+            .from_utc_datetime(&naive.and_hms_opt(0, 0, 0).unwrap())
+            .timestamp());
     }
 
-    anyhow::bail!("Invalid date format. Use ISO 8601 (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)")
+    anyhow::bail!(
+        "Invalid date format. Use ISO 8601 (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)"
+    )
 }
 
 #[mcp_tool(
@@ -96,7 +97,9 @@ impl RecallTool {
         info!("🔍 Recalling memories with filters: {:?}", self);
 
         // Get workspace root
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
         let workspace_root = workspace.root.clone();
 
@@ -129,14 +132,12 @@ impl RecallTool {
 
         // Format response
         if memories.is_empty() {
-            let filter_info = if self.memory_type.is_some()
-                || self.since.is_some()
-                || self.until.is_some()
-            {
-                "\n\nTry adjusting your filters or use fast_search for semantic queries."
-            } else {
-                "\n\nCreate your first checkpoint with the checkpoint tool!"
-            };
+            let filter_info =
+                if self.memory_type.is_some() || self.since.is_some() || self.until.is_some() {
+                    "\n\nTry adjusting your filters or use fast_search for semantic queries."
+                } else {
+                    "\n\nCreate your first checkpoint with the checkpoint tool!"
+                };
 
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 format!("No memories found.{}", filter_info),
@@ -144,12 +145,15 @@ impl RecallTool {
         }
 
         // Build formatted output
-        let mut output = format!("Found {} memor{}:\n\n", memories.len(), if memories.len() == 1 { "y" } else { "ies" });
+        let mut output = format!(
+            "Found {} memor{}:\n\n",
+            memories.len(),
+            if memories.len() == 1 { "y" } else { "ies" }
+        );
 
         for memory in &memories {
             // Format timestamp in local timezone
-            let dt = DateTime::from_timestamp(memory.timestamp, 0)
-                .unwrap_or_else(|| Utc::now());
+            let dt = DateTime::from_timestamp(memory.timestamp, 0).unwrap_or_else(|| Utc::now());
             let local_dt = dt.with_timezone(&Local);
             let date_str = local_dt.format("%Y-%m-%d %H:%M:%S").to_string();
 

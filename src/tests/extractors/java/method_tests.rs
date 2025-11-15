@@ -52,30 +52,36 @@ public class Calculator {
         let add_method = symbols.iter().find(|s| s.name == "add");
         assert!(add_method.is_some());
         assert_eq!(add_method.unwrap().kind, SymbolKind::Method);
-        assert!(add_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public int add(int a, int b)"));
+        assert!(
+            add_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public int add(int a, int b)")
+        );
 
         let multiply_method = symbols.iter().find(|s| s.name == "multiply");
         assert!(multiply_method.is_some());
-        assert!(multiply_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("private static double multiply"));
+        assert!(
+            multiply_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("private static double multiply")
+        );
 
         let format_method = symbols.iter().find(|s| s.name == "format");
         assert!(format_method.is_some());
-        assert!(format_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("final String format(String pattern, Object... args)"));
+        assert!(
+            format_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("final String format(String pattern, Object... args)")
+        );
     }
 
     #[test]
@@ -131,15 +137,21 @@ public class Person {
             .collect();
 
         assert!(signatures.iter().any(|s| s.contains("public Person()")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public Person(String name)")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public Person(String name, int age)")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("private Person(Person other)")));
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public Person(String name)"))
+        );
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public Person(String name, int age)"))
+        );
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("private Person(Person other)"))
+        );
     }
 
     #[test]
@@ -192,18 +204,26 @@ public class OverloadedExample {
             .filter_map(|s| s.signature.as_ref())
             .collect();
 
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public void process()")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public void process(int value)")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public void process(String text)")));
-        assert!(signatures
-            .iter()
-            .any(|s| s.contains("public void process(int value, String text)")));
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public void process()"))
+        );
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public void process(int value)"))
+        );
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public void process(String text)"))
+        );
+        assert!(
+            signatures
+                .iter()
+                .any(|s| s.contains("public void process(int value, String text)"))
+        );
     }
 
     #[test]
@@ -232,20 +252,24 @@ public abstract class AbstractProcessor {
 
         let process_method = symbols.iter().find(|s| s.name == "process");
         assert!(process_method.is_some());
-        assert!(process_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public abstract void process()"));
+        assert!(
+            process_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public abstract void process()")
+        );
 
         let transform_method = symbols.iter().find(|s| s.name == "transform");
         assert!(transform_method.is_some());
-        assert!(transform_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public abstract String transform(String input)"));
+        assert!(
+            transform_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public abstract String transform(String input)")
+        );
     }
 }

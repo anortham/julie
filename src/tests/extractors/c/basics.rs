@@ -1,4 +1,4 @@
-use super::{parse_c, SymbolKind};
+use super::{SymbolKind, parse_c};
 
 #[cfg(test)]
 mod tests {
@@ -254,21 +254,25 @@ mod tests {
         let max_size_macro = symbols.iter().find(|s| s.name == "MAX_SIZE");
         assert!(max_size_macro.is_some());
         assert_eq!(max_size_macro.unwrap().kind, SymbolKind::Constant);
-        assert!(max_size_macro
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("#define MAX_SIZE 1024"));
+        assert!(
+            max_size_macro
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("#define MAX_SIZE 1024")
+        );
 
         let min_macro = symbols.iter().find(|s| s.name == "MIN");
         assert!(min_macro.is_some());
-        assert!(min_macro
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("#define MIN(a, b)"));
+        assert!(
+            min_macro
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("#define MIN(a, b)")
+        );
 
         let debug_macro = symbols.iter().find(|s| s.name == "DEBUG");
         assert!(debug_macro.is_some());
@@ -297,12 +301,14 @@ mod tests {
 
         let point_typedef = symbols.iter().find(|s| s.name == "Point");
         assert!(point_typedef.is_some());
-        assert!(point_typedef
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("typedef struct Point"));
+        assert!(
+            point_typedef
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("typedef struct Point")
+        );
 
         // Struct definitions - expects these as classes
         let point_struct = symbols.iter().find(|s| {
@@ -342,158 +348,190 @@ mod tests {
         let global_counter = symbols.iter().find(|s| s.name == "global_counter");
         assert!(global_counter.is_some());
         assert_eq!(global_counter.unwrap().kind, SymbolKind::Variable);
-        assert!(global_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int global_counter = 0"));
+        assert!(
+            global_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int global_counter = 0")
+        );
 
         let static_counter = symbols.iter().find(|s| s.name == "static_counter");
         assert!(static_counter.is_some());
-        assert!(static_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static int static_counter"));
+        assert!(
+            static_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static int static_counter")
+        );
 
         let external_counter = symbols.iter().find(|s| s.name == "external_counter");
         assert!(external_counter.is_some());
-        assert!(external_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("extern int external_counter"));
+        assert!(
+            external_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("extern int external_counter")
+        );
 
         let pi_constant = symbols.iter().find(|s| s.name == "PI");
         assert!(pi_constant.is_some());
-        assert!(pi_constant
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("const double PI"));
+        assert!(
+            pi_constant
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("const double PI")
+        );
 
         let volatile_flag = symbols.iter().find(|s| s.name == "interrupt_flag");
         assert!(volatile_flag.is_some());
-        assert!(volatile_flag
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("volatile int interrupt_flag"));
+        assert!(
+            volatile_flag
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("volatile int interrupt_flag")
+        );
 
         // Array variables - Tests array declarations
         let global_buffer = symbols.iter().find(|s| s.name == "global_buffer");
         assert!(global_buffer.is_some());
-        assert!(global_buffer
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("char global_buffer[MAX_SIZE]"));
+        assert!(
+            global_buffer
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("char global_buffer[MAX_SIZE]")
+        );
 
         let origin = symbols.iter().find(|s| s.name == "origin");
         assert!(origin.is_some());
-        assert!(origin
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Point origin = {0.0, 0.0}"));
+        assert!(
+            origin
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Point origin = {0.0, 0.0}")
+        );
 
         // Function declarations and definitions - Tests various function types
         let add_function = symbols.iter().find(|s| s.name == "add");
         assert!(add_function.is_some());
         assert_eq!(add_function.unwrap().kind, SymbolKind::Function);
-        assert!(add_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int add(int a, int b)"));
+        assert!(
+            add_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int add(int a, int b)")
+        );
 
         let subtract_function = symbols.iter().find(|s| s.name == "subtract");
         assert!(subtract_function.is_some());
 
         let multiply_function = symbols.iter().find(|s| s.name == "multiply");
         assert!(multiply_function.is_some());
-        assert!(multiply_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("double multiply(double x, double y)"));
+        assert!(
+            multiply_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("double multiply(double x, double y)")
+        );
 
         // Complex parameter functions - Tests complex signatures
         let process_data_function = symbols.iter().find(|s| s.name == "process_data");
         assert!(process_data_function.is_some());
-        assert!(process_data_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("ErrorCode process_data(const char* input"));
+        assert!(
+            process_data_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("ErrorCode process_data(const char* input")
+        );
 
         let swap_function = symbols.iter().find(|s| s.name == "swap_integers");
         assert!(swap_function.is_some());
-        assert!(swap_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void swap_integers(int* a, int* b)"));
+        assert!(
+            swap_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void swap_integers(int* a, int* b)")
+        );
 
         let sum_array_function = symbols.iter().find(|s| s.name == "sum_array");
         assert!(sum_array_function.is_some());
-        assert!(sum_array_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("double sum_array(const double arr[], int count)"));
+        assert!(
+            sum_array_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("double sum_array(const double arr[], int count)")
+        );
 
         // Variadic function - Tests variadic parameters
         let sum_variadic_function = symbols.iter().find(|s| s.name == "sum_variadic");
         assert!(sum_variadic_function.is_some());
-        assert!(sum_variadic_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int sum_variadic(int count, ...)"));
+        assert!(
+            sum_variadic_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int sum_variadic(int count, ...)")
+        );
 
         // Static function - Tests static functions
         let internal_helper = symbols.iter().find(|s| s.name == "internal_helper");
         assert!(internal_helper.is_some());
-        assert!(internal_helper
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static void internal_helper()"));
+        assert!(
+            internal_helper
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static void internal_helper()")
+        );
 
         // Inline function - Tests inline functions
         let square_function = symbols.iter().find(|s| s.name == "square");
         assert!(square_function.is_some());
-        assert!(square_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("inline int square(int x)"));
+        assert!(
+            square_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("inline int square(int x)")
+        );
 
         // Function returning pointer - Tests pointer return types
         let create_greeting = symbols.iter().find(|s| s.name == "create_greeting");
         assert!(create_greeting.is_some());
-        assert!(create_greeting
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("char* create_greeting(const char* name)"));
+        assert!(
+            create_greeting
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("char* create_greeting(const char* name)")
+        );
 
         // Function pointer typedef - ensure function pointer name appears in extracted signatures
         assert!(symbols.iter().any(|s| {
@@ -505,12 +543,14 @@ mod tests {
         // Function with function pointer parameter - Tests complex parameter types
         let sort_array_function = symbols.iter().find(|s| s.name == "sort_array");
         assert!(sort_array_function.is_some());
-        assert!(sort_array_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("CompareFn compare"));
+        assert!(
+            sort_array_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("CompareFn compare")
+        );
 
         // Comparison functions - Tests these implementations
         let compare_integers = symbols.iter().find(|s| s.name == "compare_integers");
@@ -522,12 +562,14 @@ mod tests {
         // Main function - Tests main function signature
         let main_function = symbols.iter().find(|s| s.name == "main");
         assert!(main_function.is_some());
-        assert!(main_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int main(int argc, char* argv[])"));
+        assert!(
+            main_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int main(int argc, char* argv[])")
+        );
     }
 
     #[test]
@@ -630,52 +672,62 @@ mod tests {
         // Advanced variadic function with type checking
         let sum_integers = symbols.iter().find(|s| s.name == "sum_integers");
         assert!(sum_integers.is_some());
-        assert!(sum_integers
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int sum_integers(int count, ...)"));
+        assert!(
+            sum_integers
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int sum_integers(int count, ...)")
+        );
 
         // Variadic function with mixed types
         let average_func = symbols.iter().find(|s| s.name == "average");
         assert!(average_func.is_some());
-        assert!(average_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("double average(int count, ...)"));
+        assert!(
+            average_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("double average(int count, ...)")
+        );
 
         // Printf-style variadic function
         let log_message = symbols.iter().find(|s| s.name == "log_message");
         assert!(log_message.is_some());
-        assert!(log_message
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void log_message(const char* format, ...)"));
+        assert!(
+            log_message
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void log_message(const char* format, ...)")
+        );
 
         // Variadic function with struct parameters
         let draw_polygon = symbols.iter().find(|s| s.name == "draw_polygon");
         assert!(draw_polygon.is_some());
-        assert!(draw_polygon
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void draw_polygon(int num_points, ...)"));
+        assert!(
+            draw_polygon
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void draw_polygon(int num_points, ...)")
+        );
 
         // Recursive variadic function
         let max_value = symbols.iter().find(|s| s.name == "max_value");
         assert!(max_value.is_some());
-        assert!(max_value
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int max_value(int first, ...)"));
+        assert!(
+            max_value
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int max_value(int first, ...)")
+        );
     }
 
     #[test]
@@ -782,21 +834,25 @@ mod tests {
         // External declarations
         let global_counter = symbols.iter().find(|s| s.name == "global_counter");
         assert!(global_counter.is_some());
-        assert!(global_counter
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int global_counter"));
+        assert!(
+            global_counter
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int global_counter")
+        );
 
         let external_function = symbols.iter().find(|s| s.name == "external_function");
         assert!(external_function.is_some());
-        assert!(external_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void external_function(void)"));
+        assert!(
+            external_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void external_function(void)")
+        );
 
         // Static file-scoped variables
         let file_static_var = symbols.iter().find(|s| s.name == "file_static_var");
@@ -810,21 +866,25 @@ mod tests {
         // Static file-scoped functions
         let file_static_function = symbols.iter().find(|s| s.name == "file_static_function");
         assert!(file_static_function.is_some());
-        assert!(file_static_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static void file_static_function(void)"));
+        assert!(
+            file_static_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static void file_static_function(void)")
+        );
 
         let file_static_helper = symbols.iter().find(|s| s.name == "file_static_helper");
         assert!(file_static_helper.is_some());
-        assert!(file_static_helper
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static int file_static_helper(int x)"));
+        assert!(
+            file_static_helper
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static int file_static_helper(int x)")
+        );
 
         // Static module variables
         let records = symbols.iter().find(|s| s.name == "records");
@@ -854,22 +914,26 @@ mod tests {
         // Static inline functions
         let static_inline_helper = symbols.iter().find(|s| s.name == "static_inline_helper");
         assert!(static_inline_helper.is_some());
-        assert!(static_inline_helper
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static inline int static_inline_helper(int a, int b)"));
+        assert!(
+            static_inline_helper
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static inline int static_inline_helper(int a, int b)")
+        );
 
         // Function with mixed linkage
         let public_function = symbols.iter().find(|s| s.name == "public_function");
         assert!(public_function.is_some());
-        assert!(public_function
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("int public_function(int x)"));
+        assert!(
+            public_function
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("int public_function(int x)")
+        );
     }
 
     #[test]

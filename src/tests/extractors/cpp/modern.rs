@@ -65,12 +65,14 @@ mod tests {
 
         let pi_template = symbols.iter().find(|s| s.name == "pi");
         assert!(pi_template.is_some());
-        assert!(pi_template
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("constexpr"));
+        assert!(
+            pi_template
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("constexpr")
+        );
 
         // Note: Lambda extraction within functions is complex and may not be fully implemented initially
         let lambdas_count = symbols.iter().filter(|s| s.name.contains("lambda")).count();

@@ -1,4 +1,4 @@
-use super::{parse_cpp, RelationshipKind, SymbolKind};
+use super::{RelationshipKind, SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -54,46 +54,56 @@ mod tests {
 
         let vector = symbols.iter().find(|s| s.name == "Vector");
         assert!(vector.is_some());
-        assert!(vector
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("template<typename T>"));
-        assert!(vector
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Vector"));
+        assert!(
+            vector
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("template<typename T>")
+        );
+        assert!(
+            vector
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Vector")
+        );
 
         let array = symbols.iter().find(|s| s.name == "Array");
         assert!(array.is_some());
-        assert!(array
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("template<typename T, size_t N>"));
+        assert!(
+            array
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("template<typename T, size_t N>")
+        );
 
         let max_func = symbols.iter().find(|s| s.name == "max");
         assert!(max_func.is_some());
         assert_eq!(max_func.unwrap().kind, SymbolKind::Function);
-        assert!(max_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("template<typename T>"));
+        assert!(
+            max_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("template<typename T>")
+        );
 
         let add_func = symbols.iter().find(|s| s.name == "add");
         assert!(add_func.is_some());
-        assert!(add_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("auto add(T a, U b) -> decltype(a + b)"));
+        assert!(
+            add_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("auto add(T a, U b) -> decltype(a + b)")
+        );
 
         let vector_bool = symbols
             .iter()
@@ -214,12 +224,14 @@ mod tests {
 
         let variadic_template = symbols.iter().find(|s| s.name == "VariadicTemplate");
         assert!(variadic_template.is_some());
-        assert!(variadic_template
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("typename... Args"));
+        assert!(
+            variadic_template
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("typename... Args")
+        );
 
         let process_method = symbols.iter().find(|s| s.name == "process");
         assert!(process_method.is_some());
@@ -232,12 +244,14 @@ mod tests {
 
         let perfect_forward = symbols.iter().find(|s| s.name == "perfect_forward");
         assert!(perfect_forward.is_some());
-        assert!(perfect_forward
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("decltype(auto)"));
+        assert!(
+            perfect_forward
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("decltype(auto)")
+        );
     }
 
     #[test]
@@ -349,21 +363,25 @@ mod tests {
 
         let factorial = symbols.iter().find(|s| s.name == "Factorial");
         assert!(factorial.is_some());
-        assert!(factorial
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("template<int N>"));
+        assert!(
+            factorial
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("template<int N>")
+        );
 
         let multi_container = symbols.iter().find(|s| s.name == "MultiContainer");
         assert!(multi_container.is_some());
-        assert!(multi_container
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("template<template<typename> class Container"));
+        assert!(
+            multi_container
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("template<template<typename> class Container")
+        );
 
         let crtp_base = symbols.iter().find(|s| s.name == "CRTP_Base");
         assert!(crtp_base.is_some());

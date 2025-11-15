@@ -22,8 +22,8 @@ pub use types::{
 
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::fs;

@@ -15,7 +15,10 @@ mod tests {
             // With Japanese characters
             (r#"<!DOCTYPE html><!-- 日本語 -->"#, "<!DOCTYPE html>"),
             // Complex Unicode after doctype
-            (r#"<!DOCTYPE html><!-- Ágú, Maí, Jún, Júl, Nóv, Des -->"#, "<!DOCTYPE html>"),
+            (
+                r#"<!DOCTYPE html><!-- Ágú, Maí, Jún, Júl, Nóv, Des -->"#,
+                "<!DOCTYPE html>",
+            ),
         ];
 
         for (input, expected) in test_cases {
@@ -128,8 +131,7 @@ mod tests {
                     if let Some(end) = input[start..].find('}') {
                         let inner_start = start + 3; // length of \p{ or \P{
                         let inner_end = start + end;
-                        if input.is_char_boundary(inner_start)
-                            && input.is_char_boundary(inner_end)
+                        if input.is_char_boundary(inner_start) && input.is_char_boundary(inner_end)
                         {
                             let inner = &input[inner_start..inner_end];
                             assert_eq!(inner, expected, "Failed for pattern: {:?}", input);
@@ -202,12 +204,7 @@ mod tests {
                     let total_idx = align_start + close_paren + 1;
                     if input.is_char_boundary(align_start) && input.is_char_boundary(total_idx) {
                         let result = &input[align_start..total_idx];
-                        assert_eq!(
-                            Some(result),
-                            expected,
-                            "Failed for input: {:?}",
-                            input
-                        );
+                        assert_eq!(Some(result), expected, "Failed for input: {:?}", input);
                     } else {
                         // Boundary check failed - should not slice
                         assert!(expected.is_none(), "Should have failed for: {:?}", input);

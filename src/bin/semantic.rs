@@ -8,8 +8,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use julie::database::SymbolDatabase;
-use julie::embeddings::vector_store::VectorStore;
 use julie::embeddings::EmbeddingEngine;
+use julie::embeddings::vector_store::VectorStore;
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]

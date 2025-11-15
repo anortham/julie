@@ -63,7 +63,11 @@ fn test_checkpoint_filename_format() -> Result<()> {
     let filename = file_path.file_name().unwrap().to_string_lossy();
 
     // Should be 15 characters: HHMMSS (6) + _ (1) + xxxx (4) + .json (5) = 16
-    assert!(filename.len() == 16, "Filename should be 16 chars: {}", filename);
+    assert!(
+        filename.len() == 16,
+        "Filename should be 16 chars: {}",
+        filename
+    );
     assert!(filename.ends_with(".json"), "Should end with .json");
 
     // Should have underscore at position 6
@@ -71,13 +75,19 @@ fn test_checkpoint_filename_format() -> Result<()> {
 
     // Time part should be 6 digits
     let time_part = &filename[0..6];
-    assert!(time_part.chars().all(|c| c.is_ascii_digit()),
-            "Time part should be all digits: {}", time_part);
+    assert!(
+        time_part.chars().all(|c| c.is_ascii_digit()),
+        "Time part should be all digits: {}",
+        time_part
+    );
 
     // Random part should be 4 hex chars
     let random_part = &filename[7..11];
-    assert!(random_part.chars().all(|c| c.is_ascii_hexdigit()),
-            "Random part should be hex: {}", random_part);
+    assert!(
+        random_part.chars().all(|c| c.is_ascii_hexdigit()),
+        "Random part should be hex: {}",
+        random_part
+    );
 
     Ok(())
 }
@@ -105,7 +115,10 @@ fn test_checkpoint_multiple_same_second_no_collision() -> Result<()> {
         .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
         .collect();
 
-    let unique_count = filenames.iter().collect::<std::collections::HashSet<_>>().len();
+    let unique_count = filenames
+        .iter()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
     assert_eq!(unique_count, 5, "All filenames should be unique");
 
     Ok(())
@@ -134,7 +147,10 @@ fn test_checkpoint_pretty_printed_json() -> Result<()> {
     let content = fs::read_to_string(&file_path)?;
 
     // Should have newlines (pretty-printed)
-    assert!(content.contains('\n'), "Should be pretty-printed with newlines");
+    assert!(
+        content.contains('\n'),
+        "Should be pretty-printed with newlines"
+    );
 
     // Should have indentation
     assert!(content.contains("  "), "Should have indentation");
@@ -170,9 +186,8 @@ fn test_checkpoint_atomic_write() -> Result<()> {
     let temp_files: Vec<_> = fs::read_dir(parent_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .ends_with(".tmp") || e.file_name().to_string_lossy().ends_with(".temp")
+            e.file_name().to_string_lossy().ends_with(".tmp")
+                || e.file_name().to_string_lossy().ends_with(".temp")
         })
         .collect();
 

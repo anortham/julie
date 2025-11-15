@@ -68,7 +68,10 @@ summary_stats <- df %>%
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 4, "Should extract all dplyr operation results");
+        assert!(
+            variables.len() >= 4,
+            "Should extract all dplyr operation results"
+        );
     }
 
     #[test]
@@ -273,7 +276,10 @@ result <- strings %>%
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 4, "Should extract stringr operation results");
+        assert!(
+            variables.len() >= 4,
+            "Should extract stringr operation results"
+        );
     }
 
     #[test]
@@ -335,7 +341,10 @@ recoded <- fct_recode(
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 3, "Should extract forcats operation results");
+        assert!(
+            variables.len() >= 3,
+            "Should extract forcats operation results"
+        );
     }
 
     #[test]

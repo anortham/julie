@@ -254,7 +254,9 @@ pub fn is_symbol_name_relevant(query: &str, symbol_name: &str, variant: &str) ->
         return true;
     }
 
-    if normalized_symbol.contains(&normalized_query) || normalized_query.contains(&normalized_symbol) {
+    if normalized_symbol.contains(&normalized_query)
+        || normalized_query.contains(&normalized_symbol)
+    {
         return true;
     }
 

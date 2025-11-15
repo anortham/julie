@@ -4,8 +4,9 @@
 //! It ensures consistency across the codebase and prevents bugs from missing languages
 //! in different code paths.
 
-use crate::extractors::base::{Relationship, Symbol};
+use crate::extractors::base::{ExtractionResults, TypeInfo};
 use anyhow::anyhow;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Extract symbols and relationships for ANY supported language
@@ -36,9 +37,9 @@ pub fn extract_symbols_and_relationships(
     content: &str,
     language: &str,
     workspace_root: &Path,
-) -> Result<(Vec<Symbol>, Vec<Relationship>), anyhow::Error> {
+) -> Result<ExtractionResults, anyhow::Error> {
     // Single match statement for ALL 27 languages
-    let (symbols, relationships) = match language {
+    match language {
         "rust" => {
             let mut extractor = crate::extractors::rust::RustExtractor::new(
                 language.to_string(),
@@ -48,7 +49,25 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "typescript" | "tsx" => {
             let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
@@ -59,7 +78,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "javascript" | "jsx" => {
             let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
@@ -70,7 +106,25 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "python" => {
             let mut extractor = crate::extractors::python::PythonExtractor::new(
@@ -80,7 +134,30 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+
+            // DEBUG: Log what we extracted
+            if !_identifiers.is_empty() || !_types.is_empty() {
+                eprintln!("🔍 PYTHON {}: {} identifiers, {} types", file_path, _identifiers.len(), _types.len());
+            }
+
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "java" => {
             let mut extractor = crate::extractors::java::JavaExtractor::new(
@@ -91,7 +168,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "csharp" => {
             let mut extractor = crate::extractors::csharp::CSharpExtractor::new(
@@ -102,7 +196,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "php" => {
             let mut extractor = crate::extractors::php::PhpExtractor::new(
@@ -113,7 +224,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "ruby" => {
             let mut extractor = crate::extractors::ruby::RubyExtractor::new(
@@ -123,7 +251,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: HashMap::new(),
+            })
         }
         "swift" => {
             let mut extractor = crate::extractors::swift::SwiftExtractor::new(
@@ -134,7 +267,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "kotlin" => {
             let mut extractor = crate::extractors::kotlin::KotlinExtractor::new(
@@ -145,7 +295,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "dart" => {
             let mut extractor = crate::extractors::dart::DartExtractor::new(
@@ -156,7 +323,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "go" => {
             let mut extractor = crate::extractors::go::GoExtractor::new(
@@ -167,7 +351,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "c" => {
             let mut extractor = crate::extractors::c::CExtractor::new(
@@ -178,7 +379,25 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "cpp" => {
             let mut extractor = crate::extractors::cpp::CppExtractor::new(
@@ -188,7 +407,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: "cpp".to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "lua" => {
             let mut extractor = crate::extractors::lua::LuaExtractor::new(
@@ -199,7 +435,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: HashMap::new(),
+            })
         }
         "qml" => {
             let mut extractor = crate::extractors::qml::QmlExtractor::new(
@@ -210,7 +451,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: HashMap::new(),
+            })
         }
         "r" => {
             let mut extractor = crate::extractors::r::RExtractor::new(
@@ -221,7 +467,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: HashMap::new(),
+            })
         }
         "sql" => {
             let mut extractor = crate::extractors::sql::SqlExtractor::new(
@@ -232,7 +483,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "html" => {
             let mut extractor = crate::extractors::html::HTMLExtractor::new(
@@ -243,7 +511,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "css" => {
             let mut extractor = crate::extractors::css::CSSExtractor::new(
@@ -253,8 +538,19 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
-            // CSSExtractor doesn't have extract_relationships method yet
-            (symbols, Vec::new())
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // CSSExtractor doesn't have extract_relationships method yet
+
+            Ok(ExtractionResults {
+
+                symbols,
+
+                relationships: Vec::new(),
+
+                identifiers: _identifiers,
+
+                types: HashMap::new(),
+
+            })
         }
         "vue" => {
             let mut extractor = crate::extractors::vue::VueExtractor::new(
@@ -265,7 +561,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(Some(tree));
             let relationships = extractor.extract_relationships(Some(tree), &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(&symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "razor" => {
             let mut extractor = crate::extractors::razor::RazorExtractor::new(
@@ -276,7 +589,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "bash" => {
             let mut extractor = crate::extractors::bash::BashExtractor::new(
@@ -287,7 +617,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "powershell" => {
             let mut extractor = crate::extractors::powershell::PowerShellExtractor::new(
@@ -298,7 +645,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "gdscript" => {
             let mut extractor = crate::extractors::gdscript::GDScriptExtractor::new(
@@ -309,7 +673,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: HashMap::new(),
+            })
         }
         "zig" => {
             let mut extractor = crate::extractors::zig::ZigExtractor::new(
@@ -320,7 +689,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "regex" => {
             let mut extractor = crate::extractors::regex::RegexExtractor::new(
@@ -331,7 +717,24 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let _types = extractor.infer_types(&symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                identifiers: _identifiers,
+                types: _types.into_iter().map(|(symbol_id, type_string)| {
+                    (symbol_id.clone(), TypeInfo {
+                        symbol_id,
+                        resolved_type: type_string,
+                        generic_params: None,
+                        constraints: None,
+                        is_inferred: true,
+                        language: language.to_string(),
+                        metadata: None,
+                    })
+                }).collect(),
+            })
         }
         "markdown" => {
             let mut extractor = crate::extractors::markdown::MarkdownExtractor::new(
@@ -341,8 +744,19 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
-            // Markdown is documentation - no code relationships
-            (symbols, Vec::new())
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // Markdown is documentation - no code relationships
+
+            Ok(ExtractionResults {
+
+                symbols,
+
+                relationships: Vec::new(),
+
+                identifiers: _identifiers,
+
+                types: HashMap::new(),
+
+            })
         }
         "json" => {
             let mut extractor = crate::extractors::json::JsonExtractor::new(
@@ -352,8 +766,20 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
             // JSON is configuration data - no code relationships
-            (symbols, Vec::new())
+
+            Ok(ExtractionResults {
+
+                symbols,
+
+                relationships: Vec::new(),
+
+                identifiers: _identifiers,
+
+                types: HashMap::new(),
+
+            })
         }
         "toml" => {
             let mut extractor = crate::extractors::toml::TomlExtractor::new(
@@ -363,9 +789,45 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
             // TOML is configuration data - no code relationships
-            (symbols, Vec::new())
+
+            Ok(ExtractionResults {
+
+                symbols,
+
+                relationships: Vec::new(),
+
+                identifiers: _identifiers,
+
+                types: HashMap::new(),
+
+            })
         }
+        "yaml" => {
+            let mut extractor = crate::extractors::yaml::YamlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            // YAML is configuration data - no code relationships
+
+            Ok(ExtractionResults {
+
+                symbols,
+
+                relationships: Vec::new(),
+
+                identifiers: _identifiers,
+
+                types: HashMap::new(),
+
+            })
+        }
+
         _ => {
             return Err(anyhow!(
                 "No extractor available for language '{}' (file: {})",
@@ -373,9 +835,7 @@ pub fn extract_symbols_and_relationships(
                 file_path
             ));
         }
-    };
-
-    Ok((symbols, relationships))
+    }
 }
 
 #[cfg(test)]
@@ -460,5 +920,44 @@ mod factory_consistency_tests {
             format!("{}", result.unwrap_err()).contains("No extractor available"),
             "Error should mention no extractor available"
         );
+    }
+}
+#[cfg(test)]
+mod test_factory_returns_identifiers {
+    use std::path::PathBuf;
+    use tree_sitter::Parser;
+
+    #[test]
+    fn test_factory_returns_python_identifiers() {
+        let code = r#"
+def foo():
+    bar()
+    x.method()
+"#;
+        
+        let workspace_root = PathBuf::from("/tmp");
+        
+        // Parse the code
+        let mut parser = Parser::new();
+        let language = tree_sitter_python::LANGUAGE;
+        parser.set_language(&language.into()).unwrap();
+        let tree = parser.parse(code, None).unwrap();
+        
+        // Call the factory
+        let results = crate::extractors::factory::extract_symbols_and_relationships(
+            &tree,
+            "test.py",
+            code,
+            "python",
+            &workspace_root,
+        ).unwrap();
+        
+        // Assert we got identifiers
+        println!("Symbols: {}", results.symbols.len());
+        println!("Identifiers: {}", results.identifiers.len());
+        println!("Types: {}", results.types.len());
+        
+        assert!(results.symbols.len() > 0, "Should extract symbols");
+        assert!(results.identifiers.len() > 0, "Factory should return identifiers from Python code!");
     }
 }

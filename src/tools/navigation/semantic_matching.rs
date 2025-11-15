@@ -152,7 +152,10 @@ pub async fn find_semantic_references(
                                 let db_lock = match db_arc.lock() {
                                     Ok(guard) => guard,
                                     Err(poisoned) => {
-                                        warn!("Database mutex poisoned in semantic_matching (line 152), recovering: {}", poisoned);
+                                        warn!(
+                                            "Database mutex poisoned in semantic_matching (line 152), recovering: {}",
+                                            poisoned
+                                        );
                                         poisoned.into_inner()
                                     }
                                 };
@@ -306,7 +309,10 @@ pub async fn find_semantic_definitions(
                                 let db_lock = match db_arc.lock() {
                                     Ok(guard) => guard,
                                     Err(poisoned) => {
-                                        warn!("Database mutex poisoned in semantic_matching (line 294), recovering: {}", poisoned);
+                                        warn!(
+                                            "Database mutex poisoned in semantic_matching (line 294), recovering: {}",
+                                            poisoned
+                                        );
                                         poisoned.into_inner()
                                     }
                                 };

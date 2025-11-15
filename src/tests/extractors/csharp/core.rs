@@ -37,12 +37,14 @@ namespace MyCompany.MyProject
 
         let static_import = symbols.iter().find(|s| s.name == "Math");
         assert!(static_import.is_some());
-        assert!(static_import
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("using static"));
+        assert!(
+            static_import
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("using static")
+        );
 
         let namespace = symbols.iter().find(|s| s.name == "MyCompany.MyProject");
         assert!(namespace.is_some());
@@ -92,12 +94,14 @@ namespace MyProject
         let base_entity = symbols.iter().find(|s| s.name == "BaseEntity");
         assert!(base_entity.is_some());
         assert_eq!(base_entity.unwrap().kind, SymbolKind::Class);
-        assert!(base_entity
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public abstract class BaseEntity<T>"));
+        assert!(
+            base_entity
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public abstract class BaseEntity<T>")
+        );
         assert_eq!(
             base_entity
                 .unwrap()
@@ -111,18 +115,20 @@ namespace MyProject
         let user = symbols.iter().find(|s| s.name == "User");
         assert!(user.is_some());
         assert!(user.unwrap().signature.as_ref().unwrap().contains("sealed"));
-        assert!(user
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("BaseEntity<User>"));
-        assert!(user
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("IEquatable<User>"));
+        assert!(
+            user.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("BaseEntity<User>")
+        );
+        assert!(
+            user.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("IEquatable<User>")
+        );
 
         let internal_class = symbols.iter().find(|s| s.name == "InternalClass");
         assert!(internal_class.is_some());
@@ -176,31 +182,37 @@ namespace MyProject
         let repository = symbols.iter().find(|s| s.name == "IRepository");
         assert!(repository.is_some());
         assert_eq!(repository.unwrap().kind, SymbolKind::Interface);
-        assert!(repository
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public interface IRepository<T>"));
+        assert!(
+            repository
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public interface IRepository<T>")
+        );
 
         let point = symbols.iter().find(|s| s.name == "Point");
         assert!(point.is_some());
         assert_eq!(point.unwrap().kind, SymbolKind::Struct);
-        assert!(point
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public struct Point"));
+        assert!(
+            point
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public struct Point")
+        );
 
         let readonly_point = symbols.iter().find(|s| s.name == "ReadOnlyPoint");
         assert!(readonly_point.is_some());
-        assert!(readonly_point
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("readonly"));
+        assert!(
+            readonly_point
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("readonly")
+        );
     }
 
     #[test]
@@ -251,12 +263,13 @@ namespace MyProject
         let add = symbols.iter().find(|s| s.name == "Add");
         assert!(add.is_some());
         assert_eq!(add.unwrap().kind, SymbolKind::Method);
-        assert!(add
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public static int Add(int a, int b)"));
+        assert!(
+            add.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public static int Add(int a, int b)")
+        );
         assert_eq!(
             add.unwrap()
                 .visibility
@@ -268,42 +281,52 @@ namespace MyProject
 
         let get_data_async = symbols.iter().find(|s| s.name == "GetDataAsync");
         assert!(get_data_async.is_some());
-        assert!(get_data_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("async"));
-        assert!(get_data_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Task<string>"));
+        assert!(
+            get_data_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("async")
+        );
+        assert!(
+            get_data_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Task<string>")
+        );
 
         let process_data = symbols.iter().find(|s| s.name == "ProcessData");
         assert!(process_data.is_some());
-        assert!(process_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("protected virtual"));
-        assert!(process_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("<T>"));
+        assert!(
+            process_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("protected virtual")
+        );
+        assert!(
+            process_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<T>")
+        );
 
         let to_string = symbols.iter().find(|s| s.name == "ToString");
         assert!(to_string.is_some());
-        assert!(to_string
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("override"));
+        assert!(
+            to_string
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("override")
+        );
     }
 
     #[test]
@@ -346,48 +369,56 @@ namespace MyProject
         let name = symbols.iter().find(|s| s.name == "Name");
         assert!(name.is_some());
         assert_eq!(name.unwrap().kind, SymbolKind::Property);
-        assert!(name
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public string Name { get; set; }"));
+        assert!(
+            name.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public string Name { get; set; }")
+        );
 
         let age = symbols.iter().find(|s| s.name == "Age");
         assert!(age.is_some());
-        assert!(age
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("{ get; }"));
+        assert!(
+            age.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("{ get; }")
+        );
 
         let email = symbols.iter().find(|s| s.name == "Email");
         assert!(email.is_some());
-        assert!(email
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("private set"));
+        assert!(
+            email
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("private set")
+        );
 
         let full_name = symbols.iter().find(|s| s.name == "FullName");
         assert!(full_name.is_some());
-        assert!(full_name
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("=>"));
+        assert!(
+            full_name
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("=>")
+        );
 
         let count = symbols.iter().find(|s| s.name == "Count");
         assert!(count.is_some());
-        assert!(count
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static"));
+        assert!(
+            count
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static")
+        );
     }
 
     #[test]
@@ -506,40 +537,48 @@ namespace MyProject
         let message_received = symbols.iter().find(|s| s.name == "MessageReceived");
         assert!(message_received.is_some());
         assert_eq!(message_received.unwrap().kind, SymbolKind::Event);
-        assert!(message_received
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("event Action<string>"));
+        assert!(
+            message_received
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("event Action<string>")
+        );
 
         let global_event = symbols.iter().find(|s| s.name == "GlobalEvent");
         assert!(global_event.is_some());
-        assert!(global_event
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static event"));
+        assert!(
+            global_event
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static event")
+        );
 
         let version = symbols.iter().find(|s| s.name == "Version");
         assert!(version.is_some());
         assert_eq!(version.unwrap().kind, SymbolKind::Constant);
-        assert!(version
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("const"));
+        assert!(
+            version
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("const")
+        );
 
         let start_time = symbols.iter().find(|s| s.name == "StartTime");
         assert!(start_time.is_some());
-        assert!(start_time
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static readonly"));
+        assert!(
+            start_time
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static readonly")
+        );
 
         let count = symbols.iter().find(|s| s.name == "_count");
         assert!(count.is_some());

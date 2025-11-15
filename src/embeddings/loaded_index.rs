@@ -26,11 +26,10 @@
 ///
 /// If hnsw_rs ever changes to use mmap by default, this code would need updating.
 /// The _io field documents this intent.
-
 use super::SimilarityResult;
 use anyhow::Result;
-use hnsw_rs::prelude::*;
 use hnsw_rs::hnswio::{HnswIo, ReloadOptions};
+use hnsw_rs::prelude::*;
 use std::path::Path;
 
 /// Loaded HNSW index with its associated IO wrapper

@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -36,21 +36,25 @@ mod tests {
         let color = symbols.iter().find(|s| s.name == "Color");
         assert!(color.is_some());
         assert_eq!(color.unwrap().kind, SymbolKind::Enum);
-        assert!(color
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("enum Color"));
+        assert!(
+            color
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("enum Color")
+        );
 
         let status = symbols.iter().find(|s| s.name == "Status");
         assert!(status.is_some());
-        assert!(status
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("enum class Status : uint8_t"));
+        assert!(
+            status
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("enum class Status : uint8_t")
+        );
 
         let red = symbols.iter().find(|s| s.name == "RED");
         assert!(red.is_some());
@@ -114,21 +118,25 @@ mod tests {
         let max_size = symbols.iter().find(|s| s.name == "MAX_SIZE");
         assert!(max_size.is_some());
         assert_eq!(max_size.unwrap().kind, SymbolKind::Constant);
-        assert!(max_size
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("constexpr"));
+        assert!(
+            max_size
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("constexpr")
+        );
 
         let app_name = symbols.iter().find(|s| s.name == "app_name");
         assert!(app_name.is_some());
-        assert!(app_name
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static"));
+        assert!(
+            app_name
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static")
+        );
 
         let default_port = symbols.iter().find(|s| s.name == "DEFAULT_PORT");
         assert!(default_port.is_some());
@@ -136,12 +144,14 @@ mod tests {
 
         let debug_mode = symbols.iter().find(|s| s.name == "DEBUG_MODE");
         assert!(debug_mode.is_some());
-        assert!(debug_mode
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("inline constexpr"));
+        assert!(
+            debug_mode
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("inline constexpr")
+        );
     }
 
     #[test]
@@ -173,21 +183,25 @@ mod tests {
         let get_value = symbols.iter().find(|s| s.name == "getValue");
         assert!(get_value.is_some());
 
-        assert!(get_value
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("-> int"));
+        assert!(
+            get_value
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("-> int")
+        );
 
         let process_func = symbols.iter().find(|s| s.name == "process");
         assert!(process_func.is_some());
-        assert!(process_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("auto process"));
+        assert!(
+            process_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("auto process")
+        );
 
         // Type inference should work
         assert!(!types.is_empty());

@@ -7,8 +7,7 @@ use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
 use crate::watcher::handlers::{
-    handle_file_created_or_modified_static, handle_file_deleted_static,
-    handle_file_renamed_static,
+    handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -139,16 +138,21 @@ fn modified_function() {
             .count_symbols_for_workspace()
             .expect("Failed to count symbols");
 
-        println!("\nDEBUG: After first modification, total symbol count = {}", symbol_count);
+        println!(
+            "\nDEBUG: After first modification, total symbol count = {}",
+            symbol_count
+        );
 
         // Query ALL symbols to see what's actually in the database
-        let all_symbols = db_lock.conn.prepare("SELECT id, name, file_path FROM symbols")
+        let all_symbols = db_lock
+            .conn
+            .prepare("SELECT id, name, file_path FROM symbols")
             .unwrap()
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?
+                    row.get::<_, String>(2)?,
                 ))
             })
             .unwrap()
@@ -288,7 +292,10 @@ fn third_function() {
         let relative_path = "test.rs";
         let hash_with_relative = db_lock.get_file_hash(relative_path).unwrap();
 
-        println!("\nDEBUG: Hash stored with relative path: {:?}", hash_with_relative);
+        println!(
+            "\nDEBUG: Hash stored with relative path: {:?}",
+            hash_with_relative
+        );
 
         assert!(
             hash_with_relative.is_some(),
@@ -325,7 +332,10 @@ fn final_function() {
         let db_lock = db.lock().unwrap();
         let symbols = db_lock.get_symbols_for_file("test.rs").unwrap();
         assert_eq!(symbols.len(), 1, "Should have 1 symbol");
-        assert_eq!(symbols[0].name, "final_function", "Should have updated to new function");
+        assert_eq!(
+            symbols[0].name, "final_function",
+            "Should have updated to new function"
+        );
     }
 }
 

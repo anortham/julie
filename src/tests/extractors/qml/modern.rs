@@ -87,7 +87,11 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert_eq!(properties.len(), 1, "Should extract property with value source");
+        assert_eq!(
+            properties.len(),
+            1,
+            "Should extract property with value source"
+        );
     }
 
     #[test]
@@ -186,7 +190,10 @@ ListView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract ListView with attached properties");
+        assert!(
+            components.len() >= 1,
+            "Should extract ListView with attached properties"
+        );
     }
 
     #[test]
@@ -242,7 +249,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 3, "Should extract value type properties");
+        assert!(
+            properties.len() >= 3,
+            "Should extract value type properties"
+        );
     }
 
     #[test]
@@ -264,7 +274,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties with nullish coalescing");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties with nullish coalescing"
+        );
     }
 
     #[test]
@@ -290,6 +303,9 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties with template literals");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties with template literals"
+        );
     }
 }

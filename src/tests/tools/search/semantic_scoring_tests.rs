@@ -392,22 +392,19 @@ fn test_memory_description_symbol_gets_boost() {
 
     // Memory description should get 2.0x boost (same as Functions)
     assert_eq!(
-        memory_boost,
-        2.0,
+        memory_boost, 2.0,
         "Memory description symbols should get 2.0x boost to avoid Variable penalty"
     );
 
     // Regular JSON variables should still get 0.8x penalty
     assert_eq!(
-        regular_boost,
-        0.8,
+        regular_boost, 0.8,
         "Regular JSON variables should keep 0.8x penalty"
     );
 
     // Plan descriptions should NOT get the boost (Phase 3 not implemented)
     assert_eq!(
-        plan_boost,
-        0.8,
+        plan_boost, 0.8,
         "Plan description symbols should not get boost (Phase 3)"
     );
 
@@ -420,5 +417,8 @@ fn test_memory_description_symbol_gets_boost() {
     println!("✅ Memory description boost: {:.2}x", memory_boost);
     println!("✅ Regular JSON variable boost: {:.2}x", regular_boost);
     println!("✅ Plan description boost: {:.2}x", plan_boost);
-    println!("✅ Memory/Regular ratio: {:.2}x", memory_boost / regular_boost);
+    println!(
+        "✅ Memory/Regular ratio: {:.2}x",
+        memory_boost / regular_boost
+    );
 }

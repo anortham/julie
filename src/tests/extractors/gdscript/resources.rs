@@ -275,12 +275,14 @@ func deserialize(data: Dictionary):
             .iter()
             .find(|s| s.name == "serialize" && s.parent_id == Some(game_data.id.clone()));
         assert!(serialize.is_some());
-        assert!(serialize
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("-> Dictionary"));
+        assert!(
+            serialize
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("-> Dictionary")
+        );
 
         let deserialize = symbols
             .iter()

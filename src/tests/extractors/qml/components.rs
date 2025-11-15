@@ -37,7 +37,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Item, Component, and nested components");
+        assert!(
+            components.len() >= 2,
+            "Should extract Item, Component, and nested components"
+        );
     }
 
     #[test]
@@ -72,7 +75,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Item with Loader components");
+        assert!(
+            components.len() >= 2,
+            "Should extract Item with Loader components"
+        );
     }
 
     #[test]
@@ -103,7 +109,10 @@ Column {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Column, Repeater, and delegate");
+        assert!(
+            components.len() >= 2,
+            "Should extract Column, Repeater, and delegate"
+        );
     }
 
     #[test]
@@ -146,7 +155,10 @@ ListView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 3, "Should extract ListView, delegate, header, and footer");
+        assert!(
+            components.len() >= 3,
+            "Should extract ListView, delegate, header, and footer"
+        );
     }
 
     #[test]
@@ -174,7 +186,10 @@ GridView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract GridView with delegate");
+        assert!(
+            components.len() >= 1,
+            "Should extract GridView with delegate"
+        );
     }
 
     #[test]
@@ -239,7 +254,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Instantiator with delegate");
+        assert!(
+            components.len() >= 1,
+            "Should extract Instantiator with delegate"
+        );
     }
 
     #[test]
@@ -278,6 +296,9 @@ PathView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract PathView with delegate and path");
+        assert!(
+            components.len() >= 2,
+            "Should extract PathView with delegate and path"
+        );
     }
 }

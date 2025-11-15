@@ -31,7 +31,10 @@ car <- structure(
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract person and car S3 objects");
+        assert!(
+            variables.len() >= 2,
+            "Should extract person and car S3 objects"
+        );
     }
 
     #[test]
@@ -148,7 +151,10 @@ john <- Person$new("John", 30)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract Person class and john instance");
+        assert!(
+            variables.len() >= 2,
+            "Should extract Person class and john instance"
+        );
     }
 
     #[test]
@@ -253,6 +259,9 @@ person1 <- Person$new(name = "Alice", age = 25)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract Person refClass and instance");
+        assert!(
+            variables.len() >= 2,
+            "Should extract Person refClass and instance"
+        );
     }
 }

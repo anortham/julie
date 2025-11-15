@@ -6,7 +6,7 @@
 /// - Two-phase processing: extract symbols → process impl blocks
 ///
 /// Implementation of comprehensive Rust extractor
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use tree_sitter::{Node, Tree};
 
 // Private modules
@@ -31,7 +31,12 @@ pub struct RustExtractor {
 }
 
 impl RustExtractor {
-    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             impl_blocks: Vec::new(),
@@ -120,6 +125,49 @@ impl RustExtractor {
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
+    }
+
+    /// Infer types from Rust signatures (function return types, variable types, field types)
+    pub fn infer_types(&self, symbols: &[Symbol]) -> std::collections::HashMap<String, String> {
+        let mut type_map = std::collections::HashMap::new();
+
+        for symbol in symbols {
+            // For functions/methods, try to extract return type from signature
+            if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+                if let Some(ref signature) = symbol.signature {
+                    // Extract return type using regex: "-> Type"
+                    if let Some(captures) = regex::Regex::new(r"->\s*([^{]+)")
+                        .unwrap()
+                        .captures(signature)
+                    {
+                        let return_type = captures[1].trim().to_string();
+                        if !return_type.is_empty() {
+                            type_map.insert(symbol.id.clone(), return_type);
+                        }
+                    }
+                }
+            }
+            // For variables, properties, fields - extract type annotation
+            else if matches!(
+                symbol.kind,
+                SymbolKind::Variable | SymbolKind::Property | SymbolKind::Field
+            ) {
+                if let Some(ref signature) = symbol.signature {
+                    // Extract type from annotations: "name: Type" or "name: Type ="
+                    if let Some(captures) = regex::Regex::new(r":\s*([^=\s{]+)")
+                        .unwrap()
+                        .captures(signature)
+                    {
+                        let type_str = captures[1].trim().to_string();
+                        if !type_str.is_empty() {
+                            type_map.insert(symbol.id.clone(), type_str);
+                        }
+                    }
+                }
+            }
+        }
+
+        type_map
     }
 
     // Accessors for use by submodules and tests

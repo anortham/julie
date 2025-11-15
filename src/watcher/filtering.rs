@@ -28,41 +28,33 @@ pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
         "**/node_modules/**",
         "**/vendor/**",
         "**/node_modules.nosync/**",
-
         // Build outputs (language-specific)
-        "**/target/**",      // Rust
-        "**/build/**",       // Generic builds
-        "**/dist/**",        // Distribution builds
-        "**/out/**",         // Generic output (Java, Kotlin, JetBrains IDEs)
-        "**/obj/**",         // .NET intermediate outputs
-        "**/bin/**",         // .NET final outputs
-        "**/.gradle/**",     // Gradle build cache (Java, Android)
-        "**/.dart_tool/**",  // Dart/Flutter build cache
+        "**/target/**",        // Rust
+        "**/build/**",         // Generic builds
+        "**/dist/**",          // Distribution builds
+        "**/out/**",           // Generic output (Java, Kotlin, JetBrains IDEs)
+        "**/obj/**",           // .NET intermediate outputs
+        "**/bin/**",           // .NET final outputs
+        "**/.gradle/**",       // Gradle build cache (Java, Android)
+        "**/.dart_tool/**",    // Dart/Flutter build cache
         "**/cmake-build-*/**", // CMake build directories (cmake-build-debug, cmake-build-release, etc.)
-
         // JavaScript/TypeScript framework caches
-        "**/.next/**",       // Next.js build cache
-        "**/.nuxt/**",       // Nuxt.js build cache
-
+        "**/.next/**", // Next.js build cache
+        "**/.nuxt/**", // Nuxt.js build cache
         // Version control
         "**/.git/**",
-
         // Julie's own data
-        "**/.julie/**",      // Don't watch our own data directory
-
+        "**/.julie/**", // Don't watch our own data directory
         // Minified/bundled files
         "**/*.min.js",
         "**/*.bundle.js",
         "**/*.map",
-
         // Test coverage
         "**/coverage/**",
         "**/.nyc_output/**",
-
         // Temporary files
         "**/tmp/**",
         "**/temp/**",
-
         // Python
         "**/__pycache__/**",
         "**/*.pyc",
@@ -71,8 +63,7 @@ pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
     patterns
         .iter()
         .map(|p| {
-            glob::Pattern::new(p)
-                .map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e))
+            glob::Pattern::new(p).map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e))
         })
         .collect()
 }
@@ -142,16 +133,16 @@ mod tests {
         // Test obj/ directory (intermediate build outputs)
         let obj_match = patterns.iter().any(|p| {
             p.matches("MyProject/obj/Debug/net9.0/MyProject.dll")
-            || p.matches("src/obj/Debug/MyProject.json")
-            || p.matches("obj/staticwebassets.build.json")
+                || p.matches("src/obj/Debug/MyProject.json")
+                || p.matches("obj/staticwebassets.build.json")
         });
         assert!(obj_match, ".NET obj/ directories should be ignored");
 
         // Test bin/ directory (final build outputs)
         let bin_match = patterns.iter().any(|p| {
             p.matches("MyProject/bin/Debug/net9.0/MyProject.dll")
-            || p.matches("src/bin/Release/MyProject.json")
-            || p.matches("bin/wwwroot/framework/blazor.boot.json")
+                || p.matches("src/bin/Release/MyProject.json")
+                || p.matches("bin/wwwroot/framework/blazor.boot.json")
         });
         assert!(bin_match, ".NET bin/ directories should be ignored");
     }
@@ -184,8 +175,7 @@ mod tests {
 
         // Test .nuxt/ (Nuxt.js build cache)
         let nuxt_match = patterns.iter().any(|p| {
-            p.matches("my-nuxt-app/.nuxt/dist/server/index.js")
-                || p.matches(".nuxt/routes.json")
+            p.matches("my-nuxt-app/.nuxt/dist/server/index.js") || p.matches(".nuxt/routes.json")
         });
         assert!(nuxt_match, "Nuxt.js build cache should be ignored");
 

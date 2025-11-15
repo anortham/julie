@@ -1,12 +1,12 @@
 // Schema migration system for database versioning
 
 use super::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 5;
+pub const LATEST_SCHEMA_VERSION: i32 = 6;
 
 impl SymbolDatabase {
     // ============================================================
@@ -94,6 +94,7 @@ impl SymbolDatabase {
             3 => self.migration_003_add_relationship_location()?,
             4 => self.migration_004_add_content_type()?,
             5 => self.migration_005_add_fts_prefix_indexes()?,
+            6 => self.migration_006_add_types_table()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -107,6 +108,7 @@ impl SymbolDatabase {
             3 => "Add file_path and line_number to relationships",
             4 => "Add content_type field to symbols for documentation",
             5 => "Add FTS5 prefix indexes for faster wildcard queries",
+            6 => "Add types table for type intelligence",
             _ => "Unknown migration",
         };
 
@@ -278,7 +280,10 @@ impl SymbolDatabase {
         )?;
 
         let updated_count = self.conn.changes();
-        info!("✅ content_type column added to symbols table, {} markdown symbols marked as documentation", updated_count);
+        info!(
+            "✅ content_type column added to symbols table, {} markdown symbols marked as documentation",
+            updated_count
+        );
 
         Ok(())
     }
@@ -303,17 +308,20 @@ impl SymbolDatabase {
         let files_exists: bool = self.conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files'",
             [],
-            |row| row.get::<_, i32>(0).map(|c| c > 0)
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
         )?;
 
         let symbols_exists: bool = self.conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbols'",
             [],
-            |row| row.get::<_, i32>(0).map(|c| c > 0)
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
         )?;
 
         if !files_exists || !symbols_exists {
-            debug!("Skipping migration 005: Base tables don't exist yet (files={}, symbols={})", files_exists, symbols_exists);
+            debug!(
+                "Skipping migration 005: Base tables don't exist yet (files={}, symbols={})",
+                files_exists, symbols_exists
+            );
             return Ok(());
         }
 
@@ -417,16 +425,83 @@ impl SymbolDatabase {
         debug!("Recreated symbols FTS triggers");
 
         // Step 8: Rebuild FTS indexes from base tables
-        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
-        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+        self.conn
+            .execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+        self.conn
+            .execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
         debug!("Rebuilt FTS indexes");
 
         // Step 9: Optimize FTS indexes for better performance
-        self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('optimize')", [])?;
-        self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')", [])?;
+        self.conn
+            .execute("INSERT INTO files_fts(files_fts) VALUES('optimize')", [])?;
+        self.conn.execute(
+            "INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')",
+            [],
+        )?;
         debug!("Optimized FTS indexes");
 
         info!("✅ FTS5 prefix indexes added successfully");
+        Ok(())
+    }
+
+    /// Migration 006: Add types table for type intelligence
+    ///
+    /// This migration adds support for storing type information extracted from code.
+    /// Supports 8 languages: Python, Java, C#, PHP, Kotlin, Dart, Go, C++
+    fn migration_006_add_types_table(&self) -> Result<()> {
+        info!("Running migration 006: Add types table for type intelligence");
+
+        // Check if types table already exists (idempotent)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='types'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if table_exists {
+            debug!("Types table already exists, skipping migration 006");
+            return Ok(());
+        }
+
+        // Create types table with schema
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS types (
+                -- Primary key: one type per symbol (1:1 relationship)
+                symbol_id TEXT PRIMARY KEY REFERENCES symbols(id) ON DELETE CASCADE,
+
+                -- Type information
+                resolved_type TEXT NOT NULL,       -- e.g., \"String\", \"Vec<User>\", \"Promise<Data>\"
+                generic_params TEXT,               -- JSON array: [\"T\", \"U\"] or NULL
+                constraints TEXT,                  -- JSON array: [\"T: Clone\"] or NULL
+                is_inferred INTEGER NOT NULL,      -- 0 = explicit, 1 = inferred
+
+                -- Metadata
+                language TEXT NOT NULL,            -- Programming language
+                metadata TEXT,                     -- JSON object for language-specific data
+
+                -- Infrastructure
+                last_indexed INTEGER DEFAULT 0     -- Unix timestamp of last update
+            )",
+            [],
+        )?;
+        debug!("Created types table");
+
+        // Create essential indexes
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_language ON types(language)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_resolved ON types(resolved_type)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",
+            [],
+        )?;
+        debug!("Created types table indexes");
+
+        info!("✅ Types table created successfully");
         Ok(())
     }
 }

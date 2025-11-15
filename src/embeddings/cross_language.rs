@@ -3,7 +3,7 @@
 // This module groups similar concepts across different programming languages
 // using embedding vectors and similarity analysis.
 
-use super::{cosine_similarity, CodeContext, EmbeddingEngine, SimilarityResult};
+use super::{CodeContext, EmbeddingEngine, SimilarityResult, cosine_similarity};
 use crate::extractors::base::Symbol;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};

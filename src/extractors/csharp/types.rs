@@ -27,7 +27,7 @@ pub fn extract_namespace(
         visibility: Some(Visibility::Public),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Namespace, options))
@@ -86,7 +86,7 @@ pub fn extract_using(
         visibility: Some(Visibility::Public),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Import, options))
@@ -209,7 +209,7 @@ pub fn extract_interface(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Interface, options))
@@ -256,7 +256,7 @@ pub fn extract_struct(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Struct, options))
@@ -296,7 +296,7 @@ pub fn extract_enum(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Enum, options))
@@ -338,7 +338,7 @@ pub fn extract_enum_member(
         visibility: Some(Visibility::Public),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::EnumMember, options))
@@ -394,7 +394,7 @@ pub fn extract_record(
         visibility: Some(visibility),
         parent_id,
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     Some(base.create_symbol(&node, name, symbol_kind, options))

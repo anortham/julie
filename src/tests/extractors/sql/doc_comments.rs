@@ -297,19 +297,23 @@ mod tests {
 
         let users = symbols.iter().find(|s| s.name == "users").unwrap();
         assert!(users.doc_comment.is_some());
-        assert!(users
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("authentication"));
+        assert!(
+            users
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("authentication")
+        );
 
         let events = symbols.iter().find(|s| s.name == "events").unwrap();
         assert!(events.doc_comment.is_some());
-        assert!(events
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("activity tracking"));
+        assert!(
+            events
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("activity tracking")
+        );
 
         let view = symbols.iter().find(|s| s.name == "active_users").unwrap();
         assert!(view.doc_comment.is_some());

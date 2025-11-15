@@ -27,7 +27,12 @@ pub struct JavaScriptExtractor {
 }
 
 impl JavaScriptExtractor {
-    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
@@ -46,6 +51,50 @@ impl JavaScriptExtractor {
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(self, tree, symbols)
+    }
+
+    /// Infer types from JSDoc comments (@returns, @type)
+    pub fn infer_types(&self, symbols: &[Symbol]) -> std::collections::HashMap<String, String> {
+        let mut type_map = std::collections::HashMap::new();
+
+        for symbol in symbols {
+            if let Some(ref doc_comment) = symbol.doc_comment {
+                // Extract type from JSDoc
+                if let Some(inferred_type) = self.extract_jsdoc_type(doc_comment, &symbol.kind) {
+                    type_map.insert(symbol.id.clone(), inferred_type);
+                }
+            }
+        }
+
+        type_map
+    }
+
+    fn extract_jsdoc_type(&self, doc_comment: &str, kind: &crate::extractors::base::SymbolKind) -> Option<String> {
+        use crate::extractors::base::SymbolKind;
+
+        match kind {
+            SymbolKind::Function | SymbolKind::Method => {
+                // Extract return type from @returns {Type} or @return {Type}
+                if let Some(captures) = regex::Regex::new(r"@returns?\s*\{([^}]+)\}")
+                    .ok()?
+                    .captures(doc_comment)
+                {
+                    return Some(captures[1].trim().to_string());
+                }
+            }
+            SymbolKind::Variable | SymbolKind::Property => {
+                // Extract type from @type {Type}
+                if let Some(captures) = regex::Regex::new(r"@type\s*\{([^}]+)\}")
+                    .ok()?
+                    .captures(doc_comment)
+                {
+                    return Some(captures[1].trim().to_string());
+                }
+            }
+            _ => {}
+        }
+
+        None
     }
 
     /// Main tree traversal - ports visitNode function exactly

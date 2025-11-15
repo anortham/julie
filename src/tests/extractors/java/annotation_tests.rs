@@ -50,12 +50,14 @@ public @interface RequestMapping {
         let request_mapping = symbols.iter().find(|s| s.name == "RequestMapping");
         assert!(request_mapping.is_some());
         assert_eq!(request_mapping.unwrap().kind, SymbolKind::Interface); // Annotations are interfaces
-        assert!(request_mapping
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public @interface RequestMapping"));
+        assert!(
+            request_mapping
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public @interface RequestMapping")
+        );
 
         let retention = symbols.iter().find(|s| s.name == "Retention");
         assert!(retention.is_some());
@@ -109,43 +111,53 @@ public class UserController {
         // Verify class annotations are captured
         let user_controller = symbols.iter().find(|s| s.name == "UserController");
         assert!(user_controller.is_some());
-        assert!(user_controller
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@RestController"));
-        assert!(user_controller
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@RequestMapping"));
+        assert!(
+            user_controller
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@RestController")
+        );
+        assert!(
+            user_controller
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@RequestMapping")
+        );
 
         // Verify method annotations are captured
         let get_user_method = symbols.iter().find(|s| s.name == "getUser");
         assert!(get_user_method.is_some());
-        assert!(get_user_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@GetMapping"));
+        assert!(
+            get_user_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@GetMapping")
+        );
 
         let create_user_method = symbols.iter().find(|s| s.name == "createUser");
         assert!(create_user_method.is_some());
-        assert!(create_user_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@PostMapping"));
-        assert!(create_user_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@Transactional"));
+        assert!(
+            create_user_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@PostMapping")
+        );
+        assert!(
+            create_user_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@Transactional")
+        );
     }
 
     #[test]
@@ -188,29 +200,35 @@ public class Example {
 
         let to_string_method = symbols.iter().find(|s| s.name == "toString");
         assert!(to_string_method.is_some());
-        assert!(to_string_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@Override"));
+        assert!(
+            to_string_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@Override")
+        );
 
         let old_method = symbols.iter().find(|s| s.name == "oldMethod");
         assert!(old_method.is_some());
-        assert!(old_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@Deprecated"));
+        assert!(
+            old_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@Deprecated")
+        );
 
         let unchecked_method = symbols.iter().find(|s| s.name == "uncheckedMethod");
         assert!(unchecked_method.is_some());
-        assert!(unchecked_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@SuppressWarnings"));
+        assert!(
+            unchecked_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@SuppressWarnings")
+        );
     }
 }

@@ -4,12 +4,12 @@
 use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
+use super::documentation;
 use super::helpers::{
     extract_enum_member_value, extract_inheritance, extract_property_type, extract_return_type,
     find_class_name_node, find_enum_member_name_node, find_enum_name_node, find_method_name_node,
     find_property_name_node, has_modifier,
 };
-use super::documentation;
 
 /// Extract class symbols
 pub(super) fn extract_class(

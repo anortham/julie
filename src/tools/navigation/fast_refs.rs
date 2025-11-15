@@ -6,8 +6,8 @@
 //! 3. HNSW semantic similarity (strict threshold 0.75 to prevent false positives)
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -45,7 +45,15 @@ fn default_workspace() -> Option<String> {
         "Results are complete and accurate - no manual searching needed.\n\n",
         "CRITICAL: If you change code without using this tool first, you WILL break ",
         "dependencies you didn't know about. This is non-negotiable.\n\n",
-        "Use this BEFORE every refactor, rename, or deletion."
+        "Use this BEFORE every refactor, rename, or deletion.\n\n",
+        "NEW: Filter by reference_kind to find specific usage patterns:\n",
+        "- reference_kind='call': Find function/method calls only\n",
+        "- reference_kind='type_usage': Find type annotations/declarations\n",
+        "- reference_kind='member_access': Find property/field accesses\n",
+        "- reference_kind='variable_ref': Find variable reads\n",
+        "- reference_kind='import': Find import statements\n\n",
+        "Example: fast_refs(symbol='UserService', reference_kind='type_usage') finds where ",
+        "UserService is used AS A TYPE (signatures, declarations), not as a value."
     ),
     title = "Fast Find All References",
     idempotent_hint = true,
@@ -78,6 +86,16 @@ pub struct FastRefsTool {
     /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Filter references by how the symbol is used (optional)
+    /// Options: "call", "variable_ref", "type_usage", "member_access", "import"
+    /// Examples:
+    /// - "type_usage": Find where UserProfile is used as a type (function signatures, variable declarations)
+    /// - "call": Find where processPayment is called as a function
+    /// - "member_access": Find where config.database is accessed
+    /// - "import": Find where React is imported
+    /// Default: None (show all reference kinds)
+    #[serde(default)]
+    pub reference_kind: Option<String>,
 }
 
 impl FastRefsTool {
@@ -217,7 +235,10 @@ impl FastRefsTool {
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned in fast_refs (line 217), recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned in fast_refs (line 217), recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };
@@ -245,7 +266,10 @@ impl FastRefsTool {
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned in fast_refs (line 239), recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned in fast_refs (line 239), recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };
@@ -297,16 +321,24 @@ impl FastRefsTool {
                     definitions.iter().map(|d| d.id.clone()).collect();
                 let db_arc = db.clone();
 
+                let reference_kind_filter = self.reference_kind.clone();
                 let symbol_references = tokio::task::spawn_blocking(move || {
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned in fast_refs (line 289), recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned in fast_refs (line 289), recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };
-                    // Single batch query instead of N individual queries
-                    db_lock.get_relationships_to_symbols(&definition_ids)
+                    // Single batch query, optionally filtered by identifier kind
+                    if let Some(kind) = reference_kind_filter {
+                        db_lock.get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
+                    } else {
+                        db_lock.get_relationships_to_symbols(&definition_ids)
+                    }
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;

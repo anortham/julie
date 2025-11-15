@@ -96,7 +96,7 @@ pub(super) fn extract_function_definition_statement(
         parent_id: method_parent_id.or_else(|| parent_id.map(|s| s.to_string())),
         visibility: Some(visibility),
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     let symbol = base.create_symbol(&name_node.unwrap_or(node), name, kind, options);
@@ -125,7 +125,7 @@ pub(super) fn extract_local_function_definition_statement(
         parent_id: parent_id.map(|s| s.to_string()),
         visibility: Some(Visibility::Private),
         doc_comment,
-            ..Default::default()
+        ..Default::default()
     };
 
     let symbol = base.create_symbol(&name_node, name, SymbolKind::Function, options);

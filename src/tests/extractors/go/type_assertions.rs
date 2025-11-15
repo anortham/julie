@@ -90,19 +90,25 @@ func ProcessValue(value interface{}) string {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let reader = symbols.iter().find(|s| s.name == "Reader");
     assert!(reader.is_some());
     let reader = reader.unwrap();
     assert_eq!(reader.kind, SymbolKind::Interface);
-    assert!(reader
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type Reader interface"));
+    assert!(
+        reader
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Reader interface")
+    );
 
     let writer = symbols.iter().find(|s| s.name == "Writer");
     assert!(writer.is_some());
@@ -118,28 +124,34 @@ func ProcessValue(value interface{}) string {
     assert!(read_write_closer.is_some());
     let read_write_closer = read_write_closer.unwrap();
     assert_eq!(read_write_closer.kind, SymbolKind::Interface);
-    assert!(read_write_closer
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type ReadWriteCloser interface"));
+    assert!(
+        read_write_closer
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type ReadWriteCloser interface")
+    );
 
     let container = symbols.iter().find(|s| s.name == "Container");
     assert!(container.is_some());
     let container = container.unwrap();
     assert_eq!(container.kind, SymbolKind::Class);
-    assert!(container
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type Container struct"));
+    assert!(
+        container
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Container struct")
+    );
 
     let process_value = symbols.iter().find(|s| s.name == "ProcessValue");
     assert!(process_value.is_some());
     let process_value = process_value.unwrap();
-    assert!(process_value
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func ProcessValue(value interface{}) string"));
+    assert!(
+        process_value
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ProcessValue(value interface{}) string")
+    );
 }

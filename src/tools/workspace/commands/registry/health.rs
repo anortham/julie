@@ -84,7 +84,10 @@ impl ManageWorkspaceTool {
                 let db = match db_arc.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned in check_database_health, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned in check_database_health, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };

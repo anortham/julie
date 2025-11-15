@@ -2,7 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::{cosine_similarity, CodeContext, EmbeddingEngine};
+use crate::embeddings::{CodeContext, EmbeddingEngine, cosine_similarity};
 use crate::extractors::base::{Symbol, SymbolKind, Visibility};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
@@ -437,12 +437,15 @@ fn test_memory_embedding_text_checkpoint() {
         semantic_group: None,
         confidence: None,
         // Simulated code_context from JSON file (what tree-sitter extracts)
-        code_context: Some(r#"      2:   "id": "milestone_69114732_999aff",
+        code_context: Some(
+            r#"      2:   "id": "milestone_69114732_999aff",
       3:   "timestamp": 1762740018,
       4:   "type": "checkpoint",
   ➤   5:   "description": "Fixed auth bug by adding mutex to prevent race condition",
       6:   "tags": [
-      7:     "bug""#.to_string()),
+      7:     "bug""#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -455,7 +458,10 @@ fn test_memory_embedding_text_checkpoint() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -505,11 +511,14 @@ fn test_memory_embedding_text_decision() {
         metadata: None,
         semantic_group: None,
         confidence: None,
-        code_context: Some(r#"      2:   "id": "dec_1736423000_xyz789",
+        code_context: Some(
+            r#"      2:   "id": "dec_1736423000_xyz789",
       3:   "timestamp": 1736423000,
       4:   "type": "decision",
   ➤   5:   "description": "Chose SQLite over PostgreSQL for zero-dependency deployment",
-      6:   "alternatives": ["PostgreSQL", "MySQL"]"#.to_string()),
+      6:   "alternatives": ["PostgreSQL", "MySQL"]"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -521,7 +530,10 @@ fn test_memory_embedding_text_decision() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -551,7 +563,10 @@ fn test_memory_embedding_skips_non_description_symbols() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     for symbol_name in non_description_symbols {
         let symbol = Symbol {
@@ -580,8 +595,7 @@ fn test_memory_embedding_skips_non_description_symbols() {
         let embedding_text = engine.build_embedding_text(&symbol);
 
         assert_eq!(
-            embedding_text,
-            "",
+            embedding_text, "",
             "Symbol '{}' should produce empty embedding text (skipped)",
             symbol_name
         );
@@ -623,7 +637,10 @@ fn test_memory_embedding_excludes_mutable_plans() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -659,9 +676,12 @@ fn test_memory_embedding_handles_missing_type_field() {
         semantic_group: None,
         confidence: None,
         // Missing "type" field!
-        code_context: Some(r#"      2:   "id": "test_123",
+        code_context: Some(
+            r#"      2:   "id": "test_123",
   ➤   3:   "description": "Some memory without type field",
-      4:   "timestamp": 123456"#.to_string()),
+      4:   "timestamp": 123456"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -673,7 +693,10 @@ fn test_memory_embedding_handles_missing_type_field() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -724,12 +747,18 @@ fn test_standard_code_symbols_unchanged() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
     // Should use standard embedding: name + kind + signature + doc_comment
-    assert!(embedding_text.contains("getUserData"), "Should include name");
+    assert!(
+        embedding_text.contains("getUserData"),
+        "Should include name"
+    );
     assert!(embedding_text.contains("function"), "Should include kind");
     assert!(
         embedding_text.contains("Promise<User>"),
@@ -771,11 +800,14 @@ fn test_memory_embedding_handles_escaped_quotes() {
         semantic_group: None,
         confidence: None,
         // Description with escaped quotes, backslashes, and unicode
-        code_context: Some(r#"      2:   "id": "test_escaped_123",
+        code_context: Some(
+            r#"      2:   "id": "test_escaped_123",
       3:   "timestamp": 1736423000,
       4:   "type": "checkpoint",
   ➤   5:   "description": "Fixed \"auth\" bug in C:\\Users\\path with unicode \u0041",
-      6:   "tags": ["bug"]"#.to_string()),
+      6:   "tags": ["bug"]"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -787,7 +819,10 @@ fn test_memory_embedding_handles_escaped_quotes() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -849,7 +884,8 @@ fn test_memory_embedding_includes_tags() {
         semantic_group: None,
         confidence: None,
         // Full memory JSON with tags array
-        code_context: Some(r#"      2:   "id": "checkpoint_abc123",
+        code_context: Some(
+            r#"      2:   "id": "checkpoint_abc123",
       3:   "timestamp": 1762971017,
       4:   "type": "checkpoint",
   ➤   5:   "description": "Added 100KB file size limit for symbol extraction",
@@ -857,7 +893,9 @@ fn test_memory_embedding_includes_tags() {
       7:     "performance",
       8:     "file-size-limit",
       9:     "indexing"
-     10:   ]"#.to_string()),
+     10:   ]"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -869,7 +907,10 @@ fn test_memory_embedding_includes_tags() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -930,7 +971,8 @@ fn test_memory_embedding_includes_file_terms() {
         semantic_group: None,
         confidence: None,
         // Full memory JSON with git.files_changed array
-        code_context: Some(r#"      2:   "id": "checkpoint_def456",
+        code_context: Some(
+            r#"      2:   "id": "checkpoint_def456",
       3:   "type": "checkpoint",
       4:   "git": {
       5:     "files_changed": [
@@ -940,7 +982,9 @@ fn test_memory_embedding_includes_file_terms() {
       9:     ]
      10:   },
   ➤  11:   "description": "Optimized embedding generation performance",
-     12:   "tags": ["performance"]"#.to_string()),
+     12:   "tags": ["performance"]"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -952,7 +996,10 @@ fn test_memory_embedding_includes_file_terms() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1022,7 +1069,8 @@ fn test_memory_embedding_full_format_with_tags_and_files() {
         metadata: None,
         semantic_group: None,
         confidence: None,
-        code_context: Some(r#"      2:   "id": "decision_789",
+        code_context: Some(
+            r#"      2:   "id": "decision_789",
       3:   "type": "decision",
       4:   "git": {
       5:     "files_changed": [
@@ -1031,7 +1079,9 @@ fn test_memory_embedding_full_format_with_tags_and_files() {
       8:     ]
       9:   },
   ➤  10:   "description": "Chose SQLite FTS5 for search performance",
-     11:   "tags": ["architecture", "database", "performance"]"#.to_string()),
+     11:   "tags": ["architecture", "database", "performance"]"#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -1043,7 +1093,10 @@ fn test_memory_embedding_full_format_with_tags_and_files() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1067,9 +1120,9 @@ fn test_memory_embedding_full_format_with_tags_and_files() {
     );
 
     assert!(
-        embedding_text.contains("architecture") &&
-        embedding_text.contains("database") &&
-        embedding_text.contains("performance"),
+        embedding_text.contains("architecture")
+            && embedding_text.contains("database")
+            && embedding_text.contains("performance"),
         "Should include all tags. Got: '{}'",
         embedding_text
     );
@@ -1081,8 +1134,7 @@ fn test_memory_embedding_full_format_with_tags_and_files() {
     );
 
     assert!(
-        embedding_text.contains("schema") &&
-        embedding_text.contains("symbols"),
+        embedding_text.contains("schema") && embedding_text.contains("symbols"),
         "Should include extracted file terms. Got: '{}'",
         embedding_text
     );
@@ -1120,8 +1172,11 @@ fn test_memory_embedding_handles_missing_tags() {
         metadata: None,
         semantic_group: None,
         confidence: None,
-        code_context: Some(r#"      2:   "type": "checkpoint",
-  ➤   3:   "description": "Quick fix for bug""#.to_string()),
+        code_context: Some(
+            r#"      2:   "type": "checkpoint",
+  ➤   3:   "description": "Quick fix for bug""#
+                .to_string(),
+        ),
         content_type: None,
     };
 
@@ -1133,7 +1188,10 @@ fn test_memory_embedding_handles_missing_tags() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1146,8 +1204,7 @@ fn test_memory_embedding_handles_missing_tags() {
 
     // Should not have empty tags section
     assert!(
-        !embedding_text.contains("tags:  |") &&
-        !embedding_text.contains("tags: |"),
+        !embedding_text.contains("tags:  |") && !embedding_text.contains("tags: |"),
         "Should not have empty tags section. Got: '{}'",
         embedding_text
     );
@@ -1173,7 +1230,10 @@ fn test_markdown_heading_with_content_is_embedded() {
         start_byte: 100,
         end_byte: 500,
         signature: None,
-        doc_comment: Some("Follow these steps to get started with Julie. First, install the dependencies...".to_string()),
+        doc_comment: Some(
+            "Follow these steps to get started with Julie. First, install the dependencies..."
+                .to_string(),
+        ),
         visibility: None,
         parent_id: None,
         metadata: None,
@@ -1191,7 +1251,10 @@ fn test_markdown_heading_with_content_is_embedded() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1251,7 +1314,10 @@ fn test_markdown_empty_heading_is_skipped() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1297,7 +1363,10 @@ fn test_markdown_empty_string_doc_comment_is_skipped() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1343,7 +1412,10 @@ fn test_non_markdown_symbols_unchanged_by_markdown_optimization() {
         rt.block_on(async {
             EmbeddingEngine::new("bge-small", temp_dir.path().to_path_buf(), db).await
         })
-    }).join().unwrap().unwrap();
+    })
+    .join()
+    .unwrap()
+    .unwrap();
 
     let embedding_text = engine.build_embedding_text(&symbol);
 
@@ -1380,7 +1452,7 @@ fn test_loaded_index_uses_correct_dimensions() {
     //
     // Problem: search_similar() hard-codes 384 dimensions
     // Solution: Store dimensions in LoadedHnswIndex struct
-    
+
     use crate::embeddings::loaded_index::LoadedHnswIndex;
     use hnsw_rs::prelude::*;
 
@@ -1399,14 +1471,12 @@ fn test_loaded_index_uses_correct_dimensions() {
     );
 
     // Transmute to 'static (same as production code does)
-    let hnsw_static: Hnsw<'static, f32, DistCosine> = unsafe {
-        std::mem::transmute(hnsw)
-    };
+    let hnsw_static: Hnsw<'static, f32, DistCosine> = unsafe { std::mem::transmute(hnsw) };
 
     // Create LoadedHnswIndex
     let id_mapping = vec!["test_id".to_string()];
-    let loaded_index = LoadedHnswIndex::from_built_hnsw(hnsw_static, id_mapping, dimensions)
-        .unwrap();
+    let loaded_index =
+        LoadedHnswIndex::from_built_hnsw(hnsw_static, id_mapping, dimensions).unwrap();
 
     // Verify dimensions are stored and accessible
     assert_eq!(
@@ -1416,4 +1486,160 @@ fn test_loaded_index_uses_correct_dimensions() {
     );
 
     println!("✅ LoadedHnswIndex stores dimensions correctly (not hard-coded)");
+}
+
+#[test]
+fn test_get_type_for_symbol_database_helper() {
+    // Test the database helper method for querying types
+    use crate::database::*;
+    use crate::extractors::base::TypeInfo;
+
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_types_helper.db");
+
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create a test symbol
+    let symbol = Symbol {
+        id: "test_func_123".to_string(),
+        name: "testFunction".to_string(),
+        kind: SymbolKind::Function,
+        language: "typescript".to_string(),
+        file_path: "test.ts".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 5,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 100,
+        signature: Some("function testFunction()".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Store file info first (foreign key dependency)
+    let file_info = FileInfo {
+        path: "test.ts".to_string(),
+        language: "typescript".to_string(),
+        hash: "hash123".to_string(),
+        size: 100,
+        last_modified: 123456,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    };
+    db.bulk_store_files(&[file_info]).unwrap();
+
+    // Store symbol
+    db.bulk_store_symbols(&[symbol.clone()], "test_workspace").unwrap();
+
+    // Store type using bulk_store_types
+    let type_info = TypeInfo {
+        symbol_id: symbol.id.clone(),
+        resolved_type: "string".to_string(),
+        generic_params: None,
+        constraints: None,
+        is_inferred: false,
+        language: "typescript".to_string(),
+        metadata: None,
+    };
+    db.bulk_store_types(&[type_info], "test_workspace").unwrap();
+
+    // Test: get_type_for_symbol should return the type
+    let result = db.get_type_for_symbol(&symbol.id).unwrap();
+    assert_eq!(result, Some("string".to_string()));
+
+    // Test: non-existent symbol should return None
+    let result2 = db.get_type_for_symbol("nonexistent").unwrap();
+    assert_eq!(result2, None);
+
+    println!("✅ get_type_for_symbol() works correctly");
+}
+
+#[cfg_attr(
+    not(feature = "network_models"),
+    ignore = "requires downloadable embedding model"
+)]
+#[tokio::test]
+async fn test_build_embedding_text_includes_type_information() {
+    // RED PHASE: This test WILL FAIL initially - that's the point!
+    // We're testing that build_embedding_text() queries and includes type information from the types table
+
+    let temp_dir = TempDir::new().unwrap();
+    let cache_dir = temp_dir.path().to_path_buf();
+    let db_path = temp_dir.path().join("test_types.db");
+
+    // Create database and store a symbol with type information
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let symbol = Symbol {
+        id: "test_user_func".to_string(),
+        name: "fetchUserProfile".to_string(),
+        kind: SymbolKind::Function,
+        language: "typescript".to_string(),
+        file_path: "/src/services/user.ts".to_string(),
+        start_line: 10,
+        start_column: 0,
+        end_line: 15,
+        end_column: 1,
+        start_byte: 200,
+        end_byte: 350,
+        signature: Some("function fetchUserProfile(id: string)".to_string()),
+        doc_comment: Some("Fetches a user profile by ID".to_string()),
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Store the symbol in database
+    {
+        let symbols_slice = [symbol.clone()];
+        db.store_symbols_transactional(&symbols_slice).unwrap();
+    }
+
+    // Store type information for this symbol
+    db.conn.execute(
+        "INSERT INTO types (symbol_id, resolved_type, is_inferred, language)
+         VALUES (?1, ?2, ?3, ?4)",
+        (
+            &symbol.id,
+            "Promise<UserProfile>",  // This is the return type we want in embeddings
+            0,  // is_inferred = false (explicit type)
+            "typescript",
+        ),
+    ).unwrap();
+
+    // Create EmbeddingEngine with database containing type info
+    let db_arc = Arc::new(Mutex::new(db));
+    let engine = EmbeddingEngine::new("bge-small", cache_dir, db_arc)
+        .await
+        .unwrap();
+
+    // Build embedding text
+    let embedding_text = engine.build_embedding_text(&symbol);
+
+    // ASSERTIONS: Verify type information is included
+    println!("Embedding text: {}", embedding_text);
+
+    // Should include the basic symbol info (existing behavior)
+    assert!(embedding_text.contains("fetchUserProfile"), "Should include function name");
+    assert!(embedding_text.contains("function"), "Should include symbol kind");
+    assert!(embedding_text.contains("Fetches a user profile"), "Should include doc comment");
+
+    // NEW BEHAVIOR: Should include type information from types table
+    assert!(
+        embedding_text.contains("Promise<UserProfile>"),
+        "Should include resolved type from types table. Got: '{}'",
+        embedding_text
+    );
 }

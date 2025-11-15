@@ -127,7 +127,9 @@ pub(super) fn extract_powershell_doc_comment(base: &BaseExtractor, node: &Node) 
         if sibling.kind() == "comment" {
             let comment_text = base.get_node_text(&sibling);
             // PowerShell comments start with # or <#
-            if comment_text.trim_start().starts_with("#") || comment_text.trim_start().starts_with("<#") {
+            if comment_text.trim_start().starts_with("#")
+                || comment_text.trim_start().starts_with("<#")
+            {
                 comments.push(comment_text);
                 current = sibling.prev_named_sibling();
             } else {
@@ -147,7 +149,9 @@ pub(super) fn extract_powershell_doc_comment(base: &BaseExtractor, node: &Node) 
                 while let Some(sibling) = current {
                     if sibling.kind() == "comment" {
                         let comment_text = base.get_node_text(&sibling);
-                        if comment_text.trim_start().starts_with("#") || comment_text.trim_start().starts_with("<#") {
+                        if comment_text.trim_start().starts_with("#")
+                            || comment_text.trim_start().starts_with("<#")
+                        {
                             comments.push(comment_text);
                             current = sibling.prev_named_sibling();
                         } else {

@@ -4787,3 +4787,37 @@ Strategic decision documented in checkpoint `decision_691378ed_1d6cf7`:
 **Last Updated:** 2025-11-11 (fast_explore Implementation Complete + Full Audit)
 **Status:** 🟢 Complete - 15/15 tools audited, all rated EXCELLENT or EXCEPTIONAL
 **fast_explore:** ✅ Implemented with 3/4 modes (logic, similar, dependencies) - tests mode cancelled as redundant
+
+## Additional Findings – Type Intelligence & Semantic Search (2025-11-14)
+
+### 1. Type extraction results never leave the extractor pipeline
+
+**Evidence:** `BaseExtractor` maintains a `type_info: HashMap<String, TypeInfo>` field and the shared `ExtractionResults` struct contains a `types` map (`src/extractors/base/extractor.rs`, `src/extractors/base/types.rs`). However, the factory entry point still returns only `(Vec<Symbol>, Vec<Relationship>)` (`src/extractors/factory.rs`), so every `TypeInfo` record is dropped before the workspace indexer (`src/tools/workspace/indexing/processor.rs`) ever sees it. There is no `types` table in the SQLite schema (`src/database/schema.rs`), so nothing downstream can query or embed resolved type names, generic parameters, or constraint metadata.
+
+**Impact:** Julie’s strongest differentiator—accurate type extraction—is unused. Tools cannot answer questions like “Which functions return `PaymentIntent`?” or “Show me everything implementing `CheckoutFlow`”, and semantic ranking ignores explicit/inferred types even though extractors already compute them. This also blocks future features such as type-aware diagnostics or DTO discovery.
+
+**Recommendation:** Expand `extract_symbols_and_relationships` to return `ExtractionResults` so `types` and `identifiers` survive the hop, add a `symbol_types` table (or metadata column) to persist the data, and expose it through tools. The stored type graph can immediately feed (a) embedding text generation (append resolved types to `build_embedding_text`), (b) `fast_explore` scoring (boost symbols that match requested types), and (c) future type-awareness APIs.
+
+### 2. Identifier/type-usage records are never persisted
+
+**Evidence:** The identifier data structures (`IdentifierKind::TypeUsage`, etc.) are wired through every extractor, and `SymbolDatabase::bulk_store_identifiers` is implemented (`src/database/bulk_operations.rs`). Yet the main indexing pipeline (`src/tools/workspace/indexing/processor.rs`) never calls it—only legacy CLI paths (`src/bin/codesearch.rs`, `src/cli/parallel.rs`) do. Because the factory function also omits identifiers, neither incremental nor fresh indexing writes to the `identifiers` table even though the schema and indexes already exist (`src/database/schema.rs`).
+
+**Impact:** Tools such as `fast_refs` and `trace_call_path` can only rely on relationship edges, so type annotations, import sites, and member accesses vanish from every reference result. That makes common workflows (“find every place `UserProfile` is mentioned as a type”, “ensure no code still instantiates `LegacyPayment`”) impossible despite the extractors having that information in memory.
+
+**Recommendation:** Return identifiers from the extractor pipeline, persist them during both bulk and incremental updates, and extend tooling to exploit the richer dataset. Concrete follow-ups: add a `reference_kind` filter to `fast_refs`, surface `TypeUsage` hits in summaries, and let `fast_search` filter by identifier kind for audit-style questions.
+
+### 3. `fast_explore` similar mode embeds only raw symbol names
+
+**Evidence:** The similar-mode implementation generates the query vector by calling `engine.embed_text(symbol_name)` (`src/tools/exploration/fast_explore/mod.rs`, lines 164-179). It never looks up the symbol row, never reuses the stored embedding vector, and never includes the signature, doc comment, or code context that were originally embedded for that symbol.
+
+**Impact:** Similarity results hinge on whatever string the user types. Generic names (“handle”, “run”, “process”) return noise, overloads across languages collide, and we gain no benefit from the curated embedding text already cached in `embedding_vectors`. This undercuts one of Julie’s key semantic differentiators right inside the flagship exploration tool.
+
+**Recommendation:** Reuse the stored vector for the selected symbol (`SymbolDatabase::get_symbols_by_name` → `embeddings`/`embedding_vectors`) or, at minimum, rebuild the embedding text the same way indexing does (`build_embedding_text(symbol)`) before querying HNSW. Provide a fallback that embeds the raw string only when the symbol truly does not exist. This instantly boosts precision and removes the extra embedding latency per call.
+
+### 4. Functionality gap: no type-aware exploration or contract mode
+
+**Evidence:** The relationships table already stores rich semantic edges (`extends`, `implements`, `returns`, `parameter`, etc., see `src/database/schema.rs`), but `fast_explore` exposes only `logic`, `similar`, and `dependencies` modes. Even the dependencies mode filters out most type-shape edges and reports a generic BFS tree. There is no tool or mode that summarizes interface hierarchies, DTO shapes, or return/parameter types, even though the data (once persisted per Findings #1-2) would make this straightforward.
+
+**Impact:** Users cannot ask “Which structs implement `CheckoutStep`?”, “Where does `OrderSummary` flow through our services?”, or “List every API returning `GraphQLResponse`”. They fall back to manual `fast_search` queries that miss language-specific syntax and provide no structured overview.
+
+**Recommendation:** Introduce a dedicated `fast_explore(mode="types")` (or new `type_graph` tool) that consumes the persisted `TypeInfo` + identifier data to produce: (a) inheritance/implementation trees, (b) type-based dependency slices (“who returns/accepts this type”), and (c) semantic clustering of DTOs using embeddings seeded with type metadata. This would showcase Julie’s type extraction strength and close a glaring workflow gap.

@@ -262,8 +262,14 @@ fn test_scan_workspace_files_returns_unix_style_paths() -> Result<()> {
 
     // Verify expected files are present (with Unix-style paths)
     assert!(files.contains("main.rs"), "Should find root file");
-    assert!(files.contains("src/lib.rs"), "Should find src file with / separator");
-    assert!(files.contains("src/tools/search.rs"), "Should find nested file with / separators");
+    assert!(
+        files.contains("src/lib.rs"),
+        "Should find src file with / separator"
+    );
+    assert!(
+        files.contains("src/tools/search.rs"),
+        "Should find nested file with / separators"
+    );
 
     // Verify we found exactly 3 files
     assert_eq!(files.len(), 3, "Should find exactly 3 files");

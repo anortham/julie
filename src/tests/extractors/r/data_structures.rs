@@ -80,7 +80,11 @@ flags <- c(TRUE, FALSE, TRUE)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 3, "Should extract x, names, flags vectors (found {})", variables.len());
+        assert!(
+            variables.len() >= 3,
+            "Should extract x, names, flags vectors (found {})",
+            variables.len()
+        );
 
         // Check for specific variables
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
@@ -171,12 +175,18 @@ mat <- rbind(vec1, vec2)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 5, "Should extract all matrix and vector variables");
+        assert!(
+            variables.len() >= 5,
+            "Should extract all matrix and vector variables"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"m"), "Should find m matrix");
         assert!(var_names.contains(&"m2"), "Should find m2 matrix");
-        assert!(var_names.contains(&"mat"), "Should find mat matrix from rbind");
+        assert!(
+            var_names.contains(&"mat"),
+            "Should find mat matrix from rbind"
+        );
     }
 
     #[test]
@@ -232,12 +242,24 @@ seq5 <- rep(c(1, 2, 3), each = 2)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 5, "Should extract all sequence variables");
+        assert!(
+            variables.len() >= 5,
+            "Should extract all sequence variables"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
-        assert!(var_names.contains(&"seq1"), "Should find seq1 colon sequence");
-        assert!(var_names.contains(&"seq2"), "Should find seq2 seq() function");
-        assert!(var_names.contains(&"seq5"), "Should find seq5 rep with each");
+        assert!(
+            var_names.contains(&"seq1"),
+            "Should find seq1 colon sequence"
+        );
+        assert!(
+            var_names.contains(&"seq2"),
+            "Should find seq2 seq() function"
+        );
+        assert!(
+            var_names.contains(&"seq5"),
+            "Should find seq5 rep with each"
+        );
     }
 
     #[test]
@@ -268,7 +290,10 @@ arr2 <- array(
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"arr"), "Should find arr array");
-        assert!(var_names.contains(&"arr2"), "Should find arr2 array with dimnames");
+        assert!(
+            var_names.contains(&"arr2"),
+            "Should find arr2 array with dimnames"
+        );
     }
 
     #[test]
@@ -292,11 +317,17 @@ education <- factor(
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract gender and education factors");
+        assert!(
+            variables.len() >= 2,
+            "Should extract gender and education factors"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"gender"), "Should find gender factor");
-        assert!(var_names.contains(&"education"), "Should find education ordered factor");
+        assert!(
+            var_names.contains(&"education"),
+            "Should find education ordered factor"
+        );
     }
 
     #[test]
@@ -320,11 +351,20 @@ list_env <- list2env(my_list)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 4, "Should extract all environment variables");
+        assert!(
+            variables.len() >= 4,
+            "Should extract all environment variables"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"env"), "Should find env environment");
-        assert!(var_names.contains(&"child_env"), "Should find child_env with parent");
-        assert!(var_names.contains(&"list_env"), "Should find list_env from list2env");
+        assert!(
+            var_names.contains(&"child_env"),
+            "Should find child_env with parent"
+        );
+        assert!(
+            var_names.contains(&"list_env"),
+            "Should find list_env from list2env"
+        );
     }
 }

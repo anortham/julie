@@ -117,8 +117,12 @@ func main() {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     // Verify generic constraint interface
@@ -132,7 +136,10 @@ func main() {
 
     // Verify generic struct
     let stack_struct = symbols.iter().find(|s| s.name == "Stack");
-    assert!(stack_struct.is_some(), "Should extract Stack generic struct");
+    assert!(
+        stack_struct.is_some(),
+        "Should extract Stack generic struct"
+    );
     let stack = stack_struct.unwrap();
     assert_eq!(stack.kind, SymbolKind::Class);
     assert!(
@@ -142,17 +149,11 @@ func main() {
 
     // Verify generic method
     let push_method = symbols.iter().find(|s| s.name == "Push");
-    assert!(
-        push_method.is_some(),
-        "Should extract Push generic method"
-    );
+    assert!(push_method.is_some(), "Should extract Push generic method");
 
     // Verify generic functions
     let map_func = symbols.iter().find(|s| s.name == "Map");
-    assert!(
-        map_func.is_some(),
-        "Should extract Map generic function"
-    );
+    assert!(map_func.is_some(), "Should extract Map generic function");
 
     let min_func = symbols.iter().find(|s| s.name == "Min");
     assert!(
@@ -162,10 +163,7 @@ func main() {
 
     // Verify complex generic types
     let pair_struct = symbols.iter().find(|s| s.name == "Pair");
-    assert!(
-        pair_struct.is_some(),
-        "Should extract Pair generic struct"
-    );
+    assert!(pair_struct.is_some(), "Should extract Pair generic struct");
 
     let getter_interface = symbols.iter().find(|s| s.name == "Getter");
     assert!(

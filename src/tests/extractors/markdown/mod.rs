@@ -61,7 +61,11 @@ More content in section two.
         let symbols = extract_symbols(markdown);
 
         // We should extract sections as symbols
-        assert!(symbols.len() >= 4, "Expected at least 4 sections, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 4,
+            "Expected at least 4 sections, got {}",
+            symbols.len()
+        );
 
         // Check main title
         let main_title = symbols.iter().find(|s| s.name == "Main Title");
@@ -93,7 +97,11 @@ More content in section two.
 
         let symbols = extract_symbols(markdown);
 
-        assert!(symbols.len() >= 6, "Should extract all 6 heading levels, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 6,
+            "Should extract all 6 heading levels, got {}",
+            symbols.len()
+        );
 
         let level_names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(level_names.contains(&"Level 1"), "Should find Level 1");
@@ -119,18 +127,25 @@ More content in section two.
 
         let symbols = extract_symbols(markdown);
 
-        assert!(symbols.len() >= 5, "Should extract headings with special characters");
+        assert!(
+            symbols.len() >= 5,
+            "Should extract headings with special characters"
+        );
 
         // Verify heading text is extracted (may or may not preserve markdown)
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
 
         // Check that we got some headings with recognizable content
         assert!(
-            names.iter().any(|&n| n.contains("code") || n.contains("Testing")),
+            names
+                .iter()
+                .any(|&n| n.contains("code") || n.contains("Testing")),
             "Should extract heading with code"
         );
         assert!(
-            names.iter().any(|&n| n.contains("bold") || n.contains("italic") || n.contains("Heading")),
+            names
+                .iter()
+                .any(|&n| n.contains("bold") || n.contains("italic") || n.contains("Heading")),
             "Should extract heading with formatting"
         );
     }
@@ -146,10 +161,16 @@ More content in section two.
 
         let symbols = extract_symbols(markdown);
 
-        assert!(symbols.len() >= 3, "Should extract headings with trailing hashes");
+        assert!(
+            symbols.len() >= 3,
+            "Should extract headings with trailing hashes"
+        );
 
         let main = symbols.iter().find(|s| s.name.contains("Main Title"));
-        assert!(main.is_some(), "Should find 'Main Title' (trailing # removed)");
+        assert!(
+            main.is_some(),
+            "Should find 'Main Title' (trailing # removed)"
+        );
     }
 
     // ========================================================================
@@ -218,15 +239,19 @@ But no headings at all.
         let symbols = extract_symbols(markdown);
 
         // Tree-sitter-md might handle deep nesting differently
-        assert!(symbols.len() >= 6, "Should extract multiple nested headings, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 6,
+            "Should extract multiple nested headings, got {}",
+            symbols.len()
+        );
 
         // Verify we got some deep nesting
-        let has_deep_levels = symbols.iter().any(|s|
-            s.name.contains("Third Level") ||
-            s.name.contains("Fourth Level") ||
-            s.name.contains("Fifth Level") ||
-            s.name.contains("Sixth Level")
-        );
+        let has_deep_levels = symbols.iter().any(|s| {
+            s.name.contains("Third Level")
+                || s.name.contains("Fourth Level")
+                || s.name.contains("Fifth Level")
+                || s.name.contains("Sixth Level")
+        });
         assert!(has_deep_levels, "Should find deeply nested headings");
     }
 
@@ -293,7 +318,10 @@ Content here.
 
         let symbols = extract_symbols(markdown);
 
-        assert!(symbols.len() >= 2, "Should extract headings around code blocks");
+        assert!(
+            symbols.len() >= 2,
+            "Should extract headings around code blocks"
+        );
 
         let after_code = symbols.iter().find(|s| s.name == "Section After Code");
         assert!(after_code.is_some(), "Should find heading after code block");
@@ -308,12 +336,17 @@ Content here.
 
         let symbols = extract_symbols(markdown);
 
-        assert!(symbols.len() >= 2, "Should extract headings with inline code");
+        assert!(
+            symbols.len() >= 2,
+            "Should extract headings with inline code"
+        );
 
         // Check that inline code is handled (may or may not be preserved)
         let names: Vec<String> = symbols.iter().map(|s| s.name.clone()).collect();
         assert!(
-            names.iter().any(|n| n.contains("tree-sitter") || n.contains("parsing")),
+            names
+                .iter()
+                .any(|n| n.contains("tree-sitter") || n.contains("parsing")),
             "Should extract heading with inline code"
         );
     }
@@ -361,11 +394,15 @@ Content here.
 
         // Verify Unicode is preserved
         assert!(
-            names.iter().any(|&n| n.contains("日本語") || n.contains("Japanese")),
+            names
+                .iter()
+                .any(|&n| n.contains("日本語") || n.contains("Japanese")),
             "Should preserve Japanese characters"
         );
         assert!(
-            names.iter().any(|&n| n.contains("🎉") || n.contains("Celebration")),
+            names
+                .iter()
+                .any(|&n| n.contains("🎉") || n.contains("Celebration")),
             "Should preserve emoji"
         );
     }
@@ -417,9 +454,15 @@ MIT License.
 
         // Verify common README sections
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"Installation"), "Should find Installation section");
+        assert!(
+            names.contains(&"Installation"),
+            "Should find Installation section"
+        );
         assert!(names.contains(&"Usage"), "Should find Usage section");
-        assert!(names.contains(&"Contributing"), "Should find Contributing section");
+        assert!(
+            names.contains(&"Contributing"),
+            "Should find Contributing section"
+        );
         assert!(names.contains(&"License"), "Should find License section");
     }
 
@@ -448,7 +491,9 @@ MIT License.
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(
-            names.iter().any(|&n| n.contains("1.0.0") || n.contains("2024")),
+            names
+                .iter()
+                .any(|&n| n.contains("1.0.0") || n.contains("2024")),
             "Should find version sections"
         );
     }
@@ -519,22 +564,46 @@ This comprehensive approach ensures quality.
         assert!(symbols.len() >= 1, "Should extract CASCADE section");
 
         let cascade_section = symbols.iter().find(|s| s.name.contains("CASCADE"));
-        assert!(cascade_section.is_some(), "Should find CASCADE Architecture section");
+        assert!(
+            cascade_section.is_some(),
+            "Should find CASCADE Architecture section"
+        );
 
         // CRITICAL: Verify doc_comment contains ALL content types (not just paragraphs)
         let doc = cascade_section.unwrap().doc_comment.as_ref();
-        assert!(doc.is_some(), "Should have doc_comment with section content");
+        assert!(
+            doc.is_some(),
+            "Should have doc_comment with section content"
+        );
 
         let content = doc.unwrap();
 
         // Verify ALL content types are captured:
-        assert!(content.contains("2-tier approach"), "Should capture introductory paragraph");
-        assert!(content.contains("SQLite FTS5"), "Should capture ordered list items");
+        assert!(
+            content.contains("2-tier approach"),
+            "Should capture introductory paragraph"
+        );
+        assert!(
+            content.contains("SQLite FTS5"),
+            "Should capture ordered list items"
+        );
         assert!(content.contains("HNSW"), "Should capture all list items");
-        assert!(content.contains("search_cascade"), "Should capture code blocks");
-        assert!(content.contains("instant availability"), "Should capture block quotes");
-        assert!(content.contains("Fast performance"), "Should capture unordered lists");
-        assert!(content.contains("comprehensive approach"), "Should capture closing paragraph");
+        assert!(
+            content.contains("search_cascade"),
+            "Should capture code blocks"
+        );
+        assert!(
+            content.contains("instant availability"),
+            "Should capture block quotes"
+        );
+        assert!(
+            content.contains("Fast performance"),
+            "Should capture unordered lists"
+        );
+        assert!(
+            content.contains("comprehensive approach"),
+            "Should capture closing paragraph"
+        );
 
         // This is the key test: doc_comment should be RICH with content for RAG
         // Not just headings, but full section bodies with all markdown elements
@@ -582,7 +651,11 @@ Target latencies:
         let symbols = extract_symbols(markdown);
 
         // Should extract all sections
-        assert!(symbols.len() >= 5, "Should extract multiple sections, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 5,
+            "Should extract multiple sections, got {}",
+            symbols.len()
+        );
 
         // Find the CASCADE System section
         let cascade = symbols.iter().find(|s| s.name.contains("CASCADE"));
@@ -597,8 +670,14 @@ Target latencies:
 
         // RAG Validation: This section's doc_comment should contain enough context
         // to answer "How does CASCADE work?" without reading the entire file
-        assert!(doc.contains("SQLite FTS5"), "Should have architecture details");
-        assert!(doc.contains("HNSW semantic"), "Should have semantic search info");
+        assert!(
+            doc.contains("SQLite FTS5"),
+            "Should have architecture details"
+        );
+        assert!(
+            doc.contains("HNSW semantic"),
+            "Should have semantic search info"
+        );
         // Code blocks may or may not be fully captured depending on tree-sitter structure
         // assert!(doc.contains("search_cascade"), "Should have code example");
         assert!(doc.contains("<5ms"), "Should have performance metrics");
@@ -660,7 +739,10 @@ More content.
         let first = &symbols[0];
         assert!(first.start_line > 0, "Should track start line");
         assert!(first.end_line > 0, "Should track end line");
-        assert!(first.start_line <= first.end_line, "Start should be before end");
+        assert!(
+            first.start_line <= first.end_line,
+            "Start should be before end"
+        );
 
         // Verify second heading is after first
         if symbols.len() >= 2 {

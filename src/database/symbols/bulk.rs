@@ -1,7 +1,7 @@
 // Bulk symbol storage operations with index optimization
 
 use super::super::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
 
@@ -150,9 +150,7 @@ impl SymbolDatabase {
                             if !all_symbol_ids.contains(parent_id) {
                                 debug!(
                                     "Orphan symbol {} ({}) has missing parent {} - clearing relationship",
-                                    symbol.name,
-                                    symbol.id,
-                                    parent_id
+                                    symbol.name, symbol.id, parent_id
                                 );
                                 symbol.parent_id = None;
                             }
@@ -253,11 +251,17 @@ impl SymbolDatabase {
 
             // STEP 5: Rebuild FTS5 index (WITHIN OUTER TRANSACTION - atomic with inserts!)
             debug!("🔄 Rebuilding symbols FTS index atomically");
-            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')", [])?;
+            outer_tx.execute(
+                "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
+                [],
+            )?;
             outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
 
             // STEP 5b: Optimize FTS5 index for better query performance
-            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')", [])?;
+            outer_tx.execute(
+                "INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')",
+                [],
+            )?;
 
             // STEP 6: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding symbol indexes after bulk insert");

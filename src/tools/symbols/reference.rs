@@ -6,11 +6,11 @@ use anyhow::Result;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use tracing::{debug, info, warn};
 
+use super::body_extraction::extract_code_bodies;
+use super::filtering::apply_all_filters;
+use super::formatting::format_symbol_response;
 use crate::handler::JulieServerHandler;
 use crate::workspace::registry_service::WorkspaceRegistryService;
-use super::filtering::apply_all_filters;
-use super::body_extraction::extract_code_bodies;
-use super::formatting::format_symbol_response;
 
 /// Get symbols from a reference workspace
 pub async fn get_symbols_from_reference(
@@ -46,9 +46,7 @@ pub async fn get_symbols_from_reference(
     let ref_workspace_entry = registry_service
         .get_workspace(&ref_workspace_id)
         .await?
-        .ok_or_else(|| {
-            anyhow::anyhow!("Reference workspace not found: {}", ref_workspace_id)
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", ref_workspace_id))?;
 
     // 🚨 CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
     // Opening SQLite database involves blocking filesystem operations

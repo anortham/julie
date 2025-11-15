@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -306,7 +306,10 @@ impl FindLogicTool {
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned in get_business_relationships, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned in get_business_relationships, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };

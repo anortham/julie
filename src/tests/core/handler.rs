@@ -5,13 +5,13 @@
 
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
+use rust_mcp_sdk::McpServer;
 use rust_mcp_sdk::error::SdkResult;
 use rust_mcp_sdk::mcp_server::ServerHandler;
 use rust_mcp_sdk::schema::schema_utils::{ClientMessage, MessageFromServer, ServerMessage};
 use rust_mcp_sdk::schema::{
     CallToolRequest, CallToolRequestParams, InitializeRequestParams, InitializeResult, RequestId,
 };
-use rust_mcp_sdk::McpServer;
 use std::sync::Arc;
 use std::time::Duration;
 

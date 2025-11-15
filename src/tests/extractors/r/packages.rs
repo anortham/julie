@@ -21,7 +21,10 @@ library(data.table, quietly = TRUE)
         let symbols = extract_symbols(r_code);
 
         // The code should parse successfully even if imports aren't fully extracted yet
-        assert!(symbols.len() >= 0, "Should parse library() calls successfully");
+        assert!(
+            symbols.len() >= 0,
+            "Should parse library() calls successfully"
+        );
     }
 
     #[test]
@@ -38,7 +41,10 @@ if (require(somePackage)) {
 "#;
 
         let symbols = extract_symbols(r_code);
-        assert!(symbols.len() >= 0, "Should parse require() calls successfully");
+        assert!(
+            symbols.len() >= 0,
+            "Should parse require() calls successfully"
+        );
     }
 
     #[test]
@@ -59,7 +65,10 @@ internal_result <- somePackage:::internal_function()
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 3, "Should extract variables with namespace calls");
+        assert!(
+            variables.len() >= 3,
+            "Should extract variables with namespace calls"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"result1"), "Should find result1");
@@ -79,7 +88,10 @@ data <- read_csv("file.csv")
 "#;
 
         let symbols = extract_symbols(r_code);
-        assert!(symbols.len() >= 0, "Should parse code with install.packages comments");
+        assert!(
+            symbols.len() >= 0,
+            "Should parse code with install.packages comments"
+        );
     }
 
     #[test]

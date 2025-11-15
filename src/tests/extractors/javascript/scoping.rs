@@ -145,12 +145,14 @@ function createClosures() {
     let hoisted_function = symbols.iter().find(|s| s.name == "hoistedFunction");
     assert!(hoisted_function.is_some());
     assert_eq!(hoisted_function.unwrap().kind, SymbolKind::Function);
-    assert!(hoisted_function
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function hoistedFunction()"));
+    assert!(
+        hoisted_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function hoistedFunction()")
+    );
 
     // Var declaration
     let hoisted_var = symbols.iter().find(|s| s.name == "hoistedVar");
@@ -160,12 +162,14 @@ function createClosures() {
     // Function with block scoping
     let scoping_example = symbols.iter().find(|s| s.name == "scopingExample");
     assert!(scoping_example.is_some());
-    assert!(scoping_example
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function scopingExample()"));
+    assert!(
+        scoping_example
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function scopingExample()")
+    );
 
     // Inner function
     let inner_function = symbols.iter().find(|s| s.name == "innerFunction");
@@ -175,31 +179,37 @@ function createClosures() {
     // Function expressions
     let not_hoisted = symbols.iter().find(|s| s.name == "notHoisted");
     assert!(not_hoisted.is_some());
-    assert!(not_hoisted
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("var notHoisted = function()"));
+    assert!(
+        not_hoisted
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("var notHoisted = function()")
+    );
 
     let also_not_hoisted = symbols.iter().find(|s| s.name == "alsoNotHoisted");
     assert!(also_not_hoisted.is_some());
-    assert!(also_not_hoisted
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const alsoNotHoisted = function()"));
+    assert!(
+        also_not_hoisted
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const alsoNotHoisted = function()")
+    );
 
     // Arrow function
     let arrow_not_hoisted = symbols.iter().find(|s| s.name == "arrowNotHoisted");
     assert!(arrow_not_hoisted.is_some());
-    assert!(arrow_not_hoisted
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const arrowNotHoisted = () =>"));
+    assert!(
+        arrow_not_hoisted
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const arrowNotHoisted = () =>")
+    );
 
     // Scoping demonstration function
     let demonstrate_scoping = symbols.iter().find(|s| s.name == "demonstrateScoping");
@@ -208,10 +218,12 @@ function createClosures() {
     // Closure creation function
     let create_closures = symbols.iter().find(|s| s.name == "createClosures");
     assert!(create_closures.is_some());
-    assert!(create_closures
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function createClosures()"));
+    assert!(
+        create_closures
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function createClosures()")
+    );
 }

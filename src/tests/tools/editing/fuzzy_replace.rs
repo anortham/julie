@@ -279,7 +279,10 @@ mod multi_file_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // NEW API: file_pattern for multi-file mode
@@ -317,7 +320,10 @@ mod multi_file_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // OLD API: file_path for single-file mode
@@ -347,7 +353,10 @@ mod multi_file_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // ERROR CASE 1: Both provided
@@ -408,7 +417,10 @@ mod multi_file_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let tool = FuzzyReplaceTool {
@@ -447,7 +459,10 @@ mod multi_file_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let tool = FuzzyReplaceTool {
@@ -495,7 +510,10 @@ mod multi_file_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let tool = FuzzyReplaceTool {
@@ -533,7 +551,10 @@ mod security_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Try to access /etc/passwd using absolute path
@@ -570,7 +591,10 @@ mod security_tests {
         let temp_dir = TempDir::new()?;
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Try to access ../../../../etc/passwd using relative path traversal
@@ -609,7 +633,10 @@ mod security_tests {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Valid absolute path should work

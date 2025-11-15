@@ -5,8 +5,7 @@
 /// - Nested tables: [parent.child]
 /// - Array tables: [[array_table]]
 /// All tables are treated as SymbolKind::Module (containers)
-
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
 use std::path::Path;
 
 pub struct TomlExtractor {
@@ -66,7 +65,12 @@ impl TomlExtractor {
     }
 
     /// Extract a table (regular or array) as a symbol
-    fn extract_table(&mut self, node: tree_sitter::Node, parent_id: Option<&str>, _is_array: bool) -> Option<Symbol> {
+    fn extract_table(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+        _is_array: bool,
+    ) -> Option<Symbol> {
         use crate::extractors::base::SymbolOptions;
 
         // Find the table name (looking for identifier or dotted key)
@@ -115,5 +119,14 @@ impl TomlExtractor {
             }
         }
         None
+    }
+
+    pub fn extract_identifiers(
+        &mut self,
+        _tree: &tree_sitter::Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Identifier> {
+        // TOML is configuration data - no code identifiers
+        Vec::new()
     }
 }

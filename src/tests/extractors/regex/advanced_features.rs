@@ -15,7 +15,6 @@ use std::path::PathBuf;
 mod atomic_group_tests {
     use super::*;
 
-
     #[test]
     fn test_extract_atomic_group_basic() {
         // NOTE: Tree-sitter regex parser doesn't support atomic groups (?>...)
@@ -40,11 +39,15 @@ mod atomic_group_tests {
 
         // Verify the pattern is captured
         let has_atomic_syntax = symbols.iter().any(|s| {
-            s.signature.as_ref()
+            s.signature
+                .as_ref()
                 .map_or(false, |sig| sig.contains("(?>"))
         });
 
-        assert!(has_atomic_syntax, "Should preserve (?> syntax in extracted symbols");
+        assert!(
+            has_atomic_syntax,
+            "Should preserve (?> syntax in extracted symbols"
+        );
     }
 
     #[test]
@@ -64,11 +67,15 @@ mod atomic_group_tests {
         let symbols = extractor.extract_symbols(&tree);
 
         let atomic_group = symbols.iter().find(|s| {
-            s.signature.as_ref()
+            s.signature
+                .as_ref()
                 .map_or(false, |sig| sig.contains("(?>"))
         });
 
-        assert!(atomic_group.is_some(), "Should extract atomic group with alternation");
+        assert!(
+            atomic_group.is_some(),
+            "Should extract atomic group with alternation"
+        );
     }
 
     #[test]
@@ -88,19 +95,25 @@ mod atomic_group_tests {
         let symbols = extractor.extract_symbols(&tree);
 
         // Should find at least one atomic group
-        let atomic_groups: Vec<_> = symbols.iter()
-            .filter(|s| s.signature.as_ref()
-                .map_or(false, |sig| sig.contains("(?>")))
+        let atomic_groups: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("(?>"))
+            })
             .collect();
 
-        assert!(!atomic_groups.is_empty(), "Should extract nested atomic groups");
+        assert!(
+            !atomic_groups.is_empty(),
+            "Should extract nested atomic groups"
+        );
     }
 }
 
 #[cfg(test)]
 mod comment_tests {
     use super::*;
-
 
     #[test]
     fn test_extract_inline_comment() {
@@ -123,7 +136,10 @@ mod comment_tests {
         let symbols = extractor.extract_symbols(&tree);
 
         // Should still extract symbols from the pattern
-        assert!(!symbols.is_empty(), "Should extract symbols from pattern with comment syntax");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from pattern with comment syntax"
+        );
 
         // Character class should be extracted
         let char_class = symbols.iter().find(|s| s.kind == SymbolKind::Class);
@@ -149,7 +165,10 @@ mod comment_tests {
         let symbols = extractor.extract_symbols(&tree);
 
         // Should extract symbols despite comment syntax being ERROR nodes
-        assert!(!symbols.is_empty(), "Should extract symbols from pattern with comment syntax");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from pattern with comment syntax"
+        );
     }
 
     #[test]
@@ -170,14 +189,16 @@ mod comment_tests {
 
         // Extended mode comments might be parsed as comments if tree-sitter supports it
         // This test documents the behavior
-        assert!(!symbols.is_empty(), "Should extract symbols from pattern with extended comment");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from pattern with extended comment"
+        );
     }
 }
 
 #[cfg(test)]
 mod literal_tests {
     use super::*;
-
 
     #[test]
     fn test_extract_simple_literals() {
@@ -195,23 +216,31 @@ mod literal_tests {
         let symbols = extractor.extract_symbols(&tree);
 
         // Should extract literal characters
-        assert!(!symbols.is_empty(), "Should extract symbols from literal pattern");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from literal pattern"
+        );
 
         // Check for literal metadata if available
         let has_literal = symbols.iter().any(|s| {
-            s.metadata.as_ref()
+            s.metadata
+                .as_ref()
                 .and_then(|m| m.get("type"))
-                .and_then(|v| v.as_str()) == Some("literal")
+                .and_then(|v| v.as_str())
+                == Some("literal")
         });
 
         // Literals may or may not be extracted depending on tree-sitter parsing
         // This test documents the behavior
         if has_literal {
-            let literal = symbols.iter()
+            let literal = symbols
+                .iter()
                 .find(|s| {
-                    s.metadata.as_ref()
+                    s.metadata
+                        .as_ref()
                         .and_then(|m| m.get("type"))
-                        .and_then(|v| v.as_str()) == Some("literal")
+                        .and_then(|v| v.as_str())
+                        == Some("literal")
                 })
                 .unwrap();
             assert_eq!(literal.kind, SymbolKind::Variable);
@@ -234,26 +263,37 @@ mod literal_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        assert!(!symbols.is_empty(), "Should extract symbols from escaped literals");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from escaped literals"
+        );
 
         // Check for escaped literal detection
         let has_escaped = symbols.iter().any(|s| {
-            s.metadata.as_ref()
+            s.metadata
+                .as_ref()
                 .and_then(|m| m.get("escaped"))
-                .and_then(|v| v.as_str()) == Some("true")
+                .and_then(|v| v.as_str())
+                == Some("true")
         });
 
         // If we detect escaped literals, verify metadata
         if has_escaped {
-            let escaped_literal = symbols.iter()
+            let escaped_literal = symbols
+                .iter()
                 .find(|s| {
-                    s.metadata.as_ref()
+                    s.metadata
+                        .as_ref()
                         .and_then(|m| m.get("escaped"))
-                        .and_then(|v| v.as_str()) == Some("true")
+                        .and_then(|v| v.as_str())
+                        == Some("true")
                 })
                 .unwrap();
 
-            assert!(escaped_literal.signature.is_some(), "Escaped literal should have signature");
+            assert!(
+                escaped_literal.signature.is_some(),
+                "Escaped literal should have signature"
+            );
         }
     }
 
@@ -273,7 +313,10 @@ mod literal_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        assert!(!symbols.is_empty(), "Should extract symbols from Unicode literals");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from Unicode literals"
+        );
     }
 
     #[test]
@@ -292,15 +335,22 @@ mod literal_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        assert!(!symbols.is_empty(), "Should extract symbols from mixed pattern");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from mixed pattern"
+        );
 
         // Pattern should be extracted as a whole
         let has_pattern = symbols.iter().any(|s| {
-            s.signature.as_ref()
+            s.signature
+                .as_ref()
                 .map_or(false, |sig| sig.contains("hello") && sig.contains("\\s"))
         });
 
-        assert!(has_pattern, "Should extract pattern with literals and metacharacters");
+        assert!(
+            has_pattern,
+            "Should extract pattern with literals and metacharacters"
+        );
     }
 }
 
@@ -324,13 +374,17 @@ mod comprehensive_advanced_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        assert!(!symbols.is_empty(), "Should extract symbols from complex pattern");
+        assert!(
+            !symbols.is_empty(),
+            "Should extract symbols from complex pattern"
+        );
 
         // Should have various symbol types
-        let symbol_types: Vec<SymbolKind> = symbols.iter()
-            .map(|s| s.kind.clone())
-            .collect();
+        let symbol_types: Vec<SymbolKind> = symbols.iter().map(|s| s.kind.clone()).collect();
 
-        assert!(symbol_types.len() > 1, "Should extract multiple symbol types");
+        assert!(
+            symbol_types.len() > 1,
+            "Should extract multiple symbol types"
+        );
     }
 }

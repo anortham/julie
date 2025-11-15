@@ -5,7 +5,8 @@ mod tests {
     #[test]
     fn test_truncate_string_with_utf8() {
         // Test string from the error message with Icelandic characters
-        let test_str = r#"[ "Jan","Feb","Mar","Apr","Maí","Jún","Júl","Ágú","Sep","Okt","Nóv","Des" ]"#;
+        let test_str =
+            r#"[ "Jan","Feb","Mar","Apr","Maí","Jún","Júl","Ágú","Sep","Okt","Nóv","Des" ]"#;
 
         // Test truncation at 30 characters (where the original error occurred)
         let truncated = BaseExtractor::truncate_string(test_str, 30);

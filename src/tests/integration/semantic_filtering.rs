@@ -26,11 +26,11 @@
 //! 3. Dynamic widening retries with larger limits when needed
 //! 4. Warning logged when max attempts reached without full delivery
 
-use anyhow::Result;
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
+use anyhow::Result;
 use rust_mcp_sdk::schema::CallToolResult;
 use std::fs;
 use std::path::Path;
@@ -184,8 +184,7 @@ pub fn process_data_{}() {{
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Semantic search with file_pattern filter
-    let results =
-        semantic_search_with_pattern(&handler, "process data", "src/**/*.rs", 10).await?;
+    let results = semantic_search_with_pattern(&handler, "process data", "src/**/*.rs", 10).await?;
 
     // BUG REPRODUCTION: This assertion WILL FAIL
     // Expected: 10 symbols from src/ directory (there are 20 available)

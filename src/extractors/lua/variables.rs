@@ -400,7 +400,7 @@ pub(super) fn extract_variable_assignment(
                     parent_id: property_parent_id,
                     visibility: Some(Visibility::Public),
                     metadata: Some(metadata),
-            ..Default::default()
+                    ..Default::default()
                 };
 
                 let symbol = base.create_symbol(var_node, property_name.to_string(), kind, options);
@@ -440,7 +440,7 @@ pub(super) fn extract_variable_assignment(
                 parent_id: parent_id.map(|s| s.to_string()),
                 visibility: Some(Visibility::Public), // Global variables are public
                 metadata: Some(metadata),
-            ..Default::default()
+                ..Default::default()
             };
 
             let symbol = base.create_symbol(&name_node, name, kind, options);

@@ -10,7 +10,7 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::database::{create_file_info, SymbolDatabase};
+use crate::database::{SymbolDatabase, create_file_info};
 
 #[test]
 fn test_delete_file_record_causes_fts5_corruption() -> Result<()> {
@@ -50,18 +50,14 @@ fn test_delete_file_record_causes_fts5_corruption() -> Result<()> {
     {
         let db = SymbolDatabase::new(&db_path)?;
 
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 3, "Should have 3 files");
 
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
         assert_eq!(fts_count, 3, "FTS5 should have 3 entries");
     }
 
@@ -77,26 +73,26 @@ fn test_delete_file_record_causes_fts5_corruption() -> Result<()> {
     {
         let db = SymbolDatabase::new(&db_path)?;
 
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 2, "Should have 2 files after delete");
 
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
         assert_eq!(fts_count, 2, "FTS5 should have 2 entries after rebuild");
 
         // Check if rowids are consistent between files and files_fts
-        let files_rowids: Vec<i64> = db.conn.prepare("SELECT rowid FROM files ORDER BY rowid")?
+        let files_rowids: Vec<i64> = db
+            .conn
+            .prepare("SELECT rowid FROM files ORDER BY rowid")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let fts_rowids: Vec<i64> = db.conn.prepare("SELECT rowid FROM files_fts ORDER BY rowid")?
+        let fts_rowids: Vec<i64> = db
+            .conn
+            .prepare("SELECT rowid FROM files_fts ORDER BY rowid")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<_, _>>()?;
 
@@ -182,7 +178,10 @@ fn test_triggers_alone_insufficient_for_external_content() -> Result<()> {
             |row| row.get(0),
         )?;
         println!("Triggers before delete: {}", trigger_count);
-        assert_eq!(trigger_count, 3, "Should have 3 triggers (insert, update, delete)");
+        assert_eq!(
+            trigger_count, 3,
+            "Should have 3 triggers (insert, update, delete)"
+        );
 
         // Manual delete WITHOUT rebuild (testing correct behavior)
         let count = db.conn.execute(
@@ -198,22 +197,23 @@ fn test_triggers_alone_insufficient_for_external_content() -> Result<()> {
     {
         let db = SymbolDatabase::new(&db_path)?;
 
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 2, "Should have 2 files");
 
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(fts_count, 2, "FTS5 should have 2 entries (trigger handled it)");
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
+        assert_eq!(
+            fts_count, 2,
+            "FTS5 should have 2 entries (trigger handled it)"
+        );
 
         // Debug: Check what we have
-        let files_paths: Vec<String> = db.conn.prepare("SELECT path FROM files ORDER BY path")?
+        let files_paths: Vec<String> = db
+            .conn
+            .prepare("SELECT path FROM files ORDER BY path")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
         eprintln!("Files in base table: {:?}", files_paths);
@@ -226,11 +226,15 @@ fn test_triggers_alone_insufficient_for_external_content() -> Result<()> {
         eprintln!("Files in FTS5 (via join): {:?}", fts_paths);
 
         // Rowids should match perfectly (no rebuild interference)
-        let files_rowids: Vec<i64> = db.conn.prepare("SELECT rowid FROM files ORDER BY rowid")?
+        let files_rowids: Vec<i64> = db
+            .conn
+            .prepare("SELECT rowid FROM files ORDER BY rowid")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let fts_rowids: Vec<i64> = db.conn.prepare("SELECT rowid FROM files_fts ORDER BY rowid")?
+        let fts_rowids: Vec<i64> = db
+            .conn
+            .prepare("SELECT rowid FROM files_fts ORDER BY rowid")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<_, _>>()?;
 

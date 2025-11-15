@@ -97,7 +97,8 @@ pub fn is_ignored_by_pattern(path: &Path, patterns: &[String]) -> bool {
             if path_str.ends_with(dir_name) {
                 // Check word boundary: must be preceded by '/' or be at start of string
                 let before_dir_name_pos = path_str.len() - dir_name.len();
-                if before_dir_name_pos == 0 || path_str.as_bytes()[before_dir_name_pos - 1] == b'/' {
+                if before_dir_name_pos == 0 || path_str.as_bytes()[before_dir_name_pos - 1] == b'/'
+                {
                     return true;
                 }
             }
@@ -134,7 +135,10 @@ mod tests {
     fn test_load_empty_julieignore() {
         let temp_dir = TempDir::new().unwrap();
         let patterns = load_julieignore(temp_dir.path()).unwrap();
-        assert!(patterns.is_empty(), "Should return empty vector if .julieignore doesn't exist");
+        assert!(
+            patterns.is_empty(),
+            "Should return empty vector if .julieignore doesn't exist"
+        );
     }
 
     #[test]
@@ -149,7 +153,11 @@ mod tests {
         .unwrap();
 
         let patterns = load_julieignore(temp_dir.path()).unwrap();
-        assert_eq!(patterns.len(), 3, "Should load 3 patterns (ignoring comments and empty lines)");
+        assert_eq!(
+            patterns.len(),
+            3,
+            "Should load 3 patterns (ignoring comments and empty lines)"
+        );
         assert!(patterns.contains(&"generated/".to_string()));
         assert!(patterns.contains(&"*.min.js".to_string()));
         assert!(patterns.contains(&"temp_files/".to_string()));
@@ -159,28 +167,40 @@ mod tests {
     fn test_is_ignored_directory_pattern() {
         let patterns = vec!["generated/".to_string()];
         let path = PathBuf::from("/project/generated/schema.rs");
-        assert!(is_ignored_by_pattern(&path, &patterns), "Should match directory pattern");
+        assert!(
+            is_ignored_by_pattern(&path, &patterns),
+            "Should match directory pattern"
+        );
     }
 
     #[test]
     fn test_is_ignored_wildcard_extension() {
         let patterns = vec!["*.min.js".to_string()];
         let path = PathBuf::from("/project/src/app.min.js");
-        assert!(is_ignored_by_pattern(&path, &patterns), "Should match wildcard extension");
+        assert!(
+            is_ignored_by_pattern(&path, &patterns),
+            "Should match wildcard extension"
+        );
     }
 
     #[test]
     fn test_is_ignored_substring_match() {
         let patterns = vec!["temp".to_string()];
         let path = PathBuf::from("/project/temp_files/data.txt");
-        assert!(is_ignored_by_pattern(&path, &patterns), "Should match substring");
+        assert!(
+            is_ignored_by_pattern(&path, &patterns),
+            "Should match substring"
+        );
     }
 
     #[test]
     fn test_not_ignored_when_no_match() {
         let patterns = vec!["generated/".to_string(), "*.min.js".to_string()];
         let path = PathBuf::from("/project/src/normal.rs");
-        assert!(!is_ignored_by_pattern(&path, &patterns), "Should NOT match when no pattern matches");
+        assert!(
+            !is_ignored_by_pattern(&path, &patterns),
+            "Should NOT match when no pattern matches"
+        );
     }
 
     // ========== NEW TESTS FOR WORD BOUNDARY EDGE CASES ==========
@@ -192,22 +212,36 @@ mod tests {
         let patterns = vec!["packages/".to_string()];
 
         // Should match (correct directory)
-        assert!(is_ignored_by_pattern(&PathBuf::from("packages"), &patterns),
-            "Should match exact directory name");
-        assert!(is_ignored_by_pattern(&PathBuf::from("src/packages"), &patterns),
-            "Should match directory in path");
-        assert!(is_ignored_by_pattern(&PathBuf::from("packages/file.js"), &patterns),
-            "Should match file within directory");
+        assert!(
+            is_ignored_by_pattern(&PathBuf::from("packages"), &patterns),
+            "Should match exact directory name"
+        );
+        assert!(
+            is_ignored_by_pattern(&PathBuf::from("src/packages"), &patterns),
+            "Should match directory in path"
+        );
+        assert!(
+            is_ignored_by_pattern(&PathBuf::from("packages/file.js"), &patterns),
+            "Should match file within directory"
+        );
 
         // Should NOT match (different directories that happen to end with "packages")
-        assert!(!is_ignored_by_pattern(&PathBuf::from("my-packages"), &patterns),
-            "Should NOT match 'my-packages' (ends with 'packages' but different directory)");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("src/my-packages"), &patterns),
-            "Should NOT match 'src/my-packages'");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("subpackages"), &patterns),
-            "Should NOT match 'subpackages' (ends with 'packages' but different word)");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("packages-old"), &patterns),
-            "Should NOT match 'packages-old' (starts with 'packages' but different directory)");
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("my-packages"), &patterns),
+            "Should NOT match 'my-packages' (ends with 'packages' but different directory)"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("src/my-packages"), &patterns),
+            "Should NOT match 'src/my-packages'"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("subpackages"), &patterns),
+            "Should NOT match 'subpackages' (ends with 'packages' but different word)"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("packages-old"), &patterns),
+            "Should NOT match 'packages-old' (starts with 'packages' but different directory)"
+        );
     }
 
     #[test]
@@ -216,15 +250,28 @@ mod tests {
         let patterns = vec!["node_modules/".to_string()];
 
         // Should match
-        assert!(is_ignored_by_pattern(&PathBuf::from("node_modules"), &patterns));
-        assert!(is_ignored_by_pattern(&PathBuf::from("project/node_modules"), &patterns));
-        assert!(is_ignored_by_pattern(&PathBuf::from("node_modules/package/index.js"), &patterns));
+        assert!(is_ignored_by_pattern(
+            &PathBuf::from("node_modules"),
+            &patterns
+        ));
+        assert!(is_ignored_by_pattern(
+            &PathBuf::from("project/node_modules"),
+            &patterns
+        ));
+        assert!(is_ignored_by_pattern(
+            &PathBuf::from("node_modules/package/index.js"),
+            &patterns
+        ));
 
         // Should NOT match
-        assert!(!is_ignored_by_pattern(&PathBuf::from("my_node_modules"), &patterns),
-            "Should NOT match 'my_node_modules'");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("old_node_modules"), &patterns),
-            "Should NOT match 'old_node_modules'");
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("my_node_modules"), &patterns),
+            "Should NOT match 'my_node_modules'"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("old_node_modules"), &patterns),
+            "Should NOT match 'old_node_modules'"
+        );
     }
 
     #[test]
@@ -234,15 +281,24 @@ mod tests {
 
         // Should match
         assert!(is_ignored_by_pattern(&PathBuf::from("bin"), &patterns));
-        assert!(is_ignored_by_pattern(&PathBuf::from("project/bin"), &patterns));
+        assert!(is_ignored_by_pattern(
+            &PathBuf::from("project/bin"),
+            &patterns
+        ));
 
         // Should NOT match
-        assert!(!is_ignored_by_pattern(&PathBuf::from("ruby-bin"), &patterns),
-            "Should NOT match 'ruby-bin'");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("/usr/sbin"), &patterns),
-            "Should NOT match 'sbin'");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("bin-old"), &patterns),
-            "Should NOT match 'bin-old'");
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("ruby-bin"), &patterns),
+            "Should NOT match 'ruby-bin'"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("/usr/sbin"), &patterns),
+            "Should NOT match 'sbin'"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("bin-old"), &patterns),
+            "Should NOT match 'bin-old'"
+        );
     }
 
     #[test]
@@ -252,12 +308,19 @@ mod tests {
 
         // Should match
         assert!(is_ignored_by_pattern(&PathBuf::from("obj"), &patterns));
-        assert!(is_ignored_by_pattern(&PathBuf::from("project/obj"), &patterns));
+        assert!(is_ignored_by_pattern(
+            &PathBuf::from("project/obj"),
+            &patterns
+        ));
 
         // Should NOT match
-        assert!(!is_ignored_by_pattern(&PathBuf::from("config-obj"), &patterns),
-            "Should NOT match 'config-obj'");
-        assert!(!is_ignored_by_pattern(&PathBuf::from("myobj"), &patterns),
-            "Should NOT match 'myobj'");
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("config-obj"), &patterns),
+            "Should NOT match 'config-obj'"
+        );
+        assert!(
+            !is_ignored_by_pattern(&PathBuf::from("myobj"), &patterns),
+            "Should NOT match 'myobj'"
+        );
     }
 }

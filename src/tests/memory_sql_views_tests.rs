@@ -71,20 +71,18 @@ fn test_memories_view_queries_files_table() -> Result<()> {
     )?;
 
     // Query memories view
-    let count: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM memories",
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))?;
 
     assert_eq!(count, 1, "Should find one memory in view");
 
     // Query specific fields
-    let (id, timestamp, memory_type): (String, i64, String) = db.conn.query_row(
-        "SELECT id, timestamp, type FROM memories",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?;
+    let (id, timestamp, memory_type): (String, i64, String) =
+        db.conn
+            .query_row("SELECT id, timestamp, type FROM memories", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?;
 
     assert_eq!(id, "mem_test_123");
     assert_eq!(timestamp, 1234567890);
@@ -136,13 +134,14 @@ fn test_memories_view_filters_json_files() -> Result<()> {
     )?;
 
     // Query memories view - should only see memory files
-    let count: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM memories",
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))?;
 
-    assert_eq!(count, 1, "Should only find memory files, not other JSON files");
+    assert_eq!(
+        count, 1,
+        "Should only find memory files, not other JSON files"
+    );
 
     Ok(())
 }
@@ -177,11 +176,12 @@ fn test_memories_view_handles_missing_optional_fields() -> Result<()> {
     )?;
 
     // Query should work even with missing optional fields
-    let (id, description, git_branch): (String, Option<String>, Option<String>) = db.conn.query_row(
-        "SELECT id, description, git_branch FROM memories",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?;
+    let (id, description, git_branch): (String, Option<String>, Option<String>) =
+        db.conn.query_row(
+            "SELECT id, description, git_branch FROM memories",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
 
     assert_eq!(id, "mem_minimal");
     assert!(description.is_none(), "Optional description should be NULL");

@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use tracing::debug;
 
 use super::cross_language::{
-    find_cross_language_callees, find_cross_language_callers,
-    find_semantic_cross_language_callees, find_semantic_cross_language_callers,
+    find_cross_language_callees, find_cross_language_callers, find_semantic_cross_language_callees,
+    find_semantic_cross_language_callers,
 };
 use super::types::{CallPathNode, MatchType};
 
@@ -73,7 +73,10 @@ pub async fn semantic_neighbors(
         let db_lock = match db_arc.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned in semantic_neighbors search, recovering: {}", poisoned);
+                tracing::warn!(
+                    "Database mutex poisoned in semantic_neighbors search, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -103,7 +106,10 @@ pub async fn semantic_neighbors(
     let db_lock = match db_arc.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            tracing::warn!("Database mutex poisoned in semantic_neighbors fetch, recovering: {}", poisoned);
+            tracing::warn!(
+                "Database mutex poisoned in semantic_neighbors fetch, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };
@@ -159,7 +165,10 @@ pub async fn trace_upstream(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned in trace_upstream callers, recovering: {}", poisoned);
+                tracing::warn!(
+                    "Database mutex poisoned in trace_upstream callers, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -178,14 +187,16 @@ pub async fn trace_upstream(
             .collect();
 
         // Batch fetch all caller symbols (avoids N+1 query pattern)
-        let caller_ids: Vec<String> = relevant_rels.iter().map(|r| r.from_symbol_id.clone()).collect();
+        let caller_ids: Vec<String> = relevant_rels
+            .iter()
+            .map(|r| r.from_symbol_id.clone())
+            .collect();
         let caller_symbols = db_lock.get_symbols_by_ids(&caller_ids)?;
 
         // Build callers list by matching symbols with relationships
         let mut result = Vec::new();
         for rel in relevant_rels {
-            if let Some(caller_symbol) =
-                caller_symbols.iter().find(|s| s.id == rel.from_symbol_id)
+            if let Some(caller_symbol) = caller_symbols.iter().find(|s| s.id == rel.from_symbol_id)
             {
                 result.push((caller_symbol.clone(), rel.kind.clone()));
             }
@@ -337,7 +348,10 @@ pub async fn trace_downstream(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned in trace_downstream callees, recovering: {}", poisoned);
+                tracing::warn!(
+                    "Database mutex poisoned in trace_downstream callees, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -356,15 +370,16 @@ pub async fn trace_downstream(
             .collect();
 
         // Batch fetch all callee symbols (avoids N+1 query pattern)
-        let callee_ids: Vec<String> = relevant_rels.iter().map(|r| r.to_symbol_id.clone()).collect();
+        let callee_ids: Vec<String> = relevant_rels
+            .iter()
+            .map(|r| r.to_symbol_id.clone())
+            .collect();
         let callee_symbols = db_lock.get_symbols_by_ids(&callee_ids)?;
 
         // Build callees list by matching symbols with relationships
         let mut result = Vec::new();
         for rel in relevant_rels {
-            if let Some(callee_symbol) =
-                callee_symbols.iter().find(|s| s.id == rel.to_symbol_id)
-            {
+            if let Some(callee_symbol) = callee_symbols.iter().find(|s| s.id == rel.to_symbol_id) {
                 result.push((callee_symbol.clone(), rel.kind.clone()));
             }
         }

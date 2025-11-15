@@ -442,7 +442,9 @@ async fn test_file_read_error_handling() -> Result<()> {
         Ok(call_result) => {
             let text = extract_text_from_result(&call_result);
             assert!(
-                text.contains("File not found") || text.contains("No symbols found") || text.is_empty(),
+                text.contains("File not found")
+                    || text.contains("No symbols found")
+                    || text.is_empty(),
                 "Should gracefully handle missing file, got: {}",
                 text
             );

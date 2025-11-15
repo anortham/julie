@@ -90,7 +90,10 @@ impl ManageWorkspaceTool {
             let mut locks = match indexing_lock_cache().lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("Indexing lock cache mutex poisoned, recovering: {}", poisoned);
+                    warn!(
+                        "Indexing lock cache mutex poisoned, recovering: {}",
+                        poisoned
+                    );
                     poisoned.into_inner()
                 }
             };
@@ -175,7 +178,10 @@ impl ManageWorkspaceTool {
                                 let db_lock = match db.lock() {
                                     Ok(guard) => guard,
                                     Err(poisoned) => {
-                                        warn!("Database mutex poisoned during symbol count, recovering: {}", poisoned);
+                                        warn!(
+                                            "Database mutex poisoned during symbol count, recovering: {}",
+                                            poisoned
+                                        );
                                         poisoned.into_inner()
                                     }
                                 };
@@ -187,7 +193,10 @@ impl ManageWorkspaceTool {
                                 let db_lock = match db.lock() {
                                     Ok(guard) => guard,
                                     Err(poisoned) => {
-                                        warn!("Database mutex poisoned during symbol count, recovering: {}", poisoned);
+                                        warn!(
+                                            "Database mutex poisoned during symbol count, recovering: {}",
+                                            poisoned
+                                        );
                                         poisoned.into_inner()
                                     }
                                 };
@@ -204,7 +213,9 @@ impl ManageWorkspaceTool {
                 // 🔥 CRITICAL FIX: If database is empty, clear the flag and proceed with indexing
                 // This prevents the nonsensical "Workspace already indexed: 0 symbols" message
                 if symbol_count == 0 {
-                    warn!("is_indexed flag was true but database has 0 symbols - clearing flag and proceeding with indexing");
+                    warn!(
+                        "is_indexed flag was true but database has 0 symbols - clearing flag and proceeding with indexing"
+                    );
                     *handler.is_indexed.write().await = false;
                     // Fall through to indexing logic below
                 } else {
@@ -255,9 +266,11 @@ impl ManageWorkspaceTool {
                                 Some(id) => id,
                                 None => {
                                     warn!("Failed to get primary workspace ID after registration");
-                                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                                    return Ok(CallToolResult::text_content(vec![
+                                        TextContent::from(
                                             "⚠️ Indexing completed but could not update workspace statistics",
-                                        )]));
+                                        ),
+                                    ]));
                                 }
                             },
                         }

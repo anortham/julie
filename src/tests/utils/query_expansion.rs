@@ -37,10 +37,7 @@ fn test_to_lowercase_camelcase() {
 fn test_to_wildcard_query() {
     // FTS5 uses space-separated (implicit AND), not "AND" keyword
     assert_eq!(to_wildcard_query("user service"), "user* service*");
-    assert_eq!(
-        to_wildcard_query("get user data"),
-        "get* user* data*"
-    );
+    assert_eq!(to_wildcard_query("get user data"), "get* user* data*");
 }
 
 #[test]

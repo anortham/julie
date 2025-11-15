@@ -6,8 +6,8 @@
 //! - Heredoc and Nowdoc syntax
 //! - Dynamic features (magic methods, variable functions)
 
-use crate::extractors::php::PhpExtractor;
 use crate::extractors::base::Symbol;
+use crate::extractors::php::PhpExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -25,8 +25,12 @@ fn extract_symbols(code: &str) -> Vec<Symbol> {
     let tree = parser.parse(code, None).unwrap();
 
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = PhpExtractor::new(
+        "php".to_string(),
+        "test.php".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
 
     extractor.extract_symbols(&tree)
 }

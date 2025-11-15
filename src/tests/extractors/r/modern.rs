@@ -149,7 +149,10 @@ odds <- discard(1:10, ~ .x %% 2 == 0)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 6, "Should extract functional programming results");
+        assert!(
+            variables.len() >= 6,
+            "Should extract functional programming results"
+        );
     }
 
     #[test]
@@ -179,7 +182,10 @@ result_with_progress <- future_map(
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract parallel processing results");
+        assert!(
+            variables.len() >= 2,
+            "Should extract parallel processing results"
+        );
     }
 
     #[test]
@@ -210,7 +216,10 @@ unnested <- results %>%
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 3, "Should extract nested data structures");
+        assert!(
+            variables.len() >= 3,
+            "Should extract nested data structures"
+        );
     }
 
     #[test]
@@ -303,6 +312,9 @@ unique_rows <- distinct(df, category, .keep_all = TRUE)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 6, "Should extract advanced dplyr operations");
+        assert!(
+            variables.len() >= 6,
+            "Should extract advanced dplyr operations"
+        );
     }
 }

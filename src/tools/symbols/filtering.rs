@@ -70,10 +70,7 @@ pub fn collect_symbols_by_depth(
 ///
 /// Returns filtered symbols in original order, keeping only those within
 /// the maximum depth from top-level symbols.
-pub fn apply_max_depth_filter(
-    all_symbols: &[Symbol],
-    max_depth: u32,
-) -> Vec<Symbol> {
+pub fn apply_max_depth_filter(all_symbols: &[Symbol], max_depth: u32) -> Vec<Symbol> {
     let parent_to_children = build_parent_to_children(all_symbols);
     let top_level_indices = find_top_level_symbols(all_symbols);
 
@@ -107,11 +104,7 @@ pub fn apply_max_depth_filter(
 }
 
 /// Recursively add all descendants of a symbol
-fn add_descendants(
-    parent_id: &str,
-    symbols: &[Symbol],
-    result: &mut Vec<usize>,
-) {
+fn add_descendants(parent_id: &str, symbols: &[Symbol], result: &mut Vec<usize>) {
     for (idx, symbol) in symbols.iter().enumerate() {
         if let Some(ref pid) = symbol.parent_id {
             if pid == parent_id {
@@ -126,10 +119,7 @@ fn add_descendants(
 ///
 /// Returns symbols matching the target name (case-insensitive partial match)
 /// and all their descendants. Returns empty vec if no matches found.
-pub fn apply_target_filter(
-    symbols: &[Symbol],
-    target: &str,
-) -> Vec<Symbol> {
+pub fn apply_target_filter(symbols: &[Symbol], target: &str) -> Vec<Symbol> {
     let target_lower = target.to_lowercase();
 
     // Find symbols matching the target
@@ -165,11 +155,7 @@ pub fn apply_target_filter(
 }
 
 /// Recursively add all descendants of symbols in a set
-fn add_all_descendants(
-    parent_ids: &HashSet<String>,
-    symbols: &[Symbol],
-    result: &mut Vec<usize>,
-) {
+fn add_all_descendants(parent_ids: &HashSet<String>, symbols: &[Symbol], result: &mut Vec<usize>) {
     let mut to_process: Vec<String> = parent_ids.iter().cloned().collect();
     let mut processed = HashSet::new();
 
@@ -194,10 +180,7 @@ fn add_all_descendants(
 ///
 /// The limit applies to top-level symbols. Returns all their children as well.
 /// Returns (filtered_symbols, was_truncated).
-pub fn apply_limit_filter(
-    symbols: &[Symbol],
-    limit: u32,
-) -> (Vec<Symbol>, bool) {
+pub fn apply_limit_filter(symbols: &[Symbol], limit: u32) -> (Vec<Symbol>, bool) {
     let limit_usize = limit as usize;
 
     // Count top-level symbols
@@ -227,10 +210,8 @@ pub fn apply_limit_filter(
     }
 
     // Add all children of included top-level symbols
-    let top_level_ids: HashSet<String> = result
-        .iter()
-        .map(|&idx| symbols[idx].id.clone())
-        .collect();
+    let top_level_ids: HashSet<String> =
+        result.iter().map(|&idx| symbols[idx].id.clone()).collect();
 
     add_all_descendants(&top_level_ids, symbols, &mut result);
 
@@ -241,10 +222,8 @@ pub fn apply_limit_filter(
     );
 
     result.sort();
-    let filtered_symbols: Vec<Symbol> = result
-        .into_iter()
-        .map(|idx| symbols[idx].clone())
-        .collect();
+    let filtered_symbols: Vec<Symbol> =
+        result.into_iter().map(|idx| symbols[idx].clone()).collect();
 
     (filtered_symbols, true)
 }

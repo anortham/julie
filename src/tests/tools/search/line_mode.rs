@@ -15,7 +15,7 @@ mod search_line_mode_tests {
     use std::fs;
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     /// Extract text from CallToolResult safely
     fn extract_text_from_result(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
@@ -89,7 +89,10 @@ fn processPayment() {
         // Initialize handler and index
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -170,7 +173,10 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -260,7 +266,10 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -338,7 +347,10 @@ fn processPayment() {
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -428,7 +440,10 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -528,7 +543,10 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {
@@ -622,7 +640,10 @@ def python_function():
 
         let handler = JulieServerHandler::new().await?;
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         let index_tool = ManageWorkspaceTool {

@@ -55,7 +55,8 @@ fn extract_identifier_from_node(
             if content_after.starts_with("\\k<") {
                 if let Some(end_pos) = content_after.find('>') {
                     // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-                    if content_after.is_char_boundary(3) && content_after.is_char_boundary(end_pos) {
+                    if content_after.is_char_boundary(3) && content_after.is_char_boundary(end_pos)
+                    {
                         let group_name = content_after[3..end_pos].to_string();
                         if !group_name.is_empty() {
                             let containing_symbol_id =

@@ -6,8 +6,10 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::extractor::BaseExtractor;
-use super::types::{Identifier, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility};
 use super::types::IdentifierKind;
+use super::types::{
+    Identifier, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
+};
 
 impl BaseExtractor {
     /// Create a symbol - exact port of createSymbol method

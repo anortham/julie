@@ -43,7 +43,10 @@ pub async fn handle_file_created_or_modified_static(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during file hash check, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during file hash check, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -68,13 +71,14 @@ pub async fn handle_file_created_or_modified_static(
         .unwrap_or_else(|| "unknown".to_string());
     let content_str = String::from_utf8_lossy(&content);
 
-    let symbols = match extractor_manager.extract_symbols(&relative_path, &content_str, workspace_root) {
-        Ok(symbols) => symbols,
-        Err(e) => {
-            error!("❌ Symbol extraction failed for {}: {}", relative_path, e);
-            return Ok(()); // Skip update to preserve existing data
-        }
-    };
+    let symbols =
+        match extractor_manager.extract_symbols(&relative_path, &content_str, workspace_root) {
+            Ok(symbols) => symbols,
+            Err(e) => {
+                error!("❌ Symbol extraction failed for {}: {}", relative_path, e);
+                return Ok(()); // Skip update to preserve existing data
+            }
+        };
 
     info!(
         "Extracted {} symbols from {} ({})",
@@ -88,7 +92,10 @@ pub async fn handle_file_created_or_modified_static(
         let mut db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during file update, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during file update, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -162,13 +169,22 @@ pub async fn handle_file_created_or_modified_static(
                         let mut db_lock = match db_clone.lock() {
                             Ok(guard) => guard,
                             Err(poisoned) => {
-                                warn!("Database mutex poisoned during embedding persistence: {}", poisoned);
+                                warn!(
+                                    "Database mutex poisoned during embedding persistence: {}",
+                                    poisoned
+                                );
                                 poisoned.into_inner()
                             }
                         };
 
-                        if let Err(e) = db_lock.bulk_store_embeddings(&embeddings, dimensions, model_name) {
-                            warn!("⚠️ Failed to persist embeddings for {}: {}", path_for_log.display(), e);
+                        if let Err(e) =
+                            db_lock.bulk_store_embeddings(&embeddings, dimensions, model_name)
+                        {
+                            warn!(
+                                "⚠️ Failed to persist embeddings for {}: {}",
+                                path_for_log.display(),
+                                e
+                            );
                         } else {
                             debug!("💾 Persisted {} embeddings to SQLite", embeddings.len());
                         }
@@ -178,7 +194,11 @@ pub async fn handle_file_created_or_modified_static(
                     if let Some(ref vector_store) = vector_store_clone {
                         let mut store_write = vector_store.write().await;
                         if let Err(e) = store_write.insert_batch(&embeddings) {
-                            warn!("⚠️ Failed to update HNSW index for {}: {}", path_for_log.display(), e);
+                            warn!(
+                                "⚠️ Failed to update HNSW index for {}: {}",
+                                path_for_log.display(),
+                                e
+                            );
                         } else {
                             debug!("🔄 Updated HNSW index with {} vectors", embeddings.len());
                         }
@@ -214,7 +234,10 @@ pub async fn handle_file_deleted_static(
     let db_lock = match db.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            warn!("Database mutex poisoned during file deletion, recovering: {}", poisoned);
+            warn!(
+                "Database mutex poisoned during file deletion, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };

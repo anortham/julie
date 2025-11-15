@@ -43,7 +43,10 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
         let db = match db_arc.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during startup check, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during startup check, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -79,9 +82,7 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
                 // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
                 // No normalization needed - indexed_files are already relative
-                let indexed_files: HashSet<String> = indexed_files_raw
-                    .into_iter()
-                    .collect();
+                let indexed_files: HashSet<String> = indexed_files_raw.into_iter().collect();
 
                 let workspace_files = scan_workspace_files(&workspace.root)?;
                 let new_files: Vec<_> = workspace_files.difference(&indexed_files).collect();
@@ -238,7 +239,8 @@ pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<Stri
         // On Windows, strip_prefix() returns paths with backslashes (src\file.rs)
         // But database stores paths with forward slashes (src/file.rs)
         // This mismatch breaks staleness detection on Windows
-        if let Ok(relative_path) = crate::utils::paths::to_relative_unix_style(path, workspace_root) {
+        if let Ok(relative_path) = crate::utils::paths::to_relative_unix_style(path, workspace_root)
+        {
             files.insert(relative_path);
         }
     }

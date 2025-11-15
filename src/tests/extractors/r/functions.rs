@@ -29,11 +29,17 @@ multiply <- function(x, y) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract add and multiply functions");
+        assert!(
+            functions.len() >= 2,
+            "Should extract add and multiply functions"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(func_names.contains(&"add"), "Should find add function");
-        assert!(func_names.contains(&"multiply"), "Should find multiply function");
+        assert!(
+            func_names.contains(&"multiply"),
+            "Should find multiply function"
+        );
     }
 
     #[test]
@@ -57,11 +63,17 @@ calculate <- function(x, y = 10, z = 5) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract greet and calculate functions");
+        assert!(
+            functions.len() >= 2,
+            "Should extract greet and calculate functions"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(func_names.contains(&"greet"), "Should find greet function");
-        assert!(func_names.contains(&"calculate"), "Should find calculate function");
+        assert!(
+            func_names.contains(&"calculate"),
+            "Should find calculate function"
+        );
     }
 
     #[test]
@@ -87,11 +99,17 @@ wrapper <- function(x, y, ...) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract functions with ellipsis");
+        assert!(
+            functions.len() >= 2,
+            "Should extract functions with ellipsis"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(func_names.contains(&"my_func"), "Should find my_func");
-        assert!(func_names.contains(&"wrapper"), "Should find wrapper function");
+        assert!(
+            func_names.contains(&"wrapper"),
+            "Should find wrapper function"
+        );
     }
 
     #[test]
@@ -119,9 +137,18 @@ result3 <- Map(function(x, y) x + y, 1:5, 6:10)
         assert!(variables.len() >= 3, "Should extract result variables");
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
-        assert!(var_names.contains(&"result1"), "Should find result1 from lapply");
-        assert!(var_names.contains(&"result2"), "Should find result2 from sapply");
-        assert!(var_names.contains(&"result3"), "Should find result3 from Map");
+        assert!(
+            var_names.contains(&"result1"),
+            "Should find result1 from lapply"
+        );
+        assert!(
+            var_names.contains(&"result2"),
+            "Should find result2 from sapply"
+        );
+        assert!(
+            var_names.contains(&"result3"),
+            "Should find result3 from Map"
+        );
     }
 
     #[test]
@@ -156,11 +183,17 @@ analyze_data <- function(data) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract stats and analyze_data functions");
+        assert!(
+            functions.len() >= 2,
+            "Should extract stats and analyze_data functions"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(func_names.contains(&"stats"), "Should find stats function");
-        assert!(func_names.contains(&"analyze_data"), "Should find analyze_data function");
+        assert!(
+            func_names.contains(&"analyze_data"),
+            "Should find analyze_data function"
+        );
     }
 
     #[test]
@@ -189,11 +222,17 @@ make_adder <- function(n) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract outer functions at minimum");
+        assert!(
+            functions.len() >= 2,
+            "Should extract outer functions at minimum"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(func_names.contains(&"outer"), "Should find outer function");
-        assert!(func_names.contains(&"make_adder"), "Should find make_adder function");
+        assert!(
+            func_names.contains(&"make_adder"),
+            "Should find make_adder function"
+        );
     }
 
     #[test]
@@ -222,11 +261,20 @@ fibonacci <- function(n) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract factorial and fibonacci");
+        assert!(
+            functions.len() >= 2,
+            "Should extract factorial and fibonacci"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"factorial"), "Should find factorial function");
-        assert!(func_names.contains(&"fibonacci"), "Should find fibonacci function");
+        assert!(
+            func_names.contains(&"factorial"),
+            "Should find factorial function"
+        );
+        assert!(
+            func_names.contains(&"fibonacci"),
+            "Should find fibonacci function"
+        );
     }
 
     #[test]
@@ -253,11 +301,20 @@ log_message <- function(msg, level = "INFO") {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract increment and log_message");
+        assert!(
+            functions.len() >= 2,
+            "Should extract increment and log_message"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"increment"), "Should find increment function");
-        assert!(func_names.contains(&"log_message"), "Should find log_message function");
+        assert!(
+            func_names.contains(&"increment"),
+            "Should find increment function"
+        );
+        assert!(
+            func_names.contains(&"log_message"),
+            "Should find log_message function"
+        );
     }
 
     #[test]
@@ -288,12 +345,24 @@ process <- function(x) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 4, "Should extract all composed functions");
+        assert!(
+            functions.len() >= 4,
+            "Should extract all composed functions"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"square"), "Should find square function");
-        assert!(func_names.contains(&"double"), "Should find double function");
-        assert!(func_names.contains(&"square_then_double"), "Should find composed function");
+        assert!(
+            func_names.contains(&"square"),
+            "Should find square function"
+        );
+        assert!(
+            func_names.contains(&"double"),
+            "Should find double function"
+        );
+        assert!(
+            func_names.contains(&"square_then_double"),
+            "Should find composed function"
+        );
     }
 
     #[test]
@@ -326,11 +395,23 @@ with_env <- function(expr, envir = parent.frame()) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 3, "Should extract all parameter-complex functions");
+        assert!(
+            functions.len() >= 3,
+            "Should extract all parameter-complex functions"
+        );
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"model_fit"), "Should find model_fit function");
-        assert!(func_names.contains(&"apply_operation"), "Should find apply_operation function");
-        assert!(func_names.contains(&"with_env"), "Should find with_env function");
+        assert!(
+            func_names.contains(&"model_fit"),
+            "Should find model_fit function"
+        );
+        assert!(
+            func_names.contains(&"apply_operation"),
+            "Should find apply_operation function"
+        );
+        assert!(
+            func_names.contains(&"with_env"),
+            "Should find with_env function"
+        );
     }
 }

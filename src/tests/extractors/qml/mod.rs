@@ -39,12 +39,12 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 // Test module organization
 // Each module focuses on a specific aspect of QML functionality
-pub mod basics;       // Core QML: imports, objects, basic properties
-pub mod functions;    // Functions and JavaScript code
-pub mod signals;      // Signals and signal handlers
-pub mod bindings;     // Property bindings and expressions
-pub mod components;   // Custom components, loaders, repeaters
-pub mod layouts;      // Anchors, layouts, positioning
-pub mod animations;   // States, transitions, animations
-pub mod modern;       // Qt 5.x/6.x modern features
-pub mod real_world;   // Real-world validation (cool-retro-term, KDE)
+pub mod animations; // States, transitions, animations
+pub mod basics; // Core QML: imports, objects, basic properties
+pub mod bindings; // Property bindings and expressions
+pub mod components; // Custom components, loaders, repeaters
+pub mod functions; // Functions and JavaScript code
+pub mod layouts; // Anchors, layouts, positioning
+pub mod modern; // Qt 5.x/6.x modern features
+pub mod real_world;
+pub mod signals; // Signals and signal handlers // Real-world validation (cool-retro-term, KDE)

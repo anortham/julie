@@ -1,0 +1,29 @@
+{
+  "id": "checkpoint_6917746b_ead7c4",
+  "timestamp": 1763144811,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "47c5e3a",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_semantic-search-review-7-confirmed-issues.json",
+      "docs/SEMANTIC_SEARCH_REMEDIATION_PLAN.md",
+      "docs/TOOL_AUDIT.md",
+      "docs/semantic_search_review.md",
+      "src/extractors/factory.rs",
+      "src/extractors/mod.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/workspace/indexing/extractor.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "TypeScript Identifier+Type Extraction WIRED UP: Factory now returns ExtractionResults with full data. TypeScript extractor calls extract_identifiers() and infer_types() - both already implemented! Indexing pipeline updated to receive ExtractionResults. All code compiles cleanly. Database corrupted during development - cleared and ready for re-index. TypeScript is now the reference implementation for other 29 languages. Ready to add bulk storage calls and test with Julie's own TS codebase.",
+  "tags": [
+    "milestone",
+    "typescript",
+    "identifiers",
+    "types",
+    "phase1-complete"
+  ]
+}

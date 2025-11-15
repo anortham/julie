@@ -123,36 +123,44 @@ namespace ExceptionHandling
         let custom_exception = symbols.iter().find(|s| s.name == "CustomException");
         assert!(custom_exception.is_some());
         assert_eq!(custom_exception.unwrap().kind, SymbolKind::Class);
-        assert!(custom_exception
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(": Exception"));
+        assert!(
+            custom_exception
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(": Exception")
+        );
 
         let resource_manager = symbols.iter().find(|s| s.name == "ResourceManager");
         assert!(resource_manager.is_some());
-        assert!(resource_manager
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("IDisposable"));
-        assert!(resource_manager
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("IAsyncDisposable"));
+        assert!(
+            resource_manager
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("IDisposable")
+        );
+        assert!(
+            resource_manager
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("IAsyncDisposable")
+        );
 
         let dispose_async = symbols.iter().find(|s| s.name == "DisposeAsync");
         assert!(dispose_async.is_some());
-        assert!(dispose_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("ValueTask"));
+        assert!(
+            dispose_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("ValueTask")
+        );
 
         let handle_exception = symbols.iter().find(|s| s.name == "HandleException");
         assert!(handle_exception.is_some());
@@ -209,12 +217,14 @@ namespace TestingPatterns
 
         let setup = symbols.iter().find(|s| s.name == "Setup");
         assert!(setup.is_some());
-        assert!(setup
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("protected virtual"));
+        assert!(
+            setup
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("protected virtual")
+        );
 
         let should_create_user = symbols.iter().find(|s| s.name == "ShouldCreateUser");
         assert!(should_create_user.is_some());
@@ -276,21 +286,25 @@ namespace PerformanceTests
 
         let measure = symbols.iter().find(|s| s.name == "Measure");
         assert!(measure.is_some());
-        assert!(measure
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Action"));
+        assert!(
+            measure
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Action")
+        );
 
         let measure_async = symbols.iter().find(|s| s.name == "MeasureAsync");
         assert!(measure_async.is_some());
-        assert!(measure_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Func<Task>"));
+        assert!(
+            measure_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Func<Task>")
+        );
     }
     #[test]
     fn test_edge_cases_and_error_handling() {
@@ -415,21 +429,25 @@ namespace EdgeCases
 
         let complex_generic = symbols.iter().find(|s| s.name == "ComplexGeneric");
         assert!(complex_generic.is_some());
-        assert!(complex_generic
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("<T, U, V>"));
+        assert!(
+            complex_generic
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<T, U, V>")
+        );
 
         let process_async = symbols.iter().find(|s| s.name == "ProcessAsync");
         assert!(process_async.is_some());
-        assert!(process_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("<TResult, TInput>"));
+        assert!(
+            process_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<TResult, TInput>")
+        );
 
         let complex_number = symbols.iter().find(|s| s.name == "ComplexNumber");
         assert!(complex_number.is_some());
@@ -453,12 +471,14 @@ namespace EdgeCases
 
         let unsafe_operations = symbols.iter().find(|s| s.name == "UnsafeOperations");
         assert!(unsafe_operations.is_some());
-        assert!(unsafe_operations
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("unsafe class"));
+        assert!(
+            unsafe_operations
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("unsafe class")
+        );
 
         let modern_string_features = symbols.iter().find(|s| s.name == "ModernStringFeatures");
         assert!(modern_string_features.is_some());

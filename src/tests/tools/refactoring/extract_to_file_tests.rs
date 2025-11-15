@@ -400,10 +400,12 @@ async fn test_extract_missing_parameters() -> Result<()> {
     let result = tool.call_tool(&handler).await;
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Missing required parameter"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing required parameter")
+    );
 
     Ok(())
 }

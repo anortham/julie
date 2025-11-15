@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -65,30 +65,36 @@ mod tests {
         let shape = symbols.iter().find(|s| s.name == "Shape");
         assert!(shape.is_some());
         assert_eq!(shape.unwrap().kind, SymbolKind::Class);
-        assert!(shape
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Shape"));
+        assert!(
+            shape
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Shape")
+        );
 
         let circle = symbols.iter().find(|s| s.name == "Circle");
         assert!(circle.is_some());
-        assert!(circle
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public Shape"));
+        assert!(
+            circle
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public Shape")
+        );
 
         let colored_circle = symbols.iter().find(|s| s.name == "ColoredCircle");
         assert!(colored_circle.is_some());
-        assert!(colored_circle
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public Circle, public Drawable"));
+        assert!(
+            colored_circle
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public Circle, public Drawable")
+        );
 
         // Check methods
         let destructor = symbols.iter().find(|s| s.name == "~Shape");
@@ -98,21 +104,24 @@ mod tests {
         let area = symbols.iter().find(|s| s.name == "area");
         assert!(area.is_some());
         assert_eq!(area.unwrap().kind, SymbolKind::Method);
-        assert!(area
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("virtual"));
+        assert!(
+            area.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("virtual")
+        );
 
         let get_instance_count = symbols.iter().find(|s| s.name == "getInstanceCount");
         assert!(get_instance_count.is_some());
-        assert!(get_instance_count
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static"));
+        assert!(
+            get_instance_count
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static")
+        );
     }
 
     #[test]
@@ -163,21 +172,25 @@ mod tests {
         let point = symbols.iter().find(|s| s.name == "Point");
         assert!(point.is_some());
         assert_eq!(point.unwrap().kind, SymbolKind::Struct);
-        assert!(point
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("struct Point"));
+        assert!(
+            point
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("struct Point")
+        );
 
         let aligned_data = symbols.iter().find(|s| s.name == "AlignedData");
         assert!(aligned_data.is_some());
-        assert!(aligned_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("alignas(16)"));
+        assert!(
+            aligned_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("alignas(16)")
+        );
 
         let value = symbols.iter().find(|s| s.name == "Value");
         assert!(value.is_some());
@@ -268,23 +281,27 @@ mod tests {
         let destructor = symbols.iter().find(|s| s.name == "~Resource");
         assert!(destructor.is_some());
         assert_eq!(destructor.unwrap().kind, SymbolKind::Destructor);
-        assert!(destructor
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("virtual"));
+        assert!(
+            destructor
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("virtual")
+        );
 
         let move_ctor = symbols.iter().find(|s| {
             s.name == "Resource" && s.signature.as_ref().unwrap().contains("Resource&& other")
         });
         assert!(move_ctor.is_some());
-        assert!(move_ctor
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("noexcept"));
+        assert!(
+            move_ctor
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("noexcept")
+        );
 
         let deleted_ctor = symbols
             .iter()
@@ -346,22 +363,26 @@ mod tests {
         let dot_func = symbols.iter().find(|s| s.name == "dot");
         assert!(dot_func.is_some());
         assert_eq!(dot_func.unwrap().kind, SymbolKind::Function);
-        assert!(dot_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("friend"));
+        assert!(
+            dot_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("friend")
+        );
 
         let plus_op = symbols.iter().find(|s| s.name == "operator+");
         assert!(plus_op.is_some());
         assert_eq!(plus_op.unwrap().kind, SymbolKind::Operator);
-        assert!(plus_op
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("friend"));
+        assert!(
+            plus_op
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("friend")
+        );
 
         let vector_class = symbols.iter().find(|s| s.name == "Vector");
         assert!(vector_class.is_some());

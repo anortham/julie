@@ -51,3 +51,4 @@ pub mod identifier_extraction;
 pub mod language_features;
 pub mod metadata;
 pub mod runtime;
+mod types; // Phase 4: Type extraction verification tests

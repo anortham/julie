@@ -93,14 +93,21 @@ global_var <<- 500   # Global assignment
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 4, "Should extract all assignment operators (found {})", variables.len());
+        assert!(
+            variables.len() >= 4,
+            "Should extract all assignment operators (found {})",
+            variables.len()
+        );
 
         // Check for specific variables
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"x"), "Should find x variable");
         assert!(var_names.contains(&"y"), "Should find y variable");
         assert!(var_names.contains(&"z"), "Should find z variable");
-        assert!(var_names.contains(&"global_var"), "Should find global_var variable");
+        assert!(
+            var_names.contains(&"global_var"),
+            "Should find global_var variable"
+        );
     }
 
     #[test]

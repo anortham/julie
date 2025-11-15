@@ -1,6 +1,6 @@
 // PHP Extractor - Function/method extraction
 
-use super::{determine_visibility, extract_modifiers, find_child, find_child_text, PhpExtractor};
+use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
 use crate::extractors::base::{Symbol, SymbolKind, SymbolOptions};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -117,7 +117,7 @@ pub(super) fn find_return_type<'a>(_extractor: &PhpExtractor, node: &Node<'a>) -
         if found_colon {
             match child.kind() {
                 "primitive_type" | "named_type" | "union_type" | "optional_type" => {
-                    return Some(child)
+                    return Some(child);
                 }
                 _ => {}
             }

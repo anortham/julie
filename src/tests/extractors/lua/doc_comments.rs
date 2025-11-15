@@ -12,8 +12,12 @@ mod tests {
             .expect("Error loading Lua grammar");
         let tree = parser.parse(code, None).expect("Failed to parse code");
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor =
-            LuaExtractor::new("lua".to_string(), "test.lua".to_string(), code.to_string(), &workspace_root);
+        let mut extractor = LuaExtractor::new(
+            "lua".to_string(),
+            "test.lua".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
         extractor.extract_symbols(&tree)
     }
 

@@ -4,7 +4,7 @@
 // for token-efficient storage and cross-platform compatibility.
 
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 
 /// Convert an absolute path to a relative Unix-style path (with `/` separators)
 ///
@@ -37,7 +37,8 @@ use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<String> {
     // 🔥 CRITICAL: Try to canonicalize both paths to handle symlinks (e.g., /var -> /private/var on macOS)
     // If canonicalization fails (path doesn't exist), fall back to original paths
-    let (path_to_use, root_to_use) = match (absolute.canonicalize(), workspace_root.canonicalize()) {
+    let (path_to_use, root_to_use) = match (absolute.canonicalize(), workspace_root.canonicalize())
+    {
         (Ok(canonical_abs), Ok(canonical_root)) => {
             // Both paths can be canonicalized - use canonical versions
             (canonical_abs, canonical_root)
@@ -81,9 +82,7 @@ pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<
         })?;
 
     // Convert to string and normalize separators to Unix-style
-    let path_str = relative
-        .to_str()
-        .context("Path contains invalid UTF-8")?;
+    let path_str = relative.to_str().context("Path contains invalid UTF-8")?;
 
     // Replace platform-specific separators with Unix-style /
     // On Unix, MAIN_SEPARATOR is already '/', so this is a no-op
@@ -229,7 +228,10 @@ mod tests {
 
         assert!(result.is_err(), "Should reject files outside workspace");
         assert!(
-            result.unwrap_err().to_string().contains("not within workspace"),
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("not within workspace"),
             "Error should mention workspace boundary violation"
         );
     }

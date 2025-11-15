@@ -8,8 +8,8 @@
 //! - Comprehensive symbol collection from mixed syntax
 
 use crate::extractors::base::SymbolKind;
-use std::path::PathBuf;
 use crate::extractors::typescript::TypeScriptExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_visit_all_symbol_kinds() {
@@ -37,13 +37,12 @@ fn test_visit_all_symbol_kinds() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(!symbols.is_empty(), "Should extract some symbols");

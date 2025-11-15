@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -130,28 +130,28 @@ impl ManageWorkspaceTool {
 
         match self.operation.as_str() {
             "index" => {
-                self.handle_index_command(
-                    handler,
-                    self.path.clone(),
-                    self.force.unwrap_or(false),
-                )
-                .await
+                self.handle_index_command(handler, self.path.clone(), self.force.unwrap_or(false))
+                    .await
             }
             "add" => {
-                let path = self.path.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("'path' parameter required for 'add' operation"))?;
-                self.handle_add_command(handler, path, self.name.clone()).await
+                let path = self.path.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("'path' parameter required for 'add' operation")
+                })?;
+                self.handle_add_command(handler, path, self.name.clone())
+                    .await
             }
             "remove" => {
-                let workspace_id = self.workspace_id.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("'workspace_id' parameter required for 'remove' operation"))?;
+                let workspace_id = self.workspace_id.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("'workspace_id' parameter required for 'remove' operation")
+                })?;
                 self.handle_remove_command(handler, workspace_id).await
             }
             "list" => self.handle_list_command(handler).await,
             "clean" => self.handle_clean_command(handler).await,
             "refresh" => {
-                let workspace_id = self.workspace_id.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("'workspace_id' parameter required for 'refresh' operation"))?;
+                let workspace_id = self.workspace_id.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("'workspace_id' parameter required for 'refresh' operation")
+                })?;
                 self.handle_refresh_command(handler, workspace_id).await
             }
             "stats" => {

@@ -140,7 +140,11 @@ mod relative_path_tests {
     fn test_nested_directory_uses_unix_separators() {
         // Test deeply nested file
         let workspace_root = std::env::current_dir().expect("Failed to get current directory");
-        let file_path = workspace_root.join("src").join("extractors").join("typescript").join("symbols.ts");
+        let file_path = workspace_root
+            .join("src")
+            .join("extractors")
+            .join("typescript")
+            .join("symbols.ts");
 
         let code = "export function extractSymbols() {}";
 
@@ -164,10 +168,7 @@ mod relative_path_tests {
 
             // Count separators (should be 3 for src/extractors/typescript/symbols.ts)
             let separator_count = symbol.file_path.matches('/').count();
-            assert_eq!(
-                separator_count, 3,
-                "Should have 3 directory separators"
-            );
+            assert_eq!(separator_count, 3, "Should have 3 directory separators");
         }
     }
 

@@ -9,10 +9,10 @@
 //! - Constant PHPDoc comments are extracted
 //! - Symbols without PHPDoc correctly return None
 
+use crate::extractors::base::Symbol;
 use crate::extractors::php::PhpExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
-use crate::extractors::base::Symbol;
 
 fn init_parser() -> Parser {
     let mut parser = Parser::new();
@@ -28,8 +28,12 @@ fn extract_symbols(code: &str) -> Vec<Symbol> {
     let tree = parser.parse(code, None).unwrap();
 
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        PhpExtractor::new("php".to_string(), "test.php".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = PhpExtractor::new(
+        "php".to_string(),
+        "test.php".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
 
     extractor.extract_symbols(&tree)
 }
@@ -301,37 +305,45 @@ fn test_phpdoc_extraction_mixed_symbols() {
         .find(|s| s.name == "PaymentProcessor")
         .unwrap();
     assert!(class_sym.doc_comment.is_some());
-    assert!(class_sym
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Handles payment processing"));
+    assert!(
+        class_sym
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Handles payment processing")
+    );
 
     // Check property doc
     let prop_sym = symbols.iter().find(|s| s.name == "totalAmount").unwrap();
     assert!(prop_sym.doc_comment.is_some());
-    assert!(prop_sym
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Total amount processed"));
+    assert!(
+        prop_sym
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Total amount processed")
+    );
 
     // Check method docs
     let process_method = symbols.iter().find(|s| s.name == "processPayment").unwrap();
     assert!(process_method.doc_comment.is_some());
-    assert!(process_method
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Process a payment"));
+    assert!(
+        process_method
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Process a payment")
+    );
 
     let history_method = symbols.iter().find(|s| s.name == "getHistory").unwrap();
     assert!(history_method.doc_comment.is_some());
-    assert!(history_method
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Get the transaction history"));
+    assert!(
+        history_method
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Get the transaction history")
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::database::{create_file_info, SymbolDatabase};
+use crate::database::{SymbolDatabase, create_file_info};
 use crate::extractors::base::Visibility;
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
@@ -93,7 +93,10 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
 
         // Verify symbols were stored
         let symbol_count = db.count_symbols_for_workspace()?;
-        assert_eq!(symbol_count, 2, "Should have 2 symbols after successful bulk insert");
+        assert_eq!(
+            symbol_count, 2,
+            "Should have 2 symbols after successful bulk insert"
+        );
 
         // Verify FTS5 is in sync
         let fts_count: i64 = db.conn.query_row(
@@ -101,7 +104,10 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(fts_count, 2, "FTS5 should have 2 entries matching 'function'");
+        assert_eq!(
+            fts_count, 2,
+            "FTS5 should have 2 entries matching 'function'"
+        );
 
         // Verify indexes exist
         let index_count: i64 = db.conn.query_row(
@@ -117,7 +123,10 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(trigger_count, 3, "Should have 3 FTS triggers (insert, update, delete)");
+        assert_eq!(
+            trigger_count, 3,
+            "Should have 3 FTS triggers (insert, update, delete)"
+        );
     }
 
     Ok(())
@@ -154,19 +163,15 @@ fn test_bulk_store_files_atomicity() -> Result<()> {
         let db = SymbolDatabase::new(&db_path)?;
 
         // Check file count
-        let file_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files",
-            [],
-            |row| row.get(0),
-        )?;
+        let file_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 2, "Should have 2 files");
 
         // Check FTS5 count - this should match if atomic
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts",
-            [],
-            |row| row.get(0),
-        )?;
+        let fts_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
         assert_eq!(fts_count, 2, "FTS5 should have 2 file entries");
 
         // Verify indexes exist
@@ -214,16 +219,16 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
     // Get symbol IDs
     let (caller_id, callee_id) = {
         let db = SymbolDatabase::new(&db_path)?;
-        let caller_id: String = db.conn.query_row(
-            "SELECT id FROM symbols WHERE name='caller'",
-            [],
-            |row| row.get(0),
-        )?;
-        let callee_id: String = db.conn.query_row(
-            "SELECT id FROM symbols WHERE name='callee'",
-            [],
-            |row| row.get(0),
-        )?;
+        let caller_id: String =
+            db.conn
+                .query_row("SELECT id FROM symbols WHERE name='caller'", [], |row| {
+                    row.get(0)
+                })?;
+        let callee_id: String =
+            db.conn
+                .query_row("SELECT id FROM symbols WHERE name='callee'", [], |row| {
+                    row.get(0)
+                })?;
         (caller_id, callee_id)
     };
 
@@ -231,9 +236,11 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
     {
         let mut db = SymbolDatabase::new(&db_path)?;
 
-        let relationships = vec![
-            create_test_relationship(&caller_id, &callee_id, RelationshipKind::Calls),
-        ];
+        let relationships = vec![create_test_relationship(
+            &caller_id,
+            &callee_id,
+            RelationshipKind::Calls,
+        )];
 
         db.bulk_store_relationships(&relationships)?;
     }
@@ -243,11 +250,9 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
         let db = SymbolDatabase::new(&db_path)?;
 
         // Check relationship count
-        let rel_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM relationships",
-            [],
-            |row| row.get(0),
-        )?;
+        let rel_count: i64 =
+            db.conn
+                .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
         assert_eq!(rel_count, 1, "Should have 1 relationship");
 
         // Verify indexes exist
@@ -256,7 +261,10 @@ fn test_bulk_store_relationships_atomicity() -> Result<()> {
             [],
             |row| row.get(0),
         )?;
-        assert!(index_count >= 3, "Should have at least 3 relationship indexes");
+        assert!(
+            index_count >= 3,
+            "Should have at least 3 relationship indexes"
+        );
     }
 
     Ok(())
@@ -287,9 +295,7 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
     {
         let mut db = SymbolDatabase::new(&db_path)?;
 
-        let symbols = vec![
-            create_test_symbol("old_function_v1", "/test/file.rs"),
-        ];
+        let symbols = vec![create_test_symbol("old_function_v1", "/test/file.rs")];
         db.bulk_store_symbols(&symbols, "test_workspace")?;
     }
 
@@ -311,12 +317,13 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
         // At this point, if we crash, the file has no symbols
         // Let's verify the cleanup happened
         let count_after_delete = db.count_symbols_for_workspace()?;
-        assert_eq!(count_after_delete, 0, "Symbols should be deleted after cleanup");
+        assert_eq!(
+            count_after_delete, 0,
+            "Symbols should be deleted after cleanup"
+        );
 
         // Step 2: Insert new symbols (separate transaction)
-        let new_symbols = vec![
-            create_test_symbol("new_function_v2", "/test/file.rs"),
-        ];
+        let new_symbols = vec![create_test_symbol("new_function_v2", "/test/file.rs")];
         db.bulk_store_symbols(&new_symbols, "test_workspace")?;
     }
 

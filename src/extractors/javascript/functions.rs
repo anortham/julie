@@ -97,9 +97,10 @@ impl super::JavaScriptExtractor {
         let mut metadata = HashMap::new();
         metadata.insert(
             "isStatic".to_string(),
-            json!(node
-                .children(&mut node.walk())
-                .any(|c| c.kind() == "static")),
+            json!(
+                node.children(&mut node.walk())
+                    .any(|c| c.kind() == "static")
+            ),
         );
         metadata.insert("isAsync".to_string(), json!(self.is_async(&node)));
         metadata.insert("isGenerator".to_string(), json!(self.is_generator(&node)));

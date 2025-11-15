@@ -10,8 +10,8 @@
 //! Detailed CRUD functionality is tested in memory_plan_tests.rs unit tests.
 
 use crate::handler::JulieServerHandler;
+use crate::tools::memory::plan::{PlanStatus, get_plan, list_plans};
 use crate::tools::memory::{PlanAction, PlanTool};
-use crate::tools::memory::plan::{get_plan, list_plans, PlanStatus};
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
@@ -22,7 +22,9 @@ async fn create_test_handler() -> Result<(JulieServerHandler, TempDir)> {
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace_with_force(Some(workspace_path), true).await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path), true)
+        .await?;
 
     Ok((handler, temp_dir))
 }
@@ -86,7 +88,6 @@ async fn test_plan_get_action() -> Result<()> {
 
     let _result = get_tool.call_tool(&handler).await?;
 
-
     Ok(())
 }
 
@@ -119,7 +120,6 @@ async fn test_plan_list_action() -> Result<()> {
     };
 
     let _result = list_tool.call_tool(&handler).await?;
-
 
     Ok(())
 }
@@ -162,12 +162,15 @@ async fn test_plan_activate_action() -> Result<()> {
 
     let _result = activate_tool.call_tool(&handler).await?;
 
-
     // Verify plan B is active and plan A is archived
     let plan_a = get_plan(workspace_root, "plan_plan-a")?;
     let plan_b = get_plan(workspace_root, "plan_plan-b")?;
 
-    assert_eq!(plan_a.status, PlanStatus::Archived, "Plan A should be archived");
+    assert_eq!(
+        plan_a.status,
+        PlanStatus::Archived,
+        "Plan A should be archived"
+    );
     assert_eq!(plan_b.status, PlanStatus::Active, "Plan B should be active");
 
     Ok(())
@@ -200,7 +203,6 @@ async fn test_plan_update_action() -> Result<()> {
     };
 
     let _result = update_tool.call_tool(&handler).await?;
-
 
     // Verify plan was updated on disk
     let plan = get_plan(workspace_root, "plan_original-plan")?;
@@ -236,7 +238,6 @@ async fn test_plan_complete_action() -> Result<()> {
     };
 
     let _result = complete_tool.call_tool(&handler).await?;
-
 
     // Verify plan status is completed
     let plan = get_plan(workspace_root, "plan_completable-plan")?;
@@ -293,7 +294,6 @@ async fn test_plan_filter_by_status() -> Result<()> {
     };
 
     let _result = list_active.call_tool(&handler).await?;
-
 
     Ok(())
 }

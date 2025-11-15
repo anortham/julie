@@ -64,8 +64,10 @@ impl ManageWorkspaceTool {
             };
 
             let is_primary = workspace_id == primary_workspace_id;
-            debug!("🐛 filter_changed_files: is_primary={}, workspace_id={}, primary_workspace_id={}",
-                is_primary, workspace_id, primary_workspace_id);
+            debug!(
+                "🐛 filter_changed_files: is_primary={}, workspace_id={}, primary_workspace_id={}",
+                is_primary, workspace_id, primary_workspace_id
+            );
 
             // Get the correct database based on workspace type
             let db_to_query = if is_primary {
@@ -74,8 +76,11 @@ impl ManageWorkspaceTool {
             } else {
                 // Reference workspace - open its separate database
                 let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
-                debug!("🐛 filter_changed_files: Reference workspace DB path: {}, exists: {}",
-                    ref_db_path.display(), ref_db_path.exists());
+                debug!(
+                    "🐛 filter_changed_files: Reference workspace DB path: {}, exists: {}",
+                    ref_db_path.display(),
+                    ref_db_path.exists()
+                );
 
                 if ref_db_path.exists() {
                     match tokio::task::spawn_blocking(move || {
@@ -85,11 +90,17 @@ impl ManageWorkspaceTool {
                     {
                         Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
                         Ok(Err(e)) => {
-                            debug!("Reference workspace DB doesn't exist yet: {} - treating all files as new", e);
+                            debug!(
+                                "Reference workspace DB doesn't exist yet: {} - treating all files as new",
+                                e
+                            );
                             return Ok(all_files);
                         }
                         Err(e) => {
-                            warn!("Failed to open reference workspace DB: {} - treating all files as new", e);
+                            warn!(
+                                "Failed to open reference workspace DB: {} - treating all files as new",
+                                e
+                            );
                             return Ok(all_files);
                         }
                     }
@@ -105,7 +116,10 @@ impl ManageWorkspaceTool {
                 let db_lock = match db.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned during file hash query, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned during file hash query, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };
@@ -115,7 +129,10 @@ impl ManageWorkspaceTool {
                 // This prevents the bug where file hashes exist but symbols were never extracted
                 let symbol_count = db_lock.count_symbols_for_workspace().unwrap_or(0);
                 if symbol_count == 0 {
-                    info!("🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files", all_files.len());
+                    info!(
+                        "🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files",
+                        all_files.len()
+                    );
                     drop(db_lock);
                     return Ok(all_files);
                 }
@@ -151,17 +168,19 @@ impl ManageWorkspaceTool {
         for file_path in &all_files {
             // Convert to relative Unix-style path for database lookup
             // Database stores paths as relative Unix-style per CLAUDE.md Path Handling Contract
-            let file_path_relative = match crate::utils::paths::to_relative_unix_style(file_path, workspace_path) {
-                Ok(rel) => rel,
-                Err(e) => {
-                    warn!(
-                        "Failed to convert {} to relative path: {} - treating as new file",
-                        file_path.display(), e
-                    );
-                    files_to_process.push(file_path.clone());
-                    continue;
-                }
-            };
+            let file_path_relative =
+                match crate::utils::paths::to_relative_unix_style(file_path, workspace_path) {
+                    Ok(rel) => rel,
+                    Err(e) => {
+                        warn!(
+                            "Failed to convert {} to relative path: {} - treating as new file",
+                            file_path.display(),
+                            e
+                        );
+                        files_to_process.push(file_path.clone());
+                        continue;
+                    }
+                };
 
             let language = self.detect_language(file_path);
 
@@ -207,17 +226,24 @@ impl ManageWorkspaceTool {
                                 let db_lock = match db.lock() {
                                     Ok(guard) => guard,
                                     Err(poisoned) => {
-                                        warn!("Database mutex poisoned during symbol count check, recovering: {}", poisoned);
+                                        warn!(
+                                            "Database mutex poisoned during symbol count check, recovering: {}",
+                                            poisoned
+                                        );
                                         poisoned.into_inner()
                                     }
                                 };
-                                let symbol_count =
-                                    db_lock.get_file_symbol_count(&file_path_relative).unwrap_or(0);
+                                let symbol_count = db_lock
+                                    .get_file_symbol_count(&file_path_relative)
+                                    .unwrap_or(0);
                                 drop(db_lock);
 
                                 if symbol_count == 0 {
                                     // File has no symbols - needs FILE_CONTENT symbol created
-                                    debug!("File {} has no symbols, re-indexing to create FILE_CONTENT symbol", file_path_relative);
+                                    debug!(
+                                        "File {} has no symbols, re-indexing to create FILE_CONTENT symbol",
+                                        file_path_relative
+                                    );
                                     modified_count += 1;
                                     files_to_process.push(file_path.clone());
                                     continue;
@@ -242,12 +268,21 @@ impl ManageWorkspaceTool {
 
         info!(
             "📊 Incremental analysis: {} unchanged (skipped), {} modified, {} new - processing {} total",
-            unchanged_count, modified_count, new_count, files_to_process.len()
+            unchanged_count,
+            modified_count,
+            new_count,
+            files_to_process.len()
         );
 
         // 🧹 ORPHAN CLEANUP: Remove database entries for files that no longer exist
         let orphaned_count = self
-            .clean_orphaned_files(handler, &existing_file_hashes, &all_files, &workspace_id, workspace_path)
+            .clean_orphaned_files(
+                handler,
+                &existing_file_hashes,
+                &all_files,
+                &workspace_id,
+                workspace_path,
+            )
             .await?;
 
         if orphaned_count > 0 {
@@ -269,7 +304,7 @@ impl ManageWorkspaceTool {
         existing_file_hashes: &HashMap<String, String>,
         current_disk_files: &[PathBuf],
         _workspace_id: &str,
-        workspace_root: &Path,  // NEW: needed to convert absolute paths to relative
+        workspace_root: &Path, // NEW: needed to convert absolute paths to relative
     ) -> Result<usize> {
         // Build set of current disk file paths for fast lookup
         // 🔥 CRITICAL FIX: Convert to relative Unix-style paths to match database format
@@ -372,7 +407,10 @@ impl ManageWorkspaceTool {
             let mut db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("Database mutex poisoned during orphan cleanup, recovering: {}", poisoned);
+                    warn!(
+                        "Database mutex poisoned during orphan cleanup, recovering: {}",
+                        poisoned
+                    );
                     poisoned.into_inner()
                 }
             };
@@ -429,7 +467,10 @@ impl ManageWorkspaceTool {
             db_lock.commit_transaction()?;
 
             // 🔥 FTS5 REBUILD: Now rebuild indexes ONCE for all deletions
-            debug!("🔄 Rebuilding FTS5 indexes after batch deletion of {} files", cleaned_count);
+            debug!(
+                "🔄 Rebuilding FTS5 indexes after batch deletion of {} files",
+                cleaned_count
+            );
             if let Err(e) = db_lock.rebuild_symbols_fts() {
                 warn!("Failed to rebuild symbols_fts after orphan cleanup: {}", e);
                 return Err(e);

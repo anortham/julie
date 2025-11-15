@@ -2,8 +2,8 @@
 //
 // Extracted from extractor.rs to keep modules under 500 lines
 
-use tree_sitter::Node;
 use super::extractor::BaseExtractor;
+use tree_sitter::Node;
 
 impl BaseExtractor {
     /// Walk tree with visitor - exact port of walkTree
@@ -88,8 +88,8 @@ impl BaseExtractor {
     where
         F: FnMut(&Node),
     {
-        use tracing::warn;
         use tracing::debug;
+        use tracing::warn;
 
         // Try to process current node
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(node))) {

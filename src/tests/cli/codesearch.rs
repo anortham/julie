@@ -6,8 +6,8 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
-use anyhow::Result;
 use crate::tests::test_helpers::open_test_connection;
+use anyhow::Result;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;

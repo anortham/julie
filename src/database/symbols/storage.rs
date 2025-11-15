@@ -31,8 +31,10 @@ impl SymbolDatabase {
 
             // Debug log for markdown symbols
             if symbol.language == "markdown" {
-                debug!("💾 Storing markdown symbol: name={}, file={}, content_type={:?}",
-                       symbol.name, symbol.file_path, symbol.content_type);
+                debug!(
+                    "💾 Storing markdown symbol: name={}, file={}, content_type={:?}",
+                    symbol.name, symbol.file_path, symbol.content_type
+                );
             }
 
             self.conn.execute(

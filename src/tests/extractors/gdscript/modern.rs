@@ -221,30 +221,36 @@ func _cleanup_resources():
 
         let player_speed = symbols.iter().find(|s| s.name == "player_speed");
         assert!(player_speed.is_some());
-        assert!(player_speed
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@export_category"));
+        assert!(
+            player_speed
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@export_category")
+        );
 
         let difficulty = symbols.iter().find(|s| s.name == "difficulty");
         assert!(difficulty.is_some());
-        assert!(difficulty
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@export_enum"));
+        assert!(
+            difficulty
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@export_enum")
+        );
 
         let config_file = symbols.iter().find(|s| s.name == "config_file");
         assert!(config_file.is_some());
-        assert!(config_file
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@export_file"));
+        assert!(
+            config_file
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@export_file")
+        );
 
         let description = symbols.iter().find(|s| s.name == "description");
         assert!(description.is_some());
@@ -284,12 +290,14 @@ func _cleanup_resources():
 
         let energy = symbols.iter().find(|s| s.name == "energy");
         assert!(energy.is_some());
-        assert!(energy
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("var energy: float:"));
+        assert!(
+            energy
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("var energy: float:")
+        );
 
         let energy_changed = symbols.iter().find(|s| s.name == "energy_changed");
         assert!(energy_changed.is_some());

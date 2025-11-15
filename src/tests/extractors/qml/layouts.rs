@@ -43,7 +43,11 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert_eq!(components.len(), 3, "Should extract container and nested rectangles");
+        assert_eq!(
+            components.len(),
+            3,
+            "Should extract container and nested rectangles"
+        );
     }
 
     #[test]
@@ -72,7 +76,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Item with nested rectangles");
+        assert!(
+            components.len() >= 2,
+            "Should extract Item with nested rectangles"
+        );
     }
 
     #[test]
@@ -111,7 +118,10 @@ RowLayout {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 3, "Should extract RowLayout with rectangles");
+        assert!(
+            components.len() >= 3,
+            "Should extract RowLayout with rectangles"
+        );
     }
 
     #[test]
@@ -136,7 +146,10 @@ ColumnLayout {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract ColumnLayout with text elements");
+        assert!(
+            components.len() >= 1,
+            "Should extract ColumnLayout with text elements"
+        );
     }
 
     #[test]
@@ -167,7 +180,10 @@ GridLayout {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract GridLayout with items");
+        assert!(
+            components.len() >= 1,
+            "Should extract GridLayout with items"
+        );
     }
 
     #[test]
@@ -201,7 +217,10 @@ StackLayout {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract StackLayout with pages");
+        assert!(
+            components.len() >= 1,
+            "Should extract StackLayout with pages"
+        );
     }
 
     #[test]
@@ -231,7 +250,10 @@ Flow {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Flow layout with repeater");
+        assert!(
+            components.len() >= 1,
+            "Should extract Flow layout with repeater"
+        );
     }
 
     #[test]
@@ -266,6 +288,9 @@ Column {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 3, "Should extract Column, Row, and Grid");
+        assert!(
+            components.len() >= 3,
+            "Should extract Column, Row, and Grid"
+        );
     }
 }

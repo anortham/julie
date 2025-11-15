@@ -57,7 +57,11 @@ proptest = "1.0"
         let symbols = extract_symbols(toml);
 
         // Should extract tables as modules
-        assert!(symbols.len() >= 3, "Expected at least 3 tables, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 3,
+            "Expected at least 3 tables, got {}",
+            symbols.len()
+        );
 
         let package = symbols.iter().find(|s| s.name == "package");
         assert!(package.is_some(), "Should find 'package' table");
@@ -85,7 +89,10 @@ ratio = 3.14
 
         // Key-value pairs at root level might or might not be extracted
         // Depends on implementation - at minimum should parse without errors
-        assert!(symbols.len() >= 0, "Should handle root-level key-value pairs");
+        assert!(
+            symbols.len() >= 0,
+            "Should handle root-level key-value pairs"
+        );
     }
 
     // ========================================================================
@@ -110,16 +117,28 @@ size = 10
         let symbols = extract_symbols(toml);
 
         // Should have database table and nested tables
-        assert!(symbols.len() >= 3, "Expected nested tables, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 3,
+            "Expected nested tables, got {}",
+            symbols.len()
+        );
 
         let database = symbols.iter().find(|s| s.name == "database");
         assert!(database.is_some(), "Should find 'database' table");
 
         let connection = symbols.iter().find(|s| s.name == "database.connection");
-        assert!(connection.is_some(), "Should find 'database.connection' table");
+        assert!(
+            connection.is_some(),
+            "Should find 'database.connection' table"
+        );
 
-        let pool = symbols.iter().find(|s| s.name == "database.connection.pool");
-        assert!(pool.is_some(), "Should find 'database.connection.pool' table");
+        let pool = symbols
+            .iter()
+            .find(|s| s.name == "database.connection.pool");
+        assert!(
+            pool.is_some(),
+            "Should find 'database.connection.pool' table"
+        );
     }
 
     #[test]
@@ -162,9 +181,9 @@ key = "deep"
 
         assert!(symbols.len() >= 5, "Should extract deeply nested tables");
 
-        let has_deep = symbols.iter().any(|s|
-            s.name.contains("level4") || s.name.contains("level5")
-        );
+        let has_deep = symbols
+            .iter()
+            .any(|s| s.name.contains("level4") || s.name.contains("level5"));
         assert!(has_deep, "Should find deeply nested tables");
     }
 
@@ -188,7 +207,10 @@ ip = "10.0.0.2"
 
         // Array tables should be extracted
         let servers: Vec<_> = symbols.iter().filter(|s| s.name == "servers").collect();
-        assert!(!servers.is_empty(), "Should find 'servers' array table entries");
+        assert!(
+            !servers.is_empty(),
+            "Should find 'servers' array table entries"
+        );
     }
 
     #[test]
@@ -211,7 +233,10 @@ name = "Product B"
 
         let symbols = extract_symbols(toml);
 
-        let products: Vec<_> = symbols.iter().filter(|s| s.name.contains("products")).collect();
+        let products: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.name.contains("products"))
+            .collect();
         assert!(!products.is_empty(), "Should find products array tables");
     }
 
@@ -257,7 +282,10 @@ colors = { red = 255, green = 0, blue = 0 }
         let symbols = extract_symbols(toml);
 
         let server = symbols.iter().find(|s| s.name == "server");
-        assert!(server.is_some(), "Should find 'server' table with inline tables");
+        assert!(
+            server.is_some(),
+            "Should find 'server' table with inline tables"
+        );
     }
 
     #[test]
@@ -387,7 +415,11 @@ host = "localhost"
 
         let symbols = extract_symbols(toml);
 
-        assert!(symbols.len() >= 3, "Should extract quoted Unicode table names, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 3,
+            "Should extract quoted Unicode table names, got {}",
+            symbols.len()
+        );
 
         // Check that Unicode is preserved in extracted table names
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
@@ -396,9 +428,21 @@ host = "localhost"
         let has_greek = names.iter().any(|&n| n.contains("Ελληνικά"));
         let has_chinese = names.iter().any(|&n| n.contains("数据库配置"));
 
-        assert!(has_japanese, "Should preserve Japanese characters, got: {:?}", names);
-        assert!(has_greek, "Should preserve Greek characters, got: {:?}", names);
-        assert!(has_chinese, "Should preserve Chinese characters, got: {:?}", names);
+        assert!(
+            has_japanese,
+            "Should preserve Japanese characters, got: {:?}",
+            names
+        );
+        assert!(
+            has_greek,
+            "Should preserve Greek characters, got: {:?}",
+            names
+        );
+        assert!(
+            has_chinese,
+            "Should preserve Chinese characters, got: {:?}",
+            names
+        );
     }
 
     // ========================================================================
@@ -506,7 +550,11 @@ tokio = "1.0"
 "#;
 
         let symbols = extract_symbols(toml);
-        assert_eq!(symbols.len(), 0, "Comments-only file should yield no symbols");
+        assert_eq!(
+            symbols.len(),
+            0,
+            "Comments-only file should yield no symbols"
+        );
     }
 
     #[test]
@@ -544,7 +592,10 @@ tokio = "1.0"
         let symbols = extract_symbols(toml);
 
         let special = symbols.iter().find(|s| s.name == "special");
-        assert!(special.is_some(), "Should handle keys with special characters");
+        assert!(
+            special.is_some(),
+            "Should handle keys with special characters"
+        );
     }
 
     // ========================================================================
@@ -589,7 +640,10 @@ std = []
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"package"), "Should find package");
         assert!(names.contains(&"dependencies"), "Should find dependencies");
-        assert!(names.contains(&"dev-dependencies"), "Should find dev-dependencies");
+        assert!(
+            names.contains(&"dev-dependencies"),
+            "Should find dev-dependencies"
+        );
     }
 
     #[test]
@@ -661,7 +715,10 @@ python_files = ["test_*.py"]
 
         let symbols = extract_symbols(toml);
 
-        assert!(symbols.len() >= 3, "Should extract pyproject.toml structure");
+        assert!(
+            symbols.len() >= 3,
+            "Should extract pyproject.toml structure"
+        );
 
         let has_build = symbols.iter().any(|s| s.name.contains("build-system"));
         assert!(has_build, "Should find build-system");
@@ -699,7 +756,10 @@ python_files = ["test_*.py"]
         let mut toml = String::new();
 
         for i in 1..=15 {
-            let dots = (1..=i).map(|n| format!("level{}", n)).collect::<Vec<_>>().join(".");
+            let dots = (1..=i)
+                .map(|n| format!("level{}", n))
+                .collect::<Vec<_>>()
+                .join(".");
             toml.push_str(&format!("[{}]\n", dots));
             toml.push_str("key = \"value\"\n\n");
         }
@@ -732,8 +792,16 @@ key = "value"
 
         // Verify positions are tracked
         for symbol in &symbols {
-            assert!(symbol.start_line > 0, "Should track start line for {}", symbol.name);
-            assert!(symbol.end_line > 0, "Should track end line for {}", symbol.name);
+            assert!(
+                symbol.start_line > 0,
+                "Should track start line for {}",
+                symbol.name
+            );
+            assert!(
+                symbol.end_line > 0,
+                "Should track end line for {}",
+                symbol.name
+            );
         }
 
         // Verify tables are in order
@@ -741,7 +809,10 @@ key = "value"
         let third = symbols.iter().find(|s| s.name == "third");
 
         if let (Some(f), Some(t)) = (first, third) {
-            assert!(f.start_line < t.start_line, "First table should be before third table");
+            assert!(
+                f.start_line < t.start_line,
+                "First table should be before third table"
+            );
         }
     }
 

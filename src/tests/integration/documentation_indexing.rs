@@ -74,22 +74,36 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     println!("DEBUG: Indexing complete");
 
     // Debug: Check ALL symbols in database
-    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
-    let total_symbols: i64 = db.conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0)).unwrap_or(0);
+    let total_symbols: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
+        .unwrap_or(0);
     println!("DEBUG: Total symbols in database: {}", total_symbols);
 
     if total_symbols > 0 {
         // Show some sample symbols
-        let mut stmt = db.conn.prepare("SELECT name, language, content_type FROM symbols LIMIT 5")?;
+        let mut stmt = db
+            .conn
+            .prepare("SELECT name, language, content_type FROM symbols LIMIT 5")?;
         let symbols: Vec<(String, String, Option<String>)> = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         println!("DEBUG: Sample symbols:");
         for (name, lang, ct) in symbols {
-            println!("  - name={}, language={}, content_type={:?}", name, lang, ct);
+            println!(
+                "  - name={}, language={}, content_type={:?}",
+                name, lang, ct
+            );
         }
     }
     drop(db);
@@ -100,7 +114,10 @@ async fn test_documentation_indexing_basic() -> Result<()> {
         .await?
         .expect("Workspace should be initialized");
 
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
     // Count total documentation entries
@@ -129,7 +146,10 @@ async fn test_documentation_indexing_basic() -> Result<()> {
         )
         .expect("Failed to query README.md");
 
-    assert_eq!(readme_count, 1, "Should find 1 README.md documentation entry");
+    assert_eq!(
+        readme_count, 1,
+        "Should find 1 README.md documentation entry"
+    );
 
     let arch_count: i64 = db
         .conn
@@ -199,8 +219,14 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
     // Debug: Check if data exists in symbols table
@@ -213,7 +239,10 @@ async fn test_documentation_fts5_sync() -> Result<()> {
         )
         .expect("Failed to count symbols");
 
-    println!("DEBUG: symbols table has {} documentation entries", symbols_count);
+    println!(
+        "DEBUG: symbols table has {} documentation entries",
+        symbols_count
+    );
 
     // Debug: Check if FTS5 table has any documentation data
     let fts_total: i64 = db
@@ -230,11 +259,9 @@ async fn test_documentation_fts5_sync() -> Result<()> {
     // Debug: Check what content is actually in FTS5
     let actual_content: String = db
         .conn
-        .query_row(
-            "SELECT doc_comment FROM symbols_fts LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT doc_comment FROM symbols_fts LIMIT 1", [], |row| {
+            row.get(0)
+        })
         .expect("Failed to get FTS5 content");
 
     println!("DEBUG: FTS5 doc_comment = '{}'", actual_content);
@@ -316,8 +343,14 @@ async fn test_documentation_deduplication() -> Result<()> {
     // First indexing
     index_workspace(&handler, workspace_path).await?;
 
-    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
     // Count after first indexing
@@ -330,7 +363,10 @@ async fn test_documentation_deduplication() -> Result<()> {
         )
         .expect("Failed to count after first indexing");
 
-    assert_eq!(count_after_first, 1, "Should have 1 entry after first indexing");
+    assert_eq!(
+        count_after_first, 1,
+        "Should have 1 entry after first indexing"
+    );
 
     drop(db); // Release lock before re-indexing
 
@@ -378,8 +414,14 @@ async fn test_documentation_update_on_change() -> Result<()> {
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
     // Get initial doc_comment content
@@ -401,7 +443,10 @@ async fn test_documentation_update_on_change() -> Result<()> {
 
     // Modify content
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    fs::write(&doc_file, "# API Reference\n\nVersion 2.0 API with new endpoints")?;
+    fs::write(
+        &doc_file,
+        "# API Reference\n\nVersion 2.0 API with new endpoints",
+    )?;
 
     // Re-index
     index_workspace(&handler, workspace_path).await?;
@@ -439,7 +484,10 @@ async fn test_documentation_update_on_change() -> Result<()> {
         )
         .expect("Failed to count entries");
 
-    assert_eq!(count, 1, "Should still have exactly 1 entry (replaced, not duplicated)");
+    assert_eq!(
+        count, 1,
+        "Should still have exactly 1 entry (replaced, not duplicated)"
+    );
 
     Ok(())
 }
@@ -466,8 +514,14 @@ async fn test_multiple_sections_from_single_file() -> Result<()> {
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    let workspace = handler.get_workspace().await?.expect("Workspace initialized");
-    let db_arc = workspace.db.as_ref().expect("Database should be initialized");
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace initialized");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should be initialized");
     let db = db_arc.lock().unwrap();
 
     // Count sections from this file

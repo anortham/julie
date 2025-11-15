@@ -72,8 +72,8 @@ impl ModelManager {
         // HuggingFace Hub will cache these and skip download if already present
         info!("📥 Downloading model.onnx (this may take a while on first run)...");
         let model_path = tokio::time::timeout(
-            std::time::Duration::from_secs(300),  // 5 minute timeout
-            repo.get("onnx/model.onnx")
+            std::time::Duration::from_secs(300), // 5 minute timeout
+            repo.get("onnx/model.onnx"),
         )
         .await
         .with_context(|| "Model download timed out after 5 minutes")?
@@ -81,8 +81,8 @@ impl ModelManager {
 
         info!("📥 Downloading tokenizer.json...");
         let tokenizer_path = tokio::time::timeout(
-            std::time::Duration::from_secs(60),  // 1 minute timeout (much smaller file)
-            repo.get("tokenizer.json")
+            std::time::Duration::from_secs(60), // 1 minute timeout (much smaller file)
+            repo.get("tokenizer.json"),
         )
         .await
         .with_context(|| "Tokenizer download timed out after 1 minute")?
@@ -159,10 +159,12 @@ mod tests {
             runtime.block_on(async { manager.ensure_model_downloaded("unsupported-model").await });
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unsupported model"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported model")
+        );
     }
 
     // Note: Actual download test would require network access and is slow

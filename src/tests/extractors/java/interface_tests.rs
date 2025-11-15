@@ -49,22 +49,26 @@ private interface InternalInterface {
         let calculator_interface = symbols.iter().find(|s| s.name == "Calculator");
         assert!(calculator_interface.is_some());
         assert_eq!(calculator_interface.unwrap().kind, SymbolKind::Interface);
-        assert!(calculator_interface
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public interface Calculator"));
+        assert!(
+            calculator_interface
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public interface Calculator")
+        );
 
         let advanced_interface = symbols.iter().find(|s| s.name == "AdvancedCalculator");
         assert!(advanced_interface.is_some());
         assert_eq!(advanced_interface.unwrap().kind, SymbolKind::Interface);
-        assert!(advanced_interface
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("interface AdvancedCalculator extends Calculator"));
+        assert!(
+            advanced_interface
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("interface AdvancedCalculator extends Calculator")
+        );
     }
 
     #[test]

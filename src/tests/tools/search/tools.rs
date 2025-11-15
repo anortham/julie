@@ -5,8 +5,8 @@
 mod search_tools_tests {
     use crate::extractors::base::Visibility;
     use crate::extractors::{Symbol, SymbolKind};
-    use crate::tools::search::formatting::format_optimized_results;
     use crate::tools::search::FastSearchTool;
+    use crate::tools::search::formatting::format_optimized_results;
     use crate::tools::shared::OptimizedResponse;
 
     #[test]
@@ -43,7 +43,7 @@ mod search_tools_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: Some("fn testFunction() -> bool {\n    true\n}".to_string()),
-        content_type: None,
+            content_type: None,
         }];
 
         let optimized = OptimizedResponse {
@@ -111,7 +111,7 @@ mod search_tools_tests {
             semantic_group: None,
             confidence: Some(0.95),
             code_context: Some(long_context),
-        content_type: None,
+            content_type: None,
         }];
 
         let optimized = OptimizedResponse {
@@ -181,7 +181,7 @@ mod search_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: Some(large_context.clone()),
-        content_type: None,
+                content_type: None,
             });
         }
 
@@ -256,7 +256,7 @@ mod search_tools_tests {
                 semantic_group: None,
                 confidence: Some(0.9),
                 code_context: Some(large_context.clone()),
-        content_type: None,
+                content_type: None,
             });
         }
 

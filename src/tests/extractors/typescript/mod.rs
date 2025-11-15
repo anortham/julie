@@ -12,6 +12,7 @@ pub mod inference;
 pub mod relationships;
 pub mod relative_paths; // NEW: Phase 2 - Relative Unix-style path storage tests
 pub mod symbols;
+pub mod types; // NEW: Phase 4 - Type extraction verification tests
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::typescript::TypeScriptExtractor;
@@ -50,12 +51,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -68,12 +68,14 @@ mod typescript_extractor_tests {
             .find(|s| s.name == "getUserDataAsyncAsyncAsyncAsyncAsyncAsync");
         assert!(get_user_data_func.is_some());
         assert_eq!(get_user_data_func.unwrap().kind, SymbolKind::Function);
-        assert!(get_user_data_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("getUserDataAsyncAsyncAsyncAsyncAsyncAsync(id)"));
+        assert!(
+            get_user_data_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("getUserDataAsyncAsyncAsyncAsyncAsyncAsync(id)")
+        );
 
         // Check arrow function
         let arrow = symbols.iter().find(|s| s.name == "arrow");
@@ -121,12 +123,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -171,12 +172,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -216,12 +216,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -279,12 +278,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -312,12 +310,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -365,12 +362,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -398,12 +394,11 @@ mod typescript_extractor_tests {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -457,12 +452,11 @@ function calculate() {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         // Extract symbols first
@@ -526,12 +520,11 @@ class User {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -578,12 +571,11 @@ class Service {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -625,12 +617,11 @@ class DataService {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -673,12 +664,11 @@ class Test {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "test.js".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -731,12 +721,11 @@ export class UserService {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "decorators.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -775,12 +764,11 @@ function processResponse<T extends ApiResponse>(
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "advanced-types.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -819,12 +807,11 @@ export default UserCard;
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "tsx.tsx".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -868,12 +855,11 @@ declare module '*.png' {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "module-augmentation.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -908,12 +894,11 @@ function processUser(user: PartialUser): void {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "javascript".to_string(),
             "utility-types.ts".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -981,12 +966,11 @@ export default UserCard;
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "tsx".to_string(),
             "UserCard.tsx".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1055,12 +1039,11 @@ export default Counter;
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "tsx".to_string(),
             "Counter.tsx".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);
@@ -1102,12 +1085,11 @@ class Panel extends React.Component {
 
         let workspace_root = PathBuf::from("/tmp/test");
 
-
         let mut extractor = TypeScriptExtractor::new(
             "tsx".to_string(),
             "Components.tsx".to_string(),
             code.to_string(),
-        &workspace_root,
+            &workspace_root,
         );
 
         let symbols = extractor.extract_symbols(&tree);

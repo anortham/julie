@@ -11,7 +11,7 @@
 pub mod registry;
 pub mod registry_service;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -453,11 +453,10 @@ impl JulieWorkspace {
     /// ```
     pub fn ensure_embedding_cache_dir(&self) -> Result<PathBuf> {
         let cache_dir = self.get_embedding_cache_dir();
-        std::fs::create_dir_all(&cache_dir)
-            .context(format!(
-                "Failed to create embedding cache directory: {}",
-                cache_dir.display()
-            ))?;
+        std::fs::create_dir_all(&cache_dir).context(format!(
+            "Failed to create embedding cache directory: {}",
+            cache_dir.display()
+        ))?;
         debug!(
             "📁 Embedding cache directory ready: {}",
             cache_dir.display()
@@ -506,7 +505,10 @@ impl JulieWorkspace {
             "Failed to recreate embedding cache directory: {}",
             cache_dir.display()
         ))?;
-        debug!("📁 Recreated embedding cache directory: {}", cache_dir.display());
+        debug!(
+            "📁 Recreated embedding cache directory: {}",
+            cache_dir.display()
+        );
 
         Ok(())
     }
@@ -662,12 +664,18 @@ impl JulieWorkspace {
                                         info!("💾 HNSW index persisted to disk successfully");
                                     }
                                     Err(e) => {
-                                        warn!("Failed to save HNSW index: {}. Will rebuild next time.", e);
+                                        warn!(
+                                            "Failed to save HNSW index: {}. Will rebuild next time.",
+                                            e
+                                        );
                                     }
                                 }
                             }
                             Err(e) => {
-                                warn!("Failed to build HNSW index: {}. Falling back to brute force search.", e);
+                                warn!(
+                                    "Failed to build HNSW index: {}. Falling back to brute force search.",
+                                    e
+                                );
                             }
                         }
                     }
@@ -710,7 +718,10 @@ impl JulieWorkspace {
         if self.vector_store.is_none() {
             info!("🧠 Lazy-loading VectorStore for incremental updates");
             if let Err(e) = self.initialize_vector_store() {
-                warn!("Failed to initialize VectorStore for file watcher: {}. Incremental semantic updates disabled.", e);
+                warn!(
+                    "Failed to initialize VectorStore for file watcher: {}. Incremental semantic updates disabled.",
+                    e
+                );
                 // Continue anyway - file watcher will work for SQLite updates
             }
         }
@@ -739,9 +750,9 @@ impl JulieWorkspace {
     pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
         self.initialize_embeddings().await?; // 🚨 Now async to avoid runtime deadlock
-                                             // REMOVED: Vector store initialization moved to end of background embedding generation
-                                             // HNSW index will be built AFTER embeddings are generated, not at startup
-                                             // This allows MCP server to start immediately without blocking
+        // REMOVED: Vector store initialization moved to end of background embedding generation
+        // HNSW index will be built AFTER embeddings are generated, not at startup
+        // This allows MCP server to start immediately without blocking
 
         // Initialize file watcher last (requires other components)
         if self.config.incremental_updates {

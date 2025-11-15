@@ -142,9 +142,7 @@ fn test_sort_symbols_with_nan_in_scores() {
     ];
 
     // This should NOT panic with unwrap_or(Equal)
-    scored_symbols.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     // All values should still be present
     assert_eq!(scored_symbols.len(), 3);
@@ -245,9 +243,8 @@ fn test_semantic_search_error_chain() {
     impl SearchContext {
         fn sort_by_score(&mut self) -> Result<(), String> {
             // Safe sorting that handles NaN
-            self.symbols.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-            });
+            self.symbols
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             Ok(())
         }
 
@@ -290,9 +287,7 @@ fn test_panic_recovery_in_lock_operations() {
     let counter = Arc::new(Mutex::new(0));
 
     fn increment_safe(counter: &Arc<Mutex<i32>>) -> Result<i32, String> {
-        let mut guard = counter
-            .lock()
-            .map_err(|e| format!("Lock failed: {}", e))?;
+        let mut guard = counter.lock().map_err(|e| format!("Lock failed: {}", e))?;
         *guard += 1;
         Ok(*guard)
     }

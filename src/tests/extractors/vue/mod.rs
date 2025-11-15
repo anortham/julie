@@ -15,7 +15,12 @@ mod vue_extractor_tests {
     fn create_extractor(file_path: &str, code: &str) -> VueExtractor {
         use std::path::PathBuf;
         let workspace_root = PathBuf::from("/tmp/test");
-        VueExtractor::new("vue".to_string(), file_path.to_string(), code.to_string(), &workspace_root)
+        VueExtractor::new(
+            "vue".to_string(),
+            file_path.to_string(),
+            code.to_string(),
+            &workspace_root,
+        )
     }
 
     #[test]
@@ -62,11 +67,13 @@ export default {
         assert!(component.is_some());
         let component = component.unwrap();
         assert_eq!(component.kind, SymbolKind::Class);
-        assert!(component
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("<HelloWorld />"));
+        assert!(
+            component
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("<HelloWorld />")
+        );
     }
 
     #[test]
@@ -287,14 +294,8 @@ export default {
         assert!(symbols.iter().find(|s| s.name == "header").is_some());
     }
 
-    #[test]
-    fn test_infer_types_returns_empty_map() {
-        let mut extractor = create_extractor("test.vue", "<template></template>");
-        let symbols = extractor.extract_symbols(None);
-        let types = extractor.infer_types(&symbols);
-
-        assert!(types.len() == 0);
-    }
+    // Test removed: Vue now properly extracts types (no longer returns empty map)
+    // See memory checkpoint 14:16:59 - fixed Vue infer_types() stub
 
     #[test]
     fn test_extract_relationships_returns_empty_array() {
@@ -1149,3 +1150,4 @@ export default {
         assert!(greet_method.is_some());
     }
 }
+mod types; // Phase 4: Type extraction verification tests

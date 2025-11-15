@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -40,11 +40,13 @@ mod tests {
 
         let alias = symbols.iter().find(|s| s.name == "MyProject");
         assert!(alias.is_some());
-        assert!(alias
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("MyCompany::Utils"));
+        assert!(
+            alias
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("MyCompany::Utils")
+        );
     }
 }

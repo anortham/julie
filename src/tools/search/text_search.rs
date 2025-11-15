@@ -8,9 +8,9 @@ use tracing::{debug, warn};
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use crate::tools::search::query_preprocessor::{preprocess_query, QueryType};
-use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
+use crate::tools::search::query_preprocessor::{QueryType, preprocess_query};
 use crate::utils::query_expansion::{expand_query, is_symbol_name_relevant};
+use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 
 use super::query::matches_glob_pattern;
 
@@ -116,7 +116,9 @@ pub async fn text_search_impl(
                         .await?
                         .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
                     let registry_service =
-                        crate::workspace::registry_service::WorkspaceRegistryService::new(workspace.root.clone());
+                        crate::workspace::registry_service::WorkspaceRegistryService::new(
+                            workspace.root.clone(),
+                        );
                     let primary_workspace_id = registry_service
                         .get_primary_workspace_id()
                         .await?
@@ -152,10 +154,7 @@ pub async fn text_search_impl(
         match results {
             Ok(symbols) => {
                 let count = symbols.len();
-                debug!(
-                    "✅ Variant '{}' returned {} results",
-                    variant, count
-                );
+                debug!("✅ Variant '{}' returned {} results", variant, count);
                 tried_variants.push((variant.clone(), count));
 
                 if count > 0 {
@@ -274,7 +273,7 @@ async fn database_search_with_workspace_filter(
                     poisoned.into_inner()
                 }
             };
-            db_lock.find_symbols_by_pattern(query)  // Use already-sanitized query
+            db_lock.find_symbols_by_pattern(query) // Use already-sanitized query
         })?
     } else {
         // Open reference workspace database
@@ -291,7 +290,7 @@ async fn database_search_with_workspace_filter(
         let query_clone = query.to_string(); // Clone for move into spawn_blocking
         tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
             let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-            ref_db.find_symbols_by_pattern(&query_clone)  // Use already-sanitized query
+            ref_db.find_symbols_by_pattern(&query_clone) // Use already-sanitized query
         })
         .await
         .map_err(|e| anyhow::anyhow!("Failed to search reference workspace: {}", e))??
@@ -550,10 +549,7 @@ async fn sqlite_fts_search(
         && !query.contains(" OR ")  // Don't AND-ify if already has OR from sanitization
         && !query.contains(" AND ")
     {
-        query
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" AND ")
+        query.split_whitespace().collect::<Vec<_>>().join(" AND ")
     } else {
         query.to_string()
     };
@@ -603,14 +599,29 @@ async fn sqlite_fts_search(
                     result.snippet[start + 6..start + end].trim().to_string()
                 } else {
                     // Fallback: use cleaned snippet
-                    result.snippet.replace("...", "").replace("<mark>", "").replace("</mark>", "").trim().to_string()
+                    result
+                        .snippet
+                        .replace("...", "")
+                        .replace("<mark>", "")
+                        .replace("</mark>", "")
+                        .trim()
+                        .to_string()
                 }
             } else {
                 // Fallback: use cleaned snippet
-                result.snippet.replace("...", "").replace("<mark>", "").replace("</mark>", "").trim().to_string()
+                result
+                    .snippet
+                    .replace("...", "")
+                    .replace("<mark>", "")
+                    .replace("</mark>", "")
+                    .trim()
+                    .to_string()
             };
 
-            debug!("🔍 Searching for marked term '{}' in {}", marked_term, result.path);
+            debug!(
+                "🔍 Searching for marked term '{}' in {}",
+                marked_term, result.path
+            );
 
             // Search for the marked term in file content
             let content_lines: Vec<&str> = content.lines().collect();
@@ -619,8 +630,7 @@ async fn sqlite_fts_search(
             for (line_idx, line) in content_lines.iter().enumerate() {
                 // Check for non-empty trimmed lines before matching
                 let trimmed = line.trim();
-                if !trimmed.is_empty() && line.contains(&marked_term)
-                {
+                if !trimmed.is_empty() && line.contains(&marked_term) {
                     let initial_line_num = line_idx + 1; // 1-indexed
                     let initial_line_content = line.to_string();
 

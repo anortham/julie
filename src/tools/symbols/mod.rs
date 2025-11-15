@@ -16,8 +16,8 @@ mod primary;
 mod reference;
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::debug;

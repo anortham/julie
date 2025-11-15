@@ -104,21 +104,25 @@ record Point(int x, int y) implements Comparable<Point> {
         let person_record = symbols.iter().find(|s| s.name == "Person");
         assert!(person_record.is_some());
         assert_eq!(person_record.unwrap().kind, SymbolKind::Class); // Records are classes
-        assert!(person_record
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public record Person(String name, int age)"));
+        assert!(
+            person_record
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public record Person(String name, int age)")
+        );
 
         let point_record = symbols.iter().find(|s| s.name == "Point");
         assert!(point_record.is_some());
-        assert!(point_record
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("record Point(int x, int y)"));
+        assert!(
+            point_record
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("record Point(int x, int y)")
+        );
 
         // Check for record methods
         let create_method = symbols.iter().find(|s| s.name == "create");
@@ -219,11 +223,13 @@ public class StreamExample {
         let process_data_method = symbols.iter().find(|s| s.name == "processData");
         assert!(process_data_method.is_some());
         assert_eq!(process_data_method.unwrap().kind, SymbolKind::Method);
-        assert!(process_data_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("public void processData(List<String> data)"));
+        assert!(
+            process_data_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("public void processData(List<String> data)")
+        );
     }
 }

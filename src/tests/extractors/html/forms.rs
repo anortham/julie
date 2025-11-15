@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -204,18 +204,22 @@ mod tests {
                 .map_or(false, |sig| sig.contains(r#"id="contact-form""#))
         });
         assert!(contact_form.is_some());
-        assert!(contact_form
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("novalidate"));
-        assert!(contact_form
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"aria-label="Contact form""#));
+        assert!(
+            contact_form
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("novalidate")
+        );
+        assert!(
+            contact_form
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"aria-label="Contact form""#)
+        );
 
         // Input elements with validation
         let first_name_input = symbols.iter().find(|s| {
@@ -225,24 +229,30 @@ mod tests {
         });
         assert!(first_name_input.is_some());
         assert_eq!(first_name_input.unwrap().kind, SymbolKind::Field);
-        assert!(first_name_input
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("required"));
-        assert!(first_name_input
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"autocomplete="given-name""#));
-        assert!(first_name_input
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"pattern="[A-Za-z\\s]+""#));
+        assert!(
+            first_name_input
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("required")
+        );
+        assert!(
+            first_name_input
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"autocomplete="given-name""#)
+        );
+        assert!(
+            first_name_input
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"pattern="[A-Za-z\\s]+""#)
+        );
 
         let email_input = symbols.iter().find(|s| {
             s.signature
@@ -250,12 +260,14 @@ mod tests {
                 .map_or(false, |sig| sig.contains(r#"type="email""#))
         });
         assert!(email_input.is_some());
-        assert!(email_input
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"autocomplete="email""#));
+        assert!(
+            email_input
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"autocomplete="email""#)
+        );
 
         // Radio buttons
         let radio_inputs: Vec<_> = symbols
@@ -296,28 +308,34 @@ mod tests {
         // Modal dialog
         let dialog_element = symbols.iter().find(|s| s.name == "dialog");
         assert!(dialog_element.is_some());
-        assert!(dialog_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"aria-labelledby="modal-title""#));
-        assert!(dialog_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(r#"aria-describedby="modal-description""#));
+        assert!(
+            dialog_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"aria-labelledby="modal-title""#)
+        );
+        assert!(
+            dialog_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(r#"aria-describedby="modal-description""#)
+        );
 
         // Details/Summary
         let details_element = symbols.iter().find(|s| s.name == "details");
         assert!(details_element.is_some());
-        assert!(details_element
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("open"));
+        assert!(
+            details_element
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("open")
+        );
 
         let summary_element = symbols.iter().find(|s| s.name == "summary");
         assert!(summary_element.is_some());

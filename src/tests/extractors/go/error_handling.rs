@@ -83,37 +83,47 @@ func Err[T any](err error) Result[T] {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
     assert!(validation_error.is_some());
     let validation_error = validation_error.unwrap();
     assert_eq!(validation_error.kind, SymbolKind::Class);
-    assert!(validation_error
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type ValidationError struct"));
+    assert!(
+        validation_error
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type ValidationError struct")
+    );
 
     let error_method = symbols.iter().find(|s| s.name == "Error");
     assert!(error_method.is_some());
     let error_method = error_method.unwrap();
-    assert!(error_method
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (e ValidationError) Error() string"));
+    assert!(
+        error_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (e ValidationError) Error() string")
+    );
 
     let unwrap_method = symbols.iter().find(|s| s.name == "Unwrap");
     assert!(unwrap_method.is_some());
     let unwrap_method = unwrap_method.unwrap();
-    assert!(unwrap_method
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (e ValidationError) Unwrap() error"));
+    assert!(
+        unwrap_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (e ValidationError) Unwrap() error")
+    );
 
     let database_error = symbols.iter().find(|s| s.name == "DatabaseError");
     assert!(database_error.is_some());
@@ -123,36 +133,44 @@ func Err[T any](err error) Result[T] {
     let result_type = symbols.iter().find(|s| s.name == "Result");
     assert!(result_type.is_some());
     let result_type = result_type.unwrap();
-    assert!(result_type
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type Result[T any] struct"));
+    assert!(
+        result_type
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type Result[T any] struct")
+    );
 
     let is_ok_method = symbols.iter().find(|s| s.name == "IsOk");
     assert!(is_ok_method.is_some());
     let is_ok_method = is_ok_method.unwrap();
-    assert!(is_ok_method
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (r Result[T]) IsOk() bool"));
+    assert!(
+        is_ok_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (r Result[T]) IsOk() bool")
+    );
 
     let ok_func = symbols.iter().find(|s| s.name == "Ok");
     assert!(ok_func.is_some());
     let ok_func = ok_func.unwrap();
-    assert!(ok_func
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func Ok[T any](value T) Result[T]"));
+    assert!(
+        ok_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Ok[T any](value T) Result[T]")
+    );
 
     let err_func = symbols.iter().find(|s| s.name == "Err");
     assert!(err_func.is_some());
     let err_func = err_func.unwrap();
-    assert!(err_func
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func Err[T any](err error) Result[T]"));
+    assert!(
+        err_func
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func Err[T any](err error) Result[T]")
+    );
 }

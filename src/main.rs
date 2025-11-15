@@ -9,18 +9,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use julie::handler::JulieServerHandler;
 use rust_mcp_sdk::schema::{
-    Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
-    LATEST_PROTOCOL_VERSION,
+    Implementation, InitializeResult, LATEST_PROTOCOL_VERSION, ServerCapabilities,
+    ServerCapabilitiesTools,
 };
 
 use rust_mcp_sdk::{
-    error::SdkResult,
-    mcp_server::{server_runtime, ServerRuntime},
     McpServer, StdioTransport, TransportOptions,
+    error::SdkResult,
+    mcp_server::{ServerRuntime, server_runtime},
 };
 
 /// Load agent instructions from JULIE_AGENT_INSTRUCTIONS.md
@@ -99,10 +99,16 @@ fn get_workspace_root() -> PathBuf {
                 eprintln!("⚠️ Warning: Could not canonicalize path {:?}: {}", path, e);
                 path.clone()
             });
-            eprintln!("📂 Using workspace from JULIE_WORKSPACE env var: {:?}", canonical);
+            eprintln!(
+                "📂 Using workspace from JULIE_WORKSPACE env var: {:?}",
+                canonical
+            );
             return canonical;
         } else {
-            eprintln!("⚠️ Warning: JULIE_WORKSPACE path does not exist: {:?}", path);
+            eprintln!(
+                "⚠️ Warning: JULIE_WORKSPACE path does not exist: {:?}",
+                path
+            );
         }
     }
 
@@ -127,9 +133,12 @@ async fn main() -> SdkResult<()> {
     // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
-        .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(
-            format!("Failed to initialize logging filter: {}", e)
-        )))?;
+        .map_err(|e| {
+            rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(format!(
+                "Failed to initialize logging filter: {}",
+                e
+            )))
+        })?;
 
     // Ensure .julie/logs directory exists in the workspace root
     let logs_dir = workspace_root.join(".julie").join("logs");
@@ -159,7 +168,10 @@ async fn main() -> SdkResult<()> {
 
     info!("🚀 Starting Julie - Cross-Platform Code Intelligence Server");
     debug!("Built with Rust for true cross-platform compatibility");
-    info!("📝 Logging enabled - File output to {:?}", logs_dir.join("julie.log"));
+    info!(
+        "📝 Logging enabled - File output to {:?}",
+        logs_dir.join("julie.log")
+    );
     info!("📂 Workspace root: {:?}", workspace_root);
 
     // STEP 1: Define server details and capabilities
@@ -236,19 +248,17 @@ async fn main() -> SdkResult<()> {
     info!("🧹 Performing shutdown cleanup...");
     if let Some(db_arc) = db_for_shutdown {
         match db_arc.lock() {
-            Ok(mut db) => {
-                match db.checkpoint_wal() {
-                    Ok((busy, log, checkpointed)) => {
-                        info!(
-                            "✅ WAL checkpoint complete: busy={}, log={}, checkpointed={}",
-                            busy, log, checkpointed
-                        );
-                    }
-                    Err(e) => {
-                        warn!("⚠️ WAL checkpoint failed: {}", e);
-                    }
+            Ok(mut db) => match db.checkpoint_wal() {
+                Ok((busy, log, checkpointed)) => {
+                    info!(
+                        "✅ WAL checkpoint complete: busy={}, log={}, checkpointed={}",
+                        busy, log, checkpointed
+                    );
                 }
-            }
+                Err(e) => {
+                    warn!("⚠️ WAL checkpoint failed: {}", e);
+                }
+            },
             Err(e) => {
                 warn!("⚠️ Could not acquire database lock for checkpoint: {}", e);
             }

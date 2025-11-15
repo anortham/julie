@@ -150,24 +150,28 @@ mod tests {
 
         let root_selector = symbols.iter().find(|s| s.name == ":root");
         assert!(root_selector.is_some());
-        assert!(root_selector
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("--primary-color: #3498db"));
+        assert!(
+            root_selector
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("--primary-color: #3498db")
+        );
 
         let dark_theme = symbols.iter().find(|s| s.name == "[data-theme=\"dark\"]");
         assert!(dark_theme.is_some());
 
         let button = symbols.iter().find(|s| s.name == ".button");
         assert!(button.is_some());
-        assert!(button
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("var(--primary-color)"));
+        assert!(
+            button
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("var(--primary-color)")
+        );
 
         let button_hover = symbols.iter().find(|s| s.name == ".button:hover");
         assert!(button_hover.is_some());

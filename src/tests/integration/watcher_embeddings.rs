@@ -190,7 +190,10 @@ async fn test_file_deletion_updates_semantic_search() -> Result<()> {
 
     // Verify function is findable
     let before_delete = semantic_search(&handler, "temporary function", 10).await?;
-    assert!(!before_delete.is_empty(), "Should find function before delete");
+    assert!(
+        !before_delete.is_empty(),
+        "Should find function before delete"
+    );
 
     // Delete file and trigger watcher
     fs::remove_file(&test_file)?;
@@ -245,10 +248,10 @@ async fn index_workspace(
 /// Trigger file watcher handler for modified file
 async fn trigger_file_watcher(_handler: &JulieServerHandler, file_path: &Path) -> Result<()> {
     // Use the same handler that file watcher would call
-    use crate::watcher::handlers::handle_file_created_or_modified_static;
     use crate::database::SymbolDatabase;
     use crate::embeddings::EmbeddingEngine;
     use crate::extractors::ExtractorManager;
+    use crate::watcher::handlers::handle_file_created_or_modified_static;
     use std::sync::{Arc, Mutex};
     use tokio::sync::RwLock;
 
@@ -257,9 +260,7 @@ async fn trigger_file_watcher(_handler: &JulieServerHandler, file_path: &Path) -
 
     // Create components directly (like existing watcher tests do)
     let db_path = workspace_root.join(".julie/db/symbols.db");
-    let db = Arc::new(Mutex::new(
-        SymbolDatabase::new(&db_path)?
-    ));
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path)?));
 
     let extractor_manager = Arc::new(ExtractorManager::new());
     let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
@@ -280,8 +281,8 @@ async fn trigger_file_watcher(_handler: &JulieServerHandler, file_path: &Path) -
 /// Trigger file watcher handler for deleted file
 async fn trigger_file_deletion(_handler: &JulieServerHandler, file_path: &Path) -> Result<()> {
     // Simulate file deletion event
-    use crate::watcher::handlers::handle_file_deleted_static;
     use crate::database::SymbolDatabase;
+    use crate::watcher::handlers::handle_file_deleted_static;
     use std::sync::{Arc, Mutex};
 
     // Get workspace root from file path
@@ -289,17 +290,9 @@ async fn trigger_file_deletion(_handler: &JulieServerHandler, file_path: &Path) 
 
     // Create components directly
     let db_path = workspace_root.join(".julie/db/symbols.db");
-    let db = Arc::new(Mutex::new(
-        SymbolDatabase::new(&db_path)?
-    ));
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path)?));
 
-    handle_file_deleted_static(
-        file_path.to_path_buf(),
-        &db,
-        None,
-        workspace_root,
-    )
-    .await?;
+    handle_file_deleted_static(file_path.to_path_buf(), &db, None, workspace_root).await?;
 
     Ok(())
 }
@@ -333,11 +326,7 @@ async fn semantic_search(
 }
 
 /// Perform text search using fast_search tool
-async fn text_search(
-    handler: &JulieServerHandler,
-    query: &str,
-    limit: u32,
-) -> Result<Vec<Symbol>> {
+async fn text_search(handler: &JulieServerHandler, query: &str, limit: u32) -> Result<Vec<Symbol>> {
     use crate::tools::search::FastSearchTool;
 
     let search_tool = FastSearchTool {

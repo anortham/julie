@@ -3,9 +3,9 @@
 //! Provides functions for building signatures of functions, variables, commands,
 //! and other Bash constructs.
 
+use crate::extractors::base::BaseExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
-use crate::extractors::base::BaseExtractor;
 
 impl super::BashExtractor {
     /// Build signature for a function definition

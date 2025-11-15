@@ -122,30 +122,36 @@ namespace ModernFeatures
 
         let get_data_async = symbols.iter().find(|s| s.name == "GetDataAsync");
         assert!(get_data_async.is_some());
-        assert!(get_data_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("async Task<string?>"));
+        assert!(
+            get_data_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("async Task<string?>")
+        );
 
         let count_items_async = symbols.iter().find(|s| s.name == "CountItemsAsync");
         assert!(count_items_async.is_some());
-        assert!(count_items_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("ValueTask<int>"));
+        assert!(
+            count_items_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("ValueTask<int>")
+        );
 
         let get_items_async = symbols.iter().find(|s| s.name == "GetItemsAsync");
         assert!(get_items_async.is_some());
-        assert!(get_items_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("IAsyncEnumerable<string>"));
+        assert!(
+            get_items_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("IAsyncEnumerable<string>")
+        );
 
         let nullable_example = symbols.iter().find(|s| s.name == "NullableExample");
         assert!(nullable_example.is_some());
@@ -220,30 +226,36 @@ namespace PatternMatching
 
         let shape = symbols.iter().find(|s| s.name == "Shape");
         assert!(shape.is_some());
-        assert!(shape
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("abstract record"));
+        assert!(
+            shape
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("abstract record")
+        );
 
         let circle = symbols.iter().find(|s| s.name == "Circle");
         assert!(circle.is_some());
-        assert!(circle
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("record Circle(double Radius)"));
+        assert!(
+            circle
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("record Circle(double Radius)")
+        );
 
         let calculate_area = symbols.iter().find(|s| s.name == "CalculateArea");
         assert!(calculate_area.is_some());
-        assert!(calculate_area
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("=> shape switch"));
+        assert!(
+            calculate_area
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("=> shape switch")
+        );
 
         let describe_shape = symbols.iter().find(|s| s.name == "DescribeShape");
         assert!(describe_shape.is_some());
@@ -251,21 +263,25 @@ namespace PatternMatching
 
         let is_large_shape = symbols.iter().find(|s| s.name == "IsLargeShape");
         assert!(is_large_shape.is_some());
-        assert!(is_large_shape
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("is Circle"));
+        assert!(
+            is_large_shape
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("is Circle")
+        );
 
         let process_value = symbols.iter().find(|s| s.name == "ProcessValue");
         assert!(process_value.is_some());
-        assert!(process_value
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("object value"));
+        assert!(
+            process_value
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("object value")
+        );
     }
 
     #[test]
@@ -338,30 +354,36 @@ namespace AdvancedGenerics
 
         let repository = symbols.iter().find(|s| s.name == "IRepository");
         assert!(repository.is_some());
-        assert!(repository
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("where T : class, IEntity, new()"));
+        assert!(
+            repository
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("where T : class, IEntity, new()")
+        );
 
         let process_async = symbols.iter().find(|s| s.name == "ProcessAsync");
         assert!(process_async.is_some());
-        assert!(process_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("where TResult : class"));
+        assert!(
+            process_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("where TResult : class")
+        );
 
         let handle_nullable_types = symbols.iter().find(|s| s.name == "HandleNullableTypes");
         assert!(handle_nullable_types.is_some());
-        assert!(handle_nullable_types
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("where TNullable : struct"));
+        assert!(
+            handle_nullable_types
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("where TNullable : struct")
+        );
     }
 
     #[test]
@@ -470,48 +492,58 @@ namespace LinqExamples
 
         let query_data = symbols.iter().find(|s| s.name == "QueryData");
         assert!(query_data.is_some());
-        assert!(query_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Expression<Func<T, bool>>"));
+        assert!(
+            query_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Expression<Func<T, bool>>")
+        );
 
         let get_filtered_users_async = symbols.iter().find(|s| s.name == "GetFilteredUsersAsync");
         assert!(get_filtered_users_async.is_some());
-        assert!(get_filtered_users_async
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("async Task<List<User>>"));
+        assert!(
+            get_filtered_users_async
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("async Task<List<User>>")
+        );
 
         let process_items = symbols.iter().find(|s| s.name == "ProcessItems");
         assert!(process_items.is_some());
-        assert!(process_items
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Action<T>"));
+        assert!(
+            process_items
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Action<T>")
+        );
 
         let create_multiplier = symbols.iter().find(|s| s.name == "CreateMultiplier");
         assert!(create_multiplier.is_some());
-        assert!(create_multiplier
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Func<int, int>"));
+        assert!(
+            create_multiplier
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Func<int, int>")
+        );
 
         let create_predicate = symbols.iter().find(|s| s.name == "CreatePredicate");
         assert!(create_predicate.is_some());
-        assert!(create_predicate
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Expression<Func<T, bool>>"));
+        assert!(
+            create_predicate
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Expression<Func<T, bool>>")
+        );
 
         let local_function_examples = symbols.iter().find(|s| s.name == "LocalFunctionExamples");
         assert!(local_function_examples.is_some());

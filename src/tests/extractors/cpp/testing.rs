@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {

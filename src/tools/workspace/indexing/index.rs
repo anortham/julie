@@ -161,7 +161,7 @@ impl ManageWorkspaceTool {
             is_primary_workspace,
             &mut total_files,
             workspace_id.clone(), // Pass workspace_id to avoid re-lookup
-            workspace_path, // Pass workspace path for correct relative path conversion
+            workspace_path,       // Pass workspace path for correct relative path conversion
         )
         .await?;
         debug!("🐛 [INDEX TRACE T] process_files_optimized completed");
@@ -209,7 +209,10 @@ impl ManageWorkspaceTool {
                 let db = match db_arc.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned during final count query, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned during final count query, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };
@@ -252,7 +255,10 @@ impl ManageWorkspaceTool {
             let db_lock = match db_arc.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("Database mutex poisoned during staleness check, recovering: {}", poisoned);
+                    warn!(
+                        "Database mutex poisoned during staleness check, recovering: {}",
+                        poisoned
+                    );
                     poisoned.into_inner()
                 }
             };
@@ -323,11 +329,16 @@ impl ManageWorkspaceTool {
             // by the main thread could be deleted milliseconds later by the background task
             if force_reindex {
                 if let Some(ref db_arc) = workspace_db {
-                    info!("🔥 Force reindex - clearing all embeddings BEFORE background task (race condition fix)");
+                    info!(
+                        "🔥 Force reindex - clearing all embeddings BEFORE background task (race condition fix)"
+                    );
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned during embeddings clear, recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned during embeddings clear, recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };
@@ -372,8 +383,11 @@ impl ManageWorkspaceTool {
                 .await
                 {
                     Ok(_) => {
-                        info!("✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
-                              task_start.elapsed().as_secs_f64(), workspace_id_clone);
+                        info!(
+                            "✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
+                            task_start.elapsed().as_secs_f64(),
+                            workspace_id_clone
+                        );
                     }
                     Err(e) => {
                         error!(

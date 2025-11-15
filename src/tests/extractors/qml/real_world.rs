@@ -55,14 +55,20 @@ PlasmaCore.Dialog {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract KDE Plasma components");
+        assert!(
+            components.len() >= 2,
+            "Should extract KDE Plasma components"
+        );
 
         let properties: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties including aliases");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties including aliases"
+        );
     }
 
     #[test]
@@ -123,7 +129,10 @@ Window {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Window and nested components");
+        assert!(
+            components.len() >= 2,
+            "Should extract Window and nested components"
+        );
 
         let properties: Vec<&Symbol> = symbols
             .iter()
@@ -216,14 +225,20 @@ ApplicationWindow {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 5, "Should extract ApplicationWindow and controls");
+        assert!(
+            components.len() >= 5,
+            "Should extract ApplicationWindow and controls"
+        );
 
         let functions: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 2, "Should extract filterModel and handleSelection functions");
+        assert!(
+            functions.len() >= 2,
+            "Should extract filterModel and handleSelection functions"
+        );
     }
 
     #[test]
@@ -302,14 +317,21 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Rectangle with BusyIndicator");
+        assert!(
+            components.len() >= 2,
+            "Should extract Rectangle with BusyIndicator"
+        );
 
         let functions: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert_eq!(functions.len(), 4, "Should extract all state transition functions");
+        assert_eq!(
+            functions.len(),
+            4,
+            "Should extract all state transition functions"
+        );
     }
 
     #[test]
@@ -319,8 +341,8 @@ Rectangle {
         // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
         let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/qml/real-world/cool-retro-term-main.qml");
-        let qml_code = std::fs::read_to_string(&fixture_path)
-            .expect("Failed to read cool-retro-term fixture");
+        let qml_code =
+            std::fs::read_to_string(&fixture_path).expect("Failed to read cool-retro-term fixture");
 
         let symbols = extract_symbols(&qml_code);
 
@@ -364,8 +386,8 @@ Rectangle {
         // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
         let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/qml/real-world/kde-plasma-desktop-main.qml");
-        let qml_code = std::fs::read_to_string(&fixture_path)
-            .expect("Failed to read KDE Plasma fixture");
+        let qml_code =
+            std::fs::read_to_string(&fixture_path).expect("Failed to read KDE Plasma fixture");
 
         let symbols = extract_symbols(&qml_code);
 

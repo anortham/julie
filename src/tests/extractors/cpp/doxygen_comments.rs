@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {

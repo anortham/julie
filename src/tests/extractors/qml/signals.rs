@@ -118,7 +118,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Event)
             .collect();
 
-        assert!(signals.len() >= 1, "Should extract signal from Connections block");
+        assert!(
+            signals.len() >= 1,
+            "Should extract signal from Connections block"
+        );
     }
 
     #[test]

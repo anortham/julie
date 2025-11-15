@@ -7,7 +7,10 @@ use tracing::debug;
 
 impl SymbolDatabase {
     pub fn get_symbols_by_semantic_group(&self, semantic_group: &str) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols WHERE semantic_group = ?1", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols WHERE semantic_group = ?1",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([semantic_group], |row| self.row_to_symbol(row))?;
@@ -22,7 +25,10 @@ impl SymbolDatabase {
 
     /// Get all symbols from all workspaces (for SearchEngine population)
     pub fn get_all_symbols(&self) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols ORDER BY file_path, start_line", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([], |row| self.row_to_symbol(row))?;
@@ -42,7 +48,10 @@ impl SymbolDatabase {
     /// Get all symbols matching an exact name (indexed lookup)
     /// Used to replace in-memory Vec<Symbol> fallbacks with persistent SQLite queries
     pub fn get_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols WHERE name = ?1 ORDER BY file_path, start_line", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols WHERE name = ?1 ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([name], |row| self.row_to_symbol(row))?;
@@ -90,7 +99,8 @@ impl SymbolDatabase {
 
     pub fn get_symbols_without_embeddings(&self) -> Result<Vec<Symbol>> {
         // Need to prefix columns with "s." for the JOIN query
-        let columns_with_prefix = SYMBOL_COLUMNS.split(", ")
+        let columns_with_prefix = SYMBOL_COLUMNS
+            .split(", ")
             .map(|col| format!("s.{}", col))
             .collect::<Vec<_>>()
             .join(", ");
@@ -122,7 +132,10 @@ impl SymbolDatabase {
     /// Get symbols for a specific workspace (optimized for background tasks)
     /// Note: workspace_id parameter kept for logging, but DB file is already workspace-specific
     pub fn get_symbols_for_workspace(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols ORDER BY file_path, start_line", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([], |row| self.row_to_symbol(row))?;
@@ -148,7 +161,10 @@ impl SymbolDatabase {
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols ORDER BY file_path, start_line LIMIT ?1 OFFSET ?2", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols ORDER BY file_path, start_line LIMIT ?1 OFFSET ?2",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([&limit.to_string(), &offset.to_string()], |row| {

@@ -10,7 +10,7 @@
 //! organized by date, making them git-trackable and human-readable.
 
 use anyhow::{Context, Result};
-use rust_mcp_sdk::macros::{mcp_tool, JsonSchema};
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -19,7 +19,7 @@ use tokio::process::Command;
 use tracing::{info, warn};
 
 use crate::handler::JulieServerHandler;
-use crate::tools::memory::{save_memory, GitContext, Memory};
+use crate::tools::memory::{GitContext, Memory, save_memory};
 
 /// Capture git context from the workspace
 async fn capture_git_context(handler: &JulieServerHandler) -> Option<GitContext> {
@@ -99,11 +99,7 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<GitContext>
             .map(|s| s.to_string())
             .collect();
 
-        if files.is_empty() {
-            None
-        } else {
-            Some(files)
-        }
+        if files.is_empty() { None } else { Some(files) }
     } else {
         None
     };
@@ -165,7 +161,9 @@ impl CheckpointTool {
         info!("💾 Creating checkpoint: {}", self.description);
 
         // Get workspace root
-        let workspace = handler.get_workspace().await?
+        let workspace = handler
+            .get_workspace()
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
         let workspace_root = workspace.root.clone();
 
@@ -183,10 +181,7 @@ impl CheckpointTool {
 
         // Build extra fields (type-specific data)
         let mut extra_map = serde_json::Map::new();
-        extra_map.insert(
-            "description".to_string(),
-            json!(self.description.clone()),
-        );
+        extra_map.insert("description".to_string(), json!(self.description.clone()));
 
         if let Some(ref tags) = self.tags {
             extra_map.insert("tags".to_string(), json!(tags.clone()));
@@ -204,8 +199,8 @@ impl CheckpointTool {
         };
 
         // Save to disk
-        let saved_path = save_memory(&workspace_root, &memory)
-            .context("Failed to save memory checkpoint")?;
+        let saved_path =
+            save_memory(&workspace_root, &memory).context("Failed to save memory checkpoint")?;
 
         // Format response
         let git_info = if let Some(git) = git_context {

@@ -33,9 +33,11 @@ fn test_extract_call_relationships() {
         !relationships.is_empty(),
         "Should extract call relationships"
     );
-    assert!(relationships
-        .iter()
-        .any(|r| r.kind == RelationshipKind::Calls));
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.kind == RelationshipKind::Calls)
+    );
 }
 
 #[test]
@@ -64,7 +66,9 @@ fn test_extract_inheritance_relationships() {
         !relationships.is_empty(),
         "Should extract inheritance relationships"
     );
-    assert!(relationships
-        .iter()
-        .any(|r| r.kind == RelationshipKind::Extends));
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.kind == RelationshipKind::Extends)
+    );
 }

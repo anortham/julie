@@ -26,11 +26,14 @@ mod tests {
         use tracing_subscriber::EnvFilter;
 
         // Test that we can chain try_from_default_env with or_else
-        let result = EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new("julie=info"));
+        let result =
+            EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("julie=info"));
 
         // Should succeed (either from env or fallback)
-        assert!(result.is_ok(), "Filter creation should always succeed with fallback");
+        assert!(
+            result.is_ok(),
+            "Filter creation should always succeed with fallback"
+        );
     }
 
     /// Test that EnvFilter fallback always succeeds
@@ -40,8 +43,8 @@ mod tests {
 
         // Even if we use an invalid env var, fallback should work
         unsafe { std::env::set_var("RUST_LOG", "invalid!@#$filter") };
-        let result = EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new("julie=info"));
+        let result =
+            EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("julie=info"));
 
         assert!(result.is_ok(), "Should fall back to default filter");
         unsafe { std::env::remove_var("RUST_LOG") };
@@ -57,7 +60,8 @@ mod tests {
 
         // Case 1: Normal lock acquisition
         let data = Arc::new(Mutex::new(42));
-        let value = data.lock()
+        let value = data
+            .lock()
             .map_err(|e| format!("Failed to acquire lock: {}", e))
             .map(|guard| *guard);
 
@@ -76,7 +80,8 @@ mod tests {
         let data = Arc::new(Mutex::new(vec![1, 2, 3]));
 
         // Simulate what happens when we try to lock after a panic
-        let result = data.lock()
+        let result = data
+            .lock()
             .map_err(|e| {
                 // Convert PoisonError to String for error handling
                 format!("Mutex poisoned or unavailable: {}", e)
@@ -103,14 +108,10 @@ mod tests {
         }));
 
         // Safe lock acquisition with error handling (matches main.rs pattern)
-        let result = mock_db.lock()
+        let result = mock_db
+            .lock()
             .map_err(|e| format!("Failed to acquire database lock: {}", e))
-            .and_then(|db| {
-                Ok((
-                    db.symbol_count,
-                    db.file_count,
-                ))
-            });
+            .and_then(|db| Ok((db.symbol_count, db.file_count)));
 
         assert!(result.is_ok());
         let (symbols, files) = result.unwrap();
@@ -140,7 +141,7 @@ mod tests {
                 Err(e) => {
                     // Log error and use defaults
                     eprintln!("Failed to acquire lock: {}", e);
-                    (0, 0)  // Graceful fallback
+                    (0, 0) // Graceful fallback
                 }
             }
         } else {

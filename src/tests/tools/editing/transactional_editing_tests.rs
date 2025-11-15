@@ -165,7 +165,10 @@ mod transactional_editing_tests {
 
         // Attempt to commit - should fail and rollback all
         let result = transaction.commit_all();
-        assert!(result.is_err(), "Transaction should fail due to readonly file");
+        assert!(
+            result.is_err(),
+            "Transaction should fail due to readonly file"
+        );
 
         // Verify ALL files were rolled back (all-or-nothing)
         assert_eq!(fs::read_to_string(&file1)?, "original1");
@@ -263,8 +266,14 @@ mod transactional_editing_tests {
         EditingTransaction::emergency_cleanup(fixture.get_temp_dir())?;
 
         // Verify orphaned temp files were cleaned up
-        assert!(!orphan1.exists(), "Orphaned temp file 1 should be cleaned up");
-        assert!(!orphan2.exists(), "Orphaned temp file 2 should be cleaned up");
+        assert!(
+            !orphan1.exists(),
+            "Orphaned temp file 1 should be cleaned up"
+        );
+        assert!(
+            !orphan2.exists(),
+            "Orphaned temp file 2 should be cleaned up"
+        );
 
         println!("✅ Emergency cleanup test passed");
         Ok(())

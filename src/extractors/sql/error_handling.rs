@@ -243,7 +243,8 @@ fn extract_triggers_from_error(
                 let table = details_captures.get(3).map_or("", |m| m.as_str());
 
                 if !timing.is_empty() && !event.is_empty() && !table.is_empty() {
-                    signature = format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
+                    signature =
+                        format!("CREATE TRIGGER {} {} {} ON {}", name, timing, event, table);
                 }
             }
 
@@ -308,7 +309,8 @@ fn extract_constraints_from_error(
                     let fk_ref_table = fk_captures.get(2).map_or("", |m| m.as_str());
 
                     if !fk_columns.is_empty() && !fk_ref_table.is_empty() {
-                        signature.push_str(&format!(" ({}) REFERENCES {}", fk_columns, fk_ref_table));
+                        signature
+                            .push_str(&format!(" ({}) REFERENCES {}", fk_columns, fk_ref_table));
                     }
                 }
 
@@ -316,7 +318,10 @@ fn extract_constraints_from_error(
                     regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_delete_captures) = on_delete_regex.captures(error_text) {
-                    let on_delete_action = on_delete_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    let on_delete_action = on_delete_captures
+                        .get(1)
+                        .map_or("", |m| m.as_str())
+                        .to_uppercase();
                     if !on_delete_action.is_empty() {
                         signature.push_str(&format!(" ON DELETE {}", on_delete_action));
                     }
@@ -326,7 +331,10 @@ fn extract_constraints_from_error(
                     regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
                         .unwrap();
                 if let Some(on_update_captures) = on_update_regex.captures(error_text) {
-                    let on_update_action = on_update_captures.get(1).map_or("", |m| m.as_str()).to_uppercase();
+                    let on_update_action = on_update_captures
+                        .get(1)
+                        .map_or("", |m| m.as_str())
+                        .to_uppercase();
                     if !on_update_action.is_empty() {
                         signature.push_str(&format!(" ON UPDATE {}", on_update_action));
                     }

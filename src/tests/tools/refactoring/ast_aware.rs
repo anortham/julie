@@ -112,13 +112,8 @@ const result = service.getUserData();
         dry_run: false,
     };
 
-    let result = tool.smart_text_replace(
-        source,
-        "UserService",
-        "AccountService",
-        "test.ts",
-        false,
-    )?;
+    let result =
+        tool.smart_text_replace(source, "UserService", "AccountService", "test.ts", false)?;
 
     // All identifier references should be renamed
     assert!(

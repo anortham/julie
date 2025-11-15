@@ -11,14 +11,14 @@
 // - extractor.rs: BaseExtractor implementation (core methods)
 // - tree_methods.rs: Tree navigation and traversal methods
 
-pub mod types;
+pub mod creation_methods;
 pub mod extractor;
 pub mod tree_methods;
-pub mod creation_methods;
+pub mod types;
 
 // Re-export key types for external use
+pub use extractor::BaseExtractor;
 pub use types::{
     ContextConfig, ExtractionResults, Identifier, IdentifierKind, Relationship, RelationshipKind,
     Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
 };
-pub use extractor::BaseExtractor;

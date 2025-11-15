@@ -216,67 +216,79 @@ function logUnknownError(error) {
     let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
     assert!(validation_error.is_some());
     assert_eq!(validation_error.unwrap().kind, SymbolKind::Class);
-    assert!(validation_error
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("class ValidationError extends Error"));
+    assert!(
+        validation_error
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("class ValidationError extends Error")
+    );
 
     let network_error = symbols.iter().find(|s| s.name == "NetworkError");
     assert!(network_error.is_some());
-    assert!(network_error
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("class NetworkError extends Error"));
+    assert!(
+        network_error
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("class NetworkError extends Error")
+    );
 
     // Static method
-    let from_response = symbols.iter().find(|s| {
-        s.name == "fromResponse" && s.signature.as_ref().unwrap().contains("static")
-    });
+    let from_response = symbols
+        .iter()
+        .find(|s| s.name == "fromResponse" && s.signature.as_ref().unwrap().contains("static"));
     assert!(from_response.is_some());
     assert_eq!(from_response.unwrap().kind, SymbolKind::Method);
 
     // Error handling functions
     let validate_user = symbols.iter().find(|s| s.name == "validateUser");
     assert!(validate_user.is_some());
-    assert!(validate_user
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function validateUser(user)"));
+    assert!(
+        validate_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function validateUser(user)")
+    );
 
     let fetch_with_retry = symbols.iter().find(|s| s.name == "fetchWithRetry");
     assert!(fetch_with_retry.is_some());
-    assert!(fetch_with_retry
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("async function fetchWithRetry"));
+    assert!(
+        fetch_with_retry
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("async function fetchWithRetry")
+    );
 
     // Error boundary
     let with_error_handling = symbols.iter().find(|s| s.name == "withErrorHandling");
     assert!(with_error_handling.is_some());
-    assert!(with_error_handling
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function withErrorHandling(fn)"));
+    assert!(
+        with_error_handling
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function withErrorHandling(fn)")
+    );
 
     // Finally block function
     let process_file = symbols.iter().find(|s| s.name == "processFile");
     assert!(process_file.is_some());
-    assert!(process_file
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function processFile(filename)"));
+    assert!(
+        process_file
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function processFile(filename)")
+    );
 
     // Multiple error handling
     let handle_multiple_errors = symbols.iter().find(|s| s.name == "handleMultipleErrors");

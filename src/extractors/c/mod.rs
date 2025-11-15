@@ -28,7 +28,12 @@ pub struct CExtractor {
 
 impl CExtractor {
     /// Create a new C extractor for the given file
-    pub fn new(language: String, file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
+    pub fn new(
+        language: String,
+        file_path: String,
+        content: String,
+        workspace_root: &std::path::Path,
+    ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
@@ -61,6 +66,51 @@ impl CExtractor {
     /// Extract all identifier usages (function calls, member access, etc.)
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
+    }
+
+    /// Infer types from C signatures (function return types, variable types)
+    pub fn infer_types(&self, symbols: &[Symbol]) -> std::collections::HashMap<String, String> {
+        let mut type_map = std::collections::HashMap::new();
+
+        for symbol in symbols {
+            if let Some(ref signature) = symbol.signature {
+                if let Some(inferred_type) = self.extract_type_from_signature(signature, &symbol.kind, &symbol.name) {
+                    type_map.insert(symbol.id.clone(), inferred_type);
+                }
+            }
+        }
+
+        type_map
+    }
+
+    fn extract_type_from_signature(&self, signature: &str, kind: &crate::extractors::base::SymbolKind, name: &str) -> Option<String> {
+        use crate::extractors::base::SymbolKind;
+
+        match kind {
+            SymbolKind::Function | SymbolKind::Method => {
+                // C function signatures: "int get_count()", "char* get_name()"
+                // Extract return type (everything before function name)
+                if let Some(name_pos) = signature.find(name) {
+                    let type_part = signature[..name_pos].trim();
+                    if !type_part.is_empty() {
+                        return Some(type_part.to_string());
+                    }
+                }
+            }
+            SymbolKind::Variable | SymbolKind::Property => {
+                // C variable declarations: "int count", "char* name"
+                // Extract type (everything before variable name)
+                if let Some(name_pos) = signature.find(name) {
+                    let type_part = signature[..name_pos].trim();
+                    if !type_part.is_empty() {
+                        return Some(type_part.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        None
     }
 
     /// Recursively visit nodes in the tree, extracting symbols

@@ -73,7 +73,10 @@ pub async fn generate_embeddings_from_sqlite(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during embeddings read, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during embeddings read, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -217,7 +220,10 @@ pub async fn generate_embeddings_from_sqlite(
                     let mut db_guard = match db.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned during embeddings batch storage, recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned during embeddings batch storage, recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };
@@ -423,7 +429,10 @@ async fn build_and_save_hnsw_index(
         let db_lock = match db.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during HNSW embeddings load, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during HNSW embeddings load, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -464,7 +473,9 @@ async fn build_and_save_hnsw_index(
                         // File watcher needs it in memory for incremental updates (~11MB is acceptable)
                         // NOTE: This VectorStore is LOCAL to this function and will be dropped anyway
                         // The real VectorStore that file watcher uses is lazy-loaded from disk in initialize_file_watcher()
-                        info!("✅ HNSW index persisted - file watcher will lazy-load for incremental updates");
+                        info!(
+                            "✅ HNSW index persisted - file watcher will lazy-load for incremental updates"
+                        );
                     }
                 }
                 Err(e) => {

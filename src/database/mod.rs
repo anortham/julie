@@ -2,7 +2,7 @@
 //!
 //! Refactored into focused modules for maintainability (<500 lines each)
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rusqlite::{Connection, Row};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ mod relationships;
 mod schema;
 mod symbols;
 pub mod types;
+mod type_queries;
 mod workspace;
 
 // Re-export public types
@@ -118,11 +119,14 @@ impl SymbolDatabase {
     /// Detects "invalid fts5 file format" and "missing row" errors
     fn check_and_rebuild_fts5_indexes(&mut self) -> Result<()> {
         // Check symbols_fts integrity
-        let symbols_corrupted = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'test'",
-            [],
-            |_| Ok(()),
-        ).is_err();
+        let symbols_corrupted = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'test'",
+                [],
+                |_| Ok(()),
+            )
+            .is_err();
 
         if symbols_corrupted {
             warn!("⚠️  Detected corrupted symbols_fts index - rebuilding...");
@@ -146,18 +150,22 @@ impl SymbolDatabase {
                 self.create_symbols_fts_table()?;
                 self.create_symbols_fts_triggers()?;
                 // Rebuild from base table (now that table exists)
-                self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
+                self.conn
+                    .execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
             }
 
             info!("✅ symbols_fts index rebuilt successfully");
         }
 
         // Check files_fts integrity
-        let files_corrupted = self.conn.query_row(
-            "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH 'test'",
-            [],
-            |_| Ok(()),
-        ).is_err();
+        let files_corrupted = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH 'test'",
+                [],
+                |_| Ok(()),
+            )
+            .is_err();
 
         if files_corrupted {
             warn!("⚠️  Detected corrupted files_fts index - rebuilding...");
@@ -170,10 +178,8 @@ impl SymbolDatabase {
                 // Enable schema modification to manually remove corrupted FTS5 table
                 self.conn.execute("PRAGMA writable_schema=ON", [])?;
                 // Delete all entries for files_fts from sqlite_master
-                self.conn.execute(
-                    "DELETE FROM sqlite_master WHERE name LIKE 'files_fts%'",
-                    [],
-                )?;
+                self.conn
+                    .execute("DELETE FROM sqlite_master WHERE name LIKE 'files_fts%'", [])?;
                 self.conn.execute("PRAGMA writable_schema=OFF", [])?;
                 // Force schema reload with VACUUM
                 self.conn.execute("VACUUM", [])?;
@@ -181,7 +187,8 @@ impl SymbolDatabase {
                 self.create_files_fts_table()?;
                 self.create_files_fts_triggers()?;
                 // Rebuild from base table (now that table exists)
-                self.conn.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
+                self.conn
+                    .execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
             }
 
             info!("✅ files_fts index rebuilt successfully");
@@ -208,9 +215,7 @@ impl SymbolDatabase {
         // Execute PRAGMA wal_checkpoint(TRUNCATE)
         // Returns: (busy, log, checkpointed)
         let mut stmt = self.conn.prepare("PRAGMA wal_checkpoint(TRUNCATE)")?;
-        let result = stmt.query_row([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
+        let result = stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
 
         let (busy, log, checkpointed) = result;
 

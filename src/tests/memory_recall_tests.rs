@@ -14,7 +14,11 @@ fn test_recall_empty_workspace() -> Result<()> {
     // Recall should return empty list, not error
     let memories = crate::tools::memory::recall_memories(&workspace_root, Default::default())?;
 
-    assert_eq!(memories.len(), 0, "Should return empty list for new workspace");
+    assert_eq!(
+        memories.len(),
+        0,
+        "Should return empty list for new workspace"
+    );
 
     Ok(())
 }
@@ -226,7 +230,10 @@ fn test_recall_preserves_extra_fields() -> Result<()> {
     assert_eq!(memories.len(), 1);
 
     let extra = memories[0].extra.as_object().unwrap();
-    assert_eq!(extra.get("description").unwrap().as_str().unwrap(), "Test memory with extras");
+    assert_eq!(
+        extra.get("description").unwrap().as_str().unwrap(),
+        "Test memory with extras"
+    );
     assert_eq!(extra.get("tags").unwrap().as_array().unwrap().len(), 2);
     assert_eq!(extra.get("custom_field").unwrap().as_i64().unwrap(), 42);
 

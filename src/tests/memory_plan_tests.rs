@@ -5,9 +5,9 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::tools::memory::plan::*;
-use crate::tools::memory::PlanAction;
 use crate::tools::memory::GitContext;
+use crate::tools::memory::PlanAction;
+use crate::tools::memory::plan::*;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -60,12 +60,7 @@ fn test_create_plan_saves_to_disk() -> Result<()> {
     let workspace_root = temp.path();
 
     // Create plan
-    let plan = create_plan(
-        workspace_root,
-        "Test Plan".to_string(),
-        None,
-        None,
-    )?;
+    let plan = create_plan(workspace_root, "Test Plan".to_string(), None, None)?;
 
     // Verify file exists
     let plan_path = workspace_root
@@ -152,7 +147,10 @@ fn test_update_plan_content() -> Result<()> {
     assert_eq!(updated.content, Some("Updated content".to_string()));
     assert_eq!(updated.title, "Update Test"); // Title unchanged
     assert_eq!(updated.status, PlanStatus::Active); // Status unchanged
-    assert!(updated.timestamp > original_timestamp, "Timestamp should be updated");
+    assert!(
+        updated.timestamp > original_timestamp,
+        "Timestamp should be updated"
+    );
 
     Ok(())
 }
@@ -164,12 +162,7 @@ fn test_update_plan_status() -> Result<()> {
     let workspace_root = temp.path();
 
     // Create plan
-    let plan = create_plan(
-        workspace_root,
-        "Status Test".to_string(),
-        None,
-        None,
-    )?;
+    let plan = create_plan(workspace_root, "Status Test".to_string(), None, None)?;
 
     assert_eq!(plan.status, PlanStatus::Active);
 
@@ -408,17 +401,35 @@ fn test_activate_plan_deactivates_others() -> Result<()> {
     let plan3 = create_plan(workspace_root, "Plan 3".to_string(), None, None)?;
 
     // All should be active initially
-    assert_eq!(get_plan(workspace_root, &plan1.id)?.status, PlanStatus::Active);
-    assert_eq!(get_plan(workspace_root, &plan2.id)?.status, PlanStatus::Active);
-    assert_eq!(get_plan(workspace_root, &plan3.id)?.status, PlanStatus::Active);
+    assert_eq!(
+        get_plan(workspace_root, &plan1.id)?.status,
+        PlanStatus::Active
+    );
+    assert_eq!(
+        get_plan(workspace_root, &plan2.id)?.status,
+        PlanStatus::Active
+    );
+    assert_eq!(
+        get_plan(workspace_root, &plan3.id)?.status,
+        PlanStatus::Active
+    );
 
     // Activate plan2
     activate_plan(workspace_root, &plan2.id)?;
 
     // Verify only plan2 is active
-    assert_eq!(get_plan(workspace_root, &plan1.id)?.status, PlanStatus::Archived);
-    assert_eq!(get_plan(workspace_root, &plan2.id)?.status, PlanStatus::Active);
-    assert_eq!(get_plan(workspace_root, &plan3.id)?.status, PlanStatus::Archived);
+    assert_eq!(
+        get_plan(workspace_root, &plan1.id)?.status,
+        PlanStatus::Archived
+    );
+    assert_eq!(
+        get_plan(workspace_root, &plan2.id)?.status,
+        PlanStatus::Active
+    );
+    assert_eq!(
+        get_plan(workspace_root, &plan3.id)?.status,
+        PlanStatus::Archived
+    );
 
     Ok(())
 }
@@ -466,12 +477,19 @@ fn test_slug_basic() -> Result<()> {
         ("Fix: Auth Bug", "plan_fix-auth-bug"),
         ("Database Migration (v2)", "plan_database-migration-v2"),
         ("Update README", "plan_update-readme"),
-        ("Refactor   Multiple   Spaces", "plan_refactor-multiple-spaces"),
+        (
+            "Refactor   Multiple   Spaces",
+            "plan_refactor-multiple-spaces",
+        ),
     ];
 
     for (title, expected_id) in test_cases {
         let plan = create_plan(workspace_root, title.to_string(), None, None)?;
-        assert_eq!(plan.id, expected_id, "Title '{}' should generate ID '{}'", title, expected_id);
+        assert_eq!(
+            plan.id, expected_id,
+            "Title '{}' should generate ID '{}'",
+            title, expected_id
+        );
     }
 
     Ok(())
@@ -495,7 +513,8 @@ fn test_slug_special_characters() -> Result<()> {
     assert!(plan.id.starts_with("plan_"));
     let slug = &plan.id[5..]; // Remove "plan_" prefix
     assert!(
-        slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+        slug.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
         "Slug should only contain lowercase letters, digits, and hyphens: {}",
         slug
     );
@@ -520,11 +539,7 @@ fn test_slug_unicode() -> Result<()> {
     // Should have valid ASCII slug
     assert!(plan.id.starts_with("plan_"));
     let slug = &plan.id[5..];
-    assert!(
-        slug.is_ascii(),
-        "Slug should be ASCII-only: {}",
-        slug
-    );
+    assert!(slug.is_ascii(), "Slug should be ASCII-only: {}", slug);
 
     Ok(())
 }
@@ -561,7 +576,12 @@ fn test_plan_with_empty_content() -> Result<()> {
     assert_eq!(plan.content, None);
 
     // Create plan with empty string content
-    let plan2 = create_plan(workspace_root, "Empty Content".to_string(), Some("".to_string()), None)?;
+    let plan2 = create_plan(
+        workspace_root,
+        "Empty Content".to_string(),
+        Some("".to_string()),
+        None,
+    )?;
     assert_eq!(plan2.content, Some("".to_string()));
 
     Ok(())
@@ -593,7 +613,10 @@ fn test_plan_extra_fields() -> Result<()> {
 
     // Verify extra fields preserved
     assert_eq!(updated.extra["priority"], "high");
-    assert_eq!(updated.extra["tags"], serde_json::json!(["important", "urgent"]));
+    assert_eq!(
+        updated.extra["tags"],
+        serde_json::json!(["important", "urgent"])
+    );
     assert_eq!(updated.extra["estimate_hours"], 8);
 
     Ok(())
@@ -608,27 +631,45 @@ fn test_plan_action_serializes_to_lowercase() -> Result<()> {
     // Test that PlanAction enum serializes to lowercase JSON
     let action = PlanAction::Save;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"save\"", "PlanAction::Save should serialize to lowercase 'save'");
+    assert_eq!(
+        json, "\"save\"",
+        "PlanAction::Save should serialize to lowercase 'save'"
+    );
 
     let action = PlanAction::Get;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"get\"", "PlanAction::Get should serialize to lowercase 'get'");
+    assert_eq!(
+        json, "\"get\"",
+        "PlanAction::Get should serialize to lowercase 'get'"
+    );
 
     let action = PlanAction::List;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"list\"", "PlanAction::List should serialize to lowercase 'list'");
+    assert_eq!(
+        json, "\"list\"",
+        "PlanAction::List should serialize to lowercase 'list'"
+    );
 
     let action = PlanAction::Activate;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"activate\"", "PlanAction::Activate should serialize to lowercase 'activate'");
+    assert_eq!(
+        json, "\"activate\"",
+        "PlanAction::Activate should serialize to lowercase 'activate'"
+    );
 
     let action = PlanAction::Update;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"update\"", "PlanAction::Update should serialize to lowercase 'update'");
+    assert_eq!(
+        json, "\"update\"",
+        "PlanAction::Update should serialize to lowercase 'update'"
+    );
 
     let action = PlanAction::Complete;
     let json = serde_json::to_string(&action)?;
-    assert_eq!(json, "\"complete\"", "PlanAction::Complete should serialize to lowercase 'complete'");
+    assert_eq!(
+        json, "\"complete\"",
+        "PlanAction::Complete should serialize to lowercase 'complete'"
+    );
 
     Ok(())
 }
@@ -637,22 +678,40 @@ fn test_plan_action_serializes_to_lowercase() -> Result<()> {
 fn test_plan_action_deserializes_from_lowercase() -> Result<()> {
     // Test that PlanAction enum deserializes from lowercase JSON
     let action: PlanAction = serde_json::from_str("\"save\"")?;
-    assert!(matches!(action, PlanAction::Save), "Should deserialize 'save' to PlanAction::Save");
+    assert!(
+        matches!(action, PlanAction::Save),
+        "Should deserialize 'save' to PlanAction::Save"
+    );
 
     let action: PlanAction = serde_json::from_str("\"get\"")?;
-    assert!(matches!(action, PlanAction::Get), "Should deserialize 'get' to PlanAction::Get");
+    assert!(
+        matches!(action, PlanAction::Get),
+        "Should deserialize 'get' to PlanAction::Get"
+    );
 
     let action: PlanAction = serde_json::from_str("\"list\"")?;
-    assert!(matches!(action, PlanAction::List), "Should deserialize 'list' to PlanAction::List");
+    assert!(
+        matches!(action, PlanAction::List),
+        "Should deserialize 'list' to PlanAction::List"
+    );
 
     let action: PlanAction = serde_json::from_str("\"activate\"")?;
-    assert!(matches!(action, PlanAction::Activate), "Should deserialize 'activate' to PlanAction::Activate");
+    assert!(
+        matches!(action, PlanAction::Activate),
+        "Should deserialize 'activate' to PlanAction::Activate"
+    );
 
     let action: PlanAction = serde_json::from_str("\"update\"")?;
-    assert!(matches!(action, PlanAction::Update), "Should deserialize 'update' to PlanAction::Update");
+    assert!(
+        matches!(action, PlanAction::Update),
+        "Should deserialize 'update' to PlanAction::Update"
+    );
 
     let action: PlanAction = serde_json::from_str("\"complete\"")?;
-    assert!(matches!(action, PlanAction::Complete), "Should deserialize 'complete' to PlanAction::Complete");
+    assert!(
+        matches!(action, PlanAction::Complete),
+        "Should deserialize 'complete' to PlanAction::Complete"
+    );
 
     Ok(())
 }

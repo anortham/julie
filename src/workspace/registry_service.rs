@@ -6,7 +6,7 @@
 //! automatic cleanup, and intelligent workspace lifecycle management.
 
 use super::registry::{current_timestamp, *};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde_json;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};

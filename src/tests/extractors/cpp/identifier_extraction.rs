@@ -39,7 +39,11 @@ public:
         let tree = parser.parse(cpp_code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor = CppExtractor::new("test.cpp".to_string(), cpp_code.to_string(), &workspace_root);
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
 
         // Extract symbols first
         let symbols = extractor.extract_symbols(&tree);
@@ -100,7 +104,11 @@ public:
         let tree = parser.parse(cpp_code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor = CppExtractor::new("test.cpp".to_string(), cpp_code.to_string(), &workspace_root);
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -147,7 +155,11 @@ private:
         let tree = parser.parse(cpp_code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor = CppExtractor::new("test.cpp".to_string(), cpp_code.to_string(), &workspace_root);
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -188,7 +200,11 @@ public:
         let tree = parser.parse(cpp_code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor = CppExtractor::new("test.cpp".to_string(), cpp_code.to_string(), &workspace_root);
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
@@ -231,7 +247,11 @@ private:
         let tree = parser.parse(cpp_code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut extractor = CppExtractor::new("test.cpp".to_string(), cpp_code.to_string(), &workspace_root);
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
 
         let symbols = extractor.extract_symbols(&tree);
         let identifiers = extractor.extract_identifiers(&tree, &symbols);

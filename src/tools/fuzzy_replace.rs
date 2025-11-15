@@ -14,10 +14,10 @@
 //! - Match_Distance: How far away to search for matches
 //! - match_main: Returns best match location even for imperfect matches
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use diff_match_patch_rs::{DiffMatchPatch, Efficient};
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tokio::fs; // Use async file I/O
@@ -277,7 +277,11 @@ impl FuzzyReplaceTool {
             // Minimal 2-line summary
             let markdown = format!(
                 "Fuzzy match preview: {} matches found in {}\nPattern: '{}' → Replacement: '{}' (threshold: {}, dry_run: true)",
-                result.matches_found, result.file_path.as_ref().unwrap(), result.pattern, result.replacement, result.threshold
+                result.matches_found,
+                result.file_path.as_ref().unwrap(),
+                result.pattern,
+                result.replacement,
+                result.threshold
             );
 
             // Serialize to JSON
@@ -324,7 +328,11 @@ impl FuzzyReplaceTool {
         // Minimal 2-line summary
         let markdown = format!(
             "Fuzzy replace complete: {} matches replaced in {}\nPattern: '{}' → Replacement: '{}' (threshold: {})",
-            result.matches_found, result.file_path.as_ref().unwrap(), result.pattern, result.replacement, result.threshold
+            result.matches_found,
+            result.file_path.as_ref().unwrap(),
+            result.pattern,
+            result.replacement,
+            result.threshold
         );
 
         // Serialize to JSON for structured_content
@@ -480,10 +488,8 @@ impl FuzzyReplaceTool {
 
             // Apply changes (if not dry run)
             if !self.dry_run {
-                let transaction = EditingTransaction::begin(
-                    file_path.to_string_lossy().as_ref(),
-                )
-                .map_err(|e| {
+                let transaction = EditingTransaction::begin(file_path.to_string_lossy().as_ref())
+                    .map_err(|e| {
                     anyhow!(
                         "Failed to begin transaction for '{}': {}",
                         file_path.display(),
@@ -538,7 +544,14 @@ impl FuzzyReplaceTool {
         let mode = if self.dry_run { "preview" } else { "complete" };
         let mut markdown = format!(
             "Multi-file fuzzy replace {}: {} matches across {} files\nPattern: '{}' → '{}' (pattern: '{}', threshold: {}, dry_run: {})",
-            mode, total_matches, files_changed, self.pattern, self.replacement, file_pattern, self.threshold, self.dry_run
+            mode,
+            total_matches,
+            files_changed,
+            self.pattern,
+            self.replacement,
+            file_pattern,
+            self.threshold,
+            self.dry_run
         );
 
         if !errors.is_empty() {

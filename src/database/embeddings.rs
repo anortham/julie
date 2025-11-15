@@ -252,11 +252,7 @@ impl SymbolDatabase {
 
         // Build params: [model_name, symbol_id1, symbol_id2, ...]
         let mut params: Vec<&dyn rusqlite::ToSql> = vec![&model_name as &dyn rusqlite::ToSql];
-        params.extend(
-            symbol_ids
-                .iter()
-                .map(|id| &*id as &dyn rusqlite::ToSql),
-        );
+        params.extend(symbol_ids.iter().map(|id| &*id as &dyn rusqlite::ToSql));
 
         let embedding_iter = stmt.query_map(&params[..], |row| {
             let symbol_id: String = row.get(0)?;

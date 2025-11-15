@@ -207,10 +207,13 @@ async fn test_fts5_corruption_tests() {
         .expect("Search failed");
 
     // Should find the corruption reproduction test
-    let has_corruption_test = results
-        .iter()
-        .any(|r| r.file_path.contains("fts5_rowid_corruption.rs") || r.file_path.contains("TODO.md"));
-    assert!(has_corruption_test, "Should find FTS5 corruption test files");
+    let has_corruption_test = results.iter().any(|r| {
+        r.file_path.contains("fts5_rowid_corruption.rs") || r.file_path.contains("TODO.md")
+    });
+    assert!(
+        has_corruption_test,
+        "Should find FTS5 corruption test files"
+    );
 }
 
 // ============================================================================
@@ -509,7 +512,7 @@ async fn test_edge_case_empty_query() {
     // Don't assert specific behavior, just verify no panic
     match results {
         Ok(r) => assert!(r.is_empty() || !r.is_empty()), // Any result is fine
-        Err(_) => {} // Error is also acceptable
+        Err(_) => {}                                     // Error is also acceptable
     }
 }
 
@@ -525,7 +528,7 @@ async fn test_edge_case_special_chars_only() {
     // Just verify no panic
     match results {
         Ok(r) => assert!(r.len() <= 5), // Limited results
-        Err(_) => {} // Error is acceptable
+        Err(_) => {}                    // Error is acceptable
     }
 }
 
@@ -547,7 +550,8 @@ async fn test_tokenization_camelCase_splitting() {
 
     // Should find various Symbol* classes
     let symbol_names: Vec<_> = results.iter().map(|r| r.name.as_str()).collect();
-    let has_multiple_symbol_types = symbol_names.iter().filter(|n| n.contains("Symbol")).count() >= 3;
+    let has_multiple_symbol_types =
+        symbol_names.iter().filter(|n| n.contains("Symbol")).count() >= 3;
 
     assert!(
         has_multiple_symbol_types,
@@ -592,4 +596,3 @@ async fn test_tokenization_number_handling() {
     // Just verify search handles them without error
     // Results depend on codebase content
 }
-

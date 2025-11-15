@@ -34,7 +34,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Rectangle with NumberAnimation");
+        assert!(
+            components.len() >= 1,
+            "Should extract Rectangle with NumberAnimation"
+        );
     }
 
     #[test]
@@ -70,7 +73,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Item with PropertyAnimations");
+        assert!(
+            components.len() >= 1,
+            "Should extract Item with PropertyAnimations"
+        );
     }
 
     #[test]
@@ -110,7 +116,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Rectangle with states");
+        assert!(
+            components.len() >= 1,
+            "Should extract Rectangle with states"
+        );
     }
 
     #[test]
@@ -157,7 +166,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Rectangle with transitions");
+        assert!(
+            components.len() >= 1,
+            "Should extract Rectangle with transitions"
+        );
     }
 
     #[test]
@@ -183,7 +195,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Item with SequentialAnimation");
+        assert!(
+            components.len() >= 1,
+            "Should extract Item with SequentialAnimation"
+        );
     }
 
     #[test]
@@ -207,7 +222,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Item with ParallelAnimation");
+        assert!(
+            components.len() >= 1,
+            "Should extract Item with ParallelAnimation"
+        );
     }
 
     #[test]
@@ -236,7 +254,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Rectangle with Behaviors");
+        assert!(
+            components.len() >= 1,
+            "Should extract Rectangle with Behaviors"
+        );
     }
 
     #[test]
@@ -267,7 +288,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 2, "Should extract Item and Rectangle with SpringAnimation");
+        assert!(
+            components.len() >= 2,
+            "Should extract Item and Rectangle with SpringAnimation"
+        );
     }
 
     #[test]
@@ -304,6 +328,9 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Item with PathAnimation");
+        assert!(
+            components.len() >= 1,
+            "Should extract Item with PathAnimation"
+        );
     }
 }

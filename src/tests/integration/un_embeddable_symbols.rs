@@ -20,9 +20,9 @@
 //! 2. Memory JSON symbols (except "description") are excluded
 //! 3. Embeddable symbols still appear in results
 
-use anyhow::Result;
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{Symbol, SymbolKind};
+use anyhow::Result;
 
 /// Helper to create test symbols with required fields
 fn create_symbol(
@@ -100,7 +100,10 @@ fn test_markdown_headings_without_docs_excluded() -> Result<()> {
     );
 
     // Store both symbols (bulk_store_symbols satisfies FK constraints)
-    db.bulk_store_symbols(&[heading_with_docs.clone(), heading_without_docs.clone()], "test_workspace")?;
+    db.bulk_store_symbols(
+        &[heading_with_docs.clone(), heading_without_docs.clone()],
+        "test_workspace",
+    )?;
 
     // Get symbols without embeddings
     let symbols_needing_embeddings = db.get_symbols_without_embeddings()?;
@@ -115,8 +118,7 @@ fn test_markdown_headings_without_docs_excluded() -> Result<()> {
     );
 
     assert_eq!(
-        symbols_needing_embeddings[0].id,
-        "heading_with_docs",
+        symbols_needing_embeddings[0].id, "heading_with_docs",
         "BUG: Only the heading WITH doc_comment should be embeddable"
     );
 
@@ -174,7 +176,10 @@ fn test_memory_symbols_except_description_excluded() -> Result<()> {
     );
 
     // Store all memory symbols (bulk_store_symbols satisfies FK constraints)
-    db.bulk_store_symbols(&[memory_id, memory_timestamp, memory_description.clone()], "test_workspace")?;
+    db.bulk_store_symbols(
+        &[memory_id, memory_timestamp, memory_description.clone()],
+        "test_workspace",
+    )?;
 
     // Get symbols without embeddings
     let symbols_needing_embeddings = db.get_symbols_without_embeddings()?;
@@ -189,8 +194,7 @@ fn test_memory_symbols_except_description_excluded() -> Result<()> {
     );
 
     assert_eq!(
-        symbols_needing_embeddings[0].id,
-        "memory_description",
+        symbols_needing_embeddings[0].id, "memory_description",
         "BUG: Only 'description' field should be embeddable in memory files"
     );
 

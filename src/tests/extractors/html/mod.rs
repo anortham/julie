@@ -34,3 +34,4 @@ pub mod identifier_extraction;
 pub mod media;
 pub mod script_style;
 pub mod structure;
+mod types; // Phase 4: Type extraction verification tests

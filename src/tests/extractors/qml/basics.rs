@@ -68,11 +68,7 @@ Rectangle {
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
-        assert_eq!(
-            functions.len(),
-            1,
-            "Should extract calculateArea function"
-        );
+        assert_eq!(functions.len(), 1, "Should extract calculateArea function");
         assert_eq!(functions[0].name, "calculateArea");
     }
 
@@ -188,7 +184,10 @@ Item {
         // Verify some specific properties exist
         let property_names: Vec<&str> = properties.iter().map(|p| p.name.as_str()).collect();
         assert!(property_names.contains(&"intValue"), "Should find intValue");
-        assert!(property_names.contains(&"stringValue"), "Should find stringValue");
+        assert!(
+            property_names.contains(&"stringValue"),
+            "Should find stringValue"
+        );
     }
 
     #[test]
@@ -209,7 +208,11 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert_eq!(properties.len(), 2, "Should extract both readonly and normal properties");
+        assert_eq!(
+            properties.len(),
+            2,
+            "Should extract both readonly and normal properties"
+        );
     }
 
     #[test]

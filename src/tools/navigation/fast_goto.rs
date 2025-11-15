@@ -6,8 +6,8 @@
 //! 3. HNSW semantic similarity (if available)
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -184,7 +184,10 @@ impl FastGotoTool {
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned in fast_goto (line 184), recovering: {}", poisoned);
+                            warn!(
+                                "Database mutex poisoned in fast_goto (line 184), recovering: {}",
+                                poisoned
+                            );
                             poisoned.into_inner()
                         }
                     };

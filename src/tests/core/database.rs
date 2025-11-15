@@ -54,12 +54,14 @@ async fn test_debug_foreign_key_constraint() {
     std::fs::write(&test_file, "// test content").unwrap();
 
     // Store file info
-    let file_info = crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
+    let file_info =
+        crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
     println!("File path in file_info: {}", file_info.path);
     db.store_file_info(&file_info).unwrap();
 
     // Create a symbol with the same file path (relative to match file_info)
-    let file_path = crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
+    let file_path =
+        crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap();
     println!("File path in symbol: {}", file_path);
 
     let symbol = Symbol {
@@ -226,7 +228,9 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/real-world/go/main.go");
     let fixture_content = std::fs::read_to_string(&fixture_path).unwrap();
 
-    let workspace_root = fixture_path.parent().unwrap_or_else(|| std::path::Path::new("/tmp/test"));
+    let workspace_root = fixture_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("/tmp/test"));
     let file_info = crate::database::create_file_info(&fixture_path, "go", workspace_root).unwrap();
     db.bulk_store_files(&[file_info]).unwrap();
 
@@ -276,7 +280,8 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         name: "getUserAsync".to_string(),
         kind: SymbolKind::Function,
         language: "typescript".to_string(),
-        file_path: crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path()).unwrap(),
+        file_path: crate::utils::paths::to_relative_unix_style(&test_file, temp_dir.path())
+            .unwrap(),
         start_line: 20,
         start_column: 4,
         end_line: 30,
@@ -295,7 +300,8 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
     };
 
     // First, store the file record (required due to foreign key constraint)
-    let file_info = crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
+    let file_info =
+        crate::database::create_file_info(&test_file, "typescript", temp_dir.path()).unwrap();
     println!("DEBUG: File path in file_info: {}", file_info.path);
     println!("DEBUG: Symbol file path: {}", symbol.file_path);
     db.store_file_info(&file_info).unwrap();
@@ -735,7 +741,9 @@ fn test_fts_search_file_content() {
     .unwrap();
 
     // Search for "SQLite"
-    let results = db.search_file_content_fts("SQLite", &None, &None, 10).unwrap();
+    let results = db
+        .search_file_content_fts("SQLite", &None, &None, 10)
+        .unwrap();
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].path, "docs/architecture.md");
@@ -794,11 +802,7 @@ fn test_fts_search_with_file_pattern_and_language() {
     let results = db
         .search_file_content_fts("refactoring", &None, &None, 10)
         .unwrap();
-    assert_eq!(
-        results.len(),
-        3,
-        "Without filters, should find all 3 files"
-    );
+    assert_eq!(results.len(), 3, "Without filters, should find all 3 files");
 
     // Test 2: Filter by file_pattern using relative pattern
     // Database stores: src/tests/tools/refactoring/rename_symbol.rs (relative Unix-style)
@@ -868,9 +872,36 @@ fn test_fts_file_pattern_normalization() {
     // Store files with relative Unix-style paths (like production does per RELATIVE_PATHS_CONTRACT.md)
     // Production uses to_relative_unix_style() which converts ALL paths to forward slashes
     // (see src/utils/paths.rs:88-95)
-    db.store_file_with_content("src/tests/test1.rs", "rust", "abc1", 100, 1234567890, test_content, "test_workspace").unwrap();
-    db.store_file_with_content("src/tools/tool.rs", "rust", "abc2", 100, 1234567891, test_content, "test_workspace").unwrap();
-    db.store_file_with_content("src/main.rs", "rust", "abc3", 100, 1234567892, test_content, "test_workspace").unwrap();
+    db.store_file_with_content(
+        "src/tests/test1.rs",
+        "rust",
+        "abc1",
+        100,
+        1234567890,
+        test_content,
+        "test_workspace",
+    )
+    .unwrap();
+    db.store_file_with_content(
+        "src/tools/tool.rs",
+        "rust",
+        "abc2",
+        100,
+        1234567891,
+        test_content,
+        "test_workspace",
+    )
+    .unwrap();
+    db.store_file_with_content(
+        "src/main.rs",
+        "rust",
+        "abc3",
+        100,
+        1234567892,
+        test_content,
+        "test_workspace",
+    )
+    .unwrap();
 
     // TEST 1: Relative pattern works as-is (no normalization needed)
     // Database stores: src/tests/test1.rs (relative Unix-style)
@@ -878,20 +909,33 @@ fn test_fts_file_pattern_normalization() {
     // Pattern used: src/tests/** (no normalization - database uses relative paths!)
     // Should match: src/tests/test1.rs
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src/tests/**".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src/tests/**".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
         1,
         "Relative pattern 'src/tests/**' should match relative stored path 'src/tests/test1.rs'"
     );
-    assert!(results[0].path.contains("tests"), "Should match file in tests directory");
+    assert!(
+        results[0].path.contains("tests"),
+        "Should match file in tests directory"
+    );
 
     // TEST 2: Pattern already starting with * should remain unchanged
     // User writes: *tests*
     // Normalization: *tests* (unchanged)
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("*tests*".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("*tests*".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
@@ -905,7 +949,12 @@ fn test_fts_file_pattern_normalization() {
     // Pattern used: src\tools\** (no normalization)
     // Result: NO MATCH (backslashes don't match forward slashes)
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src\\tools\\**".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src\\tools\\**".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
@@ -915,21 +964,34 @@ fn test_fts_file_pattern_normalization() {
 
     // TEST 3b: Forward slash pattern DOES match
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src/tools/**".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src/tools/**".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
         1,
         "Pattern 'src/tools/**' (forward slashes) should match 'src/tools/tool.rs'"
     );
-    assert!(results[0].path.contains("tools"), "Should match file in tools directory");
+    assert!(
+        results[0].path.contains("tools"),
+        "Should match file in tools directory"
+    );
 
     // TEST 4: Wildcard patterns match everything (including path separators)
     // Database stores: src/tests/test1.rs, src/tools/tool.rs, src/main.rs
     // User writes: src/* (in SQLite GLOB, * matches EVERYTHING including /)
     // Result: All src/ files match (GLOB * is greedy)
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src/*".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src/*".to_string()),
+            10,
+        )
         .unwrap();
     assert!(
         results.len() >= 3,
@@ -939,7 +1001,12 @@ fn test_fts_file_pattern_normalization() {
     // TEST 4b: Use specific pattern to match only what we want
     // To match ONLY top-level src files, need exact pattern: src/*.rs
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src/main.rs".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src/main.rs".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
@@ -953,17 +1020,34 @@ fn test_fts_file_pattern_normalization() {
     // User writes: src/tests/subfolder/**
     // Pattern used: src/tests/subfolder/** (no normalization)
     // Should match: src/tests/subfolder/nested.rs
-    db.store_file_with_content("src/tests/subfolder/nested.rs", "rust", "abc4", 100, 1234567893, test_content, "test_workspace").unwrap();
+    db.store_file_with_content(
+        "src/tests/subfolder/nested.rs",
+        "rust",
+        "abc4",
+        100,
+        1234567893,
+        test_content,
+        "test_workspace",
+    )
+    .unwrap();
 
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("src/tests/subfolder/**".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("src/tests/subfolder/**".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
         1,
         "Deep relative pattern 'src/tests/subfolder/**' should match 'src/tests/subfolder/nested.rs'"
     );
-    assert!(results[0].path.contains("subfolder"), "Should match nested file");
+    assert!(
+        results[0].path.contains("subfolder"),
+        "Should match nested file"
+    );
 
     // TEST 6: Wildcard patterns with * match correctly
     // Database stores: src/tools/tool.rs (forward slashes)
@@ -971,7 +1055,12 @@ fn test_fts_file_pattern_normalization() {
     // Pattern used: */tools/* (no normalization)
     // Should match: src/tools/tool.rs
     let results = db
-        .search_file_content_fts("pattern normalization", &None, &Some("*/tools/*".to_string()), 10)
+        .search_file_content_fts(
+            "pattern normalization",
+            &None,
+            &Some("*/tools/*".to_string()),
+            10,
+        )
         .unwrap();
     assert_eq!(
         results.len(),
@@ -1009,40 +1098,44 @@ fn test_fts_file_pattern_forward_slash_glob_matching() {
     let db_path = temp_dir.path().join("test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-    let test_content = r#"{"id": "checkpoint_test", "description": "Test checkpoint for GLOB bug"}"#;
+    let test_content =
+        r#"{"id": "checkpoint_test", "description": "Test checkpoint for GLOB bug"}"#;
 
     // Store files with forward-slash paths (simulating production behavior)
     // Production uses to_relative_unix_style() which converts ALL paths to forward slashes
     // See src/utils/paths.rs:88-95
     db.store_file_with_content(
-        ".memories/2025-11-10/013435_9fa8.json",  // Forward slashes (production format)
+        ".memories/2025-11-10/013435_9fa8.json", // Forward slashes (production format)
         "json",
         "abc1",
         100,
         1234567890,
         test_content,
         "test_workspace",
-    ).unwrap();
+    )
+    .unwrap();
 
     db.store_file_with_content(
-        ".memories/2025-11-10/phase1-clean.json",  // Forward slashes (production format)
+        ".memories/2025-11-10/phase1-clean.json", // Forward slashes (production format)
         "json",
         "abc2",
         100,
         1234567891,
         test_content,
         "test_workspace",
-    ).unwrap();
+    )
+    .unwrap();
 
     db.store_file_with_content(
-        "src/tools/memory/mod.rs",  // Forward slashes (production format)
+        "src/tools/memory/mod.rs", // Forward slashes (production format)
         "rust",
         "abc3",
         100,
         1234567892,
         "// Memory module",
         "test_workspace",
-    ).unwrap();
+    )
+    .unwrap();
 
     // TEST 1: Forward-slash pattern should match forward-slash paths
     // User pattern: .memories/**/*.json (forward slashes)
@@ -1050,7 +1143,12 @@ fn test_fts_file_pattern_forward_slash_glob_matching() {
     // Bug: On Windows, normalization converts to *\.memories\**\*.json (backslashes)
     //      which fails to match .memories/2025-11-10/... (forward slashes)
     let results = db
-        .search_file_content_fts("checkpoint", &None, &Some(".memories/**/*.json".to_string()), 10)
+        .search_file_content_fts(
+            "checkpoint",
+            &None,
+            &Some(".memories/**/*.json".to_string()),
+            10,
+        )
         .unwrap();
 
     assert_eq!(
@@ -1083,7 +1181,12 @@ fn test_fts_file_pattern_forward_slash_glob_matching() {
     // TEST 3: Wildcard patterns work correctly
     // Single * matches any sequence within a path segment
     let results = db
-        .search_file_content_fts("checkpoint", &None, &Some(".memories/*/*.json".to_string()), 10)
+        .search_file_content_fts(
+            "checkpoint",
+            &None,
+            &Some(".memories/*/*.json".to_string()),
+            10,
+        )
         .unwrap();
 
     assert_eq!(
@@ -1094,7 +1197,12 @@ fn test_fts_file_pattern_forward_slash_glob_matching() {
 
     // TEST 4: Verify GLOB is case-sensitive
     let results = db
-        .search_file_content_fts("checkpoint", &None, &Some(".MEMORIES/**/*.json".to_string()), 10)
+        .search_file_content_fts(
+            "checkpoint",
+            &None,
+            &Some(".MEMORIES/**/*.json".to_string()),
+            10,
+        )
         .unwrap();
 
     assert_eq!(
@@ -1154,7 +1262,9 @@ fn test_fts_search_ranks_by_relevance() {
     )
     .unwrap();
 
-    let results = db.search_file_content_fts("cascade", &None, &None, 10).unwrap();
+    let results = db
+        .search_file_content_fts("cascade", &None, &None, 10)
+        .unwrap();
 
     // Verify both files are found
     assert_eq!(results.len(), 2);
@@ -1349,7 +1459,9 @@ fn test_fts_triggers_work_after_migration() {
     .unwrap();
 
     // Verify FTS5 search works (triggers populated FTS table)
-    let results = db.search_file_content_fts("main", &None, &None, 10).unwrap();
+    let results = db
+        .search_file_content_fts("main", &None, &None, 10)
+        .unwrap();
     assert_eq!(results.len(), 1, "FTS search should work after migration");
     assert_eq!(results[0].path, "test.rs");
 }
@@ -1557,30 +1669,28 @@ fn test_concurrent_read_access_no_corruption() {
         let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         // Insert test data
-        let symbols = vec![
-            Symbol {
-                id: "sym1".to_string(),
-                name: "TestFunction".to_string(),
-                kind: SymbolKind::Function,
-                file_path: "test.rs".to_string(),
-                start_line: 1,
-                end_line: 10,
-                start_column: 0,
-                end_column: 1,
-                start_byte: 0,
-                end_byte: 100,
-                signature: Some("fn test()".to_string()),
-                doc_comment: None,
-                parent_id: None,
-                language: "rust".to_string(),
-                visibility: Some(crate::extractors::base::types::Visibility::Public),
-                metadata: Default::default(),
-                code_context: None,
-        content_type: None,
-                confidence: None,
-                semantic_group: None,
-            },
-        ];
+        let symbols = vec![Symbol {
+            id: "sym1".to_string(),
+            name: "TestFunction".to_string(),
+            kind: SymbolKind::Function,
+            file_path: "test.rs".to_string(),
+            start_line: 1,
+            end_line: 10,
+            start_column: 0,
+            end_column: 1,
+            start_byte: 0,
+            end_byte: 100,
+            signature: Some("fn test()".to_string()),
+            doc_comment: None,
+            parent_id: None,
+            language: "rust".to_string(),
+            visibility: Some(crate::extractors::base::types::Visibility::Public),
+            metadata: Default::default(),
+            code_context: None,
+            content_type: None,
+            confidence: None,
+            semantic_group: None,
+        }];
 
         db.bulk_store_symbols(&symbols, "test_workspace").unwrap();
     }
@@ -1600,7 +1710,10 @@ fn test_concurrent_read_access_no_corruption() {
                 // Query symbols
                 let count: i64 = conn
                     .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
-                    .expect(&format!("Thread {} iteration {} failed to count symbols", i, j));
+                    .expect(&format!(
+                        "Thread {} iteration {} failed to count symbols",
+                        i, j
+                    ));
 
                 assert_eq!(count, 1, "Thread {} iteration {} got wrong count", i, j);
 
@@ -1738,13 +1851,15 @@ fn test_concurrent_mixed_access_no_corruption() {
         .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
         .expect("Database corrupted - cannot query after concurrent access");
 
-    println!("✅ Database integrity verified: {} symbols after concurrent access", count);
+    println!(
+        "✅ Database integrity verified: {} symbols after concurrent access",
+        count
+    );
 
     // Note: Count might be 0 if all writes conflicted or were in uncommitted transactions
     // The important thing is that the database didn't corrupt and we can still query it
     // This test validates that concurrent access doesn't cause "database malformed" errors
 }
-
 
 #[test]
 #[ignore] // Long-running stress test - run manually
@@ -1781,11 +1896,8 @@ fn test_extreme_concurrent_stress() {
                 // Mix of operations
                 if i % 2 == 0 {
                     // Reader
-                    let _: Result<i64, _> = conn.query_row(
-                        "SELECT COUNT(*) FROM symbols",
-                        [],
-                        |row| row.get(0),
-                    );
+                    let _: Result<i64, _> =
+                        conn.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0));
                 } else {
                     // Writer
                     let _: Result<usize, _> = conn.execute(
@@ -1822,7 +1934,10 @@ fn test_extreme_concurrent_stress() {
         .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
         .expect("Database corrupted after extreme stress test");
 
-    println!("✅ EXTREME stress test passed: {} symbols after 10 seconds of concurrent hammering", count);
+    println!(
+        "✅ EXTREME stress test passed: {} symbols after 10 seconds of concurrent hammering",
+        count
+    );
 }
 
 /// ✅ GREEN TEST: Test WAL checkpoint functionality
@@ -1848,7 +1963,10 @@ fn test_wal_checkpoint() {
     assert!(log >= 0, "Log should contain frames");
     assert!(checkpointed >= 0, "Should checkpoint frames");
 
-    println!("✅ WAL checkpoint successful: busy={}, log={}, checkpointed={}", busy, log, checkpointed);
+    println!(
+        "✅ WAL checkpoint successful: busy={}, log={}, checkpointed={}",
+        busy, log, checkpointed
+    );
 }
 
 // 🚨 CRITICAL CORRUPTION PREVENTION TEST
@@ -1886,7 +2004,10 @@ fn test_wal_mode_set_immediately_on_connection_open() {
         "Synchronous mode should be NORMAL (1) for performance with WAL"
     );
 
-    println!("✅ WAL mode verification passed: journal_mode={}, synchronous={}", journal_mode, sync_mode);
+    println!(
+        "✅ WAL mode verification passed: journal_mode={}, synchronous={}",
+        journal_mode, sync_mode
+    );
 }
 
 // 🚨 CORRUPTION PREVENTION: Test that Drop handler checkpoints WAL
@@ -1986,7 +2107,7 @@ fn test_get_symbols_by_ids_preserves_order() {
     // Create symbols with DIFFERENT characteristics to ensure they don't naturally sort to input order
     let symbols = vec![
         Symbol {
-            id: "zzz_last".to_string(), // Alphabetically last
+            id: "zzz_last".to_string(),         // Alphabetically last
             name: "alpha_function".to_string(), // But name is first
             kind: SymbolKind::Function,
             language: "rust".to_string(),
@@ -2030,7 +2151,7 @@ fn test_get_symbols_by_ids_preserves_order() {
             content_type: None,
         },
         Symbol {
-            id: "aaa_first".to_string(), // Alphabetically first
+            id: "aaa_first".to_string(),       // Alphabetically first
             name: "zeta_function".to_string(), // But name is last
             kind: SymbolKind::Function,
             language: "rust".to_string(),
@@ -2080,10 +2201,10 @@ fn test_get_symbols_by_ids_preserves_order() {
 
     // Request in specific order (NOT alphabetical by ID or name or line number)
     let requested_order = vec![
-        "ppp_fourth".to_string(),  // 4th alphabetically
-        "aaa_first".to_string(),   // 1st alphabetically
-        "zzz_last".to_string(),    // Last alphabetically
-        "mmm_middle".to_string(),  // Middle alphabetically
+        "ppp_fourth".to_string(), // 4th alphabetically
+        "aaa_first".to_string(),  // 1st alphabetically
+        "zzz_last".to_string(),   // Last alphabetically
+        "mmm_middle".to_string(), // Middle alphabetically
     ];
 
     // Retrieve symbols
@@ -2115,7 +2236,7 @@ fn test_batch_get_embeddings_for_symbols() {
     //
     // Problem: Current code does N×2 queries (2 per symbol) in search_similar()
     // Solution: Batch fetch all embeddings in 1-2 queries total
-    
+
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("batch_embeddings_test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
@@ -2283,7 +2404,11 @@ fn test_batch_get_embeddings_for_symbols() {
         .get_embeddings_for_symbols(&subset_ids, "test-model")
         .unwrap();
 
-    assert_eq!(subset_results.len(), 2, "Should return only requested subset");
+    assert_eq!(
+        subset_results.len(),
+        2,
+        "Should return only requested subset"
+    );
 
     // Test with non-existent ID (should skip gracefully)
     let mixed_ids = vec!["sym_1", "nonexistent", "sym_3"];
@@ -2318,7 +2443,7 @@ fn test_bulk_store_embeddings_validates_dimensions() {
     //
     // Problem: Function accepts dimensions parameter but never checks vector_data.len() == dimensions
     // This allows storing corrupted embeddings (e.g., 300-dim vector labeled as 384-dim)
-    
+
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("dimension_validation_test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
@@ -2393,7 +2518,7 @@ fn test_bulk_store_embeddings_handles_multiple_models() {
     // Problem: vector_id = symbol_id, but vector_id is PRIMARY KEY
     // This means symbol_id + model "bge-small" OVERWRITES symbol_id + model "bge-large"
     // Solution: vector_id should be composite: "{symbol_id}_{model_name}"
-    
+
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("multi_model_test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
@@ -2445,17 +2570,22 @@ fn test_bulk_store_embeddings_handles_multiple_models() {
         small_result.is_some(),
         "Should find bge-small embedding (shouldn't be overwritten by bge-large)"
     );
-    assert!(
-        large_result.is_some(),
-        "Should find bge-large embedding"
-    );
+    assert!(large_result.is_some(), "Should find bge-large embedding");
 
     // Verify they have different values
     let small_vec = small_result.unwrap();
     let large_vec = large_result.unwrap();
 
-    assert_eq!(small_vec, vec![0.1, 0.2, 0.3, 0.4], "bge-small should have original values");
-    assert_eq!(large_vec, vec![0.5, 0.6, 0.7, 0.8], "bge-large should have different values");
+    assert_eq!(
+        small_vec,
+        vec![0.1, 0.2, 0.3, 0.4],
+        "bge-small should have original values"
+    );
+    assert_eq!(
+        large_vec,
+        vec![0.5, 0.6, 0.7, 0.8],
+        "bge-large should have different values"
+    );
 
     println!("✅ Multiple models per symbol work correctly (no collisions)");
 }
@@ -2466,7 +2596,7 @@ fn test_embedding_serialization_roundtrip() {
     //
     // Problem: flat_map(|f| f.to_le_bytes()).collect() is CPU-heavy
     // Solution: Pre-allocate Vec<u8> and write directly (4 bytes per f32)
-    
+
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("serialization_test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
@@ -2512,7 +2642,7 @@ fn test_embedding_serialization_roundtrip() {
 
     for (idx, original_vector) in test_vectors.iter().enumerate() {
         let symbol_id = format!("test_symbol_{}", idx);
-        
+
         // Create symbol for this test case
         let test_symbol = Symbol {
             id: symbol_id.clone(),
@@ -2536,7 +2666,8 @@ fn test_embedding_serialization_roundtrip() {
             code_context: None,
             content_type: None,
         };
-        db.bulk_store_symbols(&[test_symbol], "test_workspace").unwrap();
+        db.bulk_store_symbols(&[test_symbol], "test_workspace")
+            .unwrap();
 
         // Store embedding
         let embeddings = vec![(symbol_id.clone(), original_vector.clone())];

@@ -33,7 +33,11 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert_eq!(components.len(), 2, "Should extract both Rectangle components");
+        assert_eq!(
+            components.len(),
+            2,
+            "Should extract both Rectangle components"
+        );
     }
 
     #[test]
@@ -56,7 +60,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 4, "Should extract all properties with bindings");
+        assert!(
+            properties.len() >= 4,
+            "Should extract all properties with bindings"
+        );
     }
 
     #[test]
@@ -79,7 +86,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties with conditional bindings");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties with conditional bindings"
+        );
     }
 
     #[test]
@@ -113,7 +123,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties bound to functions");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties bound to functions"
+        );
         assert_eq!(functions.len(), 2, "Should extract both functions");
     }
 
@@ -140,7 +153,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 2, "Should extract properties with cross-references");
+        assert!(
+            properties.len() >= 2,
+            "Should extract properties with cross-references"
+        );
     }
 
     #[test]
@@ -163,7 +179,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Property)
             .collect();
 
-        assert!(properties.len() >= 3, "Should extract properties with array operations");
+        assert!(
+            properties.len() >= 3,
+            "Should extract properties with array operations"
+        );
     }
 
     #[test]
@@ -191,7 +210,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 1, "Should extract function with Qt.binding");
+        assert!(
+            functions.len() >= 1,
+            "Should extract function with Qt.binding"
+        );
     }
 
     #[test]
@@ -217,6 +239,9 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(components.len() >= 1, "Should extract Rectangle with Binding object");
+        assert!(
+            components.len() >= 1,
+            "Should extract Rectangle with Binding object"
+        );
     }
 }

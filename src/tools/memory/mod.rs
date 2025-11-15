@@ -20,15 +20,15 @@ mod plan_tool;
 
 // Re-export tools for external use
 pub use checkpoint::CheckpointTool;
-pub use recall::RecallTool;
 pub use plan_tool::{PlanAction, PlanTool};
+pub use recall::RecallTool;
 
+use anyhow::{Context, Result};
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
-use chrono::DateTime;
 
 /// Git context captured at memory creation time
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -159,12 +159,10 @@ impl Memory {
 pub fn save_memory(workspace_root: &Path, memory: &Memory) -> Result<PathBuf> {
     // Create memories base directory
     let memories_dir = workspace_root.join(".memories");
-    fs::create_dir_all(&memories_dir)
-        .context("Failed to create memories directory")?;
+    fs::create_dir_all(&memories_dir).context("Failed to create memories directory")?;
 
     // Create date-based subdirectory (YYYY-MM-DD)
-    let timestamp = DateTime::from_timestamp(memory.timestamp, 0)
-        .context("Invalid timestamp")?;
+    let timestamp = DateTime::from_timestamp(memory.timestamp, 0).context("Invalid timestamp")?;
     let date_str = timestamp.format("%Y-%m-%d").to_string();
     let date_dir = memories_dir.join(&date_str);
     fs::create_dir_all(&date_dir)
@@ -180,16 +178,18 @@ pub fn save_memory(workspace_root: &Path, memory: &Memory) -> Result<PathBuf> {
     let temp_path = date_dir.join(format!(".{}.tmp", filename));
 
     // Serialize to pretty-printed JSON
-    let json = memory.to_pretty_json()
+    let json = memory
+        .to_pretty_json()
         .context("Failed to serialize memory to JSON")?;
 
     // Write to temp file
-    fs::write(&temp_path, json)
-        .context(format!("Failed to write temp file: {:?}", temp_path))?;
+    fs::write(&temp_path, json).context(format!("Failed to write temp file: {:?}", temp_path))?;
 
     // Atomic rename
-    fs::rename(&temp_path, &file_path)
-        .context(format!("Failed to rename {:?} to {:?}", temp_path, file_path))?;
+    fs::rename(&temp_path, &file_path).context(format!(
+        "Failed to rename {:?} to {:?}",
+        temp_path, file_path
+    ))?;
 
     Ok(file_path)
 }
@@ -254,9 +254,7 @@ pub fn recall_memories(workspace_root: &Path, options: RecallOptions) -> Result<
     let mut memories = Vec::new();
 
     // Walk through all date directories
-    for date_entry in fs::read_dir(&memories_dir)
-        .context("Failed to read memories directory")?
-    {
+    for date_entry in fs::read_dir(&memories_dir).context("Failed to read memories directory")? {
         let date_entry = date_entry?;
         let date_path = date_entry.path();
 
@@ -303,7 +301,10 @@ pub fn recall_memories(workspace_root: &Path, options: RecallOptions) -> Result<
                 }
                 Err(e) => {
                     // Log warning but continue processing other files
-                    eprintln!("Warning: Failed to parse memory file {:?}: {}", file_path, e);
+                    eprintln!(
+                        "Warning: Failed to parse memory file {:?}: {}",
+                        file_path, e
+                    );
                     continue;
                 }
             }
@@ -330,11 +331,10 @@ pub fn recall_memories(workspace_root: &Path, options: RecallOptions) -> Result<
 
 /// Read and parse a single memory file
 fn read_memory_file(path: &Path) -> Result<Memory> {
-    let content = fs::read_to_string(path)
-        .context(format!("Failed to read memory file: {:?}", path))?;
+    let content =
+        fs::read_to_string(path).context(format!("Failed to read memory file: {:?}", path))?;
 
-    Memory::from_json(&content)
-        .context(format!("Failed to parse memory JSON: {:?}", path))
+    Memory::from_json(&content).context(format!("Failed to parse memory JSON: {:?}", path))
 }
 
 #[cfg(test)]
@@ -393,7 +393,8 @@ mod tests {
                 format!("memory_{}", i),
                 base_ts + (i as i64 * 100), // 1000000, 1000100, 1000200, 1000300, 1000400
                 "checkpoint".to_string(),
-            ).with_extra(json!({
+            )
+            .with_extra(json!({
                 "description": format!("Memory number {}", i),
                 "tags": []
             }));
@@ -419,11 +420,20 @@ mod tests {
         // recall_memories returns in CHRONOLOGICAL order (oldest first)
         // With limit=3, it should return the 3 NEWEST in chronological order
         // So: [memory_2 (oldest of newest 3), memory_3, memory_4 (newest)]
-        assert_eq!(recalled[0].id, "memory_2",
-            "First memory should be memory_2 (oldest of newest 3), but got {}", recalled[0].id);
-        assert_eq!(recalled[1].id, "memory_3",
-            "Second memory should be memory_3, but got {}", recalled[1].id);
-        assert_eq!(recalled[2].id, "memory_4",
-            "Third memory should be memory_4 (newest overall), but got {}", recalled[2].id);
+        assert_eq!(
+            recalled[0].id, "memory_2",
+            "First memory should be memory_2 (oldest of newest 3), but got {}",
+            recalled[0].id
+        );
+        assert_eq!(
+            recalled[1].id, "memory_3",
+            "Second memory should be memory_3, but got {}",
+            recalled[1].id
+        );
+        assert_eq!(
+            recalled[2].id, "memory_4",
+            "Third memory should be memory_4 (newest overall), but got {}",
+            recalled[2].id
+        );
     }
 }

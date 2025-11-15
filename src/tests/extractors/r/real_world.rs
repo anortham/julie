@@ -79,11 +79,17 @@ GeomPoint <- ggproto("GeomPoint", Geom,
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 1, "Should extract geom_point and GeomPoint functions");
+        assert!(
+            functions.len() >= 1,
+            "Should extract geom_point and GeomPoint functions"
+        );
 
         // Verify geom_point function exists
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"geom_point"), "Should find geom_point function");
+        assert!(
+            func_names.contains(&"geom_point"),
+            "Should find geom_point function"
+        );
     }
 
     #[test]
@@ -171,13 +177,25 @@ mutate.data.frame <- function(.data, ...) {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 6, "Should extract filter, select, mutate and their methods");
+        assert!(
+            functions.len() >= 6,
+            "Should extract filter, select, mutate and their methods"
+        );
 
         // Verify key dplyr functions exist
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"filter"), "Should find filter function");
-        assert!(func_names.contains(&"select"), "Should find select function");
-        assert!(func_names.contains(&"mutate"), "Should find mutate function");
+        assert!(
+            func_names.contains(&"filter"),
+            "Should find filter function"
+        );
+        assert!(
+            func_names.contains(&"select"),
+            "Should find select function"
+        );
+        assert!(
+            func_names.contains(&"mutate"),
+            "Should find mutate function"
+        );
     }
 
     #[test]
@@ -241,11 +259,17 @@ ggsave("trend_plot.png", final_plot, width = 10, height = 6, dpi = 300)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 3, "Should extract clean_data, model_results, final_plot");
+        assert!(
+            variables.len() >= 3,
+            "Should extract clean_data, model_results, final_plot"
+        );
 
         let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
         assert!(var_names.contains(&"clean_data"), "Should find clean_data");
-        assert!(var_names.contains(&"model_results"), "Should find model_results");
+        assert!(
+            var_names.contains(&"model_results"),
+            "Should find model_results"
+        );
         assert!(var_names.contains(&"final_plot"), "Should find final_plot");
     }
 
@@ -326,6 +350,9 @@ shinyApp(ui = ui, server = server)
         assert!(var_names.contains(&"ui"), "Should find ui definition");
 
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(func_names.contains(&"server"), "Should find server function");
+        assert!(
+            func_names.contains(&"server"),
+            "Should find server function"
+        );
     }
 }

@@ -188,11 +188,13 @@ a+
         assert!(hello_symbol.is_some());
 
         if let Some(symbol) = hello_symbol {
-            assert!(symbol
-                .metadata
-                .as_ref()
-                .map(|m| m.contains_key("type"))
-                .unwrap_or(false));
+            assert!(
+                symbol
+                    .metadata
+                    .as_ref()
+                    .map(|m| m.contains_key("type"))
+                    .unwrap_or(false)
+            );
             assert_eq!(symbol.visibility, Some(Visibility::Public));
             assert!(symbol.signature.is_some());
         }
@@ -429,7 +431,10 @@ mod doc_comment_tests {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect::<Vec<_>>();
 
-        assert!(!char_classes.is_empty(), "Should extract character class symbols");
+        assert!(
+            !char_classes.is_empty(),
+            "Should extract character class symbols"
+        );
 
         // Verify all character class symbols have doc_comment field (may be None or Some)
         for symbol in char_classes {
@@ -454,7 +459,10 @@ mod doc_comment_tests {
             .filter(|s| s.kind == SymbolKind::Function)
             .collect::<Vec<_>>();
 
-        assert!(!quantifiers.is_empty(), "Should extract quantifier symbols from pattern");
+        assert!(
+            !quantifiers.is_empty(),
+            "Should extract quantifier symbols from pattern"
+        );
 
         // Verify all quantifiers have doc_comment field
         for symbol in quantifiers {
@@ -547,3 +555,4 @@ mod doc_comment_tests {
         }
     }
 }
+mod types; // Phase 4: Type extraction verification tests

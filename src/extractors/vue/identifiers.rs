@@ -3,7 +3,7 @@
 // Parses the <script> section with JavaScript tree-sitter and extracts identifier usages
 // Handles function calls, method calls, and member access patterns
 
-use super::parsing::{parse_vue_sfc, VueSection};
+use super::parsing::{VueSection, parse_vue_sfc};
 use crate::extractors::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser};

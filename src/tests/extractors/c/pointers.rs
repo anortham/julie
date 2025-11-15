@@ -50,12 +50,14 @@ char *(*get_string_func(void))(void);
         let process_array_func = symbols.iter().find(|s| s.name == "process_array");
         assert!(process_array_func.is_some());
         assert_eq!(process_array_func.unwrap().kind, SymbolKind::Function);
-        assert!(process_array_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void process_array(int *arr, size_t size)"));
+        assert!(
+            process_array_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void process_array(int *arr, size_t size)")
+        );
 
         // Verify typedef for function pointer
         let operation_func_type = symbols.iter().find(|s| s.name == "operation_func");
@@ -116,12 +118,14 @@ int main() {
         // Verify function that accepts function pointer
         let register_callback_func = symbols.iter().find(|s| s.name == "register_callback");
         assert!(register_callback_func.is_some());
-        assert!(register_callback_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void register_callback(callback_t cb)"));
+        assert!(
+            register_callback_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void register_callback(callback_t cb)")
+        );
 
         // Verify callback function
         let event_handler_func = symbols.iter().find(|s| s.name == "event_handler");
@@ -242,11 +246,13 @@ void free_matrix(int **matrix, size_t rows) {
 
         let free_matrix_func = symbols.iter().find(|s| s.name == "free_matrix");
         assert!(free_matrix_func.is_some());
-        assert!(free_matrix_func
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void free_matrix(int **matrix, size_t rows)"));
+        assert!(
+            free_matrix_func
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void free_matrix(int **matrix, size_t rows)")
+        );
     }
 }

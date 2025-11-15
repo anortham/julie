@@ -5,8 +5,8 @@
 //! function calls, member access, and chained member access patterns.
 
 use crate::extractors::base::IdentifierKind;
-use std::path::PathBuf;
 use crate::extractors::typescript::TypeScriptExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_function_calls() {
@@ -24,20 +24,21 @@ fn test_extract_function_calls() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
     assert!(!identifiers.is_empty());
-    assert!(identifiers
-        .iter()
-        .any(|id| id.name == "foo" && id.kind == IdentifierKind::Call));
+    assert!(
+        identifiers
+            .iter()
+            .any(|id| id.name == "foo" && id.kind == IdentifierKind::Call)
+    );
 }
 
 #[test]
@@ -54,20 +55,21 @@ fn test_extract_member_access() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
     assert!(!identifiers.is_empty());
-    assert!(identifiers
-        .iter()
-        .any(|id| id.kind == IdentifierKind::MemberAccess));
+    assert!(
+        identifiers
+            .iter()
+            .any(|id| id.kind == IdentifierKind::MemberAccess)
+    );
 }
 
 #[test]
@@ -81,13 +83,12 @@ fn test_extract_chained_member_access() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let identifiers = extractor.extract_identifiers(&tree, &symbols);
 

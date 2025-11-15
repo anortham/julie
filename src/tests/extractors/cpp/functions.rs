@@ -1,4 +1,4 @@
-use super::{parse_cpp, SymbolKind};
+use super::{SymbolKind, parse_cpp};
 
 #[cfg(test)]
 mod tests {
@@ -58,31 +58,37 @@ mod tests {
 
         let square = symbols.iter().find(|s| s.name == "square");
         assert!(square.is_some());
-        assert!(square
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("inline"));
+        assert!(
+            square
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("inline")
+        );
 
         let plus_op = symbols.iter().find(|s| s.name == "operator+");
         assert!(plus_op.is_some());
         assert_eq!(plus_op.unwrap().kind, SymbolKind::Operator);
-        assert!(plus_op
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("operator+"));
+        assert!(
+            plus_op
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("operator+")
+        );
 
         let stream_op = symbols.iter().find(|s| s.name == "operator<<");
         assert!(stream_op.is_some());
-        assert!(stream_op
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("friend"));
+        assert!(
+            stream_op
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("friend")
+        );
 
         let conversion_op = symbols.iter().find(|s| s.name == "operator double");
         assert!(conversion_op.is_some());

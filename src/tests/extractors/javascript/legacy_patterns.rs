@@ -152,12 +152,14 @@ function Counter(initialValue) {
     let calculator = symbols.iter().find(|s| s.name == "Calculator");
     assert!(calculator.is_some());
     assert_eq!(calculator.unwrap().kind, SymbolKind::Function);
-    assert!(calculator
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function Calculator(initialValue)"));
+    assert!(
+        calculator
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function Calculator(initialValue)")
+    );
 
     // Prototype methods
     let prototype_add = symbols
@@ -165,16 +167,18 @@ function Counter(initialValue) {
         .find(|s| s.name == "add" && s.signature.as_ref().unwrap().contains("prototype"));
     assert!(prototype_add.is_some());
     assert_eq!(prototype_add.unwrap().kind, SymbolKind::Method);
-    assert!(prototype_add
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("Calculator.prototype.add = function(num)"));
+    assert!(
+        prototype_add
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("Calculator.prototype.add = function(num)")
+    );
 
-    let prototype_subtract = symbols.iter().find(|s| {
-        s.name == "subtract" && s.signature.as_ref().unwrap().contains("prototype")
-    });
+    let prototype_subtract = symbols
+        .iter()
+        .find(|s| s.name == "subtract" && s.signature.as_ref().unwrap().contains("prototype"));
     assert!(prototype_subtract.is_some());
 
     // Static method on constructor
@@ -195,15 +199,15 @@ function Counter(initialValue) {
     assert_eq!(round_to_precision.unwrap().kind, SymbolKind::Function);
 
     // Function expressions
-    let multiply_fn = symbols.iter().find(|s| {
-        s.name == "multiply" && s.signature.as_ref().unwrap().contains("var multiply")
-    });
+    let multiply_fn = symbols
+        .iter()
+        .find(|s| s.name == "multiply" && s.signature.as_ref().unwrap().contains("var multiply"));
     assert!(multiply_fn.is_some());
     assert_eq!(multiply_fn.unwrap().kind, SymbolKind::Function);
 
-    let divide_fn = symbols.iter().find(|s| {
-        s.name == "divide" && s.signature.as_ref().unwrap().contains("function divide")
-    });
+    let divide_fn = symbols
+        .iter()
+        .find(|s| s.name == "divide" && s.signature.as_ref().unwrap().contains("function divide"));
     assert!(divide_fn.is_some());
 
     // Object literal
@@ -226,12 +230,14 @@ function Counter(initialValue) {
     // Constructor with closure
     let counter = symbols.iter().find(|s| s.name == "Counter");
     assert!(counter.is_some());
-    assert!(counter
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function Counter(initialValue)"));
+    assert!(
+        counter
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function Counter(initialValue)")
+    );
 
     // Closure methods
     let increment = symbols.iter().find(|s| {

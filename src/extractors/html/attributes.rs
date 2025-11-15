@@ -1,6 +1,6 @@
+use crate::extractors::base::BaseExtractor;
 use regex::Regex;
 use std::collections::HashMap;
-use crate::extractors::base::BaseExtractor;
 
 /// Attribute handling and signature building
 pub(super) struct AttributeHandler;

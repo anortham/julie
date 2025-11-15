@@ -46,9 +46,11 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&type_name);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-            ..Default::default()
+                        ..Default::default()
                     };
-                    let symbol = self.base.create_symbol(&node, name, SymbolKind::Class, options);
+                    let symbol = self
+                        .base
+                        .create_symbol(&node, name, SymbolKind::Class, options);
                     self.symbols.push(symbol.clone());
                     current_symbol = Some(symbol);
                 }
@@ -60,9 +62,11 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-            ..Default::default()
+                        ..Default::default()
                     };
-                    let symbol = self.base.create_symbol(&node, name, SymbolKind::Property, options);
+                    let symbol =
+                        self.base
+                            .create_symbol(&node, name, SymbolKind::Property, options);
                     self.symbols.push(symbol);
                 }
             }
@@ -73,9 +77,11 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-            ..Default::default()
+                        ..Default::default()
                     };
-                    let symbol = self.base.create_symbol(&node, name, SymbolKind::Event, options);
+                    let symbol = self
+                        .base
+                        .create_symbol(&node, name, SymbolKind::Event, options);
                     self.symbols.push(symbol);
                 }
             }
@@ -86,9 +92,11 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
-            ..Default::default()
+                        ..Default::default()
                     };
-                    let symbol = self.base.create_symbol(&node, name, SymbolKind::Function, options);
+                    let symbol =
+                        self.base
+                            .create_symbol(&node, name, SymbolKind::Function, options);
                     self.symbols.push(symbol);
                 }
             }
@@ -104,7 +112,11 @@ impl QmlExtractor {
         }
     }
 
-    pub fn extract_relationships(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Relationship> {
+    pub fn extract_relationships(
+        &mut self,
+        _tree: &Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Relationship> {
         // TODO: Implement QML relationship extraction
         Vec::new()
     }

@@ -38,32 +38,42 @@ func SendData(ch chan<- string, data string) {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let process_data = symbols.iter().find(|s| s.name == "ProcessData");
     assert!(process_data.is_some());
     let process_data = process_data.unwrap();
-    assert!(process_data
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("<-chan string"));
-    assert!(process_data
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("chan string"));
+    assert!(
+        process_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("<-chan string")
+    );
+    assert!(
+        process_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("chan string")
+    );
 
     let send_data = symbols.iter().find(|s| s.name == "SendData");
     assert!(send_data.is_some());
     let send_data = send_data.unwrap();
-    assert!(send_data
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("chan<- string"));
+    assert!(
+        send_data
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("chan<- string")
+    );
 }
 
 #[test]
@@ -144,19 +154,25 @@ func (wp *WorkerPool) worker(id int) {
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let worker_pool = symbols.iter().find(|s| s.name == "WorkerPool");
     assert!(worker_pool.is_some());
     let worker_pool = worker_pool.unwrap();
     assert_eq!(worker_pool.kind, SymbolKind::Class);
-    assert!(worker_pool
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("type WorkerPool struct"));
+    assert!(
+        worker_pool
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("type WorkerPool struct")
+    );
 
     let job = symbols.iter().find(|s| s.name == "Job");
     assert!(job.is_some());
@@ -171,27 +187,33 @@ func (wp *WorkerPool) worker(id int) {
     let new_worker_pool = symbols.iter().find(|s| s.name == "NewWorkerPool");
     assert!(new_worker_pool.is_some());
     let new_worker_pool = new_worker_pool.unwrap();
-    assert!(new_worker_pool
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func NewWorkerPool(workers int, bufferSize int) *WorkerPool"));
+    assert!(
+        new_worker_pool
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func NewWorkerPool(workers int, bufferSize int) *WorkerPool")
+    );
 
     let start_method = symbols.iter().find(|s| s.name == "Start");
     assert!(start_method.is_some());
     let start_method = start_method.unwrap();
-    assert!(start_method
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (wp *WorkerPool) Start()"));
+    assert!(
+        start_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (wp *WorkerPool) Start()")
+    );
 
     let worker_method = symbols.iter().find(|s| s.name == "worker");
     assert!(worker_method.is_some());
     let worker_method = worker_method.unwrap();
-    assert!(worker_method
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func (wp *WorkerPool) worker(id int)"));
+    assert!(
+        worker_method
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func (wp *WorkerPool) worker(id int)")
+    );
 }

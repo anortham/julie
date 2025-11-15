@@ -96,22 +96,26 @@ class Dog extends Animal {
                 .find(|s| s.name == "Person" && s.kind == SymbolKind::Class);
             assert!(person_class.is_some());
             let person_class = person_class.unwrap();
-            assert!(person_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("class Person"));
+            assert!(
+                person_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("class Person")
+            );
 
             let animal_class = symbols
                 .iter()
                 .find(|s| s.name == "Animal" && s.kind == SymbolKind::Class);
             assert!(animal_class.is_some());
             let animal_class = animal_class.unwrap();
-            assert!(animal_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("abstract class Animal"));
+            assert!(
+                animal_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("abstract class Animal")
+            );
 
             let dog_class = symbols
                 .iter()
@@ -134,11 +138,13 @@ class Dog extends Animal {
             let factory_constructor = constructors.iter().find(|s| s.name == "Person.fromJson");
             assert!(factory_constructor.is_some());
             let factory_constructor = factory_constructor.unwrap();
-            assert!(factory_constructor
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("factory"));
+            assert!(
+                factory_constructor
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("factory")
+            );
 
             // Should extract methods
             let greet_method = symbols.iter().find(|s| s.name == "greet");
@@ -153,11 +159,13 @@ class Dog extends Animal {
             let birth_year_getter = symbols.iter().find(|s| s.name == "birthYear");
             assert!(birth_year_getter.is_some());
             let birth_year_getter = birth_year_getter.unwrap();
-            assert!(birth_year_getter
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("get"));
+            assert!(
+                birth_year_getter
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("get")
+            );
 
             let new_age_setter = symbols.iter().find(|s| s.name == "newAge");
             assert!(new_age_setter.is_some());
@@ -173,11 +181,13 @@ class Dog extends Animal {
             let total_dogs_field = symbols.iter().find(|s| s.name == "totalDogs");
             assert!(total_dogs_field.is_some());
             let total_dogs_field = total_dogs_field.unwrap();
-            assert!(total_dogs_field
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("static"));
+            assert!(
+                total_dogs_field
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("static")
+            );
         }
     }
 
@@ -243,20 +253,24 @@ extension on List<int> {
             let flyable_mixin = symbols.iter().find(|s| s.name == "Flyable");
             assert!(flyable_mixin.is_some());
             let flyable_mixin = flyable_mixin.unwrap();
-            assert!(flyable_mixin
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("mixin Flyable"));
+            assert!(
+                flyable_mixin
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("mixin Flyable")
+            );
 
             let swimmable_mixin = symbols.iter().find(|s| s.name == "Swimmable");
             assert!(swimmable_mixin.is_some());
             let swimmable_mixin = swimmable_mixin.unwrap();
-            assert!(swimmable_mixin
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("mixin Swimmable on Animal"));
+            assert!(
+                swimmable_mixin
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("mixin Swimmable on Animal")
+            );
 
             // Should extract mixin methods
             let fly_method = symbols.iter().find(|s| s.name == "fly");
@@ -269,30 +283,36 @@ extension on List<int> {
             let bird_class = symbols.iter().find(|s| s.name == "Bird");
             assert!(bird_class.is_some());
             let bird_class = bird_class.unwrap();
-            assert!(bird_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("with Flyable"));
+            assert!(
+                bird_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("with Flyable")
+            );
 
             let duck_class = symbols.iter().find(|s| s.name == "Duck");
             assert!(duck_class.is_some());
             let duck_class = duck_class.unwrap();
-            assert!(duck_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("with Flyable, Swimmable"));
+            assert!(
+                duck_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("with Flyable, Swimmable")
+            );
 
             // Should extract extensions
             let string_extension = symbols.iter().find(|s| s.name == "StringExtensions");
             assert!(string_extension.is_some());
             let string_extension = string_extension.unwrap();
-            assert!(string_extension
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("extension StringExtensions on String"));
+            assert!(
+                string_extension
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("extension StringExtensions on String")
+            );
 
             // Should extract extension methods
             let capitalized_getter = symbols.iter().find(|s| s.name == "capitalized");
@@ -376,11 +396,13 @@ T processData<T extends Comparable<T>>(T data, T Function(T) processor) {
                 .find(|s| s.name == "Color" && s.kind == SymbolKind::Enum);
             assert!(color_enum.is_some());
             let color_enum = color_enum.unwrap();
-            assert!(color_enum
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("enum Color"));
+            assert!(
+                color_enum
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("enum Color")
+            );
 
             let status_enum = symbols
                 .iter()
@@ -403,11 +425,13 @@ T processData<T extends Comparable<T>>(T data, T Function(T) processor) {
             let from_hex_method = symbols.iter().find(|s| s.name == "fromHex");
             assert!(from_hex_method.is_some());
             let from_hex_method = from_hex_method.unwrap();
-            assert!(from_hex_method
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("static"));
+            assert!(
+                from_hex_method
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("static")
+            );
 
             // Should extract top-level functions
             let format_name_function = symbols
@@ -415,68 +439,84 @@ T processData<T extends Comparable<T>>(T data, T Function(T) processor) {
                 .find(|s| s.name == "formatName" && s.kind == SymbolKind::Function);
             assert!(format_name_function.is_some());
             let format_name_function = format_name_function.unwrap();
-            assert!(format_name_function
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("String formatName"));
+            assert!(
+                format_name_function
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("String formatName")
+            );
 
             let fetch_user_data_function = symbols.iter().find(|s| s.name == "fetchUserData");
             assert!(fetch_user_data_function.is_some());
             let fetch_user_data_function = fetch_user_data_function.unwrap();
-            assert!(fetch_user_data_function
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("Future<String>"));
-            assert!(fetch_user_data_function
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("async"));
+            assert!(
+                fetch_user_data_function
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("Future<String>")
+            );
+            assert!(
+                fetch_user_data_function
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("async")
+            );
 
             let count_stream_function = symbols.iter().find(|s| s.name == "countStream");
             assert!(count_stream_function.is_some());
             let count_stream_function = count_stream_function.unwrap();
-            assert!(count_stream_function
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("Stream<int>"));
+            assert!(
+                count_stream_function
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("Stream<int>")
+            );
 
             // Should extract generic function
             let process_data_function = symbols.iter().find(|s| s.name == "processData");
             assert!(process_data_function.is_some());
             let process_data_function = process_data_function.unwrap();
-            assert!(process_data_function
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("<T extends Comparable<T>>"));
+            assert!(
+                process_data_function
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("<T extends Comparable<T>>")
+            );
 
             // Should extract typedefs
             let string_callback_typedef = symbols.iter().find(|s| s.name == "StringCallback");
             assert!(string_callback_typedef.is_some());
             let string_callback_typedef = string_callback_typedef.unwrap();
-            assert!(string_callback_typedef
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("typedef"));
+            assert!(
+                string_callback_typedef
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("typedef")
+            );
 
             let number_processor_typedef = symbols.iter().find(|s| s.name == "NumberProcessor");
             assert!(number_processor_typedef.is_some());
             let number_processor_typedef = number_processor_typedef.unwrap();
-            assert!(number_processor_typedef
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("typedef"));
-            assert!(number_processor_typedef
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("<T extends num>"));
+            assert!(
+                number_processor_typedef
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("typedef")
+            );
+            assert!(
+                number_processor_typedef
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("<T extends num>")
+            );
         }
     }
 
@@ -579,44 +619,54 @@ class CustomButton extends StatelessWidget {
             let my_home_page_class = symbols.iter().find(|s| s.name == "MyHomePage");
             assert!(my_home_page_class.is_some());
             let my_home_page_class = my_home_page_class.unwrap();
-            assert!(my_home_page_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("extends StatefulWidget"));
+            assert!(
+                my_home_page_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("extends StatefulWidget")
+            );
 
             let state_class = symbols.iter().find(|s| s.name == "_MyHomePageState");
             assert!(state_class.is_some());
             let state_class = state_class.unwrap();
-            assert!(state_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("extends State<MyHomePage>"));
-            assert!(state_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("with TickerProviderStateMixin"));
+            assert!(
+                state_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("extends State<MyHomePage>")
+            );
+            assert!(
+                state_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("with TickerProviderStateMixin")
+            );
 
             let custom_button_class = symbols.iter().find(|s| s.name == "CustomButton");
             assert!(custom_button_class.is_some());
             let custom_button_class = custom_button_class.unwrap();
-            assert!(custom_button_class
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("extends StatelessWidget"));
+            assert!(
+                custom_button_class
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("extends StatelessWidget")
+            );
 
             // Should extract lifecycle methods
             let init_state_method = symbols.iter().find(|s| s.name == "initState");
             assert!(init_state_method.is_some());
             let init_state_method = init_state_method.unwrap();
-            assert!(init_state_method
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("@override"));
+            assert!(
+                init_state_method
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("@override")
+            );
 
             let dispose_method = symbols.iter().find(|s| s.name == "dispose");
             assert!(dispose_method.is_some());
@@ -645,21 +695,25 @@ class CustomButton extends StatelessWidget {
             let create_state_method = symbols.iter().find(|s| s.name == "createState");
             assert!(create_state_method.is_some());
             let create_state_method = create_state_method.unwrap();
-            assert!(create_state_method
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("@override"));
+            assert!(
+                create_state_method
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("@override")
+            );
 
             // Should extract fields
             let title_field = symbols.iter().find(|s| s.name == "title");
             assert!(title_field.is_some());
             let title_field = title_field.unwrap();
-            assert!(title_field
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("final String title"));
+            assert!(
+                title_field
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("final String title")
+            );
 
             let counter_field = symbols.iter().find(|s| s.name == "_counter");
             assert!(counter_field.is_some());
@@ -672,11 +726,13 @@ class CustomButton extends StatelessWidget {
             let controller_field = symbols.iter().find(|s| s.name == "_controller");
             assert!(controller_field.is_some());
             let controller_field = controller_field.unwrap();
-            assert!(controller_field
-                .signature
-                .as_ref()
-                .unwrap()
-                .contains("late AnimationController"));
+            assert!(
+                controller_field
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("late AnimationController")
+            );
         }
     }
 
@@ -1986,3 +2042,4 @@ class Person {
         }
     }
 }
+mod types; // Phase 4: Type extraction verification tests

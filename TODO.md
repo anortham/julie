@@ -146,6 +146,18 @@
 <!-- Use this section for temporary notes during development -->
 <!-- Clear out resolved items regularly -->
 
+⏺ julie - fast_search (MCP)(query: "summary findings recommendations audit status", search_method: "text", search_target: "content", file_pattern: "docs/TOOL_AUDIT.md",
+                           limit: 10, output: "lines")
+  ⎿  🔍 No lines found matching: 'summary findings recommendations audit status'
+     💡 Try a broader search term or different query
+
+⏺ julie - fast_search (MCP)(query: "Minor Improvements Identified Optional Enhancements", search_method: "text", search_target: "content", file_pattern:
+                           "docs/TOOL_AUDIT.md", limit: 20, output: "lines")
+  ⎿  🔍 No lines found matching: 'Minor Improvements Identified Optional Enhancements'
+     💡 Try a broader search term or different query
+
+Why did these two searches not fallback to semantic results? 
+
 ### Active Investigations
 
 (None currently - add notes here as needed)

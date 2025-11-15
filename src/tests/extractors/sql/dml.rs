@@ -84,12 +84,14 @@ DO UPDATE SET
 
         let user_hierarchy = symbols.iter().find(|s| s.name == "user_hierarchy");
         assert!(user_hierarchy.is_some());
-        assert!(user_hierarchy
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("RECURSIVE"));
+        assert!(
+            user_hierarchy
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("RECURSIVE")
+        );
 
         let activity_level = symbols.iter().find(|s| s.name == "activity_level");
         assert!(activity_level.is_some());

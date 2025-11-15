@@ -20,7 +20,9 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
     // 🚨 SAFETY CHECK 1: NEVER delete .julie from project root during tests
     // The project root contains env!("CARGO_MANIFEST_DIR") and is where production Julie runs
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_canonical = workspace_path.canonicalize().unwrap_or_else(|_| workspace_path.to_path_buf());
+    let workspace_canonical = workspace_path
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_path.to_path_buf());
     let project_canonical = project_root.canonicalize().unwrap_or(project_root.clone());
 
     if workspace_canonical == project_canonical {
@@ -55,7 +57,7 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
         || path_str.starts_with("/var/folders/")  // macOS temp
         || path_str.contains(r"\AppData\Local\Temp\")  // Windows temp
         || path_str.contains("/fixtures/test-workspaces/")  // Test fixtures (Unix)
-        || path_str.contains(r"\fixtures\test-workspaces\");  // Test fixtures (Windows)
+        || path_str.contains(r"\fixtures\test-workspaces\"); // Test fixtures (Windows)
 
     if !is_temp_dir {
         panic!(

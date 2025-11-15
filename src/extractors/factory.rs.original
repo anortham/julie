@@ -1,0 +1,501 @@
+//! Shared extractor factory - Single source of truth for 28 languages
+//!
+//! This module provides the centralized factory function for all language extractors.
+//! It ensures consistency across the codebase and prevents bugs from missing languages
+//! in different code paths.
+
+use crate::extractors::base::ExtractionResults;
+use anyhow::anyhow;
+use std::collections::HashMap;
+use std::path::Path;
+
+/// Extract symbols and relationships for ANY supported language
+///
+/// This is the centralized factory function for all 28 language extractors.
+/// It ensures consistency across the codebase and prevents bugs from missing
+/// languages in different code paths.
+///
+/// # Parameters
+/// - `tree`: Pre-parsed tree-sitter AST
+/// - `file_path`: Relative Unix-style file path (for symbol storage)
+/// - `content`: Source code content
+/// - `language`: Language identifier (lowercase, e.g., "rust", "r", "qml")
+/// - `workspace_root`: Workspace root path for relative path calculations
+///
+/// # Returns
+/// `Ok(ExtractionResults)` with symbols, relationships, identifiers, and types
+///
+/// # Example
+/// ```rust
+/// let results = extract_symbols_and_relationships(
+///     &tree, "src/main.rs", &content, "rust", workspace_root
+/// )?;
+/// ```
+pub fn extract_symbols_and_relationships(
+    tree: &tree_sitter::Tree,
+    file_path: &str,
+    content: &str,
+    language: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    // Single match statement for ALL languages
+    let (symbols, relationships, identifiers, type_map) = match language {
+        "rust" => {
+            let mut extractor = crate::extractors::rust::RustExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "typescript" | "tsx" => {
+            let mut extractor = crate::extractors::typescript::TypeScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            let type_map = extractor.infer_types(&symbols);
+            (symbols, relationships, identifiers, type_map)
+        }
+        "javascript" | "jsx" => {
+            let mut extractor = crate::extractors::javascript::JavaScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "python" => {
+            let mut extractor = crate::extractors::python::PythonExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "java" => {
+            let mut extractor = crate::extractors::java::JavaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "csharp" => {
+            let mut extractor = crate::extractors::csharp::CSharpExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "php" => {
+            let mut extractor = crate::extractors::php::PhpExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "ruby" => {
+            let mut extractor = crate::extractors::ruby::RubyExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "swift" => {
+            let mut extractor = crate::extractors::swift::SwiftExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "kotlin" => {
+            let mut extractor = crate::extractors::kotlin::KotlinExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "dart" => {
+            let mut extractor = crate::extractors::dart::DartExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "go" => {
+            let mut extractor = crate::extractors::go::GoExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "c" => {
+            let mut extractor = crate::extractors::c::CExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "cpp" => {
+            let mut extractor = crate::extractors::cpp::CppExtractor::new(
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "lua" => {
+            let mut extractor = crate::extractors::lua::LuaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "qml" => {
+            let mut extractor = crate::extractors::qml::QmlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "r" => {
+            let mut extractor = crate::extractors::r::RExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            (symbols, relationships, identifiers, HashMap::new())
+        }
+        "sql" => {
+            let mut extractor = crate::extractors::sql::SqlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "html" => {
+            let mut extractor = crate::extractors::html::HTMLExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "css" => {
+            let mut extractor = crate::extractors::css::CSSExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            // CSSExtractor doesn't have extract_relationships method yet
+            (symbols, Vec::new(), Vec::new(), HashMap::new())
+        }
+        "vue" => {
+            let mut extractor = crate::extractors::vue::VueExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(Some(tree));
+            let relationships = extractor.extract_relationships(Some(tree), &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "razor" => {
+            let mut extractor = crate::extractors::razor::RazorExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "bash" => {
+            let mut extractor = crate::extractors::bash::BashExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "powershell" => {
+            let mut extractor = crate::extractors::powershell::PowerShellExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "gdscript" => {
+            let mut extractor = crate::extractors::gdscript::GDScriptExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "zig" => {
+            let mut extractor = crate::extractors::zig::ZigExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "regex" => {
+            let mut extractor = crate::extractors::regex::RegexExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            (symbols, relationships, Vec::new(), HashMap::new())
+        }
+        "markdown" => {
+            let mut extractor = crate::extractors::markdown::MarkdownExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let relationships = extractor.extract_relationships(tree, &symbols);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            (symbols, relationships, identifiers, HashMap::new())
+        }
+        "json" => {
+            let mut extractor = crate::extractors::json::JsonExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            // JSON is configuration data - no code relationships
+            (symbols, Vec::new(), identifiers, HashMap::new())
+        }
+        "toml" => {
+            let mut extractor = crate::extractors::toml::TomlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            // TOML is configuration data - no code relationships
+            (symbols, Vec::new(), identifiers, HashMap::new())
+        }
+        "yaml" => {
+            let mut extractor = crate::extractors::yaml::YamlExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = extractor.extract_symbols(tree);
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            // YAML is configuration data - no code relationships
+            (symbols, Vec::new(), identifiers, HashMap::new())
+        }
+        _ => {
+            return Err(anyhow!(
+                "No extractor available for language '{}' (file: {})",
+                language,
+                file_path
+            ));
+        }
+    };
+
+    // Convert type_map HashMap<String, String> to HashMap<String, TypeInfo>
+    let types = type_map.into_iter().map(|(symbol_id, type_string)| {
+        (symbol_id.clone(), crate::extractors::base::TypeInfo {
+            symbol_id,
+            resolved_type: type_string,
+            generic_params: None,
+            constraints: None,
+            is_inferred: true,
+            language: language.to_string(),
+            metadata: None,
+        })
+    }).collect();
+
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        identifiers,
+        types,
+    })
+}
+
+#[cfg(test)]
+mod factory_consistency_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tree_sitter::Parser;
+
+    /// Test that ALL 28 supported languages work with the factory function
+    ///
+    /// This test prevents the R/QML/PHP bug from happening again by ensuring
+    /// every language in supported_languages() can be extracted via the factory.
+    #[test]
+    fn test_all_languages_in_factory() {
+        let manager = crate::extractors::ExtractorManager::new();
+        let supported = manager.supported_languages();
+
+        // Verify we have all 28 languages (+ aliases)
+        assert!(supported.len() >= 28, "Expected at least 28 language entries");
+
+        let workspace_root = PathBuf::from("/tmp/test");
+
+        // Test each language can be handled by the factory
+        // Note: Some will fail to parse invalid code, but they should NOT return
+        // "No extractor available" error
+        for language in &supported {
+            let test_content = "// test";
+
+            // Create a minimal valid tree for testing
+            let mut parser = Parser::new();
+            let ts_lang = match crate::language::get_tree_sitter_language(language) {
+                Ok(lang) => lang,
+                Err(_) => continue, // Skip if language not available
+            };
+
+            parser.set_language(&ts_lang).unwrap();
+            let tree = parser.parse(test_content, None).unwrap();
+
+            // The factory should handle this language (even if it extracts 0 symbols)
+            let result = extract_symbols_and_relationships(
+                &tree,
+                "test.rs",
+                test_content,
+                language,
+                &workspace_root,
+            );
+
+            // Should succeed OR fail for parsing reasons, but NEVER "No extractor available"
+            if let Err(e) = result {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.contains("No extractor available"),
+                    "Language '{}' is missing from factory function! Error: {}",
+                    language,
+                    error_msg
+                );
+            }
+        }
+    }
+
+    /// Test that the factory function rejects unknown languages
+    #[test]
+    fn test_factory_rejects_unknown_language() {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = Parser::new();
+
+        // Use Rust parser for a fake language
+        let ts_lang = crate::language::get_tree_sitter_language("rust").unwrap();
+        parser.set_language(&ts_lang).unwrap();
+        let tree = parser.parse("// test", None).unwrap();
+
+        let result = extract_symbols_and_relationships(
+            &tree,
+            "test.unknown",
+            "// test",
+            "unknown_language_xyz",
+            &workspace_root,
+        );
+
+        assert!(result.is_err(), "Should reject unknown language");
+        assert!(
+            format!("{}", result.unwrap_err()).contains("No extractor available"),
+            "Error should mention no extractor available"
+        );
+    }
+}

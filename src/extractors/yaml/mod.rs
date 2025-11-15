@@ -13,8 +13,7 @@
 /// - Docker Compose files
 /// - Ansible playbooks
 /// - Configuration files
-
-use crate::extractors::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
 use std::path::Path;
 
 pub struct YamlExtractor {
@@ -81,7 +80,11 @@ impl YamlExtractor {
     }
 
     /// Extract a YAML document as a symbol
-    fn extract_document(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_document(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         use crate::extractors::base::SymbolOptions;
 
         let options = SymbolOptions {
@@ -92,18 +95,19 @@ impl YamlExtractor {
             ..Default::default()
         };
 
-        let symbol = self.base.create_symbol(
-            &node,
-            "document".to_string(),
-            SymbolKind::Module,
-            options,
-        );
+        let symbol =
+            self.base
+                .create_symbol(&node, "document".to_string(), SymbolKind::Module, options);
 
         Some(symbol)
     }
 
     /// Extract a block mapping pair (key: value) as a symbol
-    fn extract_mapping_pair(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_mapping_pair(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         use crate::extractors::base::SymbolOptions;
 
         // Extract the key name
@@ -128,7 +132,11 @@ impl YamlExtractor {
     }
 
     /// Extract a flow mapping (inline object) as a symbol
-    fn extract_flow_mapping(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_flow_mapping(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         use crate::extractors::base::SymbolOptions;
 
         let options = SymbolOptions {
@@ -175,5 +183,14 @@ impl YamlExtractor {
         }
 
         None
+    }
+
+    pub fn extract_identifiers(
+        &mut self,
+        _tree: &tree_sitter::Tree,
+        _symbols: &[Symbol],
+    ) -> Vec<Identifier> {
+        // YAML is configuration data - no code identifiers
+        Vec::new()
     }
 }

@@ -65,7 +65,9 @@ pub(crate) fn extract_unicode_property_name(property_text: &str) -> String {
             let inner_start = start + 3;
             let inner_end = start + end;
             // SAFETY: Check char boundaries before slicing to prevent UTF-8 panic
-            if property_text.is_char_boundary(inner_start) && property_text.is_char_boundary(inner_end) {
+            if property_text.is_char_boundary(inner_start)
+                && property_text.is_char_boundary(inner_end)
+            {
                 let inner = &property_text[inner_start..inner_end];
                 return inner.to_string();
             }
@@ -116,7 +118,9 @@ pub(crate) fn extract_condition(conditional_text: &str) -> String {
             let cond_start = start + 3;
             let cond_end = start + 3 + end;
             // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-            if conditional_text.is_char_boundary(cond_start) && conditional_text.is_char_boundary(cond_end) {
+            if conditional_text.is_char_boundary(cond_start)
+                && conditional_text.is_char_boundary(cond_end)
+            {
                 return conditional_text[cond_start..cond_end].to_string();
             }
         }

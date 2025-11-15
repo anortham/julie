@@ -27,7 +27,10 @@ pub async fn find_cross_language_callers(
     let db_lock = match db.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            tracing::warn!("Database mutex poisoned in find_cross_language_callers, recovering: {}", poisoned);
+            tracing::warn!(
+                "Database mutex poisoned in find_cross_language_callers, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };
@@ -75,7 +78,10 @@ pub async fn find_cross_language_callees(
     let db_lock = match db.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            tracing::warn!("Database mutex poisoned in find_cross_language_callees, recovering: {}", poisoned);
+            tracing::warn!(
+                "Database mutex poisoned in find_cross_language_callees, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };
@@ -126,7 +132,10 @@ pub async fn find_semantic_cross_language_callers(
     let db_lock = match db.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            tracing::warn!("Database mutex poisoned in find_semantic_cross_language_callers, recovering: {}", poisoned);
+            tracing::warn!(
+                "Database mutex poisoned in find_semantic_cross_language_callers, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };
@@ -186,7 +195,10 @@ pub async fn find_semantic_cross_language_callees(
     let db_lock = match db.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            tracing::warn!("Database mutex poisoned in find_semantic_cross_language_callees, recovering: {}", poisoned);
+            tracing::warn!(
+                "Database mutex poisoned in find_semantic_cross_language_callees, recovering: {}",
+                poisoned
+            );
             poisoned.into_inner()
         }
     };

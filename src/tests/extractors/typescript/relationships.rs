@@ -4,9 +4,9 @@
 //! including function calls and inheritance relationships.
 
 use crate::extractors::base::RelationshipKind;
-use std::path::PathBuf;
-use crate::extractors::typescript::relationships::extract_relationships;
 use crate::extractors::typescript::TypeScriptExtractor;
+use crate::extractors::typescript::relationships::extract_relationships;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_call_relationships() {
@@ -24,20 +24,21 @@ fn test_extract_call_relationships() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
-    assert!(relationships
-        .iter()
-        .any(|r| r.kind == RelationshipKind::Calls));
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.kind == RelationshipKind::Calls)
+    );
 }
 
 #[test]
@@ -54,18 +55,19 @@ fn test_extract_inheritance_relationships() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extract_relationships(&extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
-    assert!(relationships
-        .iter()
-        .any(|r| r.kind == RelationshipKind::Extends));
+    assert!(
+        relationships
+            .iter()
+            .any(|r| r.kind == RelationshipKind::Extends)
+    );
 }

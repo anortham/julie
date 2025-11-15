@@ -117,7 +117,7 @@ async fn test_health_check() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
-          // Run manually with: cargo test test_concurrent_manage_workspace --ignored
+// Run manually with: cargo test test_concurrent_manage_workspace --ignored
 async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
     // Skip expensive embedding initialization but allow Tantivy to initialize
     unsafe {
@@ -214,7 +214,10 @@ fn goodbye_world() {
     // Create handler (simulates the server context)
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace_with_force(Some(primary_dir.path().to_str().unwrap().to_string()), true)
+        .initialize_workspace_with_force(
+            Some(primary_dir.path().to_str().unwrap().to_string()),
+            true,
+        )
         .await
         .unwrap();
 
@@ -339,7 +342,10 @@ fn test_function() {
     );
 
     // Verify is_indexed is true
-    assert!(*handler.is_indexed.read().await, "is_indexed should be true after indexing");
+    assert!(
+        *handler.is_indexed.read().await,
+        "is_indexed should be true after indexing"
+    );
 
     // SIMULATE THE BUG: Manually clear the database while keeping is_indexed=true
     // This simulates scenarios like database corruption, manual deletion, or partial cleanup
@@ -635,7 +641,10 @@ fn function_two() {
         if let Some(db) = workspace.db.as_ref() {
             let db_lock = db.lock().unwrap();
             let count = db_lock.count_symbols_for_workspace().unwrap();
-            assert_eq!(count, 0, "Database should have 0 symbols after manual deletion");
+            assert_eq!(
+                count, 0,
+                "Database should have 0 symbols after manual deletion"
+            );
         }
     }
 

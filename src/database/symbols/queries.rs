@@ -63,7 +63,10 @@ impl SymbolDatabase {
 
     /// Find symbols by name with optional language filter
     pub fn find_symbols_by_name(&self, name: &str) -> Result<Vec<Symbol>> {
-        let query = format!("SELECT {} FROM symbols WHERE name = ?1 ORDER BY language, file_path", SYMBOL_COLUMNS);
+        let query = format!(
+            "SELECT {} FROM symbols WHERE name = ?1 ORDER BY language, file_path",
+            SYMBOL_COLUMNS
+        );
         let mut stmt = self.conn.prepare(&query)?;
 
         let symbol_iter = stmt.query_map(params![name], |row| self.row_to_symbol(row))?;
@@ -223,12 +226,14 @@ impl SymbolDatabase {
             // SymbolKind boost: Definitions (class/struct/interface) rank higher than imports/exports
 
             // Build column list with "s." prefix for JOIN query
-            let columns_with_prefix = SYMBOL_COLUMNS.split(", ")
+            let columns_with_prefix = SYMBOL_COLUMNS
+                .split(", ")
                 .map(|col| format!("s.{}", col))
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let query = format!("SELECT {}
+            let query = format!(
+                "SELECT {}
                          FROM symbols s
                          INNER JOIN symbols_fts fts ON s.rowid = fts.rowid
                          WHERE symbols_fts MATCH ?1
@@ -250,10 +255,13 @@ impl SymbolDatabase {
                              WHEN 'import' THEN 0.1
                              WHEN 'export' THEN 0.1
                              ELSE 0.3
-                           END", columns_with_prefix);
+                           END",
+                columns_with_prefix
+            );
 
             let mut stmt = conn.prepare(&query)?;
-            let symbol_iter = stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
+            let symbol_iter =
+                stmt.query_map([&sanitized_pattern], |row| self.row_to_symbol(row))?;
 
             let mut symbols = Vec::new();
             for symbol_result in symbol_iter {
@@ -277,7 +285,10 @@ impl SymbolDatabase {
                 let es = e.to_string();
                 // If the FTS index is desynced (common message: missing row from content table), rebuild and retry once
                 if es.contains("fts5: missing row") || es.contains("invalid fts5 file format") {
-                    warn!("⚠️ FTS5 query error detected ({}). Rebuilding symbols_fts and retrying once...", es);
+                    warn!(
+                        "⚠️ FTS5 query error detected ({}). Rebuilding symbols_fts and retrying once...",
+                        es
+                    );
                     // Attempt rebuild and retry
                     // Ignore rebuild error; if rebuild fails, return original error
                     let _ = self.rebuild_symbols_fts();

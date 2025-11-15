@@ -243,20 +243,24 @@ end
         // Package functions
         let load_module = symbols.iter().find(|s| s.name == "loadModule");
         assert!(load_module.is_some());
-        assert!(load_module
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("local function loadModule(name)"));
+        assert!(
+            load_module
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("local function loadModule(name)")
+        );
 
         let get_cached_module = symbols.iter().find(|s| s.name == "getCachedModule");
         assert!(get_cached_module.is_some());
-        assert!(get_cached_module
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("local function getCachedModule(name)"));
+        assert!(
+            get_cached_module
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("local function getCachedModule(name)")
+        );
     }
 }

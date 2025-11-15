@@ -104,8 +104,12 @@ var (
 "#;
     let tree = init_parser(code, "go");
     let workspace_root = PathBuf::from("/tmp/test");
-    let mut extractor =
-        GoExtractor::new("go".to_string(), "test.go".to_string(), code.to_string(), &workspace_root);
+    let mut extractor = GoExtractor::new(
+        "go".to_string(),
+        "test.go".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
 
     // Should not panic even with malformed code
     let symbols = extractor.extract_symbols(&tree);
@@ -126,30 +130,36 @@ var (
 
     let complex_function = symbols.iter().find(|s| s.name == "ComplexFunction");
     assert!(complex_function.is_some());
-    assert!(complex_function
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("func ComplexFunction"));
+    assert!(
+        complex_function
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("func ComplexFunction")
+    );
 
     let named_returns = symbols.iter().find(|s| s.name == "NamedReturns");
     assert!(named_returns.is_some());
-    assert!(named_returns
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("(sum, product int)"));
+    assert!(
+        named_returns
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("(sum, product int)")
+    );
 
     let variadic_func = symbols.iter().find(|s| s.name == "VariadicFunction");
     assert!(variadic_func.is_some());
-    assert!(variadic_func
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("args ...interface{}"));
+    assert!(
+        variadic_func
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("args ...interface{}")
+    );
 
     let handler_func = symbols.iter().find(|s| s.name == "HandlerFunc");
     assert!(handler_func.is_some());

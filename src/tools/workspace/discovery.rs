@@ -37,7 +37,10 @@ impl ManageWorkspaceTool {
                 true, // Skip minified check - need all files for vendor detection
             )?;
 
-            info!("📊 Discovered {} files total after hardcoded filters", all_files.len());
+            info!(
+                "📊 Discovered {} files total after hardcoded filters",
+                all_files.len()
+            );
 
             // Step 2: Analyze for vendor patterns
             let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
@@ -45,7 +48,10 @@ impl ManageWorkspaceTool {
             // Step 3: Generate .julieignore file if patterns detected
             if !detected_patterns.is_empty() {
                 self.generate_julieignore_file(workspace_path, &detected_patterns)?;
-                info!("✅ Generated .julieignore with {} patterns", detected_patterns.len());
+                info!(
+                    "✅ Generated .julieignore with {} patterns",
+                    detected_patterns.len()
+                );
                 detected_patterns
             } else {
                 info!("✨ No vendor patterns detected - project looks clean!");
@@ -54,7 +60,10 @@ impl ManageWorkspaceTool {
         };
 
         if !custom_ignores.is_empty() {
-            info!("🔍 Loaded {} custom ignore patterns for file discovery", custom_ignores.len());
+            info!(
+                "🔍 Loaded {} custom ignore patterns for file discovery",
+                custom_ignores.len()
+            );
         }
 
         debug!(
@@ -130,7 +139,12 @@ impl ManageWorkspaceTool {
                 )?;
             } else if path.is_file() {
                 // Check file extension and size
-                if self.should_index_file(&path, blacklisted_exts, max_file_size, skip_minified_check)? {
+                if self.should_index_file(
+                    &path,
+                    blacklisted_exts,
+                    max_file_size,
+                    skip_minified_check,
+                )? {
                     // 🔥 CRITICAL: Canonicalize paths to resolve symlinks (macOS /var -> /private/var)
                     // This ensures file reads work correctly downstream
                     let canonical_path = path.canonicalize().unwrap_or(path);
@@ -316,7 +330,8 @@ impl ManageWorkspaceTool {
         }
 
         // Build a set of all ancestor directories to check (including those with no direct files)
-        let mut vendor_candidates: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut vendor_candidates: std::collections::HashSet<PathBuf> =
+            std::collections::HashSet::new();
 
         for (dir, _) in &dir_stats {
             // First check the directory itself
@@ -325,9 +340,23 @@ impl ManageWorkspaceTool {
                 // that are normally blacklisted (target, node_modules, vendor, etc.)
                 if matches!(
                     dir_name,
-                    "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
-                    | "target" | "node_modules" | "build" | "dist" | "out"
-                    | "bin" | "obj" | "Debug" | "Release" | "packages" | "bower_components"
+                    "libs"
+                        | "lib"
+                        | "plugin"
+                        | "plugins"
+                        | "vendor"
+                        | "third-party"
+                        | "target"
+                        | "node_modules"
+                        | "build"
+                        | "dist"
+                        | "out"
+                        | "bin"
+                        | "obj"
+                        | "Debug"
+                        | "Release"
+                        | "packages"
+                        | "bower_components"
                 ) {
                     vendor_candidates.insert(dir.to_path_buf());
                 }
@@ -343,9 +372,23 @@ impl ManageWorkspaceTool {
                 if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
                     if matches!(
                         dir_name,
-                        "libs" | "lib" | "plugin" | "plugins" | "vendor" | "third-party"
-                        | "target" | "node_modules" | "build" | "dist" | "out"
-                        | "bin" | "obj" | "Debug" | "Release" | "packages" | "bower_components"
+                        "libs"
+                            | "lib"
+                            | "plugin"
+                            | "plugins"
+                            | "vendor"
+                            | "third-party"
+                            | "target"
+                            | "node_modules"
+                            | "build"
+                            | "dist"
+                            | "out"
+                            | "bin"
+                            | "obj"
+                            | "Debug"
+                            | "Release"
+                            | "packages"
+                            | "bower_components"
                     ) {
                         vendor_candidates.insert(parent.to_path_buf());
                     }
@@ -363,7 +406,10 @@ impl ManageWorkspaceTool {
                 .sum();
 
             let pattern = self.dir_to_pattern(&vendor_dir, workspace_root);
-            info!("🔍 Checking vendor candidate: {} (recursive_count: {})", pattern, recursive_count);
+            info!(
+                "🔍 Checking vendor candidate: {} (recursive_count: {})",
+                pattern, recursive_count
+            );
 
             if recursive_count > 5 {
                 info!(

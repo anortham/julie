@@ -15,7 +15,7 @@
 //! - Glob: File path patterns (*.rs, **/Program.cs, src/**/*.ts)
 //! - Standard: Natural language full-text search (error handling logic)
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use regex::Regex;
 
 /// Query types determine how we process and route searches
@@ -359,7 +359,11 @@ fn sanitize_standard_for_fts5(query: &str) -> String {
     // Handle hyphens FIRST - FTS5 treats "-" as subtraction operator
     // "tree-sitter" → "tree OR sitter" to match tokenized content
     // Don't split negative numbers like "-42" or ranges like "1-10"
-    if result.contains('-') && !result.chars().all(|c| c.is_ascii_digit() || c == '-' || c == '.') {
+    if result.contains('-')
+        && !result
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '-' || c == '.')
+    {
         let parts: Vec<&str> = result.split('-').filter(|s| !s.is_empty()).collect();
         if parts.len() > 1 {
             result = parts.join(" OR ");
@@ -378,11 +382,11 @@ fn sanitize_standard_for_fts5(query: &str) -> String {
 
     // Remove FTS5 special characters that cause syntax errors
     // These characters have special meaning in FTS5 and must be removed/escaped
-    result = result.replace('/', " ");  // Forward slash breaks FTS5 (e.g., "tests/mod.rs" → "fts5: syntax error near /")
-    result = result.replace('!', " ");  // Exclamation mark is NOT operator in FTS5
-    result = result.replace('(', " ");  // Parentheses are grouping operators in FTS5
+    result = result.replace('/', " "); // Forward slash breaks FTS5 (e.g., "tests/mod.rs" → "fts5: syntax error near /")
+    result = result.replace('!', " "); // Exclamation mark is NOT operator in FTS5
+    result = result.replace('(', " "); // Parentheses are grouping operators in FTS5
     result = result.replace(')', " ");
-    result = result.replace('"', " ");  // Double quotes are phrase search delimiters in FTS5
+    result = result.replace('"', " "); // Double quotes are phrase search delimiters in FTS5
 
     result.trim().to_string()
 }
@@ -537,8 +541,12 @@ mod tests {
         let result = preprocess_query("class CmsService : ICmsService").unwrap();
         assert_eq!(result.query_type, QueryType::Pattern);
         // Should NOT contain bare colon - should be quoted or converted to AND/OR
-        assert!(!result.fts5_query.contains(" : ") &&
-                (result.fts5_query.contains(" AND ") || result.fts5_query.contains(" OR ") || result.fts5_query.contains("\":")));
+        assert!(
+            !result.fts5_query.contains(" : ")
+                && (result.fts5_query.contains(" AND ")
+                    || result.fts5_query.contains(" OR ")
+                    || result.fts5_query.contains("\":"))
+        );
 
         // Double colon (scope resolution) - already handled
         let result = preprocess_query("std::vector").unwrap();

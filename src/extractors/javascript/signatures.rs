@@ -4,8 +4,8 @@
 //! symbol types (classes, functions, methods, properties, variables).
 //! Signatures are the human-readable representations shown in IDEs.
 
-use tree_sitter::Node;
 use crate::extractors::base::BaseExtractor;
+use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
     /// Build class signature - direct Implementation of buildClassSignature

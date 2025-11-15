@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -67,12 +67,14 @@ CREATE TABLE analytics_events (
             .iter()
             .find(|s| s.name == "users" && s.kind == SymbolKind::Class);
         assert!(users_table.is_some());
-        assert!(users_table
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("CREATE TABLE users"));
+        assert!(
+            users_table
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("CREATE TABLE users")
+        );
 
         let user_profiles_table = symbols.iter().find(|s| s.name == "user_profiles");
         assert!(user_profiles_table.is_some());
@@ -87,51 +89,61 @@ CREATE TABLE analytics_events (
             .iter()
             .find(|s| s.name == "id" && s.kind == SymbolKind::Field);
         assert!(id_column.is_some());
-        assert!(id_column
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("BIGINT PRIMARY KEY"));
+        assert!(
+            id_column
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("BIGINT PRIMARY KEY")
+        );
 
         let username_column = symbols.iter().find(|s| s.name == "username");
         assert!(username_column.is_some());
-        assert!(username_column
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("VARCHAR(50) UNIQUE NOT NULL"));
+        assert!(
+            username_column
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("VARCHAR(50) UNIQUE NOT NULL")
+        );
 
         let email_column = symbols.iter().find(|s| s.name == "email");
         assert!(email_column.is_some());
 
         let is_active_column = symbols.iter().find(|s| s.name == "is_active");
         assert!(is_active_column.is_some());
-        assert!(is_active_column
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("BOOLEAN DEFAULT TRUE"));
+        assert!(
+            is_active_column
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("BOOLEAN DEFAULT TRUE")
+        );
 
         let social_links_column = symbols.iter().find(|s| s.name == "social_links");
         assert!(social_links_column.is_some());
-        assert!(social_links_column
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("JSON"));
+        assert!(
+            social_links_column
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("JSON")
+        );
 
         let event_data_column = symbols.iter().find(|s| s.name == "event_data");
         assert!(event_data_column.is_some());
-        assert!(event_data_column
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("JSONB"));
+        assert!(
+            event_data_column
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("JSONB")
+        );
 
         let constraints = symbols
             .iter()

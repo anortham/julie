@@ -359,11 +359,7 @@ impl EmbeddingEngine {
                     all_results.append(&mut chunk_results);
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to process chunk of {} symbols: {}",
-                        chunk.len(),
-                        e
-                    );
+                    tracing::error!("Failed to process chunk of {} symbols: {}", chunk.len(), e);
                     return Err(e);
                 }
             }
@@ -374,7 +370,10 @@ impl EmbeddingEngine {
 
     /// Internal batch embedding logic - processes a single batch WITHOUT splitting
     /// This is the actual ONNX batch call - caller must ensure batch size is safe!
-    fn embed_symbols_batch_internal(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
+    fn embed_symbols_batch_internal(
+        &mut self,
+        symbols: &[Symbol],
+    ) -> Result<Vec<(String, Vec<f32>)>> {
         // Collect all embedding texts and contexts for this batch
         // Phase 2: Filter out symbols with empty embedding text (e.g., non-description memory symbols)
         let mut batch_texts = Vec::new();
@@ -527,7 +526,9 @@ impl EmbeddingEngine {
     ) -> Result<()> {
         // Require database for persistence operations
         if self.db.is_none() {
-            anyhow::bail!("Database required for upsert_file_embeddings - use EmbeddingEngine::new() instead of new_standalone()");
+            anyhow::bail!(
+                "Database required for upsert_file_embeddings - use EmbeddingEngine::new() instead of new_standalone()"
+            );
         }
 
         if symbols.is_empty() {
@@ -552,7 +553,10 @@ impl EmbeddingEngine {
                 let db_guard = match self.db.as_ref().unwrap().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned during batch embedding storage, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned during batch embedding storage, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };
@@ -604,7 +608,10 @@ impl EmbeddingEngine {
                             let db_guard = match self.db.as_ref().unwrap().lock() {
                                 Ok(guard) => guard,
                                 Err(poisoned) => {
-                                    warn!("Database mutex poisoned during individual embedding storage, recovering: {}", poisoned);
+                                    warn!(
+                                        "Database mutex poisoned during individual embedding storage, recovering: {}",
+                                        poisoned
+                                    );
                                     poisoned.into_inner()
                                 }
                             };
@@ -653,7 +660,9 @@ impl EmbeddingEngine {
     pub async fn remove_embeddings_for_symbols(&mut self, symbol_ids: &[String]) -> Result<()> {
         // Require database for deletion operations
         if self.db.is_none() {
-            anyhow::bail!("Database required for remove_embeddings_for_symbols - use EmbeddingEngine::new() instead of new_standalone()");
+            anyhow::bail!(
+                "Database required for remove_embeddings_for_symbols - use EmbeddingEngine::new() instead of new_standalone()"
+            );
         }
 
         if symbol_ids.is_empty() {
@@ -664,7 +673,10 @@ impl EmbeddingEngine {
         let db_guard = match self.db.as_ref().unwrap().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during embedding removal, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during embedding removal, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -683,14 +695,19 @@ impl EmbeddingEngine {
     pub async fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
         // Require database for retrieval operations
         if self.db.is_none() {
-            anyhow::bail!("Database required for get_embedding - use EmbeddingEngine::new() instead of new_standalone()");
+            anyhow::bail!(
+                "Database required for get_embedding - use EmbeddingEngine::new() instead of new_standalone()"
+            );
         }
 
         // Safe unwrap - we checked is_none() above
         let db_guard = match self.db.as_ref().unwrap().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                warn!("Database mutex poisoned during embedding retrieval, recovering: {}", poisoned);
+                warn!(
+                    "Database mutex poisoned during embedding retrieval, recovering: {}",
+                    poisoned
+                );
                 poisoned.into_inner()
             }
         };
@@ -710,7 +727,9 @@ impl EmbeddingEngine {
         // Example: "checkpoint: Fixed auth bug" or "decision: Chose SQLite over PostgreSQL"
 
         // Check if this is a memory file (but NOT mutable plans from Phase 3)
-        if symbol.file_path.starts_with(".memories/") && !symbol.file_path.starts_with(".memories/plans/") {
+        if symbol.file_path.starts_with(".memories/")
+            && !symbol.file_path.starts_with(".memories/plans/")
+        {
             return self.build_memory_embedding_text(symbol);
         }
 
@@ -720,7 +739,13 @@ impl EmbeddingEngine {
         // Expected: 18-22% reduction in markdown embeddings, clearer semantic signal
         if symbol.language == "markdown" {
             // Skip if doc_comment is None OR empty string
-            if symbol.doc_comment.is_none() || symbol.doc_comment.as_ref().map(|d| d.is_empty()).unwrap_or(false) {
+            if symbol.doc_comment.is_none()
+                || symbol
+                    .doc_comment
+                    .as_ref()
+                    .map(|d| d.is_empty())
+                    .unwrap_or(false)
+            {
                 return String::new(); // Empty = skip embedding
             }
         }
@@ -736,6 +761,16 @@ impl EmbeddingEngine {
         // Add documentation comment if available (enables natural language queries)
         if let Some(doc) = &symbol.doc_comment {
             parts.push(doc.clone());
+        }
+
+        // NEW (Finding 7): Add resolved type information from types table if available
+        // This enables type-aware semantic search (e.g., "functions returning Promise<UserProfile>")
+        if let Some(db) = &self.db {
+            if let Ok(db_guard) = db.lock() {
+                if let Ok(Some(resolved_type)) = db_guard.get_type_for_symbol(&symbol.id) {
+                    parts.push(resolved_type);
+                }
+            }
         }
 
         // NOTE: code_context REMOVED for RAG optimization
@@ -763,11 +798,13 @@ impl EmbeddingEngine {
         }
 
         // Extract the description value from code_context JSON
-        let description_value = self.extract_json_string_value(&symbol.code_context, "description")
+        let description_value = self
+            .extract_json_string_value(&symbol.code_context, "description")
             .unwrap_or_else(|| symbol.name.clone()); // Fallback to symbol name if extraction fails
 
         // Extract the type value to prefix the description
-        let type_value = self.extract_json_string_value(&symbol.code_context, "type")
+        let type_value = self
+            .extract_json_string_value(&symbol.code_context, "type")
             .unwrap_or_else(|| "checkpoint".to_string()); // Default to "checkpoint" if type not found
 
         // Extract tags for searchability
@@ -809,7 +846,11 @@ impl EmbeddingEngine {
     ///
     /// This extracts the value for a given key (e.g., "description" or "type")
     /// Properly handles escaped quotes, unicode escapes, and all JSON string edge cases.
-    fn extract_json_string_value(&self, code_context: &Option<String>, key: &str) -> Option<String> {
+    fn extract_json_string_value(
+        &self,
+        code_context: &Option<String>,
+        key: &str,
+    ) -> Option<String> {
         let context = code_context.as_ref()?;
 
         // Find the line containing the key
@@ -852,7 +893,11 @@ impl EmbeddingEngine {
     /// ```
     ///
     /// This extracts the array values as a Vec<String>
-    fn extract_json_array_value(&self, code_context: &Option<String>, key: &str) -> Option<Vec<String>> {
+    fn extract_json_array_value(
+        &self,
+        code_context: &Option<String>,
+        key: &str,
+    ) -> Option<Vec<String>> {
         let context = code_context.as_ref()?;
 
         // Find the line containing the key with array start
@@ -964,10 +1009,18 @@ impl EmbeddingEngine {
                                 let comp = component.to_string_lossy().to_string();
 
                                 // Skip common non-semantic terms
-                                if matches!(comp.as_str(),
-                                    "src" | "lib" | "test" | "tests" |
-                                    "mod.rs" | "index.ts" | "index.js" |
-                                    "main.rs" | "main.ts" | "app.ts"
+                                if matches!(
+                                    comp.as_str(),
+                                    "src"
+                                        | "lib"
+                                        | "test"
+                                        | "tests"
+                                        | "mod.rs"
+                                        | "index.ts"
+                                        | "index.js"
+                                        | "main.rs"
+                                        | "main.ts"
+                                        | "app.ts"
                                 ) {
                                     continue;
                                 }

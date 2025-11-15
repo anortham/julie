@@ -155,7 +155,11 @@ mod workspace_management_token_tests {
         let mut files = Vec::new();
         for i in 1..=500 {
             let file = FileInfo {
-                path: format!("/very/long/path/to/project/src/modules/submodule_{}/components/detailed_implementation_file_with_long_name_{}.rs", i % 20, i),
+                path: format!(
+                    "/very/long/path/to/project/src/modules/submodule_{}/components/detailed_implementation_file_with_long_name_{}.rs",
+                    i % 20,
+                    i
+                ),
                 language: "rust".to_string(),
                 hash: format!("hash_{}", i),
                 size: 10000 + i as i64,

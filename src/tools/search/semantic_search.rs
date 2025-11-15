@@ -47,7 +47,8 @@ pub(crate) fn get_symbol_kind_boost(symbol: &Symbol) -> f32 {
         && symbol.language == "json"
         && symbol.file_path.starts_with(".memories/")
         && !symbol.file_path.starts_with(".memories/plans/")
-        && symbol.name == "description" {
+        && symbol.name == "description"
+    {
         return 2.0; // Rank memory descriptions as high as functions
     }
 
@@ -437,9 +438,9 @@ pub async fn semantic_search_impl(
         // CASCADE Architecture: Fetch vectors from SQLite on-demand during HNSW search
         // We need to access the database within the async context, so use tokio::task::block_in_place
         let semantic_results = match tokio::task::block_in_place(|| {
-            let db_lock =
-                db.lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+            let db_lock = db
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
             let model_name = "bge-small"; // Match the embedding model
             store_guard.search_similar_hnsw(
                 &db_lock,
@@ -472,7 +473,11 @@ pub async fn semantic_search_impl(
 
         debug!(
             "🔍 HNSW search (attempt {}/{}) returned {} candidates (limit: {}, threshold: {})",
-            attempt, MAX_ATTEMPTS, semantic_results.len(), search_limit, similarity_threshold
+            attempt,
+            MAX_ATTEMPTS,
+            semantic_results.len(),
+            search_limit,
+            similarity_threshold
         );
 
         // Extract symbol IDs from similarity results
@@ -490,9 +495,9 @@ pub async fn semantic_search_impl(
         // CRITICAL FIX: Wrap blocking rusqlite call in block_in_place
         // rusqlite operations are synchronous blocking I/O that can block Tokio runtime
         let symbols = match tokio::task::block_in_place(|| {
-            let db_lock =
-                db.lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+            let db_lock = db
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
             db_lock.get_symbols_by_ids(&symbol_ids)
         }) {
             Ok(syms) => syms,
@@ -520,8 +525,7 @@ pub async fn semantic_search_impl(
 
         // Re-sort by adjusted scores (higher is better)
         // Use unwrap_or(Equal) to gracefully handle NaN values instead of panicking
-        scored_symbols
-            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Extract symbols after re-ranking
         let symbols: Vec<Symbol> = scored_symbols
@@ -569,14 +573,18 @@ pub async fn semantic_search_impl(
                 // Hit the cap, can't widen further
                 debug!(
                     "⚠️ Reached max search limit ({}) but only got {} results after filtering (requested: {})",
-                    MAX_SEARCH_LIMIT, filtered_symbols.len(), limit
+                    MAX_SEARCH_LIMIT,
+                    filtered_symbols.len(),
+                    limit
                 );
                 break;
             }
 
             debug!(
                 "⚡ Dynamic widening: {} filtered results < {} requested, retrying with search_limit={}",
-                filtered_symbols.len(), limit, search_limit
+                filtered_symbols.len(),
+                limit,
+                search_limit
             );
         }
     }
@@ -588,7 +596,9 @@ pub async fn semantic_search_impl(
         debug!(
             "⚠️ Dynamic widening exhausted {} attempts but only delivered {} results (requested: {}). \
              Filters may be too restrictive or more matches may not exist.",
-            MAX_ATTEMPTS, filtered_symbols.len(), limit
+            MAX_ATTEMPTS,
+            filtered_symbols.len(),
+            limit
         );
     }
 

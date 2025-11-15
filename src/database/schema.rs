@@ -20,6 +20,7 @@ impl SymbolDatabase {
         self.create_files_table()?;
         self.create_symbols_table()?;
         self.create_identifiers_table()?; // Reference tracking
+        self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
         self.create_embeddings_table()?;
 
@@ -410,6 +411,49 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created identifiers table and indexes");
+        Ok(())
+    }
+
+    /// Create the types table for type intelligence
+    fn create_types_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS types (
+                -- Primary key: one type per symbol (1:1 relationship)
+                symbol_id TEXT PRIMARY KEY REFERENCES symbols(id) ON DELETE CASCADE,
+
+                -- Type information
+                resolved_type TEXT NOT NULL,       -- e.g., \"String\", \"Vec<User>\", \"Promise<Data>\"
+                generic_params TEXT,               -- JSON array: [\"T\", \"U\"] or NULL
+                constraints TEXT,                  -- JSON array: [\"T: Clone\"] or NULL
+                is_inferred INTEGER NOT NULL,      -- 0 = explicit, 1 = inferred
+
+                -- Metadata
+                language TEXT NOT NULL,            -- Programming language
+                metadata TEXT,                     -- JSON object for language-specific data
+
+                -- Infrastructure
+                last_indexed INTEGER DEFAULT 0     -- Unix timestamp of last update
+            )",
+            [],
+        )?;
+
+        // Essential indexes for fast queries
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_language ON types(language)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_resolved ON types(resolved_type)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",
+            [],
+        )?;
+
+        debug!("Created types table and indexes");
         Ok(())
     }
 

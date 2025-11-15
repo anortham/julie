@@ -10,8 +10,8 @@
 // Public API re-exports
 pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
 pub use self::query_preprocessor::{
-    detect_query_type, preprocess_query, process_query, sanitize_for_fts5, sanitize_query,
-    validate_query, PreprocessedQuery, QueryType,
+    PreprocessedQuery, QueryType, detect_query_type, preprocess_query, process_query,
+    sanitize_for_fts5, sanitize_query, validate_query,
 };
 pub use self::types::{LineMatch, LineMatchStrategy};
 
@@ -27,8 +27,8 @@ mod text_search;
 mod types;
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::macros::JsonSchema;
+use rust_mcp_sdk::macros::mcp_tool;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -332,12 +332,12 @@ impl FastSearchTool {
                         optimized.optimize_for_tokens(Some(self.limit as usize));
 
                         // Return structured + human-readable output
-                        let markdown = formatting::format_optimized_results(&self.query, &optimized);
+                        let markdown =
+                            formatting::format_optimized_results(&self.query, &optimized);
 
                         // Serialize to JSON for structured_content
-                        let structured = serde_json::to_value(&optimized).map_err(|e| {
-                            anyhow::anyhow!("Failed to serialize response: {}", e)
-                        })?;
+                        let structured = serde_json::to_value(&optimized)
+                            .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
 
                         let structured_map = if let serde_json::Value::Object(map) = structured {
                             map
@@ -345,10 +345,10 @@ impl FastSearchTool {
                             return Err(anyhow::anyhow!("Expected JSON object"));
                         };
 
-                        return Ok(CallToolResult::text_content(vec![TextContent::from(
-                            markdown,
-                        )])
-                        .with_structured_content(structured_map));
+                        return Ok(
+                            CallToolResult::text_content(vec![TextContent::from(markdown)])
+                                .with_structured_content(structured_map),
+                        );
                     }
                     Ok(_) => {
                         debug!("⚠️ Semantic fallback also returned 0 results");

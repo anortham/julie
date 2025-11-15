@@ -1,8 +1,8 @@
 //! Tests for the file watcher module extracted from the implementation file to keep it lean.
 
 use crate::language; // Centralized language support
-use crate::watcher::filtering;
 use crate::watcher::IncrementalIndexer;
+use crate::watcher::filtering;
 use std::fs;
 use tempfile::TempDir;
 

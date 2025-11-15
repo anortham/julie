@@ -12,8 +12,8 @@
 //! - Function return type handling
 
 use crate::extractors::base::SymbolKind;
-use std::path::PathBuf;
 use crate::extractors::typescript::TypeScriptExtractor;
+use std::path::PathBuf;
 
 #[test]
 fn test_extract_function_declarations() {
@@ -26,13 +26,12 @@ fn test_extract_function_declarations() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(!symbols.is_empty());
@@ -57,18 +56,19 @@ fn test_extract_class_declarations() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
-    assert!(symbols
-        .iter()
-        .any(|s| s.name == "User" && s.kind == SymbolKind::Class));
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "User" && s.kind == SymbolKind::Class)
+    );
 }
 
 #[test]
@@ -85,19 +85,20 @@ fn test_extract_variable_and_property_declarations() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     assert!(symbols.iter().any(|s| s.name == "myVar"));
-    assert!(symbols
-        .iter()
-        .any(|s| s.name == "myArrowFunc" && s.kind == SymbolKind::Function));
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "myArrowFunc" && s.kind == SymbolKind::Function)
+    );
 }
 
 #[test]
@@ -116,13 +117,12 @@ fn test_extract_function_call_relationships() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -143,13 +143,12 @@ fn test_track_accurate_symbol_positions() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let foo_symbol = symbols.iter().find(|s| s.name == "foo").unwrap();
@@ -172,13 +171,12 @@ fn test_extract_inheritance_relationships() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
@@ -199,13 +197,12 @@ fn test_infer_basic_types() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
     let types = extractor.infer_types(&symbols);
 
@@ -227,13 +224,12 @@ fn test_handle_function_return_types() {
 
     let workspace_root = PathBuf::from("/tmp/test");
 
-
     let mut extractor = TypeScriptExtractor::new(
         "typescript".to_string(),
         "test.ts".to_string(),
         code.to_string(),
-    &workspace_root,
-        );
+        &workspace_root,
+    );
     let symbols = extractor.extract_symbols(&tree);
 
     let func_symbol = symbols.iter().find(|s| s.name == "getString").unwrap();

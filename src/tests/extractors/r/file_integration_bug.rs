@@ -22,24 +22,25 @@ mod tests {
         // Use absolute path from CARGO_MANIFEST_DIR to avoid CWD issues in parallel tests
         let r_file_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/r/real-world/ggplot2-geom-point.R");
-        let content = fs::read_to_string(&r_file_path)
-            .expect("Failed to read R file - file should exist");
+        let content =
+            fs::read_to_string(&r_file_path).expect("Failed to read R file - file should exist");
 
         println!("📄 Read R file: {} bytes", content.len());
         println!("📄 First 200 chars: {}", &content[..200.min(content.len())]);
 
         // Step 2: Get tree-sitter language for R
-        let language = get_tree_sitter_language("r")
-            .expect("R language should be supported");
+        let language = get_tree_sitter_language("r").expect("R language should be supported");
 
         println!("✅ Got tree-sitter language for R");
 
         // Step 3: Parse the R code
         let mut parser = Parser::new();
-        parser.set_language(&language)
+        parser
+            .set_language(&language)
             .expect("Failed to set R language in parser");
 
-        let tree = parser.parse(&content, None)
+        let tree = parser
+            .parse(&content, None)
             .expect("Failed to parse R code");
 
         println!("🌳 Parsed R code successfully");
@@ -78,20 +79,29 @@ mod tests {
             symbols.len()
         );
 
-        let function_names: Vec<&str> = symbols.iter()
+        let function_names: Vec<&str> = symbols
+            .iter()
             .filter(|s| matches!(s.kind, SymbolKind::Function))
             .map(|s| s.name.as_str())
             .collect();
 
         println!("📋 Function names found: {:?}", function_names);
 
-        assert!(function_names.contains(&"geom_point"),
-            "Should extract geom_point function");
-        assert!(function_names.contains(&"translate_shape_string"),
-            "Should extract translate_shape_string function");
-        assert!(function_names.contains(&"stat_summary"),
-            "Should extract stat_summary function");
-        assert!(function_names.contains(&"filter_outliers"),
-            "Should extract filter_outliers function");
+        assert!(
+            function_names.contains(&"geom_point"),
+            "Should extract geom_point function"
+        );
+        assert!(
+            function_names.contains(&"translate_shape_string"),
+            "Should extract translate_shape_string function"
+        );
+        assert!(
+            function_names.contains(&"stat_summary"),
+            "Should extract stat_summary function"
+        );
+        assert!(
+            function_names.contains(&"filter_outliers"),
+            "Should extract filter_outliers function"
+        );
     }
 }

@@ -8,7 +8,7 @@
 //! Note: Following TDD methodology - write failing tests first, then implement/verify.
 
 use crate::handler::JulieServerHandler;
-use crate::tools::exploration::fast_explore::{FastExploreTool, ExploreMode};
+use crate::tools::exploration::fast_explore::{ExploreMode, FastExploreTool};
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
@@ -20,7 +20,9 @@ async fn create_test_handler() -> Result<(JulieServerHandler, TempDir)> {
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
 
     let handler = JulieServerHandler::new().await?;
-    handler.initialize_workspace_with_force(Some(workspace_path), true).await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path), true)
+        .await?;
 
     Ok((handler, temp_dir))
 }
@@ -88,7 +90,10 @@ pub fn formatUsername(name: &str) -> String {
 }
 
 /// Helper to index workspace and wait for embeddings
-async fn index_workspace_with_embeddings(handler: &JulieServerHandler, workspace_path: &str) -> Result<()> {
+async fn index_workspace_with_embeddings(
+    handler: &JulieServerHandler,
+    workspace_path: &str,
+) -> Result<()> {
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(workspace_path.to_string()),
@@ -129,6 +134,9 @@ async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -168,10 +176,16 @@ async fn test_similar_mode_threshold_filtering() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result_high = tool_high.call_tool(&handler).await?;
-    assert!(!result_high.content.is_empty(), "High threshold should return results");
+    assert!(
+        !result_high.content.is_empty(),
+        "High threshold should return results"
+    );
 
     // Test with low threshold (0.5) - should also work
     let tool_low = FastExploreTool {
@@ -186,10 +200,16 @@ async fn test_similar_mode_threshold_filtering() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result_low = tool_low.call_tool(&handler).await?;
-    assert!(!result_low.content.is_empty(), "Low threshold should return results");
+    assert!(
+        !result_low.content.is_empty(),
+        "Low threshold should return results"
+    );
 
     Ok(())
 }
@@ -210,13 +230,22 @@ async fn test_similar_mode_missing_symbol_parameter() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await;
 
-    assert!(result.is_err(), "Should error when symbol parameter is missing");
     assert!(
-        result.unwrap_err().to_string().contains("symbol parameter required"),
+        result.is_err(),
+        "Should error when symbol parameter is missing"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("symbol parameter required"),
         "Error should mention missing symbol parameter"
     );
 
@@ -240,12 +269,18 @@ async fn test_similar_mode_invalid_threshold() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool_high.call_tool(&handler).await;
     assert!(result.is_err(), "Should error when threshold > 1.0");
     assert!(
-        result.unwrap_err().to_string().contains("threshold must be between 0.0 and 1.0"),
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("threshold must be between 0.0 and 1.0"),
         "Error should mention threshold range"
     );
 
@@ -262,6 +297,9 @@ async fn test_similar_mode_invalid_threshold() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool_low.call_tool(&handler).await;
@@ -290,12 +328,18 @@ async fn test_similar_mode_default_threshold() -> Result<()> {
         depth: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
 
     // Verify we got results (default threshold applied successfully)
-    assert!(!result.content.is_empty(), "Should return results with default threshold");
+    assert!(
+        !result.content.is_empty(),
+        "Should return results with default threshold"
+    );
 
     Ok(())
 }
@@ -391,12 +435,18 @@ async fn test_deps_mode_finds_direct_dependencies() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
 
     // Should return results
-    assert!(!result.content.is_empty(), "Should return dependency results");
+    assert!(
+        !result.content.is_empty(),
+        "Should return dependency results"
+    );
 
     // TODO: Once implemented, verify:
     // - Should find Database dependency (imports/uses)
@@ -425,12 +475,18 @@ async fn test_deps_mode_transitive_dependencies() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
 
     // Should return results with nested dependencies
-    assert!(!result.content.is_empty(), "Should return transitive dependencies");
+    assert!(
+        !result.content.is_empty(),
+        "Should return transitive dependencies"
+    );
 
     // TODO: Once implemented, verify:
     // - Level 1: Database, User (direct deps of UserService)
@@ -460,10 +516,16 @@ async fn test_deps_mode_depth_limit_respected() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result_shallow = tool_shallow.call_tool(&handler).await?;
-    assert!(!result_shallow.content.is_empty(), "Depth 1 should return results");
+    assert!(
+        !result_shallow.content.is_empty(),
+        "Depth 1 should return results"
+    );
 
     // Test depth=3
     let tool_deep = FastExploreTool {
@@ -478,10 +540,16 @@ async fn test_deps_mode_depth_limit_respected() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result_deep = tool_deep.call_tool(&handler).await?;
-    assert!(!result_deep.content.is_empty(), "Depth 3 should return results");
+    assert!(
+        !result_deep.content.is_empty(),
+        "Depth 3 should return results"
+    );
 
     // TODO: Once implemented, verify:
     // - Depth 1 returns fewer dependencies than depth 3
@@ -509,12 +577,18 @@ async fn test_deps_mode_default_depth() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
 
     // Should use default depth and return results
-    assert!(!result.content.is_empty(), "Should return results with default depth");
+    assert!(
+        !result.content.is_empty(),
+        "Should return results with default depth"
+    );
 
     Ok(())
 }
@@ -535,13 +609,22 @@ async fn test_deps_mode_missing_symbol_parameter() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await;
 
-    assert!(result.is_err(), "Should error when symbol parameter is missing");
     assert!(
-        result.unwrap_err().to_string().contains("symbol parameter required"),
+        result.is_err(),
+        "Should error when symbol parameter is missing"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("symbol parameter required"),
         "Error should mention missing symbol parameter"
     );
 
@@ -567,12 +650,18 @@ async fn test_deps_mode_symbol_not_found() -> Result<()> {
         include_integration: None,
         file_pattern: None,
         workspace: None,
+        type_name: None,
+        exploration_type: None,
+        limit: None,
     };
 
     let result = tool.call_tool(&handler).await?;
 
     // Should return empty result (not error)
-    assert!(!result.content.is_empty(), "Should return result even if symbol not found");
+    assert!(
+        !result.content.is_empty(),
+        "Should return result even if symbol not found"
+    );
 
     // TODO: Once implemented, verify:
     // - Returns JSON with empty dependencies array

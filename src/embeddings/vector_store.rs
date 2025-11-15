@@ -127,7 +127,11 @@ impl VectorStore {
         // Wrap the built HNSW in a temporary LoadedHnswIndex-like structure
         // Since we built it in-memory, we don't have HnswIo, so we create a minimal wrapper
         // Note: This is a temporary in-memory index used until it's saved to disk
-        self.loaded_index = Some(LoadedHnswIndex::from_built_hnsw(hnsw, id_mapping, self.dimensions)?);
+        self.loaded_index = Some(LoadedHnswIndex::from_built_hnsw(
+            hnsw,
+            id_mapping,
+            self.dimensions,
+        )?);
 
         tracing::info!(
             "✅ HNSW index built successfully: {} vectors indexed",

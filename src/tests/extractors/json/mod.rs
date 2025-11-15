@@ -57,7 +57,11 @@ mod json_extractor_tests {
         let symbols = extract_symbols(json);
 
         // We should extract top-level keys as symbols
-        assert!(symbols.len() >= 4, "Expected at least 4 top-level keys, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 4,
+            "Expected at least 4 top-level keys, got {}",
+            symbols.len()
+        );
 
         // Check for top-level keys
         let name_key = symbols.iter().find(|s| s.name == "name");
@@ -91,7 +95,11 @@ mod json_extractor_tests {
         let symbols = extract_symbols(json);
 
         // Should have config, database, host, port
-        assert!(symbols.len() >= 4, "Expected nested keys, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 4,
+            "Expected nested keys, got {}",
+            symbols.len()
+        );
 
         let config = symbols.iter().find(|s| s.name == "config");
         assert!(config.is_some(), "Should find 'config' key");
@@ -204,7 +212,9 @@ mod json_extractor_tests {
         let level1 = symbols.iter().find(|s| s.name == "level1");
         assert!(level1.is_some(), "Should find 'level1'");
 
-        let has_deep = symbols.iter().any(|s| s.name.contains("level5") || s.name.contains("level6"));
+        let has_deep = symbols
+            .iter()
+            .any(|s| s.name.contains("level5") || s.name.contains("level6"));
         assert!(has_deep, "Should find deeply nested levels");
     }
 
@@ -251,11 +261,20 @@ mod json_extractor_tests {
 
         let symbols = extract_symbols(json);
 
-        assert!(symbols.len() >= 4, "Should extract keys with special characters");
+        assert!(
+            symbols.len() >= 4,
+            "Should extract keys with special characters"
+        );
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.iter().any(|&n| n.contains("dashes")), "Should find key with dashes");
-        assert!(names.iter().any(|&n| n.contains("underscores")), "Should find key with underscores");
+        assert!(
+            names.iter().any(|&n| n.contains("dashes")),
+            "Should find key with dashes"
+        );
+        assert!(
+            names.iter().any(|&n| n.contains("underscores")),
+            "Should find key with underscores"
+        );
     }
 
     #[test]
@@ -273,7 +292,10 @@ mod json_extractor_tests {
         assert!(symbols.len() >= 5, "Should handle escaped string values");
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"escaped_quote"), "Should find escaped_quote key");
+        assert!(
+            names.contains(&"escaped_quote"),
+            "Should find escaped_quote key"
+        );
         assert!(names.contains(&"unicode"), "Should find unicode key");
     }
 
@@ -291,8 +313,16 @@ mod json_extractor_tests {
         assert!(symbols.len() >= 4, "Should extract Unicode keys");
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.iter().any(|&n| n.contains("日本語")), "Should preserve Japanese characters");
-        assert!(names.iter().any(|&n| n.contains("🎉") || n.contains("emoji")), "Should handle emoji in keys");
+        assert!(
+            names.iter().any(|&n| n.contains("日本語")),
+            "Should preserve Japanese characters"
+        );
+        assert!(
+            names
+                .iter()
+                .any(|&n| n.contains("🎉") || n.contains("emoji")),
+            "Should handle emoji in keys"
+        );
     }
 
     // ========================================================================
@@ -317,7 +347,10 @@ mod json_extractor_tests {
         let symbols = extract_symbols(json);
 
         // Should extract the keys even if values are empty objects
-        assert!(symbols.len() >= 3, "Should extract keys with empty object values");
+        assert!(
+            symbols.len() >= 3,
+            "Should extract keys with empty object values"
+        );
     }
 
     #[test]
@@ -336,12 +369,7 @@ mod json_extractor_tests {
 
     #[test]
     fn test_primitive_as_root() {
-        let json_cases = vec![
-            r#""just a string""#,
-            r#"42"#,
-            r#"true"#,
-            r#"null"#,
-        ];
+        let json_cases = vec![r#""just a string""#, r#"42"#, r#"true"#, r#"null"#];
 
         for json in json_cases {
             let symbols = extract_symbols(json);
@@ -370,7 +398,10 @@ mod json_extractor_tests {
         assert!(symbols.len() >= 6, "Should extract all numeric keys");
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"scientific"), "Should find scientific notation key");
+        assert!(
+            names.contains(&"scientific"),
+            "Should find scientific notation key"
+        );
         assert!(names.contains(&"decimal"), "Should find decimal key");
     }
 
@@ -415,7 +446,10 @@ mod json_extractor_tests {
         assert!(names.contains(&"name"), "Should find name");
         assert!(names.contains(&"scripts"), "Should find scripts");
         assert!(names.contains(&"dependencies"), "Should find dependencies");
-        assert!(names.contains(&"devDependencies"), "Should find devDependencies");
+        assert!(
+            names.contains(&"devDependencies"),
+            "Should find devDependencies"
+        );
     }
 
     #[test]
@@ -537,7 +571,12 @@ mod json_extractor_tests {
         let mut json = String::from("{\n");
 
         for i in 0..100 {
-            json.push_str(&format!("  \"key{}\": \"value{}\"{}\n", i, i, if i < 99 { "," } else { "" }));
+            json.push_str(&format!(
+                "  \"key{}\": \"value{}\"{}\n",
+                i,
+                i,
+                if i < 99 { "," } else { "" }
+            ));
         }
 
         json.push_str("}");
@@ -591,9 +630,21 @@ mod json_extractor_tests {
 
         // Verify positions are tracked
         for symbol in &symbols {
-            assert!(symbol.start_line > 0, "Should track start line for {}", symbol.name);
-            assert!(symbol.end_line > 0, "Should track end line for {}", symbol.name);
-            assert!(symbol.start_line <= symbol.end_line, "Start should be before end for {}", symbol.name);
+            assert!(
+                symbol.start_line > 0,
+                "Should track start line for {}",
+                symbol.name
+            );
+            assert!(
+                symbol.end_line > 0,
+                "Should track end line for {}",
+                symbol.name
+            );
+            assert!(
+                symbol.start_line <= symbol.end_line,
+                "Start should be before end for {}",
+                symbol.name
+            );
         }
 
         // Verify keys are in order
@@ -601,7 +652,10 @@ mod json_extractor_tests {
         let third = symbols.iter().find(|s| s.name == "third");
 
         if let (Some(f), Some(t)) = (first, third) {
-            assert!(f.start_line < t.start_line, "First key should be before third key");
+            assert!(
+                f.start_line < t.start_line,
+                "First key should be before third key"
+            );
         }
     }
 
@@ -619,7 +673,10 @@ mod json_extractor_tests {
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"name"), "Should find name in minified JSON");
-        assert!(names.contains(&"config"), "Should find config in minified JSON");
+        assert!(
+            names.contains(&"config"),
+            "Should find config in minified JSON"
+        );
     }
 
     #[test]
@@ -670,7 +727,9 @@ mod json_extractor_tests {
                 &workspace_root,
             );
 
-            let tree = parser.parse(line, None).expect("Failed to parse JSONL line");
+            let tree = parser
+                .parse(line, None)
+                .expect("Failed to parse JSONL line");
             let mut symbols = extractor.extract_symbols(&tree);
 
             // Adjust line numbers for each symbol based on which line of JSONL it came from
@@ -694,19 +753,32 @@ mod json_extractor_tests {
         let symbols = extract_symbols_jsonl(jsonl, "memories.jsonl");
 
         // Should extract symbols from all three lines
-        assert!(symbols.len() >= 6, "Should extract at least 2 keys per line (type, content) × 3 lines");
+        assert!(
+            symbols.len() >= 6,
+            "Should extract at least 2 keys per line (type, content) × 3 lines"
+        );
 
         // Check that we extracted "type" keys from each line
-        let type_symbols: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.name == "type")
-            .collect();
-        assert_eq!(type_symbols.len(), 3, "Should find 'type' key from each of 3 lines");
+        let type_symbols: Vec<&Symbol> = symbols.iter().filter(|s| s.name == "type").collect();
+        assert_eq!(
+            type_symbols.len(),
+            3,
+            "Should find 'type' key from each of 3 lines"
+        );
 
         // Check line numbers are correct (1-based: 1, 2, 3)
-        assert_eq!(type_symbols[0].start_line, 1, "First object should be on line 1");
-        assert_eq!(type_symbols[1].start_line, 2, "Second object should be on line 2");
-        assert_eq!(type_symbols[2].start_line, 3, "Third object should be on line 3");
+        assert_eq!(
+            type_symbols[0].start_line, 1,
+            "First object should be on line 1"
+        );
+        assert_eq!(
+            type_symbols[1].start_line, 2,
+            "Second object should be on line 2"
+        );
+        assert_eq!(
+            type_symbols[2].start_line, 3,
+            "Third object should be on line 3"
+        );
     }
 
     #[test]
@@ -720,11 +792,12 @@ mod json_extractor_tests {
         let symbols = extract_symbols_jsonl(jsonl, "test.jsonl");
 
         // Should skip empty lines and extract from the 3 valid lines
-        let name_symbols: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.name == "name")
-            .collect();
-        assert_eq!(name_symbols.len(), 3, "Should find 'name' from 3 non-empty lines");
+        let name_symbols: Vec<&Symbol> = symbols.iter().filter(|s| s.name == "name").collect();
+        assert_eq!(
+            name_symbols.len(),
+            3,
+            "Should find 'name' from 3 non-empty lines"
+        );
     }
 
     #[test]
@@ -737,29 +810,47 @@ mod json_extractor_tests {
         let symbols = extract_symbols_jsonl(jsonl, "memories.jsonl");
 
         // Each line has 4 keys: type, source, content, timestamp
-        assert!(symbols.len() >= 12, "Should extract 4 keys × 3 lines = 12 symbols minimum");
+        assert!(
+            symbols.len() >= 12,
+            "Should extract 4 keys × 3 lines = 12 symbols minimum"
+        );
 
         // Verify all expected keys exist
-        let key_names: std::collections::HashSet<&str> = symbols
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect();
+        let key_names: std::collections::HashSet<&str> =
+            symbols.iter().map(|s| s.name.as_str()).collect();
 
         assert!(key_names.contains("type"), "Should extract 'type' key");
         assert!(key_names.contains("source"), "Should extract 'source' key");
-        assert!(key_names.contains("content"), "Should extract 'content' key");
-        assert!(key_names.contains("timestamp"), "Should extract 'timestamp' key");
+        assert!(
+            key_names.contains("content"),
+            "Should extract 'content' key"
+        );
+        assert!(
+            key_names.contains("timestamp"),
+            "Should extract 'timestamp' key"
+        );
 
         // Verify line numbers are tracked correctly
-        let timestamp_symbols: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.name == "timestamp")
-            .collect();
+        let timestamp_symbols: Vec<&Symbol> =
+            symbols.iter().filter(|s| s.name == "timestamp").collect();
 
-        assert_eq!(timestamp_symbols.len(), 3, "Should find 'timestamp' from each line");
-        assert_eq!(timestamp_symbols[0].start_line, 1, "First timestamp on line 1");
-        assert_eq!(timestamp_symbols[1].start_line, 2, "Second timestamp on line 2");
-        assert_eq!(timestamp_symbols[2].start_line, 3, "Third timestamp on line 3");
+        assert_eq!(
+            timestamp_symbols.len(),
+            3,
+            "Should find 'timestamp' from each line"
+        );
+        assert_eq!(
+            timestamp_symbols[0].start_line, 1,
+            "First timestamp on line 1"
+        );
+        assert_eq!(
+            timestamp_symbols[1].start_line, 2,
+            "Second timestamp on line 2"
+        );
+        assert_eq!(
+            timestamp_symbols[2].start_line, 3,
+            "Third timestamp on line 3"
+        );
     }
 
     #[test]
@@ -770,17 +861,24 @@ mod json_extractor_tests {
         let symbols = extract_symbols_jsonl(jsonl, "events.jsonl");
 
         // Should extract nested keys with proper hierarchy
-        assert!(symbols.len() >= 8, "Should extract id, data, user, action from 2 lines");
+        assert!(
+            symbols.len() >= 8,
+            "Should extract id, data, user, action from 2 lines"
+        );
 
         // Find nested "user" symbols
-        let user_symbols: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.name == "user")
-            .collect();
+        let user_symbols: Vec<&Symbol> = symbols.iter().filter(|s| s.name == "user").collect();
 
-        assert_eq!(user_symbols.len(), 2, "Should find nested 'user' key from both lines");
+        assert_eq!(
+            user_symbols.len(),
+            2,
+            "Should find nested 'user' key from both lines"
+        );
         assert_eq!(user_symbols[0].start_line, 1, "First nested user on line 1");
-        assert_eq!(user_symbols[1].start_line, 2, "Second nested user on line 2");
+        assert_eq!(
+            user_symbols[1].start_line, 2,
+            "Second nested user on line 2"
+        );
     }
 
     #[test]
@@ -788,34 +886,45 @@ mod json_extractor_tests {
         // Test real-world JSONL fixture (recall memory format)
         let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/real-world/json/memories.jsonl");
-        let content = std::fs::read_to_string(&fixture_path)
-            .expect("Should find memories.jsonl fixture");
+        let content =
+            std::fs::read_to_string(&fixture_path).expect("Should find memories.jsonl fixture");
 
         let symbols = extract_symbols_jsonl(&content, "memories.jsonl");
 
         // Each line has 5 keys: type, source, content, timestamp, workspace_path
         // 6 lines × 5 keys = 30 symbols minimum
-        assert!(symbols.len() >= 30, "Should extract at least 30 symbols from 6-line fixture");
+        assert!(
+            symbols.len() >= 30,
+            "Should extract at least 30 symbols from 6-line fixture"
+        );
 
         // Verify all expected keys exist
-        let key_names: std::collections::HashSet<&str> = symbols
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect();
+        let key_names: std::collections::HashSet<&str> =
+            symbols.iter().map(|s| s.name.as_str()).collect();
 
         assert!(key_names.contains("type"), "Should extract 'type' key");
         assert!(key_names.contains("source"), "Should extract 'source' key");
-        assert!(key_names.contains("content"), "Should extract 'content' key");
-        assert!(key_names.contains("timestamp"), "Should extract 'timestamp' key");
-        assert!(key_names.contains("workspace_path"), "Should extract 'workspace_path' key");
+        assert!(
+            key_names.contains("content"),
+            "Should extract 'content' key"
+        );
+        assert!(
+            key_names.contains("timestamp"),
+            "Should extract 'timestamp' key"
+        );
+        assert!(
+            key_names.contains("workspace_path"),
+            "Should extract 'workspace_path' key"
+        );
 
         // Verify line numbers are tracked correctly across all 6 lines
-        let timestamps: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.name == "timestamp")
-            .collect();
+        let timestamps: Vec<&Symbol> = symbols.iter().filter(|s| s.name == "timestamp").collect();
 
-        assert_eq!(timestamps.len(), 6, "Should find 'timestamp' from all 6 lines");
+        assert_eq!(
+            timestamps.len(),
+            6,
+            "Should find 'timestamp' from all 6 lines"
+        );
         assert_eq!(timestamps[0].start_line, 1, "First line");
         assert_eq!(timestamps[1].start_line, 2, "Second line");
         assert_eq!(timestamps[2].start_line, 3, "Third line");
@@ -846,7 +955,11 @@ mod json_extractor_tests {
         let symbols = extract_symbols(jsonc);
 
         // Should extract keys despite comments
-        assert!(symbols.len() >= 3, "Expected at least 3 keys, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 3,
+            "Expected at least 3 keys, got {}",
+            symbols.len()
+        );
 
         let compiler_opts = symbols.iter().find(|s| s.name == "compilerOptions");
         assert!(compiler_opts.is_some(), "Should find 'compilerOptions' key");
@@ -880,7 +993,11 @@ mod json_extractor_tests {
         let symbols = extract_symbols(jsonc);
 
         // Should extract keys despite block comments
-        assert!(symbols.len() >= 4, "Expected at least 4 keys, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 4,
+            "Expected at least 4 keys, got {}",
+            symbols.len()
+        );
 
         let name = symbols.iter().find(|s| s.name == "name");
         assert!(name.is_some(), "Should find 'name' key");
@@ -912,7 +1029,10 @@ mod json_extractor_tests {
 
         // Should handle mixed comment styles
         let compiler_opts = symbols.iter().find(|s| s.name == "compilerOptions");
-        assert!(compiler_opts.is_some(), "Should find 'compilerOptions' with mixed comments");
+        assert!(
+            compiler_opts.is_some(),
+            "Should find 'compilerOptions' with mixed comments"
+        );
 
         let strict = symbols.iter().find(|s| s.name == "strict");
         assert!(strict.is_some(), "Should find 'strict' key");
@@ -943,12 +1063,13 @@ mod json_extractor_tests {
         let symbols = extract_symbols(tsconfig);
 
         // Verify we extract all important keys
-        let key_names: std::collections::HashSet<&str> = symbols
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect();
+        let key_names: std::collections::HashSet<&str> =
+            symbols.iter().map(|s| s.name.as_str()).collect();
 
-        assert!(key_names.contains("compilerOptions"), "Should extract 'compilerOptions'");
+        assert!(
+            key_names.contains("compilerOptions"),
+            "Should extract 'compilerOptions'"
+        );
         assert!(key_names.contains("target"), "Should extract 'target'");
         assert!(key_names.contains("module"), "Should extract 'module'");
         assert!(key_names.contains("strict"), "Should extract 'strict'");

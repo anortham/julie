@@ -66,7 +66,10 @@ for (i in 1:3) {
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 2, "Should extract names and matrix_result");
+        assert!(
+            variables.len() >= 2,
+            "Should extract names and matrix_result"
+        );
     }
 
     #[test]
@@ -147,7 +150,10 @@ means <- cummean(x)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 7, "Should extract all vectorized operation results");
+        assert!(
+            variables.len() >= 7,
+            "Should extract all vectorized operation results"
+        );
     }
 
     #[test]

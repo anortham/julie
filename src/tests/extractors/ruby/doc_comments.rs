@@ -16,7 +16,8 @@ mod doc_comment_tests {
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
         let workspace_root = PathBuf::from("/tmp/test");
-        let extractor = RubyExtractor::new("test.rb".to_string(), code.to_string(), &workspace_root);
+        let extractor =
+            RubyExtractor::new("test.rb".to_string(), code.to_string(), &workspace_root);
         (extractor, tree)
     }
 

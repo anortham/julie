@@ -237,12 +237,14 @@ class Config {
         endpoint.unwrap().doc_comment.is_some(),
         "Property should have JSDoc comment"
     );
-    assert!(endpoint
-        .unwrap()
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("API endpoint"));
+    assert!(
+        endpoint
+            .unwrap()
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("API endpoint")
+    );
 
     // Find the maxRetries property
     let max_retries = symbols
@@ -253,12 +255,14 @@ class Config {
         max_retries.unwrap().doc_comment.is_some(),
         "Property should have JSDoc comment"
     );
-    assert!(max_retries
-        .unwrap()
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Maximum retry"));
+    assert!(
+        max_retries
+            .unwrap()
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Maximum retry")
+    );
 }
 
 #[test]
@@ -324,12 +328,14 @@ import { debounce, throttle } from 'lodash';
         react_import.unwrap().doc_comment.is_some(),
         "Import should have JSDoc comment"
     );
-    assert!(react_import
-        .unwrap()
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("Import React"));
+    assert!(
+        react_import
+            .unwrap()
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("Import React")
+    );
 
     // Find lodash imports
     let debounce_import = symbols.iter().find(|s| s.name == "debounce");
@@ -338,10 +344,12 @@ import { debounce, throttle } from 'lodash';
         debounce_import.unwrap().doc_comment.is_some(),
         "Import should have JSDoc comment"
     );
-    assert!(debounce_import
-        .unwrap()
-        .doc_comment
-        .as_ref()
-        .unwrap()
-        .contains("utility functions"));
+    assert!(
+        debounce_import
+            .unwrap()
+            .doc_comment
+            .as_ref()
+            .unwrap()
+            .contains("utility functions")
+    );
 }

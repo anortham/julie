@@ -52,7 +52,10 @@ mod tests {
 
         // Start workspace initialization (triggers background indexing with WRITE lock)
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // CRITICAL: Immediately try to search while background commit holds WRITE lock
@@ -85,7 +88,9 @@ mod tests {
             }
             Err(_timeout_err) => {
                 // This is the bug - search hung for >5 seconds waiting for WRITE lock
-                panic!("❌ BUG REPRODUCED: Search hung due to RwLock contention during background commit");
+                panic!(
+                    "❌ BUG REPRODUCED: Search hung due to RwLock contention during background commit"
+                );
             }
         }
     }
@@ -107,7 +112,10 @@ mod tests {
 
         let handler = Arc::new(JulieServerHandler::new().await?);
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Spawn multiple concurrent searches
@@ -161,7 +169,10 @@ mod tests {
 
         let handler = Arc::new(JulieServerHandler::new().await?);
         handler
-            .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
             .await?;
 
         // Wait for initial indexing to complete (generous timeout)
@@ -301,8 +312,14 @@ pub fn helper_function() {}
 
             match timeout(Duration::from_secs(5), task).await {
                 Ok((Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)), Ok(Ok(_)))) => {}
-                Ok(results) => panic!("Concurrent execution error on iteration {}: {results:?}", iteration),
-                Err(_) => panic!("❌ BUG REPRODUCED on iteration {}: concurrent fast_search + get_symbols timed out", iteration),
+                Ok(results) => panic!(
+                    "Concurrent execution error on iteration {}: {results:?}",
+                    iteration
+                ),
+                Err(_) => panic!(
+                    "❌ BUG REPRODUCED on iteration {}: concurrent fast_search + get_symbols timed out",
+                    iteration
+                ),
             }
         }
 

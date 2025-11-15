@@ -51,7 +51,11 @@ enabled: true
         let symbols = extract_symbols(yaml);
 
         // Should extract top-level keys
-        assert!(symbols.len() >= 1, "Expected at least 1 symbol, got {}", symbols.len());
+        assert!(
+            symbols.len() >= 1,
+            "Expected at least 1 symbol, got {}",
+            symbols.len()
+        );
 
         let name_key = symbols.iter().find(|s| s.name == "name");
         if let Some(key) = name_key {
@@ -105,13 +109,19 @@ jobs:
         let symbols = extract_symbols(yaml);
 
         // GitHub Actions workflows should extract main keys
-        assert!(symbols.len() >= 1, "Expected GitHub Actions workflow symbols");
+        assert!(
+            symbols.len() >= 1,
+            "Expected GitHub Actions workflow symbols"
+        );
 
         let name_key = symbols.iter().find(|s| s.name == "name");
         let jobs_key = symbols.iter().find(|s| s.name == "jobs");
 
         // At minimum should parse without errors
-        assert!(symbols.len() > 0, "Should extract some symbols from GitHub Actions workflow");
+        assert!(
+            symbols.len() > 0,
+            "Should extract some symbols from GitHub Actions workflow"
+        );
     }
 
     // ========================================================================
@@ -145,7 +155,10 @@ services:
         let services = symbols.iter().find(|s| s.name == "services");
 
         // Should handle Docker Compose structure
-        assert!(symbols.len() > 0, "Should extract symbols from Docker Compose");
+        assert!(
+            symbols.len() > 0,
+            "Should extract symbols from Docker Compose"
+        );
     }
 
     // ========================================================================
@@ -188,7 +201,10 @@ spec:
         let metadata = symbols.iter().find(|s| s.name == "metadata");
 
         // Should handle Kubernetes structure
-        assert!(symbols.len() > 0, "Should extract symbols from Kubernetes manifest");
+        assert!(
+            symbols.len() > 0,
+            "Should extract symbols from Kubernetes manifest"
+        );
     }
 
     // ========================================================================
@@ -218,7 +234,10 @@ spec:
         let symbols = extract_symbols(yaml);
 
         // Ansible playbooks use lists with mappings
-        assert!(symbols.len() >= 0, "Should handle Ansible playbook structure");
+        assert!(
+            symbols.len() >= 0,
+            "Should handle Ansible playbook structure"
+        );
     }
 
     // ========================================================================
@@ -332,7 +351,10 @@ database:
         let symbols = extract_symbols(yaml);
 
         // Should handle comments
-        assert!(symbols.len() >= 1, "Should extract symbols despite comments");
+        assert!(
+            symbols.len() >= 1,
+            "Should extract symbols despite comments"
+        );
     }
 
     // ========================================================================
@@ -364,6 +386,9 @@ key_with_underscores: value3
         let symbols = extract_symbols(yaml);
 
         // Should handle special characters in keys
-        assert!(symbols.len() >= 1, "Should handle special characters in keys");
+        assert!(
+            symbols.len() >= 1,
+            "Should handle special characters in keys"
+        );
     }
 }

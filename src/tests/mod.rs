@@ -29,7 +29,7 @@ pub mod cli {
     pub mod parallel; // CLI parallel execution tests
     pub mod progress;
     pub mod semantic; // CLI integration tests for julie-semantic (embed with HNSW)
-                      // CLI progress indicator tests
+    // CLI progress indicator tests
 }
 
 // ============================================================================
@@ -39,6 +39,7 @@ pub mod core {
     pub mod database; // Database operations and SQLite tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
+    pub mod test_bulk_store_types; // TDD Phase 2: bulk_store_types tests
     pub mod tracing; // Tracing and logging tests
     pub mod workspace_init; // Workspace root detection and initialization tests
 
@@ -53,11 +54,11 @@ pub mod embedding_batch_sizing_tests; // Embedding batch sizing tests (DirectML 
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
-pub mod memory_tests; // Memory system tests (checkpoint/recall)
 pub mod memory_checkpoint_tests; // Checkpoint tool tests (file operations)
+pub mod memory_plan_tests;
 pub mod memory_recall_tests; // Recall tool tests (reading from disk)
 pub mod memory_sql_views_tests; // SQL views and indexes for memories
-pub mod memory_plan_tests; // Plan system tests (mutable plans - Phase 1.5)
+pub mod memory_tests; // Memory system tests (checkpoint/recall) // Plan system tests (mutable plans - Phase 1.5)
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {
@@ -74,8 +75,8 @@ pub mod tools {
     pub mod editing; // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
 
     pub mod search; // Search tool tests (line mode, quality, race conditions)
-    pub mod search_quality; // Search quality dogfooding tests (regression suite)
-    pub mod search_context_lines; // FastSearchTool context_lines parameter tests (token optimization)
+    pub mod search_context_lines;
+    pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
 
     pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 
@@ -105,8 +106,8 @@ pub mod utils {
     pub mod progressive_reduction; // Progressive reduction tests
     pub mod query_expansion; // Query expansion tests
     pub mod token_estimation; // Token estimation tests
-    pub mod utf8_truncation; // UTF-8 safe string truncation tests
-    pub mod utf8_boundary_safety; // UTF-8 boundary safety checks for unsafe slicing patterns
+    pub mod utf8_boundary_safety;
+    pub mod utf8_truncation; // UTF-8 safe string truncation tests // UTF-8 boundary safety checks for unsafe slicing patterns
 
     pub mod exact_match_boost; // Exact match boost tests
 
@@ -132,14 +133,14 @@ pub mod integration {
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
     pub mod semantic_filtering; // Semantic search filtering under-delivery tests (Finding #5 fix)
     pub mod stale_index_detection; // Stale index detection tests
+    pub mod tracing;
     pub mod un_embeddable_symbols; // Un-embeddable symbols SQL filtering tests (Bug #3 fix)
     pub mod vector_store_reload; // Vector store reload mechanism tests (Bug #2 fix)
     pub mod watcher; // File watcher tests
     pub mod watcher_embeddings; // File watcher embeddings persistence tests (Bug #1 fix)
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
-    pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests
-    pub mod tracing; // Tracing integration tests (dogfooding tests)
-                     // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
+    pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests)
+    // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }
 
 #[cfg(test)]
@@ -183,9 +184,7 @@ pub mod test_helpers {
     /// let conn = open_test_connection(&db_path)?;
     /// // Connection is properly configured for concurrent access
     /// ```
-    pub fn open_test_connection<P: AsRef<Path>>(
-        db_path: P,
-    ) -> Result<rusqlite::Connection> {
+    pub fn open_test_connection<P: AsRef<Path>>(db_path: P) -> Result<rusqlite::Connection> {
         use rusqlite::Connection;
 
         let conn = Connection::open(db_path.as_ref())?;

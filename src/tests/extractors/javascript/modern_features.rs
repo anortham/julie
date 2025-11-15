@@ -139,106 +139,126 @@ class AsyncEventEmitter extends EventEmitter {
         .iter()
         .find(|s| s.name == "debounce" && s.kind == SymbolKind::Import);
     assert!(lodash_import.is_some());
-    assert!(lodash_import
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("import { debounce, throttle } from 'lodash'"));
+    assert!(
+        lodash_import
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("import { debounce, throttle } from 'lodash'")
+    );
 
     let react_import = symbols
         .iter()
         .find(|s| s.name == "React" && s.kind == SymbolKind::Import);
     assert!(react_import.is_some());
-    assert!(react_import
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("import React, { useState, useEffect } from 'react'"));
+    assert!(
+        react_import
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("import React, { useState, useEffect } from 'react'")
+    );
 
     // ES6 Exports
     let component_export = symbols
         .iter()
         .find(|s| s.name == "Component" && s.kind == SymbolKind::Export);
     assert!(component_export.is_some());
-    assert!(component_export
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("export { default as Component }"));
+    assert!(
+        component_export
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("export { default as Component }")
+    );
 
     let api_url_export = symbols
         .iter()
         .find(|s| s.name == "API_URL" && s.kind == SymbolKind::Export);
     assert!(api_url_export.is_some());
-    assert!(api_url_export
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("export const API_URL"));
+    assert!(
+        api_url_export
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("export const API_URL")
+    );
 
     // Arrow functions
     let add_arrow = symbols.iter().find(|s| s.name == "add");
     assert!(add_arrow.is_some());
     assert_eq!(add_arrow.unwrap().kind, SymbolKind::Function);
-    assert!(add_arrow
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const add = (a, b) => a + b"));
+    assert!(
+        add_arrow
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const add = (a, b) => a + b")
+    );
 
     let multiply_arrow = symbols.iter().find(|s| s.name == "multiply");
     assert!(multiply_arrow.is_some());
-    assert!(multiply_arrow
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const multiply = (x, y) =>"));
+    assert!(
+        multiply_arrow
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const multiply = (x, y) =>")
+    );
 
     // Async functions
     let fetch_data = symbols.iter().find(|s| s.name == "fetchData");
     assert!(fetch_data.is_some());
     assert_eq!(fetch_data.unwrap().kind, SymbolKind::Function);
-    assert!(fetch_data
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("async function fetchData(url)"));
+    assert!(
+        fetch_data
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("async function fetchData(url)")
+    );
 
     let async_arrow = symbols.iter().find(|s| s.name == "asyncArrow");
     assert!(async_arrow.is_some());
-    assert!(async_arrow
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const asyncArrow = async (id) =>"));
+    assert!(
+        async_arrow
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const asyncArrow = async (id) =>")
+    );
 
     // Generator functions
     let fibonacci = symbols.iter().find(|s| s.name == "fibonacci");
     assert!(fibonacci.is_some());
     assert_eq!(fibonacci.unwrap().kind, SymbolKind::Function);
-    assert!(fibonacci
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function* fibonacci()"));
+    assert!(
+        fibonacci
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function* fibonacci()")
+    );
 
     let generator_arrow = symbols.iter().find(|s| s.name == "generatorArrow");
     assert!(generator_arrow.is_some());
-    assert!(generator_arrow
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const generatorArrow = function* (items)"));
+    assert!(
+        generator_arrow
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const generatorArrow = function* (items)")
+    );
 
     // Class with modern features
     let event_emitter = symbols.iter().find(|s| s.name == "EventEmitter");
@@ -269,15 +289,15 @@ class AsyncEventEmitter extends EventEmitter {
     assert_eq!(create_static.unwrap().kind, SymbolKind::Method);
 
     // Getter/setter
-    let listener_count = symbols.iter().find(|s| {
-        s.name == "listenerCount" && s.signature.as_ref().unwrap().contains("get")
-    });
+    let listener_count = symbols
+        .iter()
+        .find(|s| s.name == "listenerCount" && s.signature.as_ref().unwrap().contains("get"));
     assert!(listener_count.is_some());
     assert_eq!(listener_count.unwrap().kind, SymbolKind::Method);
 
-    let max_listeners_setter = symbols.iter().find(|s| {
-        s.name == "maxListeners" && s.signature.as_ref().unwrap().contains("set")
-    });
+    let max_listeners_setter = symbols
+        .iter()
+        .find(|s| s.name == "maxListeners" && s.signature.as_ref().unwrap().contains("set"));
     assert!(max_listeners_setter.is_some());
 
     // Private method
@@ -292,12 +312,14 @@ class AsyncEventEmitter extends EventEmitter {
     // Inheritance
     let async_event_emitter = symbols.iter().find(|s| s.name == "AsyncEventEmitter");
     assert!(async_event_emitter.is_some());
-    assert!(async_event_emitter
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("extends EventEmitter"));
+    assert!(
+        async_event_emitter
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("extends EventEmitter")
+    );
 }
 
 #[test]
@@ -431,26 +453,28 @@ async function* fetchPages(baseUrl) {
     let symbols = extractor.extract_symbols(&tree);
 
     // Destructuring imports with aliases
-    let react_import = symbols.iter().find(|s| {
-        s.name == "createElement" && s.signature.as_ref().unwrap().contains("as h")
-    });
+    let react_import = symbols
+        .iter()
+        .find(|s| s.name == "createElement" && s.signature.as_ref().unwrap().contains("as h"));
     assert!(react_import.is_some());
     assert_eq!(react_import.unwrap().kind, SymbolKind::Import);
 
     // Dynamic import function
     let load_module = symbols.iter().find(|s| s.name == "loadModule");
     assert!(load_module.is_some());
-    assert!(load_module
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const loadModule = async () =>"));
+    assert!(
+        load_module
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const loadModule = async () =>")
+    );
 
     // Destructuring variables
-    let name_var = symbols.iter().find(|s| {
-        s.name == "name" && s.signature.as_ref().unwrap().contains("const { name")
-    });
+    let name_var = symbols
+        .iter()
+        .find(|s| s.name == "name" && s.signature.as_ref().unwrap().contains("const { name"));
     assert!(name_var.is_some());
     assert_eq!(name_var.unwrap().kind, SymbolKind::Variable);
 
@@ -462,88 +486,106 @@ async function* fetchPages(baseUrl) {
     // Destructuring parameters function
     let process_user = symbols.iter().find(|s| s.name == "processUser");
     assert!(process_user.is_some());
-    assert!(process_user
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function processUser({ name, age = 18, ...preferences })"));
+    assert!(
+        process_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function processUser({ name, age = 18, ...preferences })")
+    );
 
     let process_array = symbols.iter().find(|s| s.name == "processArray");
     assert!(process_array.is_some());
-    assert!(process_array
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const processArray = ([head, ...tail]) =>"));
+    assert!(
+        process_array
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const processArray = ([head, ...tail]) =>")
+    );
 
     // Rest parameters
     let sum_fn = symbols.iter().find(|s| s.name == "sum");
     assert!(sum_fn.is_some());
-    assert!(sum_fn
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function sum(...numbers)"));
+    assert!(
+        sum_fn
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function sum(...numbers)")
+    );
 
     let combine_arrays = symbols.iter().find(|s| s.name == "combineArrays");
     assert!(combine_arrays.is_some());
-    assert!(combine_arrays
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const combineArrays = (arr1, arr2, ...others) =>"));
+    assert!(
+        combine_arrays
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const combineArrays = (arr1, arr2, ...others) =>")
+    );
 
     // Template literal function
     let format_user = symbols.iter().find(|s| s.name == "formatUser");
     assert!(format_user.is_some());
-    assert!(format_user
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const formatUser = (user) =>"));
+    assert!(
+        format_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const formatUser = (user) =>")
+    );
 
     // Tagged template function
     let sql_fn = symbols.iter().find(|s| s.name == "sql");
     assert!(sql_fn.is_some());
-    assert!(sql_fn
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("function sql(strings, ...values)"));
+    assert!(
+        sql_fn
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("function sql(strings, ...values)")
+    );
 
     // Object with computed properties and shorthand methods
     let create_config = symbols.iter().find(|s| s.name == "createConfig");
     assert!(create_config.is_some());
-    assert!(create_config
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const createConfig = (env, debug = false) =>"));
+    assert!(
+        create_config
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const createConfig = (env, debug = false) =>")
+    );
 
     // Default parameters with destructuring
     let create_user = symbols.iter().find(|s| s.name == "createUser");
     assert!(create_user.is_some());
-    assert!(create_user
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("const createUser = ("));
+    assert!(
+        create_user
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("const createUser = (")
+    );
 
     // Async generator
     let fetch_pages = symbols.iter().find(|s| s.name == "fetchPages");
     assert!(fetch_pages.is_some());
-    assert!(fetch_pages
-        .unwrap()
-        .signature
-        .as_ref()
-        .unwrap()
-        .contains("async function* fetchPages(baseUrl)"));
+    assert!(
+        fetch_pages
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("async function* fetchPages(baseUrl)")
+    );
 }

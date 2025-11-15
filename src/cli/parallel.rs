@@ -3,9 +3,9 @@
 /// Uses Rayon for parallel file processing and supports direct SQLite writes
 /// for maximum performance. Designed to handle large workspaces efficiently.
 use crate::database::SymbolDatabase;
-use crate::extractors::base::Symbol;
 use crate::extractors::ExtractorManager;
-use anyhow::{anyhow, Result};
+use crate::extractors::base::Symbol;
+use anyhow::{Result, anyhow};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -205,7 +205,9 @@ impl ParallelExtractor {
         let extractor_manager = ExtractorManager::new();
         // Derive workspace_root from file path (use parent directory or current directory as fallback)
         let file_path_buf = std::path::Path::new(file_path);
-        let workspace_root = file_path_buf.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let workspace_root = file_path_buf
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
         extractor_manager.extract_symbols(file_path, &content, workspace_root)
     }
 
@@ -217,7 +219,9 @@ impl ParallelExtractor {
         let extractor_manager = ExtractorManager::new();
 
         // Derive workspace_root from file path (use parent directory or current directory as fallback)
-        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let workspace_root = file_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
 
         // Now that extract_symbols is synchronous, we can call it directly
         extractor_manager.extract_symbols(&file_path_str, &content, workspace_root)
@@ -252,9 +256,15 @@ impl ParallelExtractor {
             .ok_or_else(|| anyhow!("Failed to parse {}", file_path_str))?;
 
         // Create Rust extractor and extract identifiers
-        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-        let mut rust_extractor =
-            crate::extractors::rust::RustExtractor::new("rust".to_string(), file_path_str, content, workspace_root);
+        let workspace_root = file_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let mut rust_extractor = crate::extractors::rust::RustExtractor::new(
+            "rust".to_string(),
+            file_path_str,
+            content,
+            workspace_root,
+        );
 
         Ok(rust_extractor.extract_identifiers(&tree, symbols))
     }

@@ -1,8 +1,8 @@
 //! Pre-indexed snapshot of Julie's codebase for testing
 //! Eliminates 60s reindexing per test, loads in <100ms
 
-use anyhow::{bail, Result};
 use crate::tests::test_helpers::open_test_connection;
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -38,8 +38,8 @@ impl JulieTestFixture {
         use crate::handler::JulieServerHandler;
         use crate::tools::workspace::ManageWorkspaceTool;
 
-        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/databases/julie-snapshot");
+        let fixture_dir =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/databases/julie-snapshot");
 
         // Clean any existing fixture
         if fixture_dir.exists() {
@@ -55,8 +55,8 @@ impl JulieTestFixture {
         // Use ManageWorkspaceTool to index (this handles workspace initialization)
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
-            path: Some(env!("CARGO_MANIFEST_DIR").to_string()),  // Explicit Julie root
-            force: Some(true),  // Force rebuild
+            path: Some(env!("CARGO_MANIFEST_DIR").to_string()), // Explicit Julie root
+            force: Some(true),                                  // Force rebuild
             name: None,
             workspace_id: None,
             detailed: None,
@@ -96,7 +96,10 @@ impl JulieTestFixture {
             bail!(
                 "Primary workspace directory not found. Expected: {}, Available: {:?}",
                 &expected_workspace_id,
-                workspace_dirs.iter().map(|d| d.file_name()).collect::<Vec<_>>()
+                workspace_dirs
+                    .iter()
+                    .map(|d| d.file_name())
+                    .collect::<Vec<_>>()
             );
         }
 
@@ -112,9 +115,10 @@ impl JulieTestFixture {
         {
             let conn = open_test_connection(&source_db)?;
             // PRAGMA wal_checkpoint returns (busy, log, checkpointed) as results
-            let _: (i64, i64, i64) = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?;
+            let _: (i64, i64, i64) =
+                conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?;
             println!("✅ WAL checkpointed and truncated");
         }
 
@@ -145,8 +149,8 @@ impl JulieTestFixture {
 
     /// Load existing fixture (fast - no indexing)
     pub fn load() -> Result<Self> {
-        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/databases/julie-snapshot");
+        let fixture_dir =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/databases/julie-snapshot");
         let fixture_db = fixture_dir.join("symbols.db");
         let metadata_path = fixture_dir.join("metadata.json");
 
@@ -157,8 +161,7 @@ impl JulieTestFixture {
             );
         }
 
-        let metadata: FixtureMetadata =
-            serde_json::from_str(&fs::read_to_string(&metadata_path)?)?;
+        let metadata: FixtureMetadata = serde_json::from_str(&fs::read_to_string(&metadata_path)?)?;
 
         Ok(Self {
             fixture_db_path: fixture_db,
@@ -198,7 +201,7 @@ impl JulieTestFixture {
     /// Wait for indexing to complete (helper)
     async fn wait_for_indexing(handler: &crate::handler::JulieServerHandler) -> Result<()> {
         use std::sync::atomic::Ordering;
-        use tokio::time::{sleep, Duration};
+        use tokio::time::{Duration, sleep};
 
         // Wait for SQLite FTS5 indexing to complete
         for _ in 0..60 {
@@ -240,9 +243,10 @@ impl JulieTestFixture {
             .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
         // Count symbols
-        let symbol_count: i64 = db_lock
-            .conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        let symbol_count: i64 =
+            db_lock
+                .conn
+                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         // Get all file paths
         let mut stmt = db_lock
@@ -255,9 +259,9 @@ impl JulieTestFixture {
         // Get symbols per file (for test assertions)
         let mut known_symbols: HashMap<String, Vec<String>> = HashMap::new();
         for file_path in &indexed_files {
-            let mut stmt = db_lock.conn.prepare(
-                "SELECT name FROM symbols WHERE file_path = ? ORDER BY name",
-            )?;
+            let mut stmt = db_lock
+                .conn
+                .prepare("SELECT name FROM symbols WHERE file_path = ? ORDER BY name")?;
             let symbols: Vec<String> = stmt
                 .query_map([file_path], |row| row.get(0))?
                 .collect::<Result<Vec<String>, _>>()?;

@@ -76,7 +76,10 @@ impl ManageWorkspaceTool {
                                     0
                                 }
                                 Err(e) => {
-                                    warn!("spawn_blocking task failed for directory size calculation: {}", e);
+                                    warn!(
+                                        "spawn_blocking task failed for directory size calculation: {}",
+                                        e
+                                    );
                                     0
                                 }
                             }
@@ -95,8 +98,10 @@ impl ManageWorkspaceTool {
                         {
                             warn!("Failed to update workspace statistics: {}", e);
                         } else {
-                            info!("Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
-                                  entry.id, file_count, symbol_count, index_size);
+                            info!(
+                                "Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
+                                entry.id, file_count, symbol_count, index_size
+                            );
                         }
 
                         let message = format!(

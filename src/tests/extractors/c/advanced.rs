@@ -1,4 +1,4 @@
-use super::{parse_c, SymbolKind};
+use super::{SymbolKind, parse_c};
 
 #[cfg(test)]
 mod tests {
@@ -180,12 +180,14 @@ mod tests {
         // Advanced macros - Tests sophisticated preprocessing
         let stringify_macro = symbols.iter().find(|s| s.name == "STRINGIFY");
         assert!(stringify_macro.is_some());
-        assert!(stringify_macro
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("#define STRINGIFY(x) #x"));
+        assert!(
+            stringify_macro
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("#define STRINGIFY(x) #x")
+        );
 
         let concat_macro = symbols.iter().find(|s| s.name == "CONCAT");
         assert!(concat_macro.is_some());
@@ -197,12 +199,14 @@ mod tests {
         let account_struct = symbols.iter().find(|s| s.name == "Account");
         assert!(account_struct.is_some());
         assert_eq!(account_struct.unwrap().kind, SymbolKind::Class);
-        assert!(account_struct
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("typedef struct"));
+        assert!(
+            account_struct
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("typedef struct")
+        );
 
         let node_struct = symbols.iter().find(|s| s.name == "Node");
         assert!(node_struct.is_some());
@@ -293,40 +297,48 @@ mod tests {
             .iter()
             .find(|s| s.name == "operation_table")
             .expect("Operation table array");
-        assert!(operation_table
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("OperationEntry operation_table[]"));
+        assert!(
+            operation_table
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("OperationEntry operation_table[]")
+        );
 
         // Memory management functions - Tests function signatures
         let create_memory_pool = symbols.iter().find(|s| s.name == "create_memory_pool");
         assert!(create_memory_pool.is_some());
-        assert!(create_memory_pool
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("MemoryPool* create_memory_pool(size_t total_size)"));
+        assert!(
+            create_memory_pool
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("MemoryPool* create_memory_pool(size_t total_size)")
+        );
 
         // Signal handling - Tests signal handling patterns
         let shutdown_flag = symbols.iter().find(|s| s.name == "shutdown_flag");
         assert!(shutdown_flag.is_some());
-        assert!(shutdown_flag
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("volatile sig_atomic_t shutdown_flag"));
+        assert!(
+            shutdown_flag
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("volatile sig_atomic_t shutdown_flag")
+        );
 
         let signal_handler = symbols.iter().find(|s| s.name == "signal_handler");
         assert!(signal_handler.is_some());
-        assert!(signal_handler
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("void signal_handler(int signum)"));
+        assert!(
+            signal_handler
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("void signal_handler(int signum)")
+        );
 
         // Extern "C" handling - Tests linkage specifications
         let extern_c = symbols

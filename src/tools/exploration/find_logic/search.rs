@@ -1,8 +1,8 @@
 use anyhow::Result;
 use tracing::{debug, warn};
 
-use crate::extractors::base::Symbol;
 use crate::extractors::SymbolKind;
+use crate::extractors::base::Symbol;
 use crate::handler::JulieServerHandler;
 
 use super::FindLogicTool;

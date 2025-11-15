@@ -66,7 +66,9 @@ mod real_world_tests {
         let tree = init_parser(&content, language);
 
         // Derive workspace_root from file_path
-        let workspace_root = file_path.parent().unwrap_or_else(|| std::path::Path::new(REAL_WORLD_TEST_DIR));
+        let workspace_root = file_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(REAL_WORLD_TEST_DIR));
 
         // Extract symbols using the appropriate extractor
         let symbols = match language {
@@ -1021,7 +1023,10 @@ mod real_world_refactoring_tests {
 
         // Initialize workspace for the refactoring tool
         let workspace_path = temp_dir.path().to_string_lossy().to_string();
-        if let Err(e) = handler.initialize_workspace_with_force(Some(workspace_path), true).await {
+        if let Err(e) = handler
+            .initialize_workspace_with_force(Some(workspace_path), true)
+            .await
+        {
             println!("⚠️ Failed to initialize workspace: {}", e);
             return;
         }

@@ -186,24 +186,28 @@ mod tests {
 
         let grid_container = symbols.iter().find(|s| s.name == ".grid-container");
         assert!(grid_container.is_some());
-        assert!(grid_container
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("display: grid"));
+        assert!(
+            grid_container
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("display: grid")
+        );
 
         let grid_header = symbols.iter().find(|s| s.name == ".grid-header");
         assert!(grid_header.is_some());
 
         let photo_grid = symbols.iter().find(|s| s.name == ".photo-grid");
         assert!(photo_grid.is_some());
-        assert!(photo_grid
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("grid-auto-flow: dense"));
+        assert!(
+            photo_grid
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("grid-auto-flow: dense")
+        );
 
         let photo_item = symbols
             .iter()
@@ -212,12 +216,14 @@ mod tests {
 
         let flex_container = symbols.iter().find(|s| s.name == ".flex-container");
         assert!(flex_container.is_some());
-        assert!(flex_container
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("display: flex"));
+        assert!(
+            flex_container
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("display: flex")
+        );
 
         let flex_item = symbols.iter().find(|s| s.name == ".flex-item");
         assert!(flex_item.is_some());

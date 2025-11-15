@@ -52,21 +52,24 @@ namespace MyProject
 
         let file_access = symbols.iter().find(|s| s.name == "FileAccess");
         assert!(file_access.is_some());
-        assert!(file_access
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(": byte"));
+        assert!(
+            file_access
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(": byte")
+        );
 
         let all = symbols.iter().find(|s| s.name == "All");
         assert!(all.is_some());
-        assert!(all
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Read | Write | Execute"));
+        assert!(
+            all.unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Read | Write | Execute")
+        );
     }
 
     #[test]
@@ -122,32 +125,38 @@ namespace MyProject
 
         let full_name = symbols.iter().find(|s| s.name == "FullName");
         assert!(full_name.is_some());
-        assert!(full_name
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("[JsonProperty"));
+        assert!(
+            full_name
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("[JsonProperty")
+        );
 
         let person = symbols.iter().find(|s| s.name == "Person");
         assert!(person.is_some());
         assert_eq!(person.unwrap().kind, SymbolKind::Class);
-        assert!(person
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("record Person"));
+        assert!(
+            person
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("record Person")
+        );
 
         let point = symbols.iter().find(|s| s.name == "Point");
         assert!(point.is_some());
         assert_eq!(point.unwrap().kind, SymbolKind::Struct);
-        assert!(point
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("record struct"));
+        assert!(
+            point
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("record struct")
+        );
     }
 
     #[test]
@@ -197,23 +206,27 @@ namespace MyProject
         let event_handler = symbols.iter().find(|s| s.name == "EventHandler");
         assert!(event_handler.is_some());
         assert_eq!(event_handler.unwrap().kind, SymbolKind::Delegate);
-        assert!(event_handler
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("delegate void EventHandler<T>"));
+        assert!(
+            event_handler
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("delegate void EventHandler<T>")
+        );
 
         // The Create method should be extracted (not Func which is just a type reference)
         let create_method = symbols.iter().find(|s| s.name == "Create");
         assert!(create_method.is_some());
         assert_eq!(create_method.unwrap().kind, SymbolKind::Method);
-        assert!(create_method
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Func<T, TResult>"));
+        assert!(
+            create_method
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Func<T, TResult>")
+        );
 
         let nested_class = symbols.iter().find(|s| s.name == "NestedClass");
         assert!(nested_class.is_some());

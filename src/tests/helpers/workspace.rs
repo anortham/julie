@@ -7,9 +7,7 @@ use tempfile::TempDir;
 /// Create a unique test workspace with process ID to prevent collisions
 pub fn create_unique_test_workspace(test_name: &str) -> Result<TempDir> {
     let unique_id = format!("{}_{}", test_name, std::process::id());
-    let temp_dir = tempfile::Builder::new()
-        .prefix(&unique_id)
-        .tempdir()?;
+    let temp_dir = tempfile::Builder::new().prefix(&unique_id).tempdir()?;
     Ok(temp_dir)
 }
 

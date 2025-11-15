@@ -37,7 +37,10 @@ async fn test_vector_store_reloads_after_manual_reindex() -> Result<()> {
 
     // 1. Create initial file and index workspace
     let initial_file = workspace_path.join("initial.rs");
-    fs::write(&initial_file, "fn initial_function() { println!(\"hello\"); }")?;
+    fs::write(
+        &initial_file,
+        "fn initial_function() { println!(\"hello\"); }",
+    )?;
 
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path, true).await?;
@@ -168,7 +171,10 @@ async fn test_concurrent_searches_during_reload() -> Result<()> {
     // Wait for all searches to complete
     for handle in search_handles {
         let result = handle.await?;
-        assert!(result.is_ok(), "Concurrent search should not crash during reload");
+        assert!(
+            result.is_ok(),
+            "Concurrent search should not crash during reload"
+        );
     }
 
     Ok(())
@@ -237,11 +243,7 @@ async fn semantic_search(
 }
 
 /// Perform text search using fast_search tool
-async fn text_search(
-    handler: &JulieServerHandler,
-    query: &str,
-    limit: u32,
-) -> Result<Vec<Symbol>> {
+async fn text_search(handler: &JulieServerHandler, query: &str, limit: u32) -> Result<Vec<Symbol>> {
     use crate::tools::search::FastSearchTool;
 
     let search_tool = FastSearchTool {

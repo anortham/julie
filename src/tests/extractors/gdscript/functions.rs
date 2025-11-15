@@ -189,32 +189,38 @@ func outer_function(data: Array):
 
         let with_params = symbols.iter().find(|s| s.name == "function_with_params");
         assert!(with_params.is_some());
-        assert!(with_params
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("active: bool = true"));
+        assert!(
+            with_params
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("active: bool = true")
+        );
 
         let complex_return = symbols
             .iter()
             .find(|s| s.name == "function_with_complex_return");
         assert!(complex_return.is_some());
-        assert!(complex_return
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("-> Dictionary"));
+        assert!(
+            complex_return
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("-> Dictionary")
+        );
 
         let calculate_distance = symbols.iter().find(|s| s.name == "calculate_distance");
         assert!(calculate_distance.is_some());
-        assert!(calculate_distance
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("static func calculate_distance"));
+        assert!(
+            calculate_distance
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("static func calculate_distance")
+        );
 
         let can_drop_data = symbols.iter().find(|s| s.name == "_can_drop_data");
         assert!(can_drop_data.is_some());
@@ -239,18 +245,22 @@ func outer_function(data: Array):
 
         let process_data = symbols.iter().find(|s| s.name == "process_data");
         assert!(process_data.is_some());
-        assert!(process_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Array[Dictionary]"));
-        assert!(process_data
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("-> Array[String]"));
+        assert!(
+            process_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Array[Dictionary]")
+        );
+        assert!(
+            process_data
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("-> Array[String]")
+        );
 
         let outer_function = symbols.iter().find(|s| s.name == "outer_function");
         assert!(outer_function.is_some());

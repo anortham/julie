@@ -39,13 +39,13 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 // Test module organization
 // Each module focuses on a specific aspect of R functionality
-pub mod basics;           // Core R: functions, assignments, variables
-pub mod data_structures;  // data.frame, tibble, vector, list, matrix
-pub mod functions;        // Function definitions, parameters, closures
-pub mod packages;         // library(), require(), package::function syntax
-pub mod tidyverse;        // %>% pipes, dplyr verbs, ggplot2 patterns
-pub mod classes;          // S3, S4, R6 class systems
-pub mod control_flow;     // if/else, loops, vectorized operations
-pub mod modern;           // Modern R patterns (tidyverse, data.table)
-pub mod real_world;       // Real-world validation (ggplot2, dplyr)
-pub mod file_integration_bug;  // BUG HUNT: Reproduction test for file extraction failure
+pub mod basics; // Core R: functions, assignments, variables
+pub mod classes; // S3, S4, R6 class systems
+pub mod control_flow; // if/else, loops, vectorized operations
+pub mod data_structures; // data.frame, tibble, vector, list, matrix
+pub mod file_integration_bug;
+pub mod functions; // Function definitions, parameters, closures
+pub mod modern; // Modern R patterns (tidyverse, data.table)
+pub mod packages; // library(), require(), package::function syntax
+pub mod real_world; // Real-world validation (ggplot2, dplyr)
+pub mod tidyverse; // %>% pipes, dplyr verbs, ggplot2 patterns // BUG HUNT: Reproduction test for file extraction failure
