@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6917d0a7_cdeae4",
+  "timestamp": 1763168423,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "dc38195",
+    "dirty": false
+  },
+  "description": "Released v1.9.0 with complete type & identifier intelligence. Committed 409 files (66 new, 341 modified, cargo fmt across codebase), tagged as v1.9.0, pushed to origin/main. All 5 GPT-5.1 findings production-verified and shipped: type persistence (2,776 types), identifier persistence (61,440 identifiers), fast_refs filtering, type-aware embeddings, fast_explore Types mode. Includes 35 development memory checkpoints documenting systematic TDD implementation. 32,610 insertions, 8,589 deletions. Zero regressions, 100% validation confidence.",
+  "tags": [
+    "release",
+    "v1.9.0",
+    "type-intelligence",
+    "production-ready",
+    "milestone"
+  ]
+}
