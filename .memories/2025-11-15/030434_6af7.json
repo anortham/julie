@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6917edc2_0bec33",
+  "timestamp": 1763175874,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "15ac5d1",
+    "dirty": false
+  },
+  "description": "Fixed two project housekeeping issues: (1) Cleaned up extraneous files from root (rust_out binary, scratch test files, obsolete .codesearchignore), moved CLAUDE.md.archive to docs/archive/. (2) Fixed memory auto-commit workflow by updating .claude/commands/checkpoint.md to automatically commit memory files after creation. Memory files are designed to be git-committed (git-mergeable design) but we were forgetting to commit them consistently. Updated command now includes explicit git add + commit instructions. Committed all changes and pushed to origin/main.",
+  "tags": [
+    "housekeeping",
+    "workflow-fix",
+    "memory-system",
+    "git",
+    "project-cleanup"
+  ]
+}
