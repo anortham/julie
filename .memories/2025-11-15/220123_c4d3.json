@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6918f833_3d862e",
+  "timestamp": 1763244083,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "46d4fcc",
+    "dirty": true,
+    "files_changed": [
+      "src/extractors/qml/mod.rs",
+      "src/extractors/r/mod.rs",
+      "src/tests/extractors/qml/mod.rs",
+      "src/tests/extractors/r/mod.rs"
+    ]
+  },
+  "description": "Implemented QML and R relationship/identifier extraction - 24/27 tests passing (89%). QML identifiers 6/6 ✅, R relationships 7/7 ✅, R identifiers 8/9, QML relationships 3/5. Remaining issues: QML signal handlers, property bindings, R variable refs.",
+  "tags": [
+    "feature",
+    "extractors",
+    "qml",
+    "r",
+    "relationships",
+    "identifiers",
+    "tdd"
+  ]
+}

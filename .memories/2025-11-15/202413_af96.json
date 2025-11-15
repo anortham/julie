@@ -1,0 +1,18 @@
+{
+  "id": "decision_6918e16d_250302",
+  "timestamp": 1763238253,
+  "type": "decision",
+  "git": {
+    "branch": "main",
+    "commit": "46d4fcc",
+    "dirty": false
+  },
+  "description": "Candle embedding backend investigation FAILED - Metal slower than CPU, Linux CUDA setup broken. Rolled back hybrid ORT/Candle implementation (commits 6a56f0b-0d691cb nuked). ORT-only is correct choice: works cross-platform, no complexity. Only change preserved: MAX_FILE_SIZE_FOR_SYMBOLS 100KB→500KB for legitimate large source files. Lesson: Don't revisit Candle - ORT already solves the problem.",
+  "tags": [
+    "failure",
+    "rollback",
+    "candle",
+    "embeddings",
+    "lesson-learned"
+  ]
+}

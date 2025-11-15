@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6918f8e1_0b626b",
+  "timestamp": 1763244257,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "46d4fcc",
+    "dirty": true,
+    "files_changed": [
+      "src/extractors/qml/mod.rs",
+      "src/extractors/r/mod.rs",
+      "src/tests/extractors/qml/mod.rs",
+      "src/tests/extractors/r/mod.rs"
+    ]
+  },
+  "description": "QML and R extractors now have FULL PARITY - 100% of relationship and identifier tests passing (27/27). Implemented extract_relationships and extract_identifiers for both languages following TypeScript pattern with dedicated submodules.",
+  "tags": [
+    "milestone",
+    "extractors",
+    "qml",
+    "r",
+    "parity",
+    "tdd",
+    "complete"
+  ]
+}

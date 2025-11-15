@@ -1,6 +1,6 @@
 [package]
 name = "julie"
-version = "1.9.2"
+version = "1.9.3"
 edition = "2024"
 authors = ["Alan"]
 description = "Julie - Cross-Platform Code Intelligence Server"

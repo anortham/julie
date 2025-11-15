@@ -1,0 +1,27 @@
+{
+  "id": "checkpoint_691901bf_c93d31",
+  "timestamp": 1763246527,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "46d4fcc",
+    "dirty": true,
+    "files_changed": [
+      "src/extractors/c/types.rs",
+      "src/extractors/qml/mod.rs",
+      "src/extractors/r/mod.rs",
+      "src/tests/extractors/qml/mod.rs",
+      "src/tests/extractors/r/mod.rs",
+      "src/tests/helpers/cleanup.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs"
+    ]
+  },
+  "description": "Fixed Windows file locking test failures (os error 32) - added test serialization to workspace_isolation_smoke tests and increased atomic cleanup retry logic with 250ms initial sleep. All 1813 tests now passing.",
+  "tags": [
+    "bugfix",
+    "windows",
+    "tests",
+    "file-locking",
+    "cleanup"
+  ]
+}

@@ -2,6 +2,9 @@
 // QML is JavaScript-based declarative UI language for Qt applications
 // Tree-sitter-qmljs extends TypeScript grammar with QML-specific nodes
 
+mod identifiers;
+mod relationships;
+
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::Tree;
 
@@ -113,16 +116,14 @@ impl QmlExtractor {
     }
 
     pub fn extract_relationships(
-        &mut self,
-        _tree: &Tree,
-        _symbols: &[Symbol],
+        &self,
+        tree: &Tree,
+        symbols: &[Symbol],
     ) -> Vec<Relationship> {
-        // TODO: Implement QML relationship extraction
-        Vec::new()
+        relationships::extract_relationships(self, tree, symbols)
     }
 
-    pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
-        // TODO: Implement QML identifier extraction
-        Vec::new()
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        identifiers::extract_identifiers(self, tree, symbols)
     }
 }

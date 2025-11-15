@@ -57,6 +57,7 @@ mod workspace_isolation_smoke_tests {
     /// This is the most critical isolation test - searching primary workspace
     /// should NEVER return results from reference workspace and vice versa.
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_search_never_crosses_workspaces() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -187,6 +188,7 @@ mod workspace_isolation_smoke_tests {
     /// Tests that "primary" resolves to primary workspace and specific IDs
     /// resolve to their respective reference workspaces.
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_workspace_id_resolution() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -313,6 +315,7 @@ mod workspace_isolation_smoke_tests {
     /// Attempting to search a non-existent workspace should return a
     /// helpful error message, not crash or return confusing results.
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");

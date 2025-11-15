@@ -2,6 +2,9 @@
 // R is a statistical computing and graphics language
 // Tree-sitter-r parser provides AST nodes for R syntax
 
+mod identifiers;
+mod relationships;
+
 use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use tree_sitter::Tree;
 
@@ -109,16 +112,14 @@ impl RExtractor {
     }
 
     pub fn extract_relationships(
-        &mut self,
-        _tree: &Tree,
-        _symbols: &[Symbol],
+        &self,
+        tree: &Tree,
+        symbols: &[Symbol],
     ) -> Vec<Relationship> {
-        // TODO: Implement R relationship extraction
-        Vec::new()
+        relationships::extract_relationships(self, tree, symbols)
     }
 
-    pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
-        // TODO: Implement R identifier extraction
-        Vec::new()
+    pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
+        identifiers::extract_identifiers(self, tree, symbols)
     }
 }

@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6918fab8_e7d335",
+  "timestamp": 1763244728,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "46d4fcc",
+    "dirty": true,
+    "files_changed": [
+      "src/extractors/c/types.rs",
+      "src/extractors/qml/mod.rs",
+      "src/extractors/r/mod.rs",
+      "src/tests/extractors/qml/mod.rs",
+      "src/tests/extractors/r/mod.rs"
+    ]
+  },
+  "description": "Fixed C extractor pointer type extraction - extract_variable_type now recursively searches for pointer_declarator nodes. All C type tests passing. Complete test suite should now be 100% GREEN.",
+  "tags": [
+    "bugfix",
+    "c-extractor",
+    "types",
+    "pointers"
+  ]
+}

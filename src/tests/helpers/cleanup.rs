@@ -17,6 +17,11 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
         return Ok(());
     }
 
+    // Windows: Give previous test's database connections time to close
+    // SQLite connections may not close immediately when handler goes out of scope
+    #[cfg(target_os = "windows")]
+    std::thread::sleep(Duration::from_millis(250));
+
     // 🚨 SAFETY CHECK 1: NEVER delete .julie from project root during tests
     // The project root contains env!("CARGO_MANIFEST_DIR") and is where production Julie runs
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -74,20 +79,21 @@ pub fn atomic_cleanup_julie_dir(workspace_path: &Path) -> Result<()> {
     // Attempt cleanup with exponential backoff
     // On Windows, file locking produces OS error 32 (process cannot access file)
     // which is ErrorKind::Other, not PermissionDenied
-    for attempt in 1..=5 {
+    // Increased retries and delays for Windows SQLite connection cleanup (10 attempts, up to 5 seconds)
+    for attempt in 1..=10 {
         match fs::remove_dir_all(&julie_dir) {
             Ok(_) => return Ok(()),
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-                std::thread::sleep(Duration::from_millis(100 * attempt));
+                std::thread::sleep(Duration::from_millis(200 * attempt));
                 continue;
             }
             // Windows file locking error (OS error 32)
             Err(e) if e.kind() == io::ErrorKind::Other && e.raw_os_error() == Some(32) => {
-                std::thread::sleep(Duration::from_millis(100 * attempt));
+                std::thread::sleep(Duration::from_millis(200 * attempt));
                 continue;
             }
             Err(e) => return Err(e.into()),
         }
     }
-    anyhow::bail!("Failed to cleanup .julie directory after 5 attempts")
+    anyhow::bail!("Failed to cleanup .julie directory after 10 attempts")
 }

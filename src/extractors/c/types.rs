@@ -106,8 +106,12 @@ pub(super) fn extract_type_qualifiers(
 }
 
 /// Extract the data type from a declaration
+/// Also searches through all descendants to find pointer declarators
 pub(super) fn extract_variable_type(base: &BaseExtractor, node: tree_sitter::Node) -> String {
     let mut cursor = node.walk();
+    let mut base_type = String::new();
+
+    // Extract base type from direct children
     for child in node.children(&mut cursor) {
         match child.kind() {
             "primitive_type"
@@ -115,12 +119,44 @@ pub(super) fn extract_variable_type(base: &BaseExtractor, node: tree_sitter::Nod
             | "sized_type_specifier"
             | "struct_specifier"
             | "enum_specifier" => {
-                return base.get_node_text(&child);
+                base_type = base.get_node_text(&child);
             }
             _ => {}
         }
     }
-    "unknown".to_string()
+
+    if base_type.is_empty() {
+        return "unknown".to_string();
+    }
+
+    // Search for pointer declarators in the entire subtree
+    let pointer_count = count_all_pointer_levels(&node);
+
+    // Append asterisks for each pointer level
+    if pointer_count > 0 {
+        format!("{}{}", base_type, "*".repeat(pointer_count))
+    } else {
+        base_type
+    }
+}
+
+/// Count all pointer declarators in the tree by traversing all descendants
+fn count_all_pointer_levels(node: &tree_sitter::Node) -> usize {
+    let mut count = 0;
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "pointer_declarator" {
+            count += 1;
+            // Don't recurse into pointer_declarator to avoid double-counting
+            // Each pointer_declarator represents one level of indirection
+        } else {
+            // Recurse into other node types to find nested pointer_declarators
+            count += count_all_pointer_levels(&child);
+        }
+    }
+
+    count
 }
 
 /// Extract array specifier information from a declarator
