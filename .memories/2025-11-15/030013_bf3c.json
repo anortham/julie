@@ -1,0 +1,19 @@
+{
+  "id": "checkpoint_6917ecbd_7e0e66",
+  "timestamp": 1763175613,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3f38f85",
+    "dirty": false
+  },
+  "description": "Released v1.9.1 with 4 critical bug fixes discovered through dogfooding. Committed 2 commits (bug fixes + version bump), tagged v1.9.1, pushed to origin/main with tags. Fixes: (1) fast_refs SQL placeholder bug causing zero results for reference_kind filtering, (2) fast_explore similar mode using bare symbol name instead of full context, (3) fast_explore types mode counting hierarchy.len() instead of actual array lengths, (4) /recall timezone bug forcing UTC without knowing current time. All fixes follow TDD with passing tests. Dogfooding wins - we found the recall bug by using Julie's memory system to develop Julie!",
+  "tags": [
+    "release",
+    "v1.9.1",
+    "bug-fixes",
+    "dogfooding",
+    "tdd",
+    "production-ready"
+  ]
+}

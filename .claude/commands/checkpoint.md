@@ -15,4 +15,13 @@ If no arguments are provided, analyze the recent conversation context (last 5-10
 
 Then IMMEDIATELY save the checkpoint using mcp__julie__checkpoint - DO NOT ask for confirmation.
 
-After saving, confirm with: "✓ Checkpoint saved! Recall it later with /recall"
+After the checkpoint is saved:
+1. Get the memory file path from the tool response (e.g., ".memories/2025-11-15/030013_bf3c.json")
+2. IMMEDIATELY commit it to git:
+   ```
+   git add <memory_file_path>
+   git commit -m "checkpoint: <brief summary of checkpoint description>"
+   ```
+3. Confirm with: "✓ Checkpoint saved and committed! Recall it later with /recall"
+
+⚠️ CRITICAL: Memory files are designed to be git-committed. Always commit them immediately after creation.
