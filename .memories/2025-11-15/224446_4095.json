@@ -1,0 +1,19 @@
+{
+  "id": "checkpoint_6919025e_7fea3c",
+  "timestamp": 1763246686,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "0cf1e84",
+    "dirty": true
+  },
+  "description": "Released v1.9.3 - Complete QML/R extractor parity (30/30 languages), fixed Windows test stability, zero build warnings, 1813/1813 tests passing. Committed, pushed, and tagged.",
+  "tags": [
+    "release",
+    "v1.9.3",
+    "qml",
+    "r",
+    "milestone",
+    "complete"
+  ]
+}
