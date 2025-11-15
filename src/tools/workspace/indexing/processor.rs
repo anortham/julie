@@ -401,7 +401,8 @@ impl ManageWorkspaceTool {
 
         // 🚨 CRITICAL: Skip symbol extraction for very large files (likely data/minified)
         // These files cause exponential CPU usage in tree-sitter traversal (demo-data.js: 158KB = hang)
-        const MAX_FILE_SIZE_FOR_SYMBOLS: usize = 100_000; // 100KB limit
+        // Note: Legitimate Rust files with good docs can be 100-200KB (e.g., candle-core/src/tensor.rs = 112KB)
+        const MAX_FILE_SIZE_FOR_SYMBOLS: usize = 500_000; // 500KB limit
         if content.len() > MAX_FILE_SIZE_FOR_SYMBOLS {
             warn!(
                 "⏭️  Skipping symbol extraction for large file ({} bytes > {}KB limit): {} - indexing for text search only",
