@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_691a1795_ba795b",
+  "timestamp": 1763317653,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4007285",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/embedding_batch_sizing_tests.rs",
+      "src/tools/workspace/indexing/embeddings.rs"
+    ]
+  },
+  "description": "Fixed batch size recalculation log spam by implementing caching. Added cached_batch_size field to EmbeddingEngine, calculated once during initialization. Eliminates 239 redundant GPU memory detection calls → 1 call. Updated all callers (embed_symbols_batch, embeddings.rs, tests) to use cached value. Recalculation only happens after GPU→CPU fallback. TDD: wrote failing test first, all 5 batch sizing tests passing.",
+  "tags": [
+    "bug-fix",
+    "performance",
+    "logging",
+    "tdd",
+    "batch-sizing",
+    "gpu-detection"
+  ]
+}

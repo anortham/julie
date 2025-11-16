@@ -193,6 +193,13 @@ impl SymbolDatabase {
             embeddings.len() as f64 / duration.as_secs_f64()
         );
 
+        // Post-transaction: RESTART WAL checkpoint to prevent unbounded growth
+        debug!("💾 RESTART WAL checkpoint (waits for readers, post-commit)");
+        match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
+            Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
+            Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
+        }
+
         Ok(())
     }
 

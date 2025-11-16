@@ -1,0 +1,32 @@
+{
+  "id": "checkpoint_691a1ee7_f9c627",
+  "timestamp": 1763319527,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4007285",
+    "dirty": true,
+    "files_changed": [
+      "src/database/bulk_operations.rs",
+      "src/database/embeddings.rs",
+      "src/database/files.rs",
+      "src/database/mod.rs",
+      "src/database/symbols/bulk.rs",
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/tests/core/database.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/embedding_batch_sizing_tests.rs",
+      "src/tools/workspace/indexing/embeddings.rs"
+    ]
+  },
+  "description": "Fixed misleading GPU/CPU logging and wrong batch sizes. Linux CUDA provider registers successfully but ONNX Runtime silently falls back to CPU (CUDA 13.0 vs ORT compiled for 11.x/12.x). Added workaround: force CPU mode on Linux after CUDA registration, which fixes: (1) logs now show [CPU] instead of [GPU], (2) batch size is 100 (CPU default) instead of 50 (GPU default). Also added missing WAL checkpoint in bulk_store_embeddings() to fix 109MB WAL growth during embedding generation. User correctly noted these are regressions we've fixed before - need comprehensive regression tests.",
+  "tags": [
+    "workaround",
+    "cuda",
+    "cpu-mode",
+    "batch-size",
+    "logging",
+    "regression-prevention"
+  ]
+}

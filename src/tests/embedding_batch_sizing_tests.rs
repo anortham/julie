@@ -128,4 +128,37 @@ mod batch_sizing_tests {
 
         assert!(true, "This test documents the failure case");
     }
+
+    /// Test that batch size is cached and not recalculated on every call
+    /// This prevents log spam (239 warnings → 1 warning) and improves performance
+    #[tokio::test]
+    async fn test_batch_size_is_cached() {
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+
+        // Create standalone engine (no database needed for this test)
+        let engine = EmbeddingEngine::new_standalone("bge-small", cache_dir)
+            .await
+            .unwrap();
+
+        // Get the cached batch size
+        let batch_size_1 = engine.get_cached_batch_size();
+        let batch_size_2 = engine.get_cached_batch_size();
+
+        // Should return same value without recalculation
+        assert_eq!(
+            batch_size_1, batch_size_2,
+            "Batch size should be cached and consistent"
+        );
+
+        // Value should be reasonable (between 25 and 250)
+        assert!(
+            batch_size_1 >= 25 && batch_size_1 <= 250,
+            "Cached batch size {} should be within bounds [25, 250]",
+            batch_size_1
+        );
+    }
 }

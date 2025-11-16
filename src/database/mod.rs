@@ -226,6 +226,40 @@ impl SymbolDatabase {
 
         Ok((busy, log, checkpointed))
     }
+
+    /// Checkpoint the WAL using RESTART mode (waits for readers, more aggressive than PASSIVE)
+    ///
+    /// This executes `PRAGMA wal_checkpoint(RESTART)` which:
+    /// - Blocks until all current readers finish
+    /// - Merges all WAL frames into the main database file
+    /// - Resets the WAL file after checkpoint
+    ///
+    /// RESTART mode is more aggressive than PASSIVE (which can fail during heavy writes)
+    /// but less aggressive than TRUNCATE (which truncates to 0 bytes).
+    ///
+    /// Returns: (busy, log, checkpointed) tuple
+    /// - busy: Number of frames that couldn't be checkpointed (should be 0)
+    /// - log: Total frames in WAL before checkpoint
+    /// - checkpointed: Frames successfully checkpointed
+    ///
+    /// Use this after bulk operations to prevent WAL from growing to 45MB+
+    pub fn checkpoint_wal_restart(&mut self) -> Result<(i32, i32, i32)> {
+        debug!("Checkpointing WAL (RESTART mode - waits for readers)");
+
+        // Execute PRAGMA wal_checkpoint(RESTART)
+        // Returns: (busy, log, checkpointed)
+        let mut stmt = self.conn.prepare("PRAGMA wal_checkpoint(RESTART)")?;
+        let result = stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+
+        let (busy, log, checkpointed) = result;
+
+        debug!(
+            "WAL checkpoint (RESTART) complete: busy={}, log={}, checkpointed={}",
+            busy, log, checkpointed
+        );
+
+        Ok((busy, log, checkpointed))
+    }
 }
 
 // 🚨 CRITICAL: Implement Drop to checkpoint WAL on database close

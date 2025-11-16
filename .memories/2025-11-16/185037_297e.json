@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_691a1cfd_5486b1",
+  "timestamp": 1763319037,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4007285",
+    "dirty": true,
+    "files_changed": [
+      "src/database/bulk_operations.rs",
+      "src/database/embeddings.rs",
+      "src/database/files.rs",
+      "src/database/mod.rs",
+      "src/database/symbols/bulk.rs",
+      "src/embeddings/mod.rs",
+      "src/tests/core/database.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/embedding_batch_sizing_tests.rs",
+      "src/tools/workspace/indexing/embeddings.rs"
+    ]
+  },
+  "description": "Fixed critical bug: bulk_store_embeddings() was missing WAL checkpoint causing 109MB WAL growth. All symbol/file/identifier bulk operations had RESTART checkpoints but embeddings didn't. During indexing, 239 embedding batches × 50 embeddings each = ~12,000 writes to WAL with ZERO checkpoints. Added RESTART checkpoint after tx.commit() in bulk_store_embeddings(). This was the missing piece that prevented the previous WAL fix from working.",
+  "tags": [
+    "critical-bug",
+    "wal",
+    "embeddings",
+    "checkpoint",
+    "109mb-wal-fix"
+  ]
+}

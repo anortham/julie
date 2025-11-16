@@ -115,12 +115,12 @@ pub async fn generate_embeddings_from_sqlite(
         }
     };
 
-    // Dynamic batch sizing based on detected GPU memory
-    // Falls back to conservative defaults if GPU detection fails
+    // Use cached batch size (calculated once during engine initialization)
+    // This prevents redundant GPU memory detection calls that cause log spam
     let batch_size = {
         let read_guard = embedding_engine.read().await;
         if let Some(ref engine) = read_guard.as_ref() {
-            engine.calculate_optimal_batch_size()
+            engine.get_cached_batch_size()
         } else {
             // Engine not initialized - use fallback
             if is_using_gpu {

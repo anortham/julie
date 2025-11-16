@@ -68,6 +68,9 @@ pub struct EmbeddingEngine {
     cache_dir: PathBuf,
     /// Track if we've fallen back to CPU mode due to GPU failure
     cpu_fallback_triggered: bool,
+    /// Cached optimal batch size (calculated once to avoid redundant GPU memory detection)
+    /// Prevents log spam: 239 warnings → 1 warning during indexing
+    cached_batch_size: usize,
 }
 
 impl EmbeddingEngine {
@@ -95,10 +98,23 @@ impl EmbeddingEngine {
 
         let dimensions = model.dimensions();
 
+        // Calculate batch size once during initialization
+        let cached_batch_size = if let Some(vram_bytes) = model.get_gpu_memory_bytes() {
+            Self::batch_size_from_vram(vram_bytes)
+        } else {
+            // Fallback to conservative defaults
+            if model.is_using_gpu() {
+                50 // Conservative GPU default
+            } else {
+                100 // CPU mode
+            }
+        };
+
         tracing::info!(
-            "🧠 EmbeddingEngine initialized with model {} (GPU-accelerated, {} dimensions)",
+            "🧠 EmbeddingEngine initialized with model {} (GPU-accelerated, {} dimensions, batch_size={})",
             model_name,
-            dimensions
+            dimensions,
+            cached_batch_size
         );
 
         Ok(Self {
@@ -108,6 +124,7 @@ impl EmbeddingEngine {
             db: Some(db),
             cache_dir,
             cpu_fallback_triggered: false,
+            cached_batch_size,
         })
     }
 
@@ -132,9 +149,22 @@ impl EmbeddingEngine {
 
         let dimensions = model.dimensions();
 
+        // Calculate batch size once during initialization
+        let cached_batch_size = if let Some(vram_bytes) = model.get_gpu_memory_bytes() {
+            Self::batch_size_from_vram(vram_bytes)
+        } else {
+            // Fallback to conservative defaults
+            if model.is_using_gpu() {
+                50 // Conservative GPU default
+            } else {
+                100 // CPU mode
+            }
+        };
+
         tracing::info!(
-            "🧠 Standalone EmbeddingEngine initialized (GPU-accelerated, {} dimensions)",
-            dimensions
+            "🧠 Standalone EmbeddingEngine initialized (GPU-accelerated, {} dimensions, batch_size={})",
+            dimensions,
+            cached_batch_size
         );
 
         Ok(Self {
@@ -144,6 +174,7 @@ impl EmbeddingEngine {
             db: None, // Standalone mode - no database
             cache_dir,
             cpu_fallback_triggered: false,
+            cached_batch_size,
         })
     }
 
@@ -179,7 +210,13 @@ impl EmbeddingEngine {
         self.model = new_model;
         self.cpu_fallback_triggered = true;
 
-        tracing::info!("✅ Successfully reinitialized embedding engine in CPU-only mode");
+        // Recalculate batch size for CPU mode (CPU uses batch_size=100, GPU uses 25-250)
+        self.cached_batch_size = 100; // CPU mode
+
+        tracing::info!(
+            "✅ Successfully reinitialized embedding engine in CPU-only mode (batch_size={})",
+            self.cached_batch_size
+        );
 
         Ok(())
     }
@@ -231,6 +268,12 @@ impl EmbeddingEngine {
     /// Check if GPU acceleration is actually being used
     pub fn is_using_gpu(&self) -> bool {
         self.model.is_using_gpu()
+    }
+
+    /// Get the cached optimal batch size (calculated once during initialization)
+    /// This prevents redundant GPU memory detection calls that cause log spam
+    pub fn get_cached_batch_size(&self) -> usize {
+        self.cached_batch_size
     }
 
     /// Calculate optimal batch size based on available GPU memory
@@ -336,8 +379,8 @@ impl EmbeddingEngine {
             return Ok(Vec::new());
         }
 
-        // Calculate optimal batch size based on GPU/CPU capabilities
-        let batch_size = self.calculate_optimal_batch_size();
+        // Use cached batch size (calculated once during initialization)
+        let batch_size = self.cached_batch_size;
 
         // If input is within batch size, process directly (fast path)
         if symbols.len() <= batch_size {

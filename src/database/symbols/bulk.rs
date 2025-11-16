@@ -322,10 +322,10 @@ impl SymbolDatabase {
             outer_tx.commit()?;
 
             // Post-transaction: Non-critical WAL checkpoint
-            debug!("💾 Passive WAL checkpoint (non-blocking, post-commit)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
-                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            debug!("💾 RESTART WAL checkpoint (waits for readers, post-commit)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
+                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
             }
 
             Ok(())

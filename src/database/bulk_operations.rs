@@ -135,10 +135,10 @@ impl SymbolDatabase {
         }
 
         if result.is_ok() {
-            debug!("💾 Passive WAL checkpoint (non-blocking)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
-                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            debug!("💾 RESTART WAL checkpoint (waits for readers)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
+                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
             }
         }
 
@@ -344,10 +344,10 @@ impl SymbolDatabase {
         }
 
         if result.is_ok() {
-            debug!("💾 Passive WAL checkpoint (non-blocking)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "PASSIVE") {
-                Ok(_) => debug!("✅ Passive WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ Passive WAL checkpoint skipped (non-fatal): {}", e),
+            debug!("💾 RESTART WAL checkpoint (waits for readers)");
+            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
+                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
+                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
             }
         }
 

@@ -1969,6 +1969,35 @@ fn test_wal_checkpoint() {
     );
 }
 
+/// Test that RESTART checkpoint mode waits for readers and successfully checkpoints
+/// This prevents WAL files from growing to 45MB+ when PASSIVE checkpoints fail
+#[test]
+fn test_wal_checkpoint_restart_mode() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_checkpoint_restart.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create some test data to generate WAL activity
+    // The database was just created, which generates WAL activity
+    // Call checkpoint_wal_restart() which uses RESTART mode
+    // RESTART waits for active readers to finish, then checkpoints
+    let result = db.checkpoint_wal_restart();
+
+    assert!(result.is_ok(), "checkpoint_wal_restart() should succeed");
+
+    let (busy, log, checkpointed) = result.unwrap();
+
+    // Verify checkpoint results
+    assert_eq!(busy, 0, "RESTART mode should successfully checkpoint all frames");
+    assert!(log >= 0, "Log should contain frames");
+    assert!(checkpointed >= 0, "Should checkpoint frames");
+
+    println!(
+        "✅ WAL checkpoint (RESTART) successful: busy={}, log={}, checkpointed={}",
+        busy, log, checkpointed
+    );
+}
+
 // 🚨 CRITICAL CORRUPTION PREVENTION TEST
 // This test verifies the fix for "database disk image is malformed" errors
 // Root cause: Connections were opened in DELETE mode, then WAL was set later

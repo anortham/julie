@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_691a1a80_5191b7",
+  "timestamp": 1763318400,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4007285",
+    "dirty": true,
+    "files_changed": [
+      "src/database/bulk_operations.rs",
+      "src/database/files.rs",
+      "src/database/mod.rs",
+      "src/database/symbols/bulk.rs",
+      "src/embeddings/mod.rs",
+      "src/tests/core/database.rs",
+      "src/tests/core/embeddings/mod.rs",
+      "src/tests/embedding_batch_sizing_tests.rs",
+      "src/tools/workspace/indexing/embeddings.rs"
+    ]
+  },
+  "description": "Fixed WAL file growing to 45MB+ by replacing PASSIVE checkpoints with RESTART mode. PASSIVE checkpoints were failing silently during heavy indexing (couldn't acquire lock). RESTART waits for active readers then successfully checkpoints. Added checkpoint_wal_restart() method and test. Updated all bulk operations (bulk_operations.rs, files.rs, symbols/bulk.rs) to use RESTART instead of PASSIVE. This prevents WAL from growing beyond 8MB autocheckpoint threshold during continuous writes. TDD: wrote failing test first, all tests passing.",
+  "tags": [
+    "bug-fix",
+    "wal",
+    "database",
+    "tdd",
+    "checkpoint",
+    "restart-mode"
+  ]
+}

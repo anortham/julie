@@ -354,8 +354,8 @@ async fn test_embed_symbols_batch_respects_batch_size_limits() {
         .await
         .unwrap();
 
-    // Get the optimal batch size for this system
-    let batch_size = engine.calculate_optimal_batch_size();
+    // Get the cached batch size (calculated during initialization)
+    let batch_size = engine.get_cached_batch_size();
 
     // Create MORE symbols than the batch size to test batching logic
     // Using 3x batch size to ensure we test multiple batches
