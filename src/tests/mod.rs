@@ -52,6 +52,11 @@ pub mod core {
 pub mod embedding_batch_sizing_tests; // Embedding batch sizing tests (DirectML memory pressure)
 
 // ============================================================================
+// REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship
+// ============================================================================
+pub mod regression_prevention_tests; // Tests for bugs that have regressed multiple times
+
+// ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 pub mod memory_checkpoint_tests; // Checkpoint tool tests (file operations)
