@@ -7,7 +7,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct OptimizedResponse<T> {
     /// Tool that generated this response (enables routing and schema detection)
-    /// Examples: "fast_search", "fast_refs", "fast_goto", "fuzzy_replace", "smart_refactor"
+    /// Examples: "fast_search", "fast_refs", "fast_goto", "fuzzy_replace", "rename_symbol", "edit_symbol"
     pub tool: String,
     /// The main results (will be limited based on confidence)
     pub results: Vec<T>,

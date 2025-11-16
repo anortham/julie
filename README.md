@@ -256,8 +256,10 @@ Skills are model-invoked - Claude automatically uses them when relevant based on
 
 - `find_logic` - Discover core business logic by filtering framework noise
 - `fuzzy_replace` - Diff-match-patch fuzzy text replacement with validation
-- `smart_refactor` - AST-aware semantic refactoring
-  - Rename symbols across workspace
+- `rename_symbol` - Rename symbols across entire workspace
+  - Updates all references atomically
+  - Preview mode with dry_run parameter
+- `edit_symbol` - AST-aware symbol editing
   - Replace function/method bodies
   - Insert code relative to symbols
   - Extract symbols to new files

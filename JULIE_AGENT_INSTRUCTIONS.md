@@ -437,19 +437,31 @@ Use the built-in `Edit` tool (you already know this tool):
 
 **For semantic operations:**
 
-Use `smart_refactor` for symbol-aware changes:
+Use Julie's refactoring tools for symbol-aware changes:
+
+**Renaming symbols:**
 ```
-smart_refactor(
-  operation="rename_symbol",
-  params='{"old_name": "getUserData", "new_name": "fetchUserData"}'
+rename_symbol(
+  old_name="getUserData",
+  new_name="fetchUserData",
+  dry_run=true  // Preview first, then set to false
 )
 ```
 
-This handles:
-- Renaming symbols across workspace
-- Replacing function/method bodies
-- Inserting code before/after symbols
-- Moving symbols between files with import generation
+**Editing symbol bodies:**
+```
+edit_symbol(
+  file_path="src/user.rs",
+  symbol_name="validateToken",
+  operation="replace_body",
+  content="// new implementation",
+  dry_run=true
+)
+```
+
+These handle:
+- `rename_symbol` - Rename symbols across workspace
+- `edit_symbol` - Replace function/method bodies, insert code before/after symbols, extract symbols to files
 
 ### Step 4: Verify Impact (After Change)
 
@@ -469,7 +481,7 @@ One call to `fast_refs` shows you the complete impact. That's sufficient.
 ```
 Step 1: fast_refs(symbol="getUserData", include_definition=true)
 Result: See 12 references across 4 files
-Step 2: smart_refactor(operation="rename_symbol", params='{...}')
+Step 2: rename_symbol(old_name="getUserData", new_name="fetchUserData", dry_run=false)
 Result: Renamed everywhere
 Step 3: fast_refs(symbol="fetchUserData") to verify
 Done: Safe rename with complete confidence
@@ -725,25 +737,58 @@ fast_explore(mode="similar", symbol="getUserData", threshold=0.8)
 fast_explore(mode="dependencies", symbol="PaymentService", depth=3)
 ```
 
-### smart_refactor - Your Semantic Editor
+### rename_symbol - Workspace-Wide Symbol Renaming
 
-**When to Use:** Renaming symbols, replacing function/method bodies, inserting code relative to symbols, moving symbols between files
+**When to Use:** Renaming functions, classes, variables, or any symbol across the entire workspace
+
+**Critical Rules:**
+- **ALWAYS** use fast_refs BEFORE renaming to see impact
+- **ALWAYS** use dry_run=true first to preview changes
+- Safe across entire workspace - updates all references
+- Use for symbol-aware renaming (not simple text find-replace)
+
+**Performance:** <1s for typical renames across workspace
+
+**Trust Level:** Complete. Updates all references atomically with tree-sitter validation.
+
+**Example:**
+```
+rename_symbol(
+  old_name="getUserData",
+  new_name="fetchUserData",
+  dry_run=true  // Review preview, then set to false
+)
+```
+
+### edit_symbol - Symbol-Aware Code Editing
+
+**When to Use:** Replacing function/method bodies, inserting code relative to symbols, extracting symbols to files
 
 **Available Operations:**
-- `rename_symbol` - Rename symbols across workspace
-- `replace_symbol_body` - Replace function/method body
-- `insert_relative_to_symbol` - Insert code before/after symbols
-- `extract_symbol_to_file` - Move symbols between files with import updates
+- `replace_body` - Replace entire function/method implementation
+- `insert_relative` - Insert code before/after a symbol
+- `extract_to_file` - Move symbol to different file with import updates
 
 **Critical Rules:**
 - Use for symbol-aware operations (not simple text edits)
-- Always check fast_refs BEFORE refactoring to understand impact
+- Always check fast_refs BEFORE editing to understand impact
 - Built-in Edit tool for simple text replacement
 - Julie provides intelligence (what to change), this tool provides mechanics (how to change it)
 
-**Performance:** Varies by operation complexity (typically <1s)
+**Performance:** <1s for typical operations
 
 **Trust Level:** Complete. Symbol-aware refactoring with tree-sitter validation and atomic file operations.
+
+**Example:**
+```
+edit_symbol(
+  file_path="src/auth.rs",
+  symbol_name="validateToken",
+  operation="replace_body",
+  content="token.expiry > now() && token.signature_valid()",
+  dry_run=true
+)
+```
 
 ---
 
