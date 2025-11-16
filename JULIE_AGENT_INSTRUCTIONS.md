@@ -720,6 +720,8 @@ Step 2: get_symbols(file="large.rs", target="UserService", include_body=true, mo
 - **similar** - Find semantically similar code using embeddings
 - **dependencies** - Analyze transitive dependencies via graph traversal
 
+**Note:** `find_logic` is deprecated - use `fast_explore(mode="logic")` instead for the same functionality.
+
 **Critical Rules:**
 - Use for discovering what a codebase DOES (business logic, not infrastructure)
 - Domain keywords like "payment", "auth", "user", "order" find relevant code
@@ -787,6 +789,206 @@ edit_symbol(
   operation="replace_body",
   content="token.expiry > now() && token.signature_valid()",
   dry_run=true
+)
+```
+
+### edit_lines - Surgical Line Editing
+
+**When to Use:** Precise line-level file modifications (insert/replace/delete)
+
+**Critical Rules:**
+- Use for inserting comments, replacing specific lines, deleting line ranges
+- More precise than fuzzy_replace for line-based operations
+- **ALWAYS** use dry_run=true first to preview changes
+- Operations are 1-indexed (line numbers match your editor)
+
+**Available Operations:**
+- `insert` - Add content at line, shift existing lines down
+- `replace` - Replace lines [start, end] with new content
+- `delete` - Remove lines [start, end]
+
+**Performance:** <10ms for typical operations
+
+**Trust Level:** Complete. Validates before applying, preserves line endings.
+
+**Example:**
+```
+edit_lines(
+  file_path="src/user.rs",
+  operation="insert",
+  start_line=42,
+  content="// TODO: Add validation",
+  dry_run=true  // Review preview, then set to false
+)
+```
+
+### fuzzy_replace - Bulk Pattern Replacement
+
+**When to Use:** Pattern replacement with tolerance for minor differences (whitespace, typos)
+
+**Critical Rules:**
+- Handles whitespace variations that exact Edit tool cannot
+- **Multi-file mode**: Use file_pattern for workspace-wide replacements
+- **Single-file mode**: Use file_path for precise file edits
+- **ALWAYS** preview with dry_run=true first
+- Threshold 0.8 recommended (strict), lower to 0.6 for broader matching
+
+**Performance:** <100ms for single file, varies for multi-file
+
+**Trust Level:** Complete. Diff-match-patch validation, shows similarity scores.
+
+**Examples:**
+```
+# Multi-file rename
+fuzzy_replace(
+  file_pattern="**/*.rs",
+  pattern="function getUserData()",
+  replacement="function fetchUserData()",
+  threshold=0.8,
+  dry_run=true
+)
+
+# Single-file edit
+fuzzy_replace(
+  file_path="src/user.rs",
+  pattern="console.log(error)",
+  replacement="logger.error(error)",
+  threshold=0.8,
+  dry_run=true
+)
+```
+
+### checkpoint - Development Memory Capture
+
+**When to Use:** AFTER completing any significant work (MANDATORY)
+
+**Critical Rules:**
+- **NEVER ask permission** - checkpoints are cheap (<50ms)
+- Create IMMEDIATELY after bug fixes, features, decisions, learning
+- Better to create too many than too few
+- recall() is USELESS without checkpointing!
+
+**Performance:** <50ms (includes git context capture)
+
+**Trust Level:** Complete. Immutable, automatically indexed for semantic search.
+
+**Example:**
+```
+checkpoint({
+  description: "Fixed JWT validation bug where expired tokens were accepted. Root cause was inverted expiry check in validateToken(). Added test coverage.",
+  tags: ["bug", "auth", "security"]
+})
+```
+
+**Why This Matters:** Future sessions can only restore what you've saved. This takes 2 seconds but saves HOURS of lost work.
+
+### recall - Memory Retrieval
+
+**When to Use:** BEFORE starting work (MANDATORY at session start!)
+
+**Critical Rules:**
+- **EVERY session MUST start with recall()** - no exceptions
+- Use for finding similar past work, avoiding repeated mistakes
+- Chronological queries are fastest (<5ms)
+- Semantic search integrated for topic-based queries
+
+**Performance:**
+- Chronological: <5ms
+- Semantic search: <100ms
+
+**Trust Level:** Complete. Returns complete context from past sessions.
+
+**Examples:**
+```
+# Session start (MANDATORY first action)
+recall({ limit: 10 })
+
+# Filtered by type
+recall({ type: "decision", limit: 5 })
+
+# Time-based
+recall({ since: "2025-01-01" })
+
+# For semantic topic search, use fast_search with file_pattern=".memories/**"
+```
+
+### plan - Mutable Development Plans
+
+**When to Use:** After ExitPlanMode (MANDATORY to save planning work)
+
+**Critical Rules:**
+- **ALWAYS** save plan within 1 exchange of ExitPlanMode
+- Plans represent HOURS of work - losing them is unacceptable
+- Only ONE plan can be active at a time
+- Update plans as work progresses (not immutable like checkpoints)
+
+**Actions:**
+- `save` - Create new plan (use after ExitPlanMode)
+- `get` - Retrieve specific plan by ID
+- `list` - See all plans (filter by status)
+- `activate` - Set as active plan
+- `update` - Modify existing plan
+- `complete` - Mark plan as done
+
+**Performance:** <10ms for typical operations
+
+**Trust Level:** Complete. Mutable working memory stored in `.memories/plans/`
+
+**Example:**
+```
+# After ExitPlanMode
+plan({
+  action: "save",
+  title: "Add Search Feature",
+  content: "## Goals\n- Implement fuzzy search\n- Add filters\n\n## Progress\n- [x] Design\n- [ ] Implement"
+})
+
+# Update progress
+plan({
+  action: "update",
+  id: "plan_add-search",
+  content: "## Goals\n...\n## Progress\n- [x] Design\n- [x] Implement\n- [ ] Test"
+})
+```
+
+### manage_workspace - Workspace Management
+
+**When to Use:** Indexing, adding reference workspaces, diagnostics, cleanup
+
+**Critical Rules:**
+- **ALWAYS** run `index` operation first in a new workspace
+- Use `health` to diagnose indexing or search issues
+- Reference workspaces enable cross-project search
+- Each workspace has isolated storage (no conflicts)
+
+**Common Operations:**
+- `index` - Index or re-index workspace (RUN THIS FIRST!)
+- `list` - See all registered workspaces with status
+- `add` - Add reference workspace for cross-project search
+- `health` - System diagnostics and index health
+- `stats` - View workspace statistics
+- `clean` - Remove orphaned/expired workspaces
+
+**Performance:** Indexing ~2s for typical projects, varies with size
+
+**Trust Level:** Complete. Per-workspace isolation in `.julie/indexes/{workspace_id}/`
+
+**Example:**
+```
+# First action in new workspace
+manage_workspace(operation="index")
+
+# Force re-index
+manage_workspace(operation="index", force=true)
+
+# Check system health
+manage_workspace(operation="health", detailed=true)
+
+# Add reference workspace
+manage_workspace(
+  operation="add",
+  path="/path/to/other/project",
+  name="Reference Project"
 )
 ```
 
