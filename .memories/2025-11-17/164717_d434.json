@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_691b5195_ff722d",
+  "timestamp": 1763398037,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "51c4059",
+    "dirty": false
+  },
+  "description": "Released v1.10.1 with comprehensive regression prevention tests. Added 5 tests covering recurring bugs: WAL growth prevention (109MB → <20MB), GPU/CPU logging accuracy (is_using_gpu() consistency), batch size caching (239 calls spam → 1 call), bounds validation [25-250], and Linux CUDA workaround. All tests passing. Identified issue: Linux CUDA workaround too broad (forces CPU for ALL Linux, not just CUDA 13.0). Deep review of commit 8543ee0 confirmed all changes accurate. Tests protect against regressions during refactoring.",
+  "tags": [
+    "release",
+    "regression-tests",
+    "v1.10.1",
+    "tdd",
+    "testing",
+    "wal-growth",
+    "gpu-cpu-logging",
+    "batch-size-caching"
+  ]
+}
