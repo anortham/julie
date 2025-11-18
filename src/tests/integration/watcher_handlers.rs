@@ -452,3 +452,133 @@ async fn test_file_rename_absolute_paths() {
         assert_eq!(new_symbols[0].name, "old_function");
     }
 }
+
+/// Regression test for Bug: Transaction leak in file watcher handlers
+///
+/// Bug: handle_file_created_or_modified_static starts a transaction but if any
+/// database operation fails with `?`, the function exits without rolling back.
+///
+/// Root cause:
+/// - Line 115: `db_lock.begin_transaction()?;`
+/// - Lines 125, 128, 132: Database operations use `?` without rollback handling
+/// - If these fail, transaction is left open on the connection
+///
+/// Result:
+/// - First file change: Operation fails mid-transaction
+/// - Transaction left open (never committed or rolled back)
+/// - Second file change: `begin_transaction()` fails with "cannot start a transaction within a transaction"
+/// - Every subsequent file change fails with same error
+///
+/// Fix: Wrap transaction block in proper error handling to ensure rollback on ANY error.
+#[tokio::test]
+async fn test_transaction_leak_on_error() {
+    // Skip background embedding tasks
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("transaction_leak");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    // Initialize database (file-based for WAL support)
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
+
+    // STEP 1: Create a scenario that will cause transaction leak
+    // We'll manually start a transaction and NOT commit/rollback it
+    // This simulates what happens when an error occurs mid-transaction
+    {
+        let mut db_lock = db.lock().unwrap();
+        db_lock
+            .begin_transaction()
+            .expect("Should be able to start transaction");
+
+        // Insert some data but DON'T commit - simulating error mid-transaction
+        // Transaction is now OPEN but we're about to drop the lock
+    }
+
+    println!("DEBUG: Transaction started but not committed - simulating error scenario");
+
+    // STEP 2: Try to process a file change
+    // This should FAIL with "cannot start a transaction within a transaction"
+    let test_file = workspace_root.join("test.rs");
+    fs::write(&test_file, "fn example() {}").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    println!("DEBUG: Attempting to process file with leaked transaction...");
+
+    let result = handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &embeddings,
+        &extractor_manager,
+        None,
+        &workspace_root,
+    )
+    .await;
+
+    // BEFORE FIX: This will fail with "cannot start a transaction within a transaction"
+    // AFTER FIX: Should handle gracefully or at least rollback existing transaction
+    match result {
+        Ok(_) => {
+            println!("DEBUG: File processing succeeded (transaction leak handled!)");
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            println!("DEBUG: File processing failed with: {}", error_msg);
+
+            // This is the bug we're testing for!
+            if error_msg.contains("cannot start a transaction within a transaction") {
+                panic!(
+                    "BUG DETECTED: Transaction leak! Handler tried to start transaction \
+                     while previous transaction still open. Error: {}",
+                    error_msg
+                );
+            } else {
+                // Some other error - not the bug we're testing
+                println!("DEBUG: Different error (not transaction leak): {}", error_msg);
+            }
+        }
+    }
+
+    // STEP 3: Verify we can process files normally after cleanup
+    // (After fix, transaction should be rolled back automatically)
+    let test_file2 = workspace_root.join("test2.rs");
+    fs::write(&test_file2, "fn another_example() {}").unwrap();
+    let absolute_path2 = test_file2.canonicalize().unwrap();
+
+    println!("DEBUG: Attempting to process second file...");
+
+    let result2 = handle_file_created_or_modified_static(
+        absolute_path2,
+        &db,
+        &embeddings,
+        &extractor_manager,
+        None,
+        &workspace_root,
+    )
+    .await;
+
+    match result2 {
+        Ok(_) => {
+            println!("DEBUG: Second file processing succeeded!");
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("cannot start a transaction within a transaction") {
+                panic!(
+                    "BUG STILL PRESENT: Second file also failed with transaction leak: {}",
+                    error_msg
+                );
+            } else {
+                println!("DEBUG: Second file failed with different error: {}", error_msg);
+            }
+        }
+    }
+}
+

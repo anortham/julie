@@ -99,6 +99,13 @@ pub async fn handle_file_created_or_modified_static(
                 poisoned.into_inner()
             }
         };
+
+        // DEFENSIVE: Rollback any leaked transaction before starting new one
+        // This handles cases where a previous operation failed mid-transaction
+        // SQLite doesn't have a "check if transaction is open" API, so we speculatively rollback
+        // If no transaction is open, this is a no-op (SQLite ignores ROLLBACK outside transaction)
+        let _ = db_lock.rollback_transaction(); // Ignore error - transaction might not be open
+
         let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
 
         // Safeguard against data loss
@@ -112,26 +119,44 @@ pub async fn handle_file_created_or_modified_static(
         }
 
         // Use transaction for atomic updates
+        // CRITICAL: Ensure rollback on ANY error to prevent transaction leaks
         db_lock.begin_transaction()?;
 
-        // Ensure file record exists (required for foreign key constraint)
-        let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
-        if let Err(e) = db_lock.store_file_info(&file_info) {
-            db_lock.rollback_transaction()?;
-            return Err(e);
+        // Perform all database operations, capturing errors instead of using `?`
+        let transaction_result = (|| -> Result<()> {
+            // Ensure file record exists (required for foreign key constraint)
+            let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
+            db_lock.store_file_info(&file_info)?;
+
+            // Delete old symbols for this file
+            db_lock.delete_symbols_for_file(&relative_path)?;
+
+            // Insert new symbols (within the transaction)
+            db_lock.store_symbols(&symbols)?;
+
+            // Update file hash
+            let new_hash_str = hex::encode(new_hash.as_bytes());
+            db_lock.update_file_hash(&relative_path, &new_hash_str)?;
+
+            Ok(())
+        })();
+
+        // Handle transaction result: commit on success, rollback on error
+        match transaction_result {
+            Ok(()) => {
+                db_lock.commit_transaction()?;
+            }
+            Err(e) => {
+                // Rollback transaction before returning error
+                if let Err(rollback_err) = db_lock.rollback_transaction() {
+                    warn!(
+                        "Failed to rollback transaction after error: {}. Original error: {}",
+                        rollback_err, e
+                    );
+                }
+                return Err(e);
+            }
         }
-
-        // Delete old symbols for this file
-        db_lock.delete_symbols_for_file(&relative_path)?;
-
-        // Insert new symbols (within the transaction)
-        db_lock.store_symbols(&symbols)?;
-
-        // Update file hash
-        let new_hash_str = hex::encode(new_hash.as_bytes());
-        db_lock.update_file_hash(&relative_path, &new_hash_str)?;
-
-        db_lock.commit_transaction()?;
     }
 
     // 5. Generate and persist embeddings (non-blocking background task)
