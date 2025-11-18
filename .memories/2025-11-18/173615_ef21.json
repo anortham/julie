@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_691cae8f_91aaf0",
+  "timestamp": 1763487375,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs"
+    ]
+  },
+  "description": "Fixed CPU batch size bug (100 → 50) by eliminating magic numbers. Root cause: commit 06f0693 updated constants in embeddings.rs but missed 4 hardcoded values in mod.rs (lines 109, 160, 214, 297). Solution: extracted DEFAULT_BATCH_SIZE constant and replaced all 4 instances. This prevents future regressions from code duplication. All batch sizing tests passing.",
+  "tags": [
+    "bug-fix",
+    "code-quality",
+    "cpu-batch-size",
+    "magic-numbers",
+    "const-extraction",
+    "tdd"
+  ]
+}

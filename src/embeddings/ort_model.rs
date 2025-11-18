@@ -639,19 +639,40 @@ impl OrtEmbeddingModel {
     /// Get CUDA GPU memory (Linux only)
     #[cfg(target_os = "linux")]
     fn get_cuda_memory() -> Option<usize> {
-        // CUDA memory detection via ONNX Runtime device info
-        // The ort crate doesn't expose cudaMemGetInfo directly,
-        // so we use a conservative heuristic based on common GPU configs
+        use std::process::Command;
 
-        // TODO: If we need precise detection, we could:
-        // 1. Use cuda-sys crate to call cudaMemGetInfo directly
-        // 2. Parse nvidia-smi output
-        // 3. Read /proc/driver/nvidia/gpus/*/information
+        // Query nvidia-smi for total GPU memory
+        // This is reliable and doesn't require additional dependencies
+        let output = Command::new("nvidia-smi")
+            .args(&["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+            .output();
 
-        // For now, return None to use fallback logic
-        // This is safe - we'll use conservative batch sizes
-        warn!("CUDA GPU memory detection not yet implemented - using fallback batch size");
-        None
+        match output {
+            Ok(result) if result.status.success() => {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let memory_mb = stdout.trim().parse::<usize>().ok()?;
+                let memory_bytes = memory_mb * 1_048_576; // Convert MiB to bytes
+
+                tracing::debug!(
+                    "🎮 Detected CUDA GPU memory: {} MiB ({} bytes)",
+                    memory_mb,
+                    memory_bytes
+                );
+
+                Some(memory_bytes)
+            }
+            Ok(result) => {
+                tracing::warn!(
+                    "nvidia-smi command failed with status: {}",
+                    result.status
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!("Failed to execute nvidia-smi: {} - using fallback batch size", e);
+                None
+            }
+        }
     }
 }
 

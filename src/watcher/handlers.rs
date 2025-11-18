@@ -219,11 +219,21 @@ pub async fn handle_file_created_or_modified_static(
                     if let Some(ref vector_store) = vector_store_clone {
                         let mut store_write = vector_store.write().await;
                         if let Err(e) = store_write.insert_batch(&embeddings) {
-                            warn!(
-                                "⚠️ Failed to update HNSW index for {}: {}",
-                                path_for_log.display(),
-                                e
-                            );
+                            // HNSW index loads on-demand (first semantic search call)
+                            // During initial indexing, it's normal for it to not be loaded yet
+                            let error_msg = e.to_string();
+                            if error_msg.contains("HNSW index not loaded") {
+                                debug!(
+                                    "💡 HNSW index not yet loaded for {} (loads on first semantic search, embeddings saved to SQLite)",
+                                    path_for_log.display()
+                                );
+                            } else {
+                                warn!(
+                                    "⚠️ Failed to update HNSW index for {}: {}",
+                                    path_for_log.display(),
+                                    e
+                                );
+                            }
                         } else {
                             debug!("🔄 Updated HNSW index with {} vectors", embeddings.len());
                         }

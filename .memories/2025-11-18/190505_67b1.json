@@ -1,0 +1,25 @@
+{
+  "id": "checkpoint_691cc361_58d7e9",
+  "timestamp": 1763492705,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "docs/GPU_SETUP.md",
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Updated GPU_SETUP.md with critical WSL2 and MCP server configuration that was missing. Added: (1) WSL2-specific installation using wsl-ubuntu repository and apt for cuDNN, (2) Critical MCP server configuration section explaining LD_LIBRARY_PATH must include BOTH target/release (for ONNX Runtime libs) and /usr/local/cuda-12.6/lib64 (for CUDA libs), (3) Troubleshooting for libonnxruntime_providers_shared.so error, (4) Shell detection (zsh vs bash), (5) Debugging with RUST_LOG. Also implemented CUDA GPU memory detection using nvidia-smi to calculate dynamic batch sizes (will reduce VRAM from 5.5GB to ~4.2GB using DirectML-safe formula). Key insight: MCP servers don't inherit shell environment, so claude_desktop_config.json env configuration is mandatory.",
+  "tags": [
+    "documentation",
+    "gpu",
+    "wsl2",
+    "mcp-server",
+    "troubleshooting",
+    "cuda"
+  ]
+}

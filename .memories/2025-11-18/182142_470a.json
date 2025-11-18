@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_691cb936_9e547d",
+  "timestamp": 1763490102,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Successfully enabled CUDA GPU acceleration in WSL2! Installed CUDA Toolkit 12.6 and cuDNN 9.5.1 for Ubuntu 24.04 on WSL2. Configured LD_LIBRARY_PATH in ~/.zshrc. Julie now detects CUDA libraries and runs with GPU acceleration (batch_size=50 on 6GB RTX A1000). Key insight: WSL2 uses Windows NVIDIA driver passthrough, so only CUDA toolkit (libraries/headers) needed, not driver. Fixed zsh vs bash configuration issue. GPU acceleration confirmed in logs: 'CUDA execution provider registered successfully' and 'GPU acceleration active'.",
+  "tags": [
+    "gpu",
+    "cuda",
+    "wsl2",
+    "setup",
+    "cuDNN",
+    "nvidia",
+    "success"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_691cbfc9_8fda19",
+  "timestamp": 1763491785,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Successfully enabled GPU acceleration in WSL2! Fixed the missing libonnxruntime_providers_shared.so issue by adding /home/murphy/source/julie/target/release to LD_LIBRARY_PATH in Claude Desktop config. CUDA execution provider now registers successfully without errors. GPU memory usage shows 347MiB allocated (up from 0), temperature increased from 42C to 55C indicating GPU activity. ONNX Runtime v1.22.0 with CUDA 12.6 and cuDNN 9.5.1 confirmed working on NVIDIA RTX A1000 6GB in WSL2. The key insight: ort crate's copy-dylibs feature creates symlinks in target/release/ to libraries in ~/.cache/ort.pyke.io/, so the release directory must be in LD_LIBRARY_PATH for the dynamic linker to find all ONNX Runtime shared libraries.",
+  "tags": [
+    "gpu",
+    "cuda",
+    "wsl2",
+    "onnxruntime",
+    "success",
+    "ld_library_path",
+    "solved"
+  ]
+}

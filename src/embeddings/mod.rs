@@ -23,6 +23,17 @@ pub mod vector_store; // ONNX Runtime embeddings with GPU acceleration
 // Re-export LoadedHnswIndex for use in other modules
 pub use loaded_index::LoadedHnswIndex;
 
+/// Default batch size for embedding generation (both GPU and CPU modes)
+///
+/// CRITICAL: Both GPU and CPU are RAM-constrained (GPU uses VRAM, CPU uses system RAM)
+/// - batch_size=50: 50×512×384×4 bytes = ~38 MB per batch
+/// - Safe for 4GB+ GPUs and memory-constrained environments (WSL, containers)
+///
+/// Historical context:
+/// - Previously CPU used 100, causing OOM crashes on 300-file codebases (~2.3GB peak)
+/// - Reduced to match GPU (50) to prevent memory exhaustion
+const DEFAULT_BATCH_SIZE: usize = 50;
+
 /// Context information for generating richer embeddings
 #[derive(Debug, Clone)]
 pub struct CodeContext {
@@ -102,12 +113,8 @@ impl EmbeddingEngine {
         let cached_batch_size = if let Some(vram_bytes) = model.get_gpu_memory_bytes() {
             Self::batch_size_from_vram(vram_bytes)
         } else {
-            // Fallback to conservative defaults
-            if model.is_using_gpu() {
-                50 // Conservative GPU default
-            } else {
-                100 // CPU mode
-            }
+            // Fallback to conservative default (same for both GPU and CPU - both RAM-constrained)
+            DEFAULT_BATCH_SIZE
         };
 
         tracing::info!(
@@ -153,12 +160,8 @@ impl EmbeddingEngine {
         let cached_batch_size = if let Some(vram_bytes) = model.get_gpu_memory_bytes() {
             Self::batch_size_from_vram(vram_bytes)
         } else {
-            // Fallback to conservative defaults
-            if model.is_using_gpu() {
-                50 // Conservative GPU default
-            } else {
-                100 // CPU mode
-            }
+            // Fallback to conservative default (same for both GPU and CPU - both RAM-constrained)
+            DEFAULT_BATCH_SIZE
         };
 
         tracing::info!(
@@ -210,8 +213,8 @@ impl EmbeddingEngine {
         self.model = new_model;
         self.cpu_fallback_triggered = true;
 
-        // Recalculate batch size for CPU mode (CPU uses batch_size=100, GPU uses 25-250)
-        self.cached_batch_size = 100; // CPU mode
+        // Recalculate batch size for CPU mode (same as GPU - both RAM-constrained)
+        self.cached_batch_size = DEFAULT_BATCH_SIZE;
 
         tracing::info!(
             "✅ Successfully reinitialized embedding engine in CPU-only mode (batch_size={})",
@@ -290,12 +293,8 @@ impl EmbeddingEngine {
         if let Some(vram_bytes) = self.model.get_gpu_memory_bytes() {
             Self::batch_size_from_vram(vram_bytes)
         } else {
-            // Fallback to conservative defaults
-            if self.is_using_gpu() {
-                50 // Conservative GPU default
-            } else {
-                100 // CPU mode
-            }
+            // Fallback to conservative default (same for both GPU and CPU - both RAM-constrained)
+            DEFAULT_BATCH_SIZE
         }
     }
 

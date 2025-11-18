@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_691cc3e9_bbac70",
+  "timestamp": 1763492841,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "docs/GPU_SETUP.md",
+      "src/embeddings/mod.rs",
+      "src/embeddings/ort_model.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Revised GPU_SETUP.md to REMOVE recommendation for RUST_LOG=ort=trace after user reported it generated 12GB+ log files. Changed troubleshooting to use safe diagnostic commands (grep existing logs, watch nvidia-smi) instead of verbose trace logging. Added strong warning that ort=trace should NEVER be used - fills disk rapidly. Kept optional julie=debug for Julie-specific debugging only. Key lesson: Default INFO-level logs are sufficient for troubleshooting; trace logging in ONNX Runtime is for library developers only, not end users.",
+  "tags": [
+    "documentation",
+    "safety",
+    "logging",
+    "gpu-setup",
+    "production"
+  ]
+}

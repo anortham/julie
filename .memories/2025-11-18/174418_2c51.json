@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_691cb072_0b4c49",
+  "timestamp": 1763487858,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "3d324bc",
+    "dirty": true,
+    "files_changed": [
+      "src/embeddings/mod.rs",
+      "src/watcher/handlers.rs"
+    ]
+  },
+  "description": "Improved HNSW index warning logging in file watcher. Changed \"HNSW index not loaded\" from WARNING to DEBUG level since it's expected behavior during initial indexing. The HNSW index loads on-demand (first semantic search call), so file watcher warnings were misleading. Now only actual errors show as warnings. Added explanatory message: \"HNSW index not yet loaded (loads on first semantic search, embeddings saved to SQLite)\".",
+  "tags": [
+    "logging",
+    "ux-improvement",
+    "hnsw",
+    "file-watcher",
+    "expected-behavior"
+  ]
+}
