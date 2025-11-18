@@ -402,21 +402,14 @@ impl OrtEmbeddingModel {
 
         info!("✅ ONNX session created successfully");
 
-        // WORKAROUND: CUDA provider registers successfully but ONNX Runtime silently falls back to CPU
-        // This happens with CUDA 13.0 + ORT compiled for CUDA 11.x/12.x
-        // Until we fix CUDA version compatibility, force CPU mode on Linux
-        #[cfg(target_os = "linux")]
-        let actual_is_gpu = if is_gpu {
-            warn!("⚠️  CUDA provider registered but known compatibility issue with CUDA 13.0");
-            warn!("   Forcing CPU mode until CUDA version compatibility is resolved");
-            warn!("   (ONNX Runtime silently falls back to CPU anyway)");
-            false // Force CPU mode
-        } else {
-            false
-        };
-
-        #[cfg(not(target_os = "linux"))]
-        let actual_is_gpu = is_gpu; // Windows DirectML and macOS work correctly
+        // Issue #2 FIX: Removed hardcoded CPU-only workaround on Linux
+        // Previous code forced is_gpu=false on Linux even when CUDA succeeded
+        // This caused CPU-only processing to crash at ~300 files due to memory exhaustion
+        //
+        // New behavior: Trust the CUDA provider registration status
+        // If CUDA libraries are available and registration succeeds, use GPU acceleration
+        // If CUDA fails or is unavailable, is_gpu will already be false from the try block above
+        let actual_is_gpu = is_gpu;
 
         Ok((session, actual_is_gpu))
     }

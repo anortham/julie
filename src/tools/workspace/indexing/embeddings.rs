@@ -11,10 +11,16 @@ use tracing::{debug, error, info, warn};
 
 /// Embedding generation batch size for ONNX inference
 /// GPU mode: 50 symbols (~37MB/batch) to prevent memory exhaustion on 4GB GPUs
-/// CPU mode: 100 symbols (~no GPU memory constraint, CPU bottleneck dominates)
-/// Note: Previous testing (256/64/100) was CPU-only - GPU has different memory limits
+/// CPU mode: 50 symbols (~76MB/batch tensor allocation in system RAM)
+///
+/// CRITICAL: CPU mode uses system RAM for ONNX tensor allocations!
+/// - batch_size=100: 100×512×384×4 bytes = 76 MB per batch
+/// - At 300 files (~3000 symbols): 30 batches × 76 MB = 2.3 GB peak usage
+/// - Causes OOM crashes in memory-constrained environments (WSL, containers)
+///
+/// Fix: Use same batch size for CPU and GPU (both limited by RAM)
 const BATCH_SIZE_GPU: usize = 50;
-const BATCH_SIZE_CPU: usize = 100;
+const BATCH_SIZE_CPU: usize = 50;
 
 /// GPU batch timeout threshold - if a batch takes longer than this, GPU is struggling
 /// Proactively fall back to CPU to prevent driver TDR (Timeout Detection and Recovery)
