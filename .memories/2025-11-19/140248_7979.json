@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_691dce08_73279b",
+  "timestamp": 1763560968,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "aaeff4a",
+    "dirty": true
+  },
+  "description": "Added Miller reference workspace (Python MCP POC). Key findings: (1) GPU acceleration via sentence-transformers+PyTorch is significantly easier than ONNX Runtime - MPS works out-of-box on macOS, CUDA setup simpler, plus DirectML/ROCm/XPU support. (2) Batch size 256 for GPU vs Julie's 50/100. (3) LanceDB (single DB with Tantivy FTS+vectors) vs Julie's SQLite FTS5+HNSW two-tier. (4) sentence-transformers abstraction vs ONNX Runtime low-level control. (5) \"Rust sandwich\" architecture - Rust core for parsing (PyO3), Python for orchestration/ML. Miller validates that hybrid Python/Rust can work well for this use case.",
+  "tags": [
+    "investigation",
+    "miller",
+    "gpu",
+    "architecture",
+    "comparison"
+  ]
+}
