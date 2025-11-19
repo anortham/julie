@@ -7,7 +7,8 @@ use crate::database::SymbolDatabase;
 use crate::extractors::base::Symbol;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use tracing::warn;
 
 // GPU-accelerated embeddings infrastructure
@@ -33,6 +34,18 @@ pub use loaded_index::LoadedHnswIndex;
 /// - Previously CPU used 100, causing OOM crashes on 300-file codebases (~2.3GB peak)
 /// - Reduced to match GPU (50) to prevent memory exhaustion
 const DEFAULT_BATCH_SIZE: usize = 50;
+
+/// Enable quantized ONNX models (int8 instead of float32)
+///
+/// Quantized models:
+/// - Size: 30MB vs 130MB (77% smaller)
+/// - CPU speed: ~2-3x faster
+/// - GPU speed: ~same (GPUs optimized for float32)
+/// - Accuracy: ~99% maintained (validated by Xenova)
+///
+/// TESTING: Set to true to test quantization, false for full precision
+/// Production default: false (safer, will enable after validation)
+pub const USE_QUANTIZED_MODELS: bool = false;
 
 /// Context information for generating richer embeddings
 #[derive(Debug, Clone)]
@@ -68,7 +81,7 @@ impl CodeContext {
 
 /// The embedding engine that powers semantic code understanding with GPU acceleration
 pub struct EmbeddingEngine {
-    model: OrtEmbeddingModel, // GPU-accelerated ONNX Runtime model
+    model: RwLock<OrtEmbeddingModel>, // GPU-accelerated ONNX Runtime model (wrapped for interior mutability)
     model_name: String,
     dimensions: usize,
     /// Optional database connection for persistence
@@ -78,7 +91,8 @@ pub struct EmbeddingEngine {
     /// Cache directory for model files (needed for reinitialization)
     cache_dir: PathBuf,
     /// Track if we've fallen back to CPU mode due to GPU failure
-    cpu_fallback_triggered: bool,
+    /// Uses AtomicBool for interior mutability (allows updating with &self)
+    cpu_fallback_triggered: AtomicBool,
     /// Cached optimal batch size (calculated once to avoid redundant GPU memory detection)
     /// Prevents log spam: 239 warnings → 1 warning during indexing
     cached_batch_size: usize,
@@ -93,7 +107,7 @@ impl EmbeddingEngine {
         cache_dir: PathBuf,
         db: Arc<Mutex<SymbolDatabase>>,
     ) -> Result<Self> {
-        tracing::info!("🚀 Initializing EmbeddingEngine with GPU acceleration...");
+        tracing::info!("🚀 Initializing EmbeddingEngine with GPU acceleration (quantized: {})...", USE_QUANTIZED_MODELS);
 
         // 1. Set up model manager and download model if needed
         let model_manager = ModelManager::new(cache_dir.clone())?;
@@ -125,12 +139,12 @@ impl EmbeddingEngine {
         );
 
         Ok(Self {
-            model,
+            model: RwLock::new(model),
             model_name: model_name.to_string(),
             dimensions,
             db: Some(db),
             cache_dir,
-            cpu_fallback_triggered: false,
+            cpu_fallback_triggered: AtomicBool::new(false),
             cached_batch_size,
         })
     }
@@ -139,8 +153,12 @@ impl EmbeddingEngine {
     ///
     /// Use this when you only need `embed_text()` and don't need persistence.
     /// This avoids the dummy database overhead in tools like `julie-semantic query`.
+    /// Create a standalone embedding engine without database (for query-only use)
+    ///
+    /// Use this when you only need `embed_text()` and don't need persistence.
+    /// This avoids the dummy database overhead in tools like `julie-semantic query`.
     pub async fn new_standalone(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
-        tracing::info!("🚀 Initializing standalone EmbeddingEngine (no database)...");
+        tracing::info!("🚀 Initializing standalone EmbeddingEngine (no database, quantized: {})...", USE_QUANTIZED_MODELS);
 
         // 1. Set up model manager and download model if needed
         let model_manager = ModelManager::new(cache_dir.clone())?;
@@ -171,12 +189,12 @@ impl EmbeddingEngine {
         );
 
         Ok(Self {
-            model,
+            model: RwLock::new(model),
             model_name: model_name.to_string(),
             dimensions,
             db: None, // Standalone mode - no database
             cache_dir,
-            cpu_fallback_triggered: false,
+            cpu_fallback_triggered: AtomicBool::new(false),
             cached_batch_size,
         })
     }
@@ -185,8 +203,12 @@ impl EmbeddingEngine {
     ///
     /// This is called automatically when DirectML GPU crashes are detected.
     /// Recreates the ONNX model without GPU acceleration (Issue #3 fix: no unsafe env var).
-    async fn reinitialize_with_cpu_fallback(&mut self) -> Result<()> {
-        if self.cpu_fallback_triggered {
+    /// Reinitialize the embedding engine in CPU-only mode after GPU failure
+    ///
+    /// This is called automatically when DirectML GPU crashes are detected.
+    /// Recreates the ONNX model without GPU acceleration (Issue #3 fix: no unsafe env var).
+    async fn reinitialize_with_cpu_fallback(&self) -> Result<()> {
+        if self.cpu_fallback_triggered.load(Ordering::Relaxed) {
             // Already in CPU mode, don't reinitialize again
             return Ok(());
         }
@@ -210,15 +232,17 @@ impl EmbeddingEngine {
         .context("Failed to reinitialize embedding model in CPU mode")?;
 
         // Replace the crashed GPU model with CPU model
-        self.model = new_model;
-        self.cpu_fallback_triggered = true;
+        {
+            let mut model_guard = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            *model_guard = new_model;
+        }
 
-        // Recalculate batch size for CPU mode (same as GPU - both RAM-constrained)
-        self.cached_batch_size = DEFAULT_BATCH_SIZE;
+        // Mark fallback as triggered (prevents repeated reinitialization)
+        self.cpu_fallback_triggered.store(true, Ordering::Relaxed);
 
         tracing::info!(
             "✅ Successfully reinitialized embedding engine in CPU-only mode (batch_size={})",
-            self.cached_batch_size
+            DEFAULT_BATCH_SIZE
         );
 
         Ok(())
@@ -245,17 +269,90 @@ impl EmbeddingEngine {
     ///
     /// **Note**: code_context is still stored in the database for FTS5 text search,
     /// so it's available when needed. This is purely an embedding optimization.
-    pub fn embed_symbol(&mut self, symbol: &Symbol, _context: &CodeContext) -> Result<Vec<f32>> {
+    /// Generate embedding for a symbol
+    ///
+    /// # Context Parameter (Intentionally Unused)
+    ///
+    /// The `_context` parameter is intentionally unused based on evidence-based optimization:
+    ///
+    /// **Problem**: Including code_context caused:
+    /// - 4x database growth (50MB → 203MB)
+    /// - Significantly slower embedding generation
+    /// - 88% of embedding text was noise (avg 1,304 chars of surrounding code)
+    /// - BGE-Small truncates at 512 tokens (~2KB), so most context was truncated anyway
+    ///
+    /// **Solution**: Removed code_context from embeddings (2025-11-11)
+    /// - Result: 75-88% faster embedding generation
+    /// - Search quality: Maintained (clearer semantic matching)
+    /// - Database: 80% smaller
+    ///
+    /// **Evidence**: See TODO.md lines 77-124 for full analysis
+    ///
+    /// **Note**: code_context is still stored in the database for FTS5 text search,
+    /// so it's available when needed. This is purely an embedding optimization.
+    pub fn embed_symbol(&self, symbol: &Symbol, _context: &CodeContext) -> Result<Vec<f32>> {
         let enriched_text = self.build_embedding_text(symbol);
 
         // Generate embedding using GPU-accelerated ORT model
-        self.model.encode_single(enriched_text)
+        let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+        model.encode_single(enriched_text)
     }
 
     /// Generate embedding for arbitrary text
-    pub fn embed_text(&mut self, text: &str) -> Result<Vec<f32>> {
+    pub fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
         // Generate embedding using GPU-accelerated ORT model
-        self.model.encode_single(text.to_string())
+        let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+        model.encode_single(text.to_string())
+    }
+
+    /// Generate embeddings for a batch of arbitrary texts
+    ///
+    /// This is useful for search queries or other non-symbol text processing.
+    /// Respects the engine's batch size limits.
+    /// Generate embeddings for a batch of arbitrary texts
+    ///
+    /// This is useful for search queries or other non-symbol text processing.
+    /// Respects the engine's batch size limits.
+    pub fn embed_texts_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Use cached batch size
+        let batch_size = self.cached_batch_size;
+
+        // If input is within batch size, process directly
+        if texts.len() <= batch_size {
+            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            return model.encode_batch(texts);
+        }
+
+        // Split large inputs into manageable chunks
+        tracing::info!(
+            "🔄 Splitting {} texts into batches of {} to prevent memory exhaustion",
+            texts.len(),
+            batch_size
+        );
+
+        let mut all_results = Vec::with_capacity(texts.len());
+
+        for chunk in texts.chunks(batch_size) {
+            // Create a vector of strings for this chunk
+            let chunk_vec = chunk.to_vec();
+            
+            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            match model.encode_batch(chunk_vec) {
+                Ok(mut chunk_results) => {
+                    all_results.append(&mut chunk_results);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process chunk of {} texts: {}", chunk.len(), e);
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(all_results)
     }
 
     /// Get the dimensions of embeddings produced by this model
@@ -270,7 +367,11 @@ impl EmbeddingEngine {
 
     /// Check if GPU acceleration is actually being used
     pub fn is_using_gpu(&self) -> bool {
-        self.model.is_using_gpu()
+        if let Ok(model) = self.model.read() {
+            model.is_using_gpu()
+        } else {
+            false
+        }
     }
 
     /// Get the cached optimal batch size (calculated once during initialization)
@@ -290,7 +391,13 @@ impl EmbeddingEngine {
     /// Optimal batch size for this GPU, or fallback constants if detection fails
     pub fn calculate_optimal_batch_size(&self) -> usize {
         // Try to detect GPU memory
-        if let Some(vram_bytes) = self.model.get_gpu_memory_bytes() {
+        let vram_bytes = if let Ok(model) = self.model.read() {
+            model.get_gpu_memory_bytes()
+        } else {
+            None
+        };
+
+        if let Some(vram_bytes) = vram_bytes {
             Self::batch_size_from_vram(vram_bytes)
         } else {
             // Fallback to conservative default (same for both GPU and CPU - both RAM-constrained)
@@ -373,7 +480,7 @@ impl EmbeddingEngine {
     /// Now GPU-accelerated for 10-100x speedup!
     ///
     /// CRITICAL: Respects batch size limits to prevent OOM errors (Bug fix for 23GB+ allocation attempts)
-    pub fn embed_symbols_batch(&mut self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
+    pub fn embed_symbols_batch(&self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
         if symbols.is_empty() {
             return Ok(Vec::new());
         }
@@ -413,7 +520,7 @@ impl EmbeddingEngine {
     /// Internal batch embedding logic - processes a single batch WITHOUT splitting
     /// This is the actual ONNX batch call - caller must ensure batch size is safe!
     fn embed_symbols_batch_internal(
-        &mut self,
+        &self,
         symbols: &[Symbol],
     ) -> Result<Vec<(String, Vec<f32>)>> {
         // Collect all embedding texts and contexts for this batch
@@ -436,7 +543,11 @@ impl EmbeddingEngine {
         }
 
         // Generate embeddings for this batch in one GPU-accelerated call
-        let batch_result = self.model.encode_batch(batch_texts.clone());
+        // Acquire write lock for the model (inference requires mutability)
+        let batch_result = {
+            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            model.encode_batch(batch_texts.clone())
+        };
 
         match batch_result {
             Ok(batch_embeddings) => {
@@ -452,7 +563,7 @@ impl EmbeddingEngine {
                     || error_msg.contains("GPU device instance has been suspended")
                     || error_msg.contains("device removed");
 
-                if is_gpu_crash && !self.cpu_fallback_triggered {
+                if is_gpu_crash && !self.cpu_fallback_triggered.load(Ordering::Relaxed) {
                     tracing::error!(
                         "🚨 GPU device failure detected during batch embedding: {}",
                         error_msg
@@ -468,7 +579,9 @@ impl EmbeddingEngine {
                                 "✅ Successfully reinitialized with CPU - retrying batch"
                             );
                             // Retry the batch with CPU mode now active
-                            match self.model.encode_batch(batch_texts) {
+                            // Re-acquire write lock (new model is now in place)
+                            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+                            match model.encode_batch(batch_texts) {
                                 Ok(batch_embeddings) => {
                                     let results =
                                         symbol_ids.into_iter().zip(batch_embeddings).collect();
@@ -515,7 +628,7 @@ impl EmbeddingEngine {
                             let is_gpu_crash = error_msg.contains("887A0005")
                                 || error_msg.contains("GPU device instance has been suspended");
 
-                            if is_gpu_crash && !self.cpu_fallback_triggered {
+                            if is_gpu_crash && !self.cpu_fallback_triggered.load(Ordering::Relaxed) {
                                 tracing::error!(
                                     "🚨 GPU crash on individual embedding - triggering fallback"
                                 );
@@ -562,7 +675,7 @@ impl EmbeddingEngine {
 
     /// Update embeddings for all symbols in a file (database-only, no in-memory cache)
     pub async fn upsert_file_embeddings(
-        &mut self,
+        &self,
         file_path: &str,
         symbols: &[Symbol],
     ) -> Result<()> {
@@ -589,7 +702,12 @@ impl EmbeddingEngine {
         }
 
         // Generate embeddings for all symbols in one GPU-accelerated batch call
-        match self.model.encode_batch(batch_texts) {
+        let batch_result = {
+            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            model.encode_batch(batch_texts)
+        };
+
+        match batch_result {
             Ok(batch_embeddings) => {
                 // Safe unwrap - we checked is_none() above
                 let db_guard = match self.db.as_ref().unwrap().lock() {
@@ -699,7 +817,7 @@ impl EmbeddingEngine {
 
     /// Remove embeddings for symbols in a file (database-only)
     /// Note: Requires symbol IDs to be provided since we don't track file->symbol mapping in memory
-    pub async fn remove_embeddings_for_symbols(&mut self, symbol_ids: &[String]) -> Result<()> {
+    pub async fn remove_embeddings_for_symbols(&self, symbol_ids: &[String]) -> Result<()> {
         // Require database for deletion operations
         if self.db.is_none() {
             anyhow::bail!(

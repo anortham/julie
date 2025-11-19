@@ -1,6 +1,8 @@
 // Tests extracted from src/embeddings/mod.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod quantization;
+
 use crate::database::SymbolDatabase;
 use crate::embeddings::{CodeContext, EmbeddingEngine, cosine_similarity};
 use crate::extractors::base::{Symbol, SymbolKind, Visibility};
@@ -8,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 // Helper: Create a test database for embedding tests
-fn create_test_db() -> Arc<Mutex<SymbolDatabase>> {
+pub(crate) fn create_test_db() -> Arc<Mutex<SymbolDatabase>> {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
@@ -1705,4 +1707,136 @@ async fn test_build_embedding_text_includes_type_information() {
         "Should include resolved type from types table. Got: '{}'",
         embedding_text
     );
+}
+
+#[cfg_attr(
+    not(feature = "network_models"),
+    ignore = "requires downloadable embedding model"
+)]
+#[tokio::test]
+async fn test_semantic_grouper_batching() {
+    use crate::embeddings::cross_language::SemanticGrouper;
+
+    let temp_dir = TempDir::new().unwrap();
+    let cache_dir = temp_dir.path().to_path_buf();
+    let db = create_test_db();
+
+    let mut engine = EmbeddingEngine::new("bge-small", cache_dir, db)
+        .await
+        .unwrap();
+
+    let grouper = SemanticGrouper::new(0.6); // Lower threshold for test
+
+    // Target: TypeScript interface
+    let target = Symbol {
+        id: "ts_user".to_string(),
+        name: "User".to_string(),
+        kind: SymbolKind::Interface,
+        language: "typescript".to_string(),
+        file_path: "/types.ts".to_string(),
+        start_line: 1,
+        start_column: 1,
+        end_line: 5,
+        end_column: 1,
+        start_byte: 0,
+        end_byte: 100,
+        signature: Some("interface User { id: string; name: string; }".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Candidate 1: C# Class (Similar)
+    let candidate1 = Symbol {
+        id: "cs_user".to_string(),
+        name: "User".to_string(),
+        kind: SymbolKind::Class,
+        language: "csharp".to_string(),
+        file_path: "/User.cs".to_string(),
+        start_line: 1,
+        start_column: 1,
+        end_line: 10,
+        end_column: 1,
+        start_byte: 0,
+        end_byte: 200,
+        signature: Some("public class User { public string Id; public string Name; }".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Candidate 2: SQL Table (Similar)
+    let candidate2 = Symbol {
+        id: "sql_users".to_string(),
+        name: "users".to_string(),
+        kind: SymbolKind::Struct,
+        language: "sql".to_string(),
+        file_path: "/schema.sql".to_string(),
+        start_line: 1,
+        start_column: 1,
+        end_line: 5,
+        end_column: 1,
+        start_byte: 0,
+        end_byte: 100,
+        signature: Some("CREATE TABLE users (id VARCHAR, name VARCHAR)".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    // Candidate 3: Random unrelated symbol
+    let candidate3 = Symbol {
+        id: "random".to_string(),
+        name: "ProcessPayment".to_string(),
+        kind: SymbolKind::Function,
+        language: "csharp".to_string(),
+        file_path: "/Payment.cs".to_string(),
+        start_line: 1,
+        start_column: 1,
+        end_line: 10,
+        end_column: 1,
+        start_byte: 0,
+        end_byte: 200,
+        signature: Some("void ProcessPayment()".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    let all_symbols = vec![target.clone(), candidate1.clone(), candidate2.clone(), candidate3.clone()];
+
+    // This call uses the new batching logic internally
+    let groups = grouper.find_semantic_group(&target, &all_symbols, &mut engine).await.unwrap();
+
+    // Should find at least one group
+    assert!(!groups.is_empty(), "Should find a semantic group");
+    
+    let group = &groups[0];
+    
+    // Group should contain candidate1 (C# User) and candidate2 (SQL users), but NOT candidate3
+    let symbol_ids: Vec<String> = group.symbols.iter().map(|s| s.id.clone()).collect();
+    
+    assert!(symbol_ids.contains(&"cs_user".to_string()), "Group should contain C# User");
+    assert!(symbol_ids.contains(&"sql_users".to_string()), "Group should contain SQL users");
+    assert!(!symbol_ids.contains(&"random".to_string()), "Group should NOT contain unrelated symbol");
 }

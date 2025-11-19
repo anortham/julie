@@ -275,13 +275,13 @@ mod gpu_cpu_logging_accuracy {
             );
             println!("✅ GPU mode: batch_size={} (GPU range)", batch_size);
         } else {
-            // CPU mode: batch size should be 100 (CPU default)
+            // CPU mode: batch size should be 50 (unified default for both CPU and GPU)
             assert_eq!(
-                batch_size, 100,
-                "CPU mode should use batch_size=100, got {}",
+                batch_size, 50,
+                "CPU mode should use batch_size=50 (DEFAULT_BATCH_SIZE), got {}",
                 batch_size
             );
-            println!("✅ CPU mode: batch_size=100 (correct)");
+            println!("✅ CPU mode: batch_size=50 (correct - unified default)");
         }
 
         // CRITICAL: is_using_gpu() and batch_size MUST be consistent

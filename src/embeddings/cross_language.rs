@@ -54,28 +54,41 @@ impl SemanticGrouper {
         let target_embedding = embedding_engine.embed_symbol(symbol, &context)?;
 
         // Step 2: Find candidate symbols from different languages
-        let mut candidates = Vec::new();
+        let mut candidates_to_embed = Vec::new();
 
         for candidate_symbol in all_symbols {
             // Skip symbols from the same language (we want cross-language grouping)
             if candidate_symbol.language == symbol.language {
                 continue;
             }
+            candidates_to_embed.push(candidate_symbol.clone());
+        }
 
-            // Generate embedding for candidate
-            let candidate_context = CodeContext::from_symbol(candidate_symbol);
-            let candidate_embedding =
-                embedding_engine.embed_symbol(candidate_symbol, &candidate_context)?;
+        if candidates_to_embed.is_empty() {
+            return Ok(vec![]);
+        }
 
-            // Calculate similarity
-            let similarity = cosine_similarity(&target_embedding, &candidate_embedding);
+        // Generate embeddings for all candidates in batch
+        let candidate_embeddings = embedding_engine.embed_symbols_batch(&candidates_to_embed)?;
 
-            if similarity >= self.similarity_threshold {
-                candidates.push(SimilarityResult {
-                    symbol_id: candidate_symbol.id.clone(),
-                    similarity_score: similarity,
-                    embedding: candidate_embedding,
-                });
+        // Step 3: Calculate similarities and filter
+        let mut candidates = Vec::new();
+
+        // Create a map for quick lookup of embeddings by ID
+        let embedding_map: HashMap<String, Vec<f32>> = candidate_embeddings.into_iter().collect();
+
+        for candidate_symbol in candidates_to_embed {
+            if let Some(candidate_embedding) = embedding_map.get(&candidate_symbol.id) {
+                // Calculate similarity
+                let similarity = cosine_similarity(&target_embedding, candidate_embedding);
+
+                if similarity >= self.similarity_threshold {
+                    candidates.push(SimilarityResult {
+                        symbol_id: candidate_symbol.id.clone(),
+                        similarity_score: similarity,
+                        embedding: candidate_embedding.clone(),
+                    });
+                }
             }
         }
 

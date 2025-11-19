@@ -59,25 +59,32 @@ impl ModelManager {
     /// Download BGE-Small-EN-V1.5 model from HuggingFace
     ///
     /// Model: BAAI/bge-small-en-v1.5
-    /// Files: model.onnx (~130MB), tokenizer.json (~450KB)
+    /// Files: model.onnx (~130MB) or model_quantized.onnx (~30MB), tokenizer.json (~450KB)
     async fn download_bge_small(&self) -> Result<ModelPaths> {
-        let repo_id = "BAAI/bge-small-en-v1.5";
+        use super::USE_QUANTIZED_MODELS;
 
-        info!("📥 Ensuring BGE-Small-EN-V1.5 model is available...");
+        // Use Xenova's quantized model if requested, otherwise use BAAI's official model
+        let (repo_id, model_filename) = if USE_QUANTIZED_MODELS {
+            ("Xenova/bge-small-en-v1.5", "model_quantized.onnx")
+        } else {
+            ("BAAI/bge-small-en-v1.5", "onnx/model.onnx")
+        };
+
+        info!("📥 Ensuring BGE-Small-EN-V1.5 model is available (quantized: {})...", USE_QUANTIZED_MODELS);
 
         // Get the repository handle
         let repo = self.api.model(repo_id.to_string());
 
         // Download required files with timeout (Issue #5 fix)
         // HuggingFace Hub will cache these and skip download if already present
-        info!("📥 Downloading model.onnx (this may take a while on first run)...");
+        info!("📥 Downloading {} (this may take a while on first run)...", model_filename);
         let model_path = tokio::time::timeout(
             std::time::Duration::from_secs(300), // 5 minute timeout
-            repo.get("onnx/model.onnx"),
+            repo.get(model_filename),
         )
         .await
         .with_context(|| "Model download timed out after 5 minutes")?
-        .with_context(|| format!("Failed to download model.onnx from {}", repo_id))?;
+        .with_context(|| format!("Failed to download {} from {}", model_filename, repo_id))?;
 
         info!("📥 Downloading tokenizer.json...");
         let tokenizer_path = tokio::time::timeout(
