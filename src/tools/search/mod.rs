@@ -43,7 +43,7 @@ use crate::tools::shared::OptimizedResponse;
 
 #[mcp_tool(
     name = "fast_search",
-    description = "Search for code patterns and content using text, semantic, or hybrid search modes.",
+    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid.",
     title = "Fast Unified Search",
     idempotent_hint = true,
     destructive_hint = false,
@@ -55,7 +55,7 @@ use crate::tools::shared::OptimizedResponse;
 pub struct FastSearchTool {
     /// Search query (text or pattern)
     pub query: String,
-    /// Search method: "text" (default), "semantic", or "hybrid"
+    /// Search method: "auto" (default, detects from query), "text", "semantic", or "hybrid"
     #[serde(default = "default_search_method")]
     pub search_method: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
@@ -85,7 +85,7 @@ fn default_limit() -> u32 {
     10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
 fn default_search_method() -> String {
-    "text".to_string()
+    "auto".to_string()
 }
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
@@ -99,6 +99,42 @@ fn default_context_lines() -> Option<u32> {
 
 fn default_search_target() -> String {
     "content".to_string() // fast_search focuses on content, fast_goto handles symbol definitions
+}
+
+/// Auto-detect optimal search method from query characteristics.
+///
+/// Detection logic:
+/// - If query contains code pattern chars → "text" (exact matching)
+/// - Otherwise → "hybrid" (best quality for general search)
+///
+/// Code pattern indicators: `: < > [ ] ( ) { } => ?. &&`
+///
+/// # Examples
+/// ```
+/// use julie::tools::search::detect_search_method;
+///
+/// assert_eq!(detect_search_method(": BaseClass"), "text");
+/// assert_eq!(detect_search_method("ILogger<"), "text");
+/// assert_eq!(detect_search_method("[Fact]"), "text");
+/// assert_eq!(detect_search_method("authentication logic"), "hybrid");
+/// ```
+pub fn detect_search_method(query: &str) -> &'static str {
+    // Multi-char patterns (check first to avoid false positives)
+    let multi_char_patterns = ["=>", "?.", "&&"];
+    for pattern in &multi_char_patterns {
+        if query.contains(pattern) {
+            return "text";
+        }
+    }
+
+    // Single-char patterns
+    let single_char_patterns = [':', '<', '>', '[', ']', '(', ')', '{', '}'];
+    if query.chars().any(|c| single_char_patterns.contains(&c)) {
+        return "text";
+    }
+
+    // Default to hybrid (best quality for natural language)
+    "hybrid"
 }
 
 impl FastSearchTool {
@@ -173,8 +209,17 @@ impl FastSearchTool {
             .await;
         }
 
+        // Auto-detect search method if needed
+        let search_method = if self.search_method == "auto" {
+            let detected = detect_search_method(&self.query);
+            debug!("🔍 Auto-detected search method: {} (query: {})", detected, self.query);
+            detected
+        } else {
+            self.search_method.as_str()
+        };
+
         // Perform search based on search method
-        let symbols = match self.search_method.as_str() {
+        let symbols = match search_method {
             "semantic" => {
                 let workspace_ids = self.resolve_workspace_filter(handler).await?;
                 semantic_search::semantic_search_impl(

@@ -1,6 +1,7 @@
 // Tests extracted from src/tools/search.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod auto_detection_tests;
 mod hybrid_search_tests;
 mod line_mode;
 mod primary_workspace_bug;
