@@ -1,0 +1,44 @@
+{
+  "id": "checkpoint_691dc21c_c86125",
+  "timestamp": 1763557916,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "9a368cc",
+    "dirty": true,
+    "files_changed": [
+      "CLAUDE.md",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "docs/INTELLIGENCE_LAYER.md",
+      "docs/RAG_TRANSFORMATION.md",
+      "docs/SEARCH_FLOW.md",
+      "docs/archive/CLAUDE.md.archive",
+      "fixtures/editing/sources/python/test_database.py",
+      "fixtures/real-world/json/memories.jsonl",
+      "fixtures/real-world/python/test_database.py",
+      "src/tests/tools/refactoring/smart_refactor_control.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/workspace/mod_tests.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/memory/checkpoint.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/workspace/indexing/incremental.rs",
+      "src/tools/workspace/indexing/index.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/workspace/mod.rs",
+      "src/workspace/registry_service.rs"
+    ]
+  },
+  "description": "Refactored 7 tool docs to Serena-style minimal: fast_search (79→42 lines, 47%), fast_goto (44→14, 68%), fast_refs (59→16, 73%), get_symbols (61→18, 70%), trace_call_path (56→18, 68%), checkpoint, recall. Average reduction: ~70% per tool. Remaining: plan, edit_lines, fuzzy_replace, rename_symbol, edit_symbol, fast_explore, manage_workspace.",
+  "tags": [
+    "refactoring",
+    "mcp",
+    "token-optimization"
+  ]
+}

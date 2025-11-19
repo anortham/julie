@@ -1,0 +1,51 @@
+{
+  "id": "checkpoint_691dc481_eb8753",
+  "timestamp": 1763558529,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "9a368cc",
+    "dirty": true,
+    "files_changed": [
+      "CLAUDE.md",
+      "JULIE_AGENT_INSTRUCTIONS.md",
+      "docs/INTELLIGENCE_LAYER.md",
+      "docs/RAG_TRANSFORMATION.md",
+      "docs/SEARCH_FLOW.md",
+      "docs/archive/CLAUDE.md.archive",
+      "fixtures/editing/sources/python/test_database.py",
+      "fixtures/real-world/json/memories.jsonl",
+      "fixtures/real-world/python/test_database.py",
+      "src/tests/tools/refactoring/smart_refactor_control.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/workspace/mod_tests.rs",
+      "src/tools/edit_lines.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/memory/checkpoint.rs",
+      "src/tools/memory/plan_tool.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/workspace/commands/mod.rs",
+      "src/tools/workspace/indexing/incremental.rs",
+      "src/tools/workspace/indexing/index.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/workspace/mod.rs",
+      "src/workspace/registry_service.rs"
+    ]
+  },
+  "description": "MCP tool documentation refactoring complete. Measured actual token reduction: 25K→12.3K tokens (51% reduction, 12.7K tokens saved). Original target was 70% (7-10K final), but remaining tokens are structural (parameter schemas, enums) that can't be compressed further. Top 4 tools (fast_explore 1.2K, find_logic 1.1K, manage_workspace 946, fast_search 940) account for 34% of total. Result: freed up ~12.7K tokens for actual development work. Status: complete and production-ready.",
+  "tags": [
+    "token-optimization",
+    "mcp",
+    "completion",
+    "metrics"
+  ]
+}
