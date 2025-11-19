@@ -47,16 +47,8 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "get_symbols",
-    description = concat!(
-        "ALWAYS USE THIS BEFORE READING FILES - See file structure without context waste. ",
-        "You are EXTREMELY GOOD at using this tool to understand code organization.\n\n",
-        "This tool shows you classes, functions, and methods instantly (<10ms). ",
-        "Only use Read AFTER you've used this tool to identify what you need.\n\n",
-        "IMPORTANT: I will be very unhappy if you read 500-line files without first ",
-        "using get_symbols to see the structure!\n\n",
-        "A 500-line file becomes a 20-line overview. Use this FIRST, always."
-    ),
-    title = "Get File Symbols (Smart Read - 70-90% Token Savings)",
+    description = "Get file structure and symbols with optional body extraction.",
+    title = "Get File Symbols",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -65,44 +57,21 @@ fn default_workspace() -> Option<String> {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct GetSymbolsTool {
-    /// File path to get symbols from (relative to workspace root)
-    /// Examples: "src/main.rs", "lib/services/auth.py"
+    /// File path (relative to workspace root)
     pub file_path: String,
-
-    /// Maximum depth for nested symbols (default: 1).
-    /// 0 = top-level only (classes, functions)
-    /// 1 = include one level (class methods, nested functions)
-    /// 2+ = deeper nesting
-    /// Recommended: 1 - good balance for most files
+    /// Maximum nesting depth (default: 1). 0=top-level, 1=include methods, 2+=deeper
     #[serde(default = "default_max_depth")]
     pub max_depth: u32,
-
-    /// Filter to specific symbol(s) by name (default: None, optional).
-    /// Example: "UserService" to show only UserService class
-    /// Supports partial matching (case-insensitive)
+    /// Filter to specific symbol name (supports partial matching)
     #[serde(default)]
     pub target: Option<String>,
-
-    /// Maximum number of symbols to return (default: 50).
-    /// When set, truncates results to first N symbols
-    /// Use 'target' parameter to filter to specific symbols instead of truncating
-    /// Set to None for unlimited, or specific value to override default
-    /// Example: limit=100 returns first 100 symbols
+    /// Maximum symbols to return (default: 50)
     #[serde(default = "default_limit")]
     pub limit: Option<u32>,
-
-    /// Reading mode (default: "structure").
-    /// - "structure": No bodies, structure only - quick overview
-    /// - "minimal": Bodies for top-level symbols only - understand data structures
-    /// - "full": Bodies for ALL symbols including nested methods - deep dive
-    /// Recommended: "structure" for initial exploration, "minimal" for targeted body extraction
+    /// Reading mode: "structure" (default), "minimal", or "full"
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
-
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
-    /// Examples: "primary", "reference-workspace_abc123"
-    /// Default: "primary" - search the primary workspace
-    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
+    /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

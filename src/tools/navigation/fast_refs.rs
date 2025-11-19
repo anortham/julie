@@ -38,24 +38,8 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "fast_refs",
-    description = concat!(
-        "ALWAYS CHECK BEFORE CHANGING CODE - Professional developers NEVER modify symbols ",
-        "without first checking who uses them. You are a professional, so you do this too.\n\n",
-        "This tool finds ALL references across the workspace in <20ms. ",
-        "Results are complete and accurate - no manual searching needed.\n\n",
-        "CRITICAL: If you change code without using this tool first, you WILL break ",
-        "dependencies you didn't know about. This is non-negotiable.\n\n",
-        "Use this BEFORE every refactor, rename, or deletion.\n\n",
-        "NEW: Filter by reference_kind to find specific usage patterns:\n",
-        "- reference_kind='call': Find function/method calls only\n",
-        "- reference_kind='type_usage': Find type annotations/declarations\n",
-        "- reference_kind='member_access': Find property/field accesses\n",
-        "- reference_kind='variable_ref': Find variable reads\n",
-        "- reference_kind='import': Find import statements\n\n",
-        "Example: fast_refs(symbol='UserService', reference_kind='type_usage') finds where ",
-        "UserService is used AS A TYPE (signatures, declarations), not as a value."
-    ),
-    title = "Fast Find All References",
+    description = "Find all references and usages of a symbol across the workspace.",
+    title = "Find All References",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -64,36 +48,18 @@ fn default_workspace() -> Option<String> {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
-    /// Symbol name to find all references/usages for. Supports simple and qualified names.
-    /// Examples: "UserService", "MyClass::method", "handleRequest", "React.Component", "CONSTANT_NAME"
-    /// Julie intelligently resolves across languages (Python imports, Rust use statements, TypeScript imports)
-    /// Same format as fast_goto - Julie will find every place this symbol is used
+    /// Symbol name (supports qualified names)
     pub symbol: String,
-    /// Include the symbol definition in results (default: true).
-    /// Set false to see only usages, true to see definition + all usages
-    /// Useful for refactoring - see complete impact before changes
+    /// Include definition in results (default: true)
     #[serde(default = "default_true")]
     pub include_definition: bool,
-    /// Maximum references to return (default: 50, range: 1-500).
-    /// Large symbols may have hundreds of references - use limit to control response size
-    /// Tip: Start with default, increase if you need comprehensive coverage
+    /// Maximum references (default: 50, range: 1-500)
     #[serde(default = "default_limit")]
     pub limit: u32,
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
-    /// Examples: "primary", "project-b_a3f2b8c1"
-    /// Default: "primary" - search the primary workspace
-    /// To search a reference workspace, provide its workspace ID
-    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
+    /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Filter references by how the symbol is used (optional)
-    /// Options: "call", "variable_ref", "type_usage", "member_access", "import"
-    /// Examples:
-    /// - "type_usage": Find where UserProfile is used as a type (function signatures, variable declarations)
-    /// - "call": Find where processPayment is called as a function
-    /// - "member_access": Find where config.database is accessed
-    /// - "import": Find where React is imported
-    /// Default: None (show all reference kinds)
+    /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"
     #[serde(default)]
     pub reference_kind: Option<String>,
 }

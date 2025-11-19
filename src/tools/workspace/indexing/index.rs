@@ -131,7 +131,7 @@ impl ManageWorkspaceTool {
             .to_string();
 
         // DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
-        // Same pattern as search_workspace_tantivy and filter_changed_files
+        // Same pattern as other indexing operations to avoid lock contention
         debug!(
             "🐛 [INDEX TRACE J] Generating workspace ID directly from: {}",
             canonical_path
@@ -152,7 +152,7 @@ impl ManageWorkspaceTool {
         };
         debug!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
-        // Tantivy removed - proceeding with SQLite-only indexing
+        // Proceeding with SQLite FTS5 indexing
         debug!("🐛 [INDEX TRACE S] About to call process_files_optimized");
         // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
         self.process_files_optimized(

@@ -33,7 +33,7 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path();
 
-        // Create 1000 files to force a slow Tantivy commit
+        // Create 1000 files to force a slow indexing operation
         for i in 0..1000 {
             std::fs::write(
                 workspace_path.join(format!("file_{}.rs", i)),

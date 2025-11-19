@@ -289,11 +289,11 @@ mod search_tools_tests {
     #[test]
     fn test_multi_word_query_routing_bug() {
         // This test reproduces the bug where multi-word queries fail with primary workspace
-        // but work with "all" workspace due to routing to database vs Tantivy
+        // but work with "all" workspace due to routing differences
 
         // Test case: Multi-word query like "fast search" should work regardless of workspace filter
         // The bug is that workspace="primary" routes to database LIKE search which can't handle spaces
-        // while workspace="all" routes to Tantivy which can handle multi-word queries
+        // while workspace="all" routes to FTS5 which can handle multi-word queries
 
         let multi_word_query = "fast search";
 
@@ -310,7 +310,7 @@ mod search_tools_tests {
             context_lines: None,
         };
 
-        // Test 2: workspace="all" - this works because it routes to Tantivy
+        // Test 2: workspace="all" - this works because it routes to FTS5
         let search_tool_all = FastSearchTool {
             query: multi_word_query.to_string(),
             search_method: "text".to_string(),
@@ -324,7 +324,7 @@ mod search_tools_tests {
         };
 
         // Note: This test documents the bug but doesn't actually test the routing logic
-        // because that requires a full handler setup with database and Tantivy.
+        // because that requires a full handler setup with database and FTS5.
         // The real test is demonstrated through manual testing:
         // - workspace="primary": No results for "fast search"
         // - workspace="all": Found results for "fast search"
@@ -338,7 +338,7 @@ mod search_tools_tests {
 
         // TODO: Add integration test with actual handler setup to verify:
         // 1. search_tool_primary routes to database_search_with_workspace_filter
-        // 2. search_tool_all routes to Tantivy search engine
+        // 2. search_tool_all routes to FTS5 search engine
         // 3. Multi-word queries work with both routing paths after fix
     }
 }

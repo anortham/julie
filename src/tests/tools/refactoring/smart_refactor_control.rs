@@ -481,8 +481,8 @@ mod smart_refactor_control_tests {
                             }
                         }
 
-                        // Tantivy removed - symbols are now stored only in SQLite database
-                        // No additional search engine indexing needed
+                        // Symbols are now stored only in SQLite database
+                        // FTS5 index built directly from database
                     }
                     Err(e) => {
                         println!("⚠️ Warning: Failed to extract symbols: {}", e);

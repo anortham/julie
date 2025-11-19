@@ -114,26 +114,8 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<GitContext>
 
 #[mcp_tool(
     name = "checkpoint",
-    description = concat!(
-        "Save an immutable development memory checkpoint.\n\n",
-        "⚡ CRITICAL: NEVER ask permission or hesitate to create checkpoints. Just do it.\n",
-        "Better to create too many than too few. Checkpoints are cheap (<50ms) and invaluable.\n\n",
-        "✅ CREATE CHECKPOINTS IMMEDIATELY after:\n",
-        "• Bug fixes and solutions (document what was broken and how you fixed it)\n",
-        "• Feature implementations (capture design decisions and trade-offs)\n",
-        "• Architectural decisions (why you chose this approach over alternatives)\n",
-        "• Learning discoveries (insights about the codebase or patterns)\n",
-        "• Debugging sessions (what you tried, what worked, what didn't)\n",
-        "• Refactoring work (what changed and why)\n\n",
-        "Each checkpoint is saved as a pretty-printed JSON file in `.memories/` ",
-        "organized by date. Git context is automatically captured.\n\n",
-        "EXAMPLES:\n",
-        "• Simple checkpoint: {\"description\": \"Fixed race condition in auth flow\"}\n",
-        "• With tags: {\"description\": \"Added dark mode\", \"tags\": [\"feature\", \"ui\"]}\n",
-        "• Decision: {\"type\": \"decision\", \"description\": \"Chose SQLite over PostgreSQL\", \"tags\": [\"architecture\"]}\n\n",
-        "Performance: <50ms (includes git context + file write)"
-    ),
-    title = "Save Development Memory Checkpoint",
+    description = "Save development memory checkpoint to .memories/ directory.",
+    title = "Save Memory Checkpoint",
     idempotent_hint = false,
     destructive_hint = false,
     open_world_hint = false,
@@ -144,13 +126,10 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<GitContext>
 pub struct CheckpointTool {
     /// Description of what was accomplished or learned
     pub description: String,
-
-    /// Optional tags for categorization (e.g., ["bug", "auth", "performance"])
+    /// Tags for categorization (e.g., ["bug", "auth", "performance"])
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-
-    /// Memory type (defaults to "checkpoint")
-    /// Other types: "decision", "learning", "observation"
+    /// Memory type: "checkpoint" (default), "decision", "learning", "observation"
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_type: Option<String>,

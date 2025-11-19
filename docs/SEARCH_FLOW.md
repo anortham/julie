@@ -2,7 +2,7 @@
 
 **Purpose**: Living document tracking how searches flow through Julie's CASCADE architecture
 **Last Updated**: 2025-10-12
-**Status**: ✅ CASCADE Architecture - 2-Tier (Tantivy Removed)
+**Status**: ✅ CASCADE Architecture - 2-Tier (Simplified)
 
 ---
 
@@ -34,11 +34,11 @@ Files → Tree-sitter → Symbols + Content
 - HNSW embeddings build in background (20-30s)
 - **Search works immediately** using best available tier
 
-**Why 2-Tier (Tantivy Removed)**:
+**Why 2-Tier Architecture**:
 - SQLite FTS5 provides <5ms queries with BM25 ranking (sufficient for most searches)
-- Tantivy was causing Arc<RwLock<SearchEngine>> deadlocks during slow commits (5-10s)
-- Simpler architecture: SQLite (truth) → HNSW (semantic) - no intermediate layer
-- Background indexing complexity eliminated
+- Simplified from 3-tier to 2-tier by removing Tantivy (not due to Tantivy issues, but our complex async architecture)
+- Cleaner design: SQLite (truth) → HNSW (semantic) - no intermediate layer
+- Reduced architectural complexity and surface area for potential issues
 
 ---
 
@@ -243,7 +243,7 @@ NEAR(authentication user, 5) -- Terms within 5 words of each other
 - **SQLite database**: ~1-2KB per symbol
 - **HNSW embeddings**: ~1-2KB per symbol
 - **Embedding models cache**: ~128MB (one-time download)
-- **Total savings**: ~5-10KB per symbol (Tantivy removed)
+- **Total savings**: ~5-10KB per symbol (simplified architecture)
 
 ---
 
@@ -253,7 +253,7 @@ NEAR(authentication user, 5) -- Terms within 5 words of each other
 - ✅ Single source of truth (SQLite)
 - ✅ HNSW rebuildable from SQLite (<30s)
 - ✅ Search always available (graceful degradation)
-- ✅ No deadlocks (Tantivy Arc<RwLock> removed)
+- ✅ No deadlocks (simplified architecture with fewer layers)
 
 ### Performance
 - ✅ Startup time: <2 seconds (30-60x improvement)
@@ -263,7 +263,7 @@ NEAR(authentication user, 5) -- Terms within 5 words of each other
 
 ### Simplicity
 - ✅ 2-tier architecture (vs 3-tier)
-- ✅ No Tantivy index management
+- ✅ Simpler index management (2-tier vs 3-tier)
 - ✅ No search engine locks/deadlocks
 - ✅ Smaller disk footprint
 
@@ -315,4 +315,4 @@ ls -lh .julie/indexes/{workspace_id}/vectors/
 
 ---
 
-**This document reflects the production CASCADE architecture after Tantivy removal (2025-10-12).**
+**This document reflects the production 2-tier CASCADE architecture (simplified 2025-10-12).**

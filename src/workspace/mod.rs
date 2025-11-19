@@ -222,7 +222,7 @@ impl JulieWorkspace {
             julie_dir.display()
         );
 
-        // NOTE: Per-workspace directories (db/, tantivy/, vectors/) are created on-demand
+        // NOTE: Per-workspace directories (db/, vectors/) are created on-demand
         // when each workspace is indexed. Here we only create shared infrastructure.
         let folders = [
             julie_dir.join("indexes"), // Per-workspace root (workspaces created on demand)

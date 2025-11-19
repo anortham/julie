@@ -454,7 +454,7 @@ impl WorkspaceRegistryService {
         Ok(())
     }
 
-    /// Update workspace index size only (called by background Tantivy task)
+    /// Update workspace index size only (called by background embedding task)
     /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
     pub async fn update_index_size(&self, workspace_id: &str, index_size_bytes: u64) -> Result<()> {
         let _lock = self.registry_lock.lock().await;

@@ -669,10 +669,10 @@ let test_cases = vec![
         expected_keywords: vec!["SQLite", "HNSW", "2-tier", "progressive enhancement"],
     },
     TestCase {
-        query: "Why was Tantivy removed?",
+        query: "Why is the architecture 2-tier?",
         expected_file: "CLAUDE.md",
         expected_section: "CASCADE Architecture",
-        expected_keywords: vec!["Arc<RwLock>", "deadlock", "simplification"],
+        expected_keywords: vec!["SQLite FTS5", "HNSW", "simplified", "complexity"],
     },
     TestCase {
         query: "What is SOURCE/CONTROL methodology?",
@@ -703,7 +703,7 @@ let test_cases = vec![
 
 **Template:**
 ```markdown
-# ADR-001: Remove Tantivy Search Engine
+# ADR-001: Simplify to 2-Tier CASCADE Architecture
 
 **Status:** Accepted
 **Date:** 2025-10-12
@@ -713,41 +713,42 @@ let test_cases = vec![
 ## Context
 
 Julie originally used 3-tier CASCADE: SQLite FTS5 → Tantivy → HNSW Semantic.
-Tantivy was causing Arc<RwLock> deadlocks and 5-10s commit times.
+Our complex async architecture was difficult to manage with three search layers, leading to
+architectural complexity and integration challenges.
 
 ## Decision
 
-Remove Tantivy entirely, simplify to 2-tier: SQLite FTS5 → HNSW Semantic.
+Simplify to 2-tier architecture: SQLite FTS5 → HNSW Semantic.
 
 ## Rationale
 
-1. **Deadlock Elimination**: Arc<RwLock> contention was causing crashes
-2. **Performance**: SQLite FTS5 alone is <5ms, sufficient for text search
-3. **Simplicity**: Fewer moving parts, easier maintenance
-4. **Proven**: SQLite FTS5 has decades of production use
+1. **Reduced Complexity**: Fewer moving parts, easier to maintain and debug
+2. **Performance**: SQLite FTS5 alone is <5ms, sufficient for text search needs
+3. **Simplicity**: Streamlined architecture with clear separation of concerns
+4. **Proven**: SQLite FTS5 has decades of production use and proven reliability
 
 ## Alternatives Considered
 
-1. **Fix Tantivy deadlocks**: Too complex, Arc<RwLock> fundamentally problematic
-2. **Use different Rust search engine**: Would face similar concurrency issues
-3. **Keep Tantivy, disable writes**: Defeats purpose of incremental indexing
+1. **Keep 3-tier architecture**: Would maintain complexity in our async integration layer
+2. **Use different search engine**: Would face similar integration challenges
+3. **Rewrite async architecture**: Too large a refactor for uncertain benefit
 
 ## Consequences
 
 **Positive:**
-- 30-60x faster startup (no Tantivy blocking)
-- Zero deadlocks
-- Simpler architecture
-- Per-workspace isolation trivial
+- Faster startup (simpler initialization)
+- Reduced architectural complexity
+- Clearer separation of concerns
+- Per-workspace isolation is simpler
 
 **Negative:**
-- Slightly less sophisticated text search (no BM25F, just BM25)
-- Lost some Tantivy-specific features
+- Slightly less sophisticated text search features (BM25 vs BM25F)
+- Lost some advanced Tantivy-specific features
 
 ## Implementation
 
 - Commit: 2a37142
-- Removed: src/search/tantivy/
+- Removed: src/search/tantivy/ and integration layer
 - Updated: CASCADE to 2-tier in SEARCH_FLOW.md
 ```
 

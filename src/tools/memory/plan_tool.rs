@@ -92,33 +92,7 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<super::GitC
 
 #[mcp_tool(
     name = "plan",
-    description = concat!(
-        "Create and manage mutable development plans.\n\n",
-        "**CRITICAL: Plans represent HOURS of planning work. Save them immediately after ExitPlanMode.**\n\n",
-        "⚠️ MANDATORY PATTERN:\n",
-        "When you call ExitPlanMode → save plan within 1 exchange using plan({ action: \"save\", ... })\n\n",
-        "DO NOT ask \"should I save this plan?\" - YES, ALWAYS. Save it immediately or the planning work is lost.\n\n",
-        "**When to use:**\n",
-        "- After ExitPlanMode (MANDATORY - save within 1 exchange)\n",
-        "- Track task progress (update as work completes)\n",
-        "- Mark plans complete when done\n",
-        "- List plans to see active work\n",
-        "- Activate a plan to make it the current focus\n\n",
-        "**Actions:**\n",
-        "- save: Create new plan (use after ExitPlanMode)\n",
-        "- get: Retrieve specific plan by ID\n",
-        "- list: See all plans (optionally filter by status)\n",
-        "- activate: Set as active plan (deactivates all others)\n",
-        "- update: Modify existing plan (content, status, etc.)\n",
-        "- complete: Mark plan as done\n\n",
-        "**Examples:**\n",
-        "• Create plan: {\"action\": \"save\", \"title\": \"Add Search\", \"content\": \"## Tasks\\n- [ ] Design\"}\n",
-        "• Update plan: {\"action\": \"update\", \"id\": \"plan_add-search\", \"content\": \"...\"}\n",
-        "• Complete plan: {\"action\": \"complete\", \"id\": \"plan_add-search\"}\n",
-        "• List active: {\"action\": \"list\", \"status\": \"active\"}\n\n",
-        "Plans are stored in `.memories/plans/` as mutable JSON files. ",
-        "Only ONE plan can be active at a time."
-    ),
+    description = "Create and manage development plans stored in .memories/plans/.",
     title = "Manage Development Plans",
     idempotent_hint = false,
     destructive_hint = false,
@@ -128,26 +102,21 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<super::GitC
 )]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct PlanTool {
-    /// Action to perform
+    /// Action: "save", "get", "list", "activate", "update", "complete"
     pub action: PlanAction,
-
     /// Plan title (required for "save")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-
     /// Plan ID (required for get, update, activate, complete)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-
-    /// Plan content in markdown (optional for save/update)
+    /// Plan content in markdown
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-
-    /// Plan status (optional for update)
+    /// Plan status
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-
-    /// Activate after saving (optional for save, defaults to true)
+    /// Activate after saving (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activate: Option<bool>,
 }

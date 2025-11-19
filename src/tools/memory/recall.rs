@@ -42,30 +42,8 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
 
 #[mcp_tool(
     name = "recall",
-    description = concat!(
-        "Retrieve development memory checkpoints with optional filtering.\n\n",
-        "⚡ USE THIS PROACTIVELY to:\n",
-        "• Remember how you solved similar problems before\n",
-        "• Understand past architectural decisions and their rationale\n",
-        "• Avoid repeating mistakes from previous debugging sessions\n",
-        "• Build on insights and learnings from earlier work\n\n",
-        "Returns memories in reverse chronological order (most recent first). ",
-        "Use filters to narrow results by type, date range, or tags.\n\n",
-        "FILTERING:\n",
-        "• type: Filter by memory type (checkpoint, decision, learning, etc.)\n",
-        "• since: Return memories since this date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)\n",
-        "• until: Return memories until this date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)\n",
-        "• limit: Maximum number of results (default: 10)\n\n",
-        "EXAMPLES:\n",
-        "• Recent checkpoints: {\"limit\": 10}\n",
-        "• Decisions only: {\"type\": \"decision\", \"limit\": 5}\n",
-        "• Since date: {\"since\": \"2025-01-01\", \"limit\": 20}\n",
-        "• All learnings: {\"type\": \"learning\"}\n\n",
-        "TIP: For semantic search across memories, use fast_search with:\n",
-        "file_pattern=\".memories/**/*.json\"\n\n",
-        "Performance: <5ms for chronological queries"
-    ),
-    title = "Recall Development Memories",
+    description = "Retrieve development memory checkpoints with filtering options.",
+    title = "Recall Memories",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -74,19 +52,16 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
 )]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct RecallTool {
-    /// Maximum number of results to return (default: 10)
+    /// Maximum results (default: 10)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-
-    /// Return memories since this date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)
+    /// Since date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, YYYY-MM-DDTHH:MM:SSZ)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since: Option<String>,
-
-    /// Return memories until this date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or YYYY-MM-DDTHH:MM:SSZ)
+    /// Until date (ISO 8601: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, YYYY-MM-DDTHH:MM:SSZ)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub until: Option<String>,
-
-    /// Filter by memory type (checkpoint, decision, learning, etc.)
+    /// Filter by type: "checkpoint", "decision", "learning", etc.
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_type: Option<String>,

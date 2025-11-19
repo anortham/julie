@@ -3,7 +3,7 @@ Comprehensive tests for Miller's LanceDB integration.
 
 Tests cover:
 - Database initialization and schema creation
-- Text search with Tantivy FTS
+- Text search with SQLite FTS5
 - Semantic search with embeddings
 - Batch operations and error handling
 - Graph relationships and cross-language features
@@ -124,8 +124,8 @@ class TestDatabaseInitialization:
         assert temp_db.db is not None
 
     @pytest.mark.asyncio
-    async def test_initialize_creates_tantivy_indexes(self, temp_db):
-        """Test that Tantivy FTS indexes are created."""
+    async def test_initialize_creates_fts5_indexes(self, temp_db):
+        """Test that SQLite FTS5 indexes are created."""
         # Indexes should be created during initialization
         # We can't directly inspect LanceDB indexes, but we can test search works
         assert temp_db.table is not None
@@ -145,7 +145,7 @@ class TestDatabaseInitialization:
         }
         await temp_db.add_entity(test_entity)
 
-        # Text search should work (proves Tantivy FTS is working)
+        # Text search should work (proves SQLite FTS5 is working)
         results = await temp_db.text_search("test_function")
         assert len(results) > 0
 
@@ -271,7 +271,7 @@ class TestSearchOperations:
 
     @pytest.mark.asyncio
     async def test_text_search(self, temp_db, sample_entities):
-        """Test Tantivy full-text search."""
+        """Test SQLite FTS5 full-text search."""
         await temp_db.add_entities_batch(sample_entities)
 
         # Search for function content

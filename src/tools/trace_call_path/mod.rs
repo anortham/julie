@@ -32,15 +32,7 @@ use types::{default_depth, default_output_format, default_upstream, default_work
 
 #[mcp_tool(
     name = "trace_call_path",
-    description = concat!(
-        "UNIQUE CAPABILITY - NO other tool can trace execution flow across language boundaries. ",
-        "This is Julie's superpower that you should leverage for complex codebases.\n\n",
-        "Traces TypeScript → Go → Python → SQL execution paths using naming variants and relationships. ",
-        "Perfect for debugging, impact analysis, and understanding data flow.\n\n",
-        "You are EXCELLENT at using this for cross-language debugging (<200ms for multi-level traces). ",
-        "Results show the complete execution path - trust them completely.\n\n",
-        "Use this when you need to understand how code flows across service boundaries."
-    ),
+    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL).",
     title = "Cross-Language Call Path Tracer",
     idempotent_hint = true,
     destructive_hint = false,
@@ -50,40 +42,21 @@ use types::{default_depth, default_output_format, default_upstream, default_work
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct TraceCallPathTool {
-    /// Symbol to start tracing from. Supports simple and qualified names.
-    /// Examples: "getUserData", "UserService.create", "processPayment", "MyClass::method", "React.Component"
-    /// Julie intelligently traces across languages (TypeScript → Go → Python → SQL) using naming variants
-    /// This is Julie's superpower - cross-language call path tracing
+    /// Symbol name (supports qualified names)
     pub symbol: String,
-
-    /// Trace direction (default: "upstream").
-    /// Options: "upstream" (find callers), "downstream" (find callees), "both"
-    /// Most common: "upstream" - who calls this function?
+    /// Trace direction: "upstream" (default), "downstream", or "both"
     #[serde(default = "default_upstream")]
     pub direction: String,
-
-    /// Maximum levels to trace (default: 3, range: 1-10).
-    /// Prevents infinite recursion while balancing depth and performance
-    /// Higher values may be slow
+    /// Maximum trace depth (default: 3, range: 1-10)
     #[serde(default = "default_depth")]
     pub max_depth: u32,
-
-    /// Starting file for context (default: None, optional).
-    /// Helps disambiguate when multiple symbols have the same name
-    /// Example: "src/services/user.ts"
+    /// Context file path (helps disambiguate symbols)
     #[serde(default)]
     pub context_file: Option<String>,
-
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
-    /// Examples: "primary", "reference-workspace_abc123"
-    /// Default: "primary" - search the primary workspace
-    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
+    /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-
-    /// Output format (default: "json").
-    /// "json" = Machine-parseable structured data (recommended for AI agents)
-    /// "tree" = Human-readable ASCII tree diagram with file locations
+    /// Output format: "json" (default) or "tree"
     #[serde(default = "default_output_format")]
     pub output_format: String,
 }

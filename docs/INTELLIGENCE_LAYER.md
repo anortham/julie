@@ -127,7 +127,7 @@ variants = [
 
 ## How It All Works Together (CASCADE)
 
-The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to expensive ones. As of 2025-10-12, Tantivy has been removed for a simplified 2-tier architecture:
+The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to expensive ones. As of 2025-10-12, the architecture was simplified to a 2-tier CASCADE design:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -146,7 +146,7 @@ The Intelligence Layer uses **progressive enhancement** - try cheap operations f
 └─────────────────────────────────────────────────┘
 ```
 
-**Architecture Change (2025-10-12)**: Tantivy removed, all indexed text search now uses SQLite FTS5 for simpler architecture and eliminated Arc<RwLock> deadlocks
+**Architecture Change (2025-10-12)**: Simplified to 2-tier architecture, all indexed text search now uses SQLite FTS5 for cleaner design and reduced complexity
 
 **Total worst-case**: ~75ms to find a symbol across languages with semantic fallback
 
@@ -266,7 +266,7 @@ IntelligenceConfig::relaxed()
 | Operation | Algorithm | Complexity | Typical Time |
 |-----------|-----------|------------|--------------|
 | Naming variants generation | String processing | O(n) | <1ms |
-| Variant search (each) | Tantivy indexed | O(log N) | <5ms |
+| Variant search (each) | SQLite FTS5 indexed | O(log N) | <5ms |
 | Symbol kind check | HashMap lookup | O(1) | <1μs |
 | Semantic similarity | HNSW vector search | O(log N) | <50ms |
 
@@ -353,7 +353,7 @@ cargo test navigation
 
 ### Quantitative
 - ✅ **Naming variants**: 5 conventions generated in <1ms
-- ✅ **Search performance**: <10ms per variant (Tantivy)
+- ✅ **Search performance**: <10ms per variant (SQLite FTS5)
 - ✅ **Semantic similarity**: <50ms (HNSW with 6k vectors)
 - ✅ **Cross-language matches**: 3-5x more results than text-only search
 - ✅ **Zero regressions**: 481/485 tests passing (same as before)

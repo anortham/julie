@@ -63,21 +63,8 @@ fn default_dry_run() -> bool {
 
 #[mcp_tool(
     name = "fuzzy_replace",
-    description = concat!(
-        "BULK PATTERN REPLACEMENT - Replace patterns across one file or many files at once. ",
-        "You are EXCELLENT at using this for refactoring, renaming, and fixing patterns. ",
-        "This consolidates your search→read→edit workflow into one atomic operation.\n\n",
-        "**Multi-file mode**: Use file_pattern to replace across multiple files ",
-        "(e.g., '**/*.rs' for all Rust files, 'src/**/*.ts' for TypeScript in src/)\n\n",
-        "**Single-file mode**: Use file_path for precise single-file edits\n\n",
-        "**Fuzzy matching**: Unlike exact search, this handles typos and variations ",
-        "(e.g., 'getUserData()' matches 'getUserDat()' with threshold 0.8)\n\n",
-        "**Preview by default**: Tool runs in preview mode first, showing EXACTLY what will change. ",
-        "Review the preview, then set dry_run=false to apply changes. Operation succeeds perfectly. ",
-        "You never need to verify results - the tool validates everything atomically.\n\n",
-        "**Perfect for**: Renaming, refactoring patterns, fixing typos across codebase"
-    ),
-    title = "Bulk Fuzzy Pattern Replacement",
+    description = "Replace patterns across files with fuzzy matching (single-file or multi-file mode).",
+    title = "Fuzzy Pattern Replacement",
     idempotent_hint = false,
     destructive_hint = true,
     open_world_hint = false,
@@ -86,49 +73,26 @@ fn default_dry_run() -> bool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FuzzyReplaceTool {
-    /// File path for single-file mode (relative to workspace root)
-    /// Omit when using file_pattern for multi-file mode
-    /// Examples: "src/main.rs", "lib/services/auth.py"
+    /// File path for single-file mode (omit when using file_pattern)
     #[serde(default)]
     pub file_path: Option<String>,
-
-    /// Glob pattern for multi-file mode (NEW)
-    /// Examples: "**/*.rs", "src/**/*.ts", "*.py"
-    /// Omit when using file_path for single-file mode
+    /// Glob pattern for multi-file mode (omit when using file_path)
     #[serde(default)]
     pub file_pattern: Option<String>,
-
-    /// Pattern to find (will use fuzzy matching)
-    /// Example: "function getUserData()" (will match "function getUserDat()" with typo)
+    /// Pattern to find
     pub pattern: String,
-
     /// Replacement text
-    /// Example: "function fetchUserData()"
     pub replacement: String,
-
-    /// Fuzzy match threshold (default: 0.8, range: 0.0-1.0).
-    /// 0.0 = perfect match only
-    /// 0.5 = moderate tolerance
-    /// 0.8 = high tolerance (recommended)
-    /// 1.0 = match anything
+    /// Fuzzy match threshold (default: 0.8, range: 0.0-1.0)
     #[serde(default = "default_threshold")]
     pub threshold: f32,
-
-    /// Match distance - how far to search in characters (default: 1000).
-    /// Higher values = slower but more comprehensive search
-    /// Recommended: 1000 for most code files
+    /// Match distance in characters (default: 1000)
     #[serde(default = "default_distance")]
     pub distance: i32,
-
-    /// Preview changes without applying them (default: true).
-    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
-    /// Set false only when you're confident the changes are correct
+    /// Preview without applying (default: true)
     #[serde(default = "default_dry_run")]
     pub dry_run: bool,
-
-    /// Validate changes before applying (default: true).
-    /// Performs brace/bracket matching to ensure structural integrity
-    /// Recommended: true for safety
+    /// Validate structural integrity (default: true)
     #[serde(default = "default_true")]
     pub validate: bool,
 }

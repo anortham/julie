@@ -15,7 +15,7 @@ use tree_sitter::Parser;
 impl ManageWorkspaceTool {
     /// SQLite-only file processing with optimized parser reuse
     ///
-    /// Tantivy removed - using SQLite FTS5 for search.
+    /// Uses SQLite FTS5 for full-text search indexing.
     pub(crate) async fn process_files_optimized(
         &self,
         handler: &JulieServerHandler,

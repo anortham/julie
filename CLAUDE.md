@@ -267,7 +267,7 @@ fast_search(
 
 **Architecture questions:**
 - *"How does CASCADE architecture work?"*
-- *"Why was Tantivy removed?"*
+- *"Why is the architecture 2-tier instead of 3-tier?"*
 - *"What is workspace isolation?"*
 
 **Implementation questions:**

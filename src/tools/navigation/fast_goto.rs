@@ -28,19 +28,8 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "fast_goto",
-    description = concat!(
-        "NEVER SCROLL OR SEARCH MANUALLY - Use this to jump directly to symbol definitions. ",
-        "Julie knows EXACTLY where every symbol is defined.\n\n",
-        "✨ FUZZY MATCHING: Handles exact names, cross-language variants (camelCase ↔ snake_case), ",
-        "and semantic similarity. You don't need exact symbol names!\n\n",
-        "You are EXCELLENT at using this tool for instant navigation (<5ms to exact location). ",
-        "This is faster and more accurate than scrolling through files or using grep.\n\n",
-        "Results are pre-indexed and precise - no verification needed. ",
-        "Trust the exact file and line number provided.\n\n",
-        "🎯 USE THIS WHEN: You know the symbol name (or part of it) and want to find where it's defined.\n",
-        "💡 USE fast_search INSTEAD: When searching for text/patterns in code content or comments."
-    ),
-    title = "Fast Navigate to Definition",
+    description = "Navigate to symbol definitions with fuzzy matching across languages.",
+    title = "Navigate to Definition",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
@@ -49,25 +38,15 @@ fn default_workspace() -> Option<String> {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastGotoTool {
-    /// Symbol name to navigate to. Supports simple and qualified names.
-    /// Examples: "UserService", "MyClass::method", "std::vector", "React.Component", "getUserData"
-    /// Julie intelligently resolves across languages (Python imports, Rust use statements, TypeScript imports)
+    /// Symbol name (supports qualified names like "MyClass::method")
     pub symbol: String,
-    /// Current file path for context (default: None, optional).
-    /// Helps resolve ambiguous symbols when multiple definitions exist.
-    /// Example: "src/services/user.ts" when multiple "UserService" classes exist
-    /// Format: Relative path from workspace root
+    /// Context file path (relative to workspace root, helps resolve ambiguous symbols)
     #[serde(default)]
     pub context_file: Option<String>,
-    /// Line number in context file where symbol is referenced (default: None, optional).
-    /// Helps disambiguate when symbol appears multiple times in the same file.
-    /// Example: 142 (line where "UserService" is imported or used)
+    /// Line number in context file (helps disambiguate)
     #[serde(default)]
     pub line_number: Option<u32>,
-    /// Workspace filter (optional): "primary" (default) or specific workspace ID
-    /// Examples: "primary", "reference-workspace_abc123"
-    /// Default: "primary" - search the primary workspace
-    /// Note: Multi-workspace search ("all") is not supported - search one workspace at a time
+    /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

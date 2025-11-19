@@ -987,7 +987,6 @@ Read the TODO.md file. Your user updates this file to track observations and ide
 **Current Achievements**:
 - ✅ All 30 Language Extractors Operational (Complete)
 - ✅ **CASCADE Architecture Simplified**: SQLite FTS5 → HNSW Semantic (2-tier)
-- ✅ **Tantivy Removed**: Eliminated Arc<RwLock> deadlocks, simpler architecture
 - ✅ **Per-Workspace Isolation**: Complete workspace separation in `indexes/{workspace_id}/`
 - ✅ **SQLite FTS5 Search**: <5ms BM25 ranking, AND/OR boolean logic, no locking issues
 - ✅ <2s Startup Time with Background Indexing (30-60x improvement)
@@ -999,7 +998,6 @@ Read the TODO.md file. Your user updates this file to track observations and ide
   - Validation false positives (absolute → delta balance)
   - String mutation index corruption
   - **Registry deadlock** (background task waiting indefinitely)
-  - **Tantivy Arc<RwLock> deadlocks** (5-10s commits causing contention)
 - ✅ **Comprehensive Test Coverage**: 636 tests passing
   - 18 fuzzy_replace unit tests (Levenshtein, UTF-8, validation)
   - 15 trace_call_path unit tests (parameters, cross-language)

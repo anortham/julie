@@ -119,7 +119,7 @@ async fn test_health_check() {
 #[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
 // Run manually with: cargo test test_concurrent_manage_workspace --ignored
 async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
-    // Skip expensive embedding initialization but allow Tantivy to initialize
+    // Skip expensive embedding initialization but allow FTS5 to initialize
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     }

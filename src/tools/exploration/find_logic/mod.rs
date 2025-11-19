@@ -138,9 +138,9 @@ impl FindLogicTool {
         let mut search_insights: Vec<String> = Vec::new();
 
         // ═══════════════════════════════════════════════════════════════════
-        // TIER 1: Ultra-Fast Keyword Search (Tantivy + FTS5) - <10ms
+        // TIER 1: Ultra-Fast Keyword Search (SQLite FTS5) - <10ms
         // ═══════════════════════════════════════════════════════════════════
-        debug!("🔍 Tier 1: Ultra-fast keyword search via Tantivy/FTS5");
+        debug!("🔍 Tier 1: Ultra-fast keyword search via FTS5");
         match self.search_by_keywords(handler).await {
             Ok(keyword_matches) => {
                 search_insights.push(format!("Keyword search: {} matches", keyword_matches.len()));

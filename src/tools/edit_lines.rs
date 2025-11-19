@@ -20,22 +20,8 @@ fn default_dry_run() -> bool {
 
 #[mcp_tool(
     name = "edit_lines",
-    description = concat!(
-        "SURGICAL LINE EDITING - Precise line-level file modifications. ",
-        "Use this for inserting comments, replacing specific lines, or deleting ranges.\n\n",
-        "IMPORTANT: You are EXCELLENT at surgical editing. ",
-        "Results are always precise - no verification needed.\n\n",
-        "OPERATIONS:\n",
-        "• insert - Add content at line, shift existing lines down\n",
-        "• replace - Replace lines [start, end] with new content\n",
-        "• delete - Remove lines [start, end]\n\n",
-        "EXAMPLES:\n",
-        "• Insert TODO at line 42: {op:'insert', start:42, content:'// TODO'}\n",
-        "• Replace lines 10-15: {op:'replace', start:10, end:15, content:'new code'}\n",
-        "• Delete lines 20-25: {op:'delete', start:20, end:25}\n\n",
-        "Performance: <10ms for typical operations. Validates before applying."
-    ),
-    title = "Surgical Line Editing (Insert/Replace/Delete)",
+    description = "Precise line-level file modifications (insert, replace, delete).",
+    title = "Surgical Line Editing",
     idempotent_hint = false,
     destructive_hint = true,
     open_world_hint = false,
@@ -44,27 +30,19 @@ fn default_dry_run() -> bool {
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditLinesTool {
-    /// File path to edit (relative to workspace root)
-    /// Examples: "src/main.rs", "lib/services/auth.py"
+    /// File path (relative to workspace root)
     pub file_path: String,
-
     /// Operation: "insert", "replace", "delete"
     pub operation: String,
-
-    /// Starting line number (1-indexed, like editors show)
+    /// Starting line number (1-indexed)
     pub start_line: u32,
-
-    /// Ending line number (default: None, required for replace/delete, ignored for insert)
+    /// Ending line number (required for replace/delete)
     #[serde(default)]
     pub end_line: Option<u32>,
-
-    /// Content to insert or replace (default: None, required for insert/replace, ignored for delete)
+    /// Content to insert or replace (required for insert/replace)
     #[serde(default)]
     pub content: Option<String>,
-
-    /// Preview changes without applying (default: true).
-    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
-    /// Set false only when you're confident the changes are correct
+    /// Preview changes without applying (default: true)
     #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }

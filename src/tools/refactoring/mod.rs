@@ -53,79 +53,45 @@ pub enum EditOperation {
 /// Focused tool for workspace-wide symbol renaming (replaces rename_symbol operation)
 #[mcp_tool(
     name = "rename_symbol",
-    description = concat!(
-        "WORKSPACE-WIDE SYMBOL RENAMING - Rename symbols across all files in the workspace. ",
-        "You are EXCELLENT at using this for refactoring variable, function, and class names. ",
-        "This tool understands code structure and updates all references atomically.\n\n",
-        "**Perfect for**: Renaming functions, classes, variables across entire workspace\n\n",
-        "**Always use fast_refs BEFORE renaming** to see impact!\n\n",
-        "Unlike text search-and-replace, this preserves code semantics and avoids strings/comments."
-    ),
-    title = "Workspace-Wide Symbol Renaming"
+    description = "Rename symbols workspace-wide with semantic awareness.",
+    title = "Symbol Renaming"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RenameSymbolTool {
     /// Current symbol name
     pub old_name: String,
-
     /// New symbol name
     pub new_name: String,
-
-    /// Optional scope limitation (future enhancement)
+    /// Scope limitation
     #[serde(default)]
     pub scope: Option<String>,
-
-    /// Preview changes without applying them (default: true).
-    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
-    /// Set false only when you're confident the changes are correct
+    /// Preview without applying (default: true)
     #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }
 
-/// Focused tool for file-specific semantic editing (replaces replace_symbol_body, insert_relative_to_symbol, extract_symbol_to_file)
 #[mcp_tool(
     name = "edit_symbol",
-    description = concat!(
-        "FILE-SPECIFIC SEMANTIC EDITING - Modify function bodies, insert code, or move symbols between files. ",
-        "You are EXCELLENT at using this for precise code transformations. ",
-        "This tool understands code structure and preserves formatting automatically.\n\n",
-        "**Operations** (use exact lowercase snake_case values):\n",
-        "• replace_body: Replace function/method implementation\n",
-        "• insert_relative: Add code before/after symbols\n",
-        "• extract_to_file: Move symbols to different files with import updates\n\n",
-        "**Perfect for**: Updating implementations, adding helper functions, reorganizing code\n\n",
-        "Unlike text editing, this preserves indentation and code structure automatically."
-    ),
-    title = "File-Specific Semantic Editing"
+    description = "Edit symbols with operations: replace_body, insert_relative, extract_to_file.",
+    title = "Semantic Symbol Editing"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditSymbolTool {
-    /// File path to edit (relative to workspace root)
-    /// Examples: "src/main.rs", "lib/services/auth.py"
+    /// File path (relative to workspace root)
     pub file_path: String,
-
-    /// Symbol name to edit (function, method, class)
-    /// Examples: "processPayment", "UserService", "validateInput"
+    /// Symbol name (function, method, class)
     pub symbol_name: String,
-
-    /// Type of edit operation
+    /// Operation type
     pub operation: EditOperation,
-
-    /// Content to insert or replacement body
-    /// (For replace_body: new function body, For insert_relative: code to insert, For extract_to_file: unused)
+    /// Content to insert or replace
     pub content: String,
-
-    /// Position for insert_relative operation: "before" or "after" (default: "after")
+    /// Position for insert_relative: "before" or "after" (default: "after")
     #[serde(default)]
     pub position: Option<String>,
-
-    /// Target file for extract_to_file operation
+    /// Target file for extract_to_file
     #[serde(default)]
     pub target_file: Option<String>,
-
-    /// Preview changes without applying them (default: true).
-    /// RECOMMENDED: Review preview first, then set dry_run=false to apply changes
-    /// Set false only when you're confident the changes are correct
+    /// Preview without applying (default: true)
     #[serde(default = "default_dry_run")]
     pub dry_run: bool,
 }

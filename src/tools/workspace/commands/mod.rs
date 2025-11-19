@@ -58,22 +58,8 @@ pub enum WorkspaceCommand {
 
 #[mcp_tool(
     name = "manage_workspace",
-    description = concat!(
-        "MANAGE PROJECT WORKSPACES - Index, add, remove, and configure multiple project workspaces. ",
-        "You are EXCELLENT at managing Julie's workspace system.\n\n",
-        "**Primary workspace**: Where Julie runs (gets `.julie/` directory)\n",
-        "**Reference workspaces**: Other codebases you want to search (indexed into primary workspace)\n\n",
-        "Common operations:\n",
-        "• index - Index or re-index workspace (run this first!)\n",
-        "• list - See all registered workspaces with status\n",
-        "• add - Add reference workspace for cross-project search\n",
-        "• health - Check system status and index health\n",
-        "• stats - View workspace statistics\n",
-        "• clean - Remove orphaned/expired workspaces\n\n",
-        "💡 TIP: Always run 'index' operation first when starting in a new workspace. ",
-        "Use 'health' operation to diagnose issues."
-    ),
-    title = "Manage Julie Workspaces",
+    description = "Manage workspaces: index, list, add, remove, stats, clean, refresh, health.",
+    title = "Manage Workspaces",
     idempotent_hint = false,
     destructive_hint = false,
     open_world_hint = false,

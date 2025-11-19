@@ -21,7 +21,7 @@ impl ManageWorkspaceTool {
         workspace_path: &Path,
     ) -> Result<Vec<PathBuf>> {
         // 🔥 CRITICAL DEADLOCK FIX: Generate workspace ID directly instead of registry lookup
-        // Same fix as search_workspace_tantivy - avoids registry lock contention
+        // Same fix as other indexing operations - avoids registry lock contention
         let workspace_id = if let Some(_workspace) = handler.get_workspace().await? {
             // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
             // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
@@ -202,7 +202,7 @@ impl ManageWorkspaceTool {
                 if stored_hash == &current_hash {
                     // File unchanged by hash, but check if it needs FILE_CONTENT symbols
                     // For files without parsers (text, json, etc.), we need to ensure they have
-                    // FILE_CONTENT symbols in Tantivy. This is a migration for existing workspaces.
+                    // FILE_CONTENT symbols in FTS5. This is a migration for existing workspaces.
 
                     // Check if this is a language without a parser
                     let needs_file_content = matches!(
