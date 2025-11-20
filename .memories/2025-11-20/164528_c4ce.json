@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691f45a8_654dd4",
+  "timestamp": 1763657128,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05c1036",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5a COMPLETE! Updated MCP tool descriptions for fast_search, fast_refs, and fast_explore to document new defaults (limit=10) and version 2.0 metadata. All tools now clearly communicate token efficiency optimizations to users. Changes: 3 MCP tool descriptions updated with Julie 2.0 messaging, version metadata added."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691f398e_4306d1",
+  "timestamp": 1763654030,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05c1036",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5a: Implemented data reduction features - updated default limits (50→10) for fast_refs and fast_explore, added confidence filtering (>0.7 threshold), implemented group-by-file deduplication for token efficiency. Estimated 80% token reduction from fewer, higher-quality results."
+}

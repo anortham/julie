@@ -46,7 +46,7 @@ fn default_mode() -> ExploreMode {
 
 #[mcp_tool(
     name = "fast_explore",
-    description = "Explore codebases with modes: logic (business logic), similar (duplicates), dependencies (graph), types (type analysis).",
+    description = "Explore codebases with modes: logic (business logic), similar (duplicates), dependencies (graph), types (type analysis). Julie 2.0: Default limit 10 per mode (optimized for token efficiency with focused results).",
     title = "Multi-Mode Code Exploration"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -64,7 +64,7 @@ pub struct FastExploreTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
 
-    /// Maximum results to return (default: 50, logic mode)
+    /// Maximum results to return (default: 10, logic mode)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_results: Option<i32>,
 
@@ -114,7 +114,7 @@ pub struct FastExploreTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exploration_type: Option<String>,
 
-    /// Maximum results per category (default: 50, types mode)
+    /// Maximum results per category (default: 10, types mode)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 
@@ -155,7 +155,7 @@ impl FastExploreTool {
         // Create FindLogicTool with parameters
         let find_logic_tool = FindLogicTool {
             domain,
-            max_results: self.max_results.unwrap_or(50),
+            max_results: self.max_results.unwrap_or(10), // Julie 2.0: Reduced from 50 for token efficiency
             group_by_layer: self.group_by_layer.unwrap_or(true),
             min_business_score: self.min_business_score.unwrap_or(0.3),
         };
@@ -173,7 +173,7 @@ impl FastExploreTool {
             .ok_or_else(|| anyhow::anyhow!("symbol parameter required for similar mode"))?;
 
         let threshold = self.threshold.unwrap_or(0.8);
-        let limit = self.max_results.unwrap_or(50) as usize;
+        let limit = self.max_results.unwrap_or(10) as usize; // Julie 2.0: Reduced from 50 for token efficiency
 
         // Validate threshold range
         if !(0.0..=1.0).contains(&threshold) {
@@ -564,7 +564,7 @@ impl FastExploreTool {
             .clone();
 
         let exploration_type = self.exploration_type.as_deref().unwrap_or("all");
-        let limit = self.limit.unwrap_or(50) as usize;
+        let limit = self.limit.unwrap_or(10) as usize; // Julie 2.0: Reduced from 50 for token efficiency
 
         // Get workspace and database
         let workspace = handler.get_workspace().await?.ok_or_else(|| {

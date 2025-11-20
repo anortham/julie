@@ -43,13 +43,13 @@ use crate::tools::shared::OptimizedResponse;
 
 #[mcp_tool(
     name = "fast_search",
-    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid.",
+    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid. Julie 2.0: Default limit 10 (optimized for token efficiency with intelligent filtering).",
     title = "Fast Unified Search",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
     read_only_hint = true,
-    meta = r#"{"category": "search", "performance": "sub_10ms"}"#
+    meta = r#"{"category": "search", "performance": "sub_10ms", "version": "2.0"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastSearchTool {
@@ -219,7 +219,7 @@ impl FastSearchTool {
         };
 
         // Perform search based on search method
-        let symbols = match search_method {
+        let mut symbols = match search_method {
             "semantic" => {
                 let workspace_ids = self.resolve_workspace_filter(handler).await?;
                 semantic_search::semantic_search_impl(

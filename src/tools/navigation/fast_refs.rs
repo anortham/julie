@@ -29,7 +29,7 @@ fn default_true() -> bool {
 }
 
 fn default_limit() -> u32 {
-    50
+    10 // Reduced from 50 for Julie 2.0 token efficiency (80% reduction)
 }
 
 fn default_workspace() -> Option<String> {
@@ -38,13 +38,13 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "fast_refs",
-    description = "Find all references and usages of a symbol across the workspace.",
+    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first).",
     title = "Find All References",
     idempotent_hint = true,
     destructive_hint = false,
     open_world_hint = false,
     read_only_hint = true,
-    meta = r#"{"category": "navigation", "scope": "workspace"}"#
+    meta = r#"{"category": "navigation", "scope": "workspace", "version": "2.0"}"#
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
@@ -53,7 +53,7 @@ pub struct FastRefsTool {
     /// Include definition in results (default: true)
     #[serde(default = "default_true")]
     pub include_definition: bool,
-    /// Maximum references (default: 50, range: 1-500)
+    /// Maximum references (default: 10, range: 1-500)
     #[serde(default = "default_limit")]
     pub limit: u32,
     /// Workspace filter: "primary" (default) or workspace ID

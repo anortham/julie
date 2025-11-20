@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691f3b7e_c6658d",
+  "timestamp": 1763654526,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05c1036",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Fixed Phase 5a filtering to be conservative - only applies to semantic/hybrid searches with >10 results, uses 0.5 confidence threshold. All 1831 tests passing. Filtering preserves test expectations while still providing token savings for production use."
+}

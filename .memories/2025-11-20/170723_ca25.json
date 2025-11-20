@@ -1,0 +1,16 @@
+{
+  "id": "checkpoint_691f4acb_e2f4dd",
+  "timestamp": 1763658443,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05c1036",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs"
+    ]
+  },
+  "description": "Cleaned up Phase 5a dead code. Removed unreachable filtering logic from search/mod.rs (35 lines), removed filter_high_confidence and group_by_file_top_match functions from shared.rs with traits and implementations (320 lines), removed 11 dead tests. All 1,831 tests passing. Phase 5a now delivers 80% token reduction purely through default limit changes (50→10) with no confusing dead code."
+}

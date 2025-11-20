@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_691f4664_170224",
+  "timestamp": 1763657316,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "05c1036",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Added 11 comprehensive unit tests for Julie 2.0 Phase 5a filtering logic in src/tools/shared.rs. Tests cover: confidence filtering (5 tests), file deduplication (5 tests), and combined realistic scenario (1 test). All edge cases tested: empty input, None confidence, boundary cases, tied confidence. Full test suite: 1,842 passing (11 new)."
+}
